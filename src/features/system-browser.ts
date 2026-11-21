@@ -7,12 +7,17 @@
  *
  * v2 renders the REAL model tree for authored MEP elements:
  *   - every connected cluster is ONE named system (Supply Air 1, …),
- *     built from geometry-derived connectivity (mep/system-tree.ts)
+ *     built from stored port-to-port connections where adopted, with
+ *     geometry joining only fitting/equipment contacts
+ *     (mep/system-tree.ts + mep/stored-connectors.ts)
  *   - system names are PERSISTED: the registry stamps mepSystemId /
  *     mepSystemName onto member properties, so names survive refreshes
  *     and project reloads instead of renumbering per refresh
  *   - a cluster mixing two declared systems is a conflict (red row +
  *     diagnostic), not a majority-vote resolution
+ *   - a run end touching another run's body has NO stored edge and is
+ *     NOT connected — it is reported as an unadopted contact in the
+ *     summary, not silently merged into the run's system
  *   - equipment heads the member list; members expand and are individually
  *     selectable; clicking a system selects all of its members
  *   - isolated elements are flagged as unconnected, per system browser
@@ -25,6 +30,8 @@ import { ctx } from "../core/context";
 import { selection } from "./selection";
 import { getElements, setSelectedAuthored } from "./authoring";
 import { computeMepSystemTree, MepSystemRegistry, stampSystemNames } from "../modules/mep/system-tree";
+import { syncStoredConnections } from "../modules/mep/stored-connectors";
+import type { ConnectorConnection } from "../modules/mep/connectors";
 import { colorFor } from "../modules/mep/types";
 import type { MepLike } from "../modules/mep/connectivity";
 
@@ -127,18 +134,34 @@ function rowBase(): HTMLDivElement {
   return row;
 }
 
-/** Authored model: real systems from connectivity. */
-function renderAuthoredSection(host: HTMLDivElement): { systems: number; elements: number; unconnected: number; conflicts: number } {
+/** Authored model: real systems from stored connections (+ geometry for fittings/equipment). */
+function renderAuthoredSection(host: HTMLDivElement): { systems: number; elements: number; unconnected: number; conflicts: number; unadopted: number } {
   const els = getElements() as unknown as MepLike[];
-  const tree = computeMepSystemTree(els, { registry: systemRegistry });
+  // Stored connector semantics: the tree reads the lifecycle's stored
+  // edges, so linear↔linear pairs connect only through a stored edge.
+  // Adoption normally runs on every authoring rebuild; this first-use
+  // call covers a browser render that precedes any rebuild (idempotent,
+  // and guarded so a failure leaves the tree on pure geometry).
+  const lifecycle = (ctx.features as any).mep?.lifecycle;
+  let connections: ConnectorConnection[] | undefined;
+  try {
+    if (lifecycle && typeof lifecycle.listConnections === "function" && typeof lifecycle.connect === "function") {
+      syncStoredConnections(els, lifecycle);
+      connections = lifecycle.listConnections();
+    }
+  } catch (e) {
+    console.warn("[system-browser] stored-connection adoption failed; falling back to geometry", e);
+    connections = undefined;
+  }
+  const tree = computeMepSystemTree(els, { registry: systemRegistry, connections });
   // Persist the names just assigned so the next refresh (and, via the
   // project save, the next reload) keeps them instead of renumbering.
   stampSystemNames(els, tree);
-  if (!tree.totalMep) return { systems: 0, elements: 0, unconnected: 0, conflicts: 0 };
+  if (!tree.totalMep) return { systems: 0, elements: 0, unconnected: 0, conflicts: 0, unadopted: 0 };
 
   host.appendChild(sectionTitle(
     "Model systems",
-    "built from real connectivity \u00B7 click a system to select it",
+    "built from stored connections \u00B7 click a system to select it",
   ));
 
   for (const c of tree.clusters) {
@@ -201,7 +224,7 @@ function renderAuthoredSection(host: HTMLDivElement): { systems: number; element
       renderTree();
     };
   }
-  return { systems: tree.clusters.length, elements: tree.totalMep, unconnected: tree.unconnectedCount, conflicts: tree.conflictCount };
+  return { systems: tree.clusters.length, elements: tree.totalMep, unconnected: tree.unconnectedCount, conflicts: tree.conflictCount, unadopted: tree.unadoptedContacts.length };
 }
 
 /** Imported IFC: category groups (honest label — connectivity not re-derived). */
@@ -280,6 +303,7 @@ async function renderTree(): Promise<void> {
     parts.push(authored.systems + " model system(s) \u00B7 " + authored.elements + " element(s)");
     if (authored.unconnected) parts.push(authored.unconnected + " unconnected");
     if (authored.conflicts) parts.push(authored.conflicts + " system conflict(s) \u2014 resolve before audit");
+    if (authored.unadopted) parts.push(authored.unadopted + " unadopted contact(s) \u2014 end on body, add a junction fitting");
   }
   if (imported.groups) parts.push(imported.groups + " imported group(s) \u00B7 " + imported.elements + " element(s)");
   summary.textContent = parts.join("  \u00B7  ");

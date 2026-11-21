@@ -29,10 +29,17 @@
  * Pure module: no DOM, no three.js, no ctx. Safe to unit-test in Node.
  * Connectivity pairs come from the grid index in connectivity.ts
  * (connectedPairs — exactly the old O(n²) scan, pruned); the tree build
- * itself is union-find over those pairs.
+ * itself is union-find over those pairs. When the caller supplies stored
+ * connections (`options.connections`, from the MEP lifecycle), stored
+ * edges are authoritative for linear↔linear pairs — see
+ * `stored-connectors.ts` — so a run end on another run's body is NOT a
+ * connection (it is reported in `tree.unadoptedContacts`) and
+ * connectivity survives a model edit without re-derivation.
  */
 
 import { connectedPairs, isMepElement, LINEAR_MEP, type MepLike } from "./connectivity";
+import { findUnadoptedContacts, type UnadoptedContact } from "./stored-connectors";
+import type { ConnectorConnection } from "./connectors";
 import type { MepSystem } from "./types";
 
 /** Human labels for every typed system (browser + tests share this). */
@@ -104,6 +111,15 @@ export interface MepSystemTree {
   conflictCount: number;
   /** Number of MEP elements considered (non-MEP input is ignored). */
   totalMep: number;
+  /**
+   * Geometry-touching linear↔linear pairs with no stored edge between
+   * them. Non-empty only when the tree was computed with stored
+   * connections: those pairs are geometrically touching but NOT connected
+   * in this tree (a run end on another run's body, an incompatible port
+   * pair, or an edge adoption has not stored yet). Empty when no
+   * connection list was supplied (pure-geometry mode).
+   */
+  unadoptedContacts: UnadoptedContact[];
 }
 
 type MemberKind = "equipment" | "linear" | "fitting";
@@ -195,6 +211,16 @@ export interface MepSystemAssignment {
 
 export interface MepSystemTreeOptions {
   registry?: MepSystemRegistry;
+  /**
+   * Stored port-to-port edges (e.g. `lifecycle.listConnections()`).
+   * When supplied, stored edges are authoritative for linear↔linear
+   * pairs: two runs connect ONLY through a stored edge, so connectivity
+   * survives a model edit without re-derivation. Geometry still joins
+   * pairs that involve a fitting or equipment (unmanaged elements, whose
+   * connectivity stays positional). When omitted, the tree behaves
+   * exactly as before — pure geometry for every pair.
+   */
+  connections?: ConnectorConnection[];
 }
 
 const STAMPED_ID_RE = /^mep-sys-(\d+)$/;
@@ -287,8 +313,10 @@ export function computeMepSystemTree(elements: MepLike[], options: MepSystemTree
   const registry = options.registry ?? null;
   if (registry) registry.seedFrom(mep);
 
-  // Union-find over indices; grid-indexed connectivity (connectedPairs is
-  // exactly the O(n²) scan, pruned — see connectivity.ts).
+  // Union-find over indices. With stored connections supplied, stored
+  // edges are authoritative for linear↔linear pairs (see the option doc
+  // above); geometry still joins pairs involving a fitting or equipment.
+  // Without them, every pair comes from the grid-indexed geometry scan.
   const parent = mep.map((_, i) => i);
   const find = (x: number): number => {
     while (parent[x] !== x) {
@@ -302,7 +330,26 @@ export function computeMepSystemTree(elements: MepLike[], options: MepSystemTree
     if (ra !== rb) parent[Math.max(ra, rb)] = Math.min(ra, rb);
   };
   const indexOf = new Map(mep.map((e, i) => [e.id, i]));
-  for (const [a, b] of connectedPairs(mep)) union(indexOf.get(a.id)!, indexOf.get(b.id)!);
+  const stored = options.connections ?? null;
+  let unadoptedContacts: UnadoptedContact[] = [];
+  if (stored) {
+    // Stored edges first (authoritative, whatever the element types).
+    // Edges naming elements that are not in this model are ignored here;
+    // the lifecycle's own topology validation flags them as dangling.
+    for (const c of stored) {
+      const ia = indexOf.get(c.sourceElementId);
+      const ib = indexOf.get(c.targetElementId);
+      if (ia !== undefined && ib !== undefined) union(ia, ib);
+    }
+    for (const [a, b] of connectedPairs(mep)) {
+      // Linear↔linear pairs connect ONLY through a stored edge.
+      if (LINEAR_MEP.has(a.type) && LINEAR_MEP.has(b.type)) continue;
+      union(indexOf.get(a.id)!, indexOf.get(b.id)!);
+    }
+    unadoptedContacts = findUnadoptedContacts(mep, stored);
+  } else {
+    for (const [a, b] of connectedPairs(mep)) union(indexOf.get(a.id)!, indexOf.get(b.id)!);
+  }
 
   // Gather clusters in first-appearance order of their smallest member index.
   const groups = new Map<number, number[]>();
@@ -416,5 +463,6 @@ export function computeMepSystemTree(elements: MepLike[], options: MepSystemTree
     unconnectedCount: clusters.filter((c) => c.unconnected).length,
     conflictCount: clusters.filter((c) => c.conflicts.length > 0).length,
     totalMep: mep.length,
+    unadoptedContacts,
   };
 }

@@ -15,7 +15,7 @@ export interface MepLike {
   properties?: Record<string, unknown>;
   params: {
     start?: [number, number]; end?: [number, number]; point?: [number, number];
-    elevation: number; endElevation?: number; height: number; thickness: number; depth?: number;
+    elevation: number; endElevation?: number; height: number; thickness: number; depth?: number; width?: number;
     angleIn?: number; angleOut?: number; bendRadius?: number; fittingKind?: string; parentType?: string;
   };
 }

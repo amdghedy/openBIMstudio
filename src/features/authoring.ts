@@ -44,7 +44,7 @@ import { history } from "./history";
 import { snapping } from "./snapping";
 import { gizmo } from "./gizmo";
 import { accuDraw } from "./accudraw";
-import { expandConnected, isMepElement, connectedSelection, LINEAR_MEP } from "../modules/mep/connectivity";
+import { expandConnected, isMepElement, connectedSelection, LINEAR_MEP, type MepLike } from "../modules/mep/connectivity";
 import { planMepStretch, planMepMove } from "../modules/mep/stretch";
 import { planLinearFollow, FOLLOW_LINEAR, magnetSameTypeEnd, joinedEnds } from "../modules/native-bim/linear-follow";
 import { generateWallSweep, generateRevealCutter } from "../modules/wall-sweeps/geometry";
@@ -102,7 +102,7 @@ import {
 } from "../modules/snapping/smart-perp-snap";
 import { snapFeedback } from "./snap-feedback";
 import { computeTracking, type TrackAnchor, type TrackHit } from "../modules/snapping/reference-tracking";
-import type { MepConnector } from "../modules/mep/connectors";
+import { deriveRunConnectors, syncStoredConnections } from "../modules/mep/stored-connectors";
 import { deriveFamilyInstanceConnectors } from "../modules/mep/family-connectors";
 import { lengthKeepRight, thicknessKeepFace, openingWidthKeepRight, heightKeepBase } from "../modules/native-bim/dimension-edit";
 import { registerTempDimProvider, type TempDimSpec, setupEditableTempDims } from "./temp-dimensions-edit";
@@ -2611,29 +2611,12 @@ function syncMepLifecycleFromAuthoredElements(): void {
     }
   }
   for (const el of mepElements) {
-    const p = el.params;
-    const start = p.start, end = p.end;
-    if (!start || !end || !Number.isFinite(start[0]) || !Number.isFinite(start[1]) ||
-        !Number.isFinite(end[0]) || !Number.isFinite(end[1])) continue;
-    const dx = end[0] - start[0], dz = end[1] - start[1], length = Math.hypot(dx, dz);
-    if (length < 1e-6) continue;
-    const domain = el.type === "duct" ? "duct" : el.type === "pipe" ? "pipe" : el.type === "cable-tray" ? "cabletray" : "conduit";
-    const shape = el.type === "pipe" || el.type === "conduit" ? "round" : "rectangular";
-    const size: number | [number, number] = shape === "round"
-      ? Math.max(0.001, p.thickness || p.width || 0.05)
-      : [Math.max(0.001, p.width || p.thickness || 0.1), Math.max(0.001, p.height || p.thickness || 0.1)];
-    const classification = String(el.properties?.systemClassification ?? el.properties?.systemType ?? domain + "-default");
-    const make = (name: string, x: number, y: number, z: number, dir: [number, number, number], flowDirection: "in" | "out"): MepConnector => ({
-      ownerElementId: el.id,
-      def: { name, origin: [0, 0, 0], direction: dir, domain: domain as any, shape: shape as any, size,
-        flowDirection, systemClassification: classification },
-      worldOrigin: [x, y, z], worldDirection: dir, engaged: false, connectedTo: null,
-    });
-    const y0 = p.elevation || 0, y1 = p.endElevation ?? y0;
-    const connectors = [
-      make("start", start[0], y0, start[1], [-dx / length, (y0 - y1) / Math.max(length, 1e-6), -dz / length], "in"),
-      make("end", end[0], y1, end[1], [dx / length, (y1 - y0) / Math.max(length, 1e-6), dz / length], "out"),
-    ];
+    // Stored run ports (start/end) come from the pure derivation in
+    // stored-connectors.ts — one source of truth with adoption and the
+    // system tree. Null = degenerate run: skip the lifecycle call
+    // entirely, so an empty port list cannot drop its existing edges.
+    const connectors = deriveRunConnectors(el as unknown as MepLike);
+    if (!connectors) continue;
     try { lifecycle.onElementChanged(el.id, connectors); }
     catch (e) { console.warn("[mep] authored geometry reconciliation failed", el.id, e); }
   }
@@ -2654,6 +2637,25 @@ function syncMepLifecycleFromAuthoredElements(): void {
     } catch (e) {
       console.warn("[mep] family connector reconciliation failed", el.id, e);
     }
+  }
+  // Stored connector semantics: adopt port-to-port edges for runs whose
+  // ends coincide, once, idempotently. Runs keep their stored edges
+  // across edits (the lifecycle revalidates them); a run end on another
+  // run's body gets no edge and is reported as an unadopted contact
+  // instead of silently counting as connected. Guarded: adoption must
+  // never break the authoring rebuild.
+  try {
+    const mepLike = elements.filter(el =>
+      linearMepTypes.includes(el.type) || el.type === "fitting" || el.type === "equipment") as unknown as MepLike[];
+    const sync = syncStoredConnections(mepLike, lifecycle);
+    for (const u of sync.unadopted) {
+      if (u.reason === "incompatible-ports") console.warn("[mep] unadopted contact: " + u.detail);
+    }
+    for (const f of sync.failed) {
+      console.warn("[mep] stored connection rejected: " + f.quad.sourceElementId + ":" + f.quad.sourceConnector + " ↔ " + f.quad.targetElementId + ":" + f.quad.targetConnector + " — " + f.error);
+    }
+  } catch (e) {
+    console.warn("[mep] stored-connection adoption failed", e);
   }
   lastMepAuthoringIds = currentIds;
 }

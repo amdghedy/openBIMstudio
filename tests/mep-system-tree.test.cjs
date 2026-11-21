@@ -181,7 +181,7 @@ t("cluster ids are unique across a mixed tree", () => {
   assert.deepStrictEqual(ids, [...new Set(ids)]);
 });
 t("empty and non-MEP inputs yield an empty tree", () => {
-  assert.deepStrictEqual(m.computeMepSystemTree([]), { clusters: [], unconnectedCount: 0, conflictCount: 0, totalMep: 0 });
+  assert.deepStrictEqual(m.computeMepSystemTree([]), { clusters: [], unconnectedCount: 0, conflictCount: 0, totalMep: 0, unadoptedContacts: [] });
   const tree = m.computeMepSystemTree([wall, door]);
   assert.strictEqual(tree.totalMep, 0);
   assert.strictEqual(tree.clusters.length, 0);

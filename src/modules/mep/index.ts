@@ -36,6 +36,8 @@ import * as mepFlowAssignment from "./flow-assignment";
 import * as mepIfcReconstruction from "./ifc-reconstruction";
 import * as mepProtectionCoordination from "./protection-coordination";
 import * as mepCalculationBasis from "./calculation-basis";
+import * as mepStoredConnectors from "./stored-connectors";
+import * as mepCodeReferenceChecks from "./code-reference-checks";
 import * as mepLighting from "./lighting";
 import * as mepHostedElements from "./hosted-elements";
 import * as mepDemandFactors from "./demand-factors";
@@ -71,6 +73,8 @@ export * from "./flow-assignment";
 export * from "./ifc-reconstruction";
 export * from "./protection-coordination";
 export * from "./calculation-basis";
+export * from "./stored-connectors";
+export * from "./code-reference-checks";
 export * from "./lighting";
 export * from "./hosted-elements";
 export * from "./demand-factors";
@@ -155,6 +159,13 @@ export function setupMep(): MepService {
   // Calculation basis: method / standard / units / assumptions /
   // limitations / validation status per area (calculationBasisFor).
   svcAny.calculationBasis = mepCalculationBasis;
+  // Stored connector semantics: deriveRunConnectors / adoptStoredConnections
+  // / syncStoredConnections — port-to-port edges for plain runs, persisted
+  // in the project snapshot via the lifecycle.
+  svcAny.storedConnectors = mepStoredConnectors;
+  // Code-referenced checks: ASHRAE (US) duct-friction validation against
+  // published chart values (runCodeReferenceChecks).
+  svcAny.codeReferenceChecks = mepCodeReferenceChecks;
 
   // MEP final-gap pack: lumen-method lighting design, the hosted-element
   // (host relationship) engine and NEC 220 code demand factors.
