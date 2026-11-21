@@ -373,7 +373,8 @@
     "test:safe-load-audit": "node tests/safe-load-coverage-audit.test.cjs",
     "test:mass-to-elements": "node tests/mass-to-elements.test.cjs",
     "test:family-migration": "node tests/family-migration.test.cjs",
-    "test:modify-tab-completion": "node tests/modify-tab-completion.test.cjs"
+    "test:modify-tab-completion": "node tests/modify-tab-completion.test.cjs",
+    "test:property-palette-type-selector": "node tests/property-palette-type-selector.test.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",

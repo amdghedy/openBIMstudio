@@ -49,6 +49,17 @@ export interface DockOptions {
    * Whole-panel drag is only used when no header is provided.
    */
   headerDragOnly?: boolean;
+  /**
+   * Optional layout owner. Called from applyLayout() with the current
+   * dock side; when it returns true the caller owns the panel's
+   * positioning for that side (e.g. the Properties palette's reserved
+   * left column, which reparents the panel into a flex column so the
+   * workspace layout actually reserves the space instead of overlaying
+   * it) and dockable skips its own absolute positioning. Return false
+   * (or omit) for the default overlay positioning. The callback must
+   * undo its own layout when a later call returns false.
+   */
+  onLayout?: (side: DockSide, panel: HTMLElement, state: { width: number; height: number }) => boolean;
 }
 
 interface PersistedState {
@@ -158,7 +169,20 @@ export function makeDockable(panel: HTMLElement, opts: DockOptions): DockHandle 
   }
 
   // ── Apply state to the DOM ──
+  /** True while the onLayout owner positions the panel (see below). */
+  let layoutOwned = false;
   function applyLayout(): void {
+    // G10: a panel may own its layout for one dock side (reserved column).
+    if (opts.onLayout) {
+      try {
+        layoutOwned = !!opts.onLayout(state.dock, panel, { width: state.width, height: state.height });
+      } catch {
+        layoutOwned = false;
+      }
+      if (layoutOwned) return;
+    } else {
+      layoutOwned = false;
+    }
     const hostRect = host.getBoundingClientRect();
     panel.style.position = "absolute";
     panel.style.boxSizing = "border-box";
@@ -427,7 +451,10 @@ const handleEls: HTMLDivElement[] = [];
 
   function applyMinimizedLayout(): void {
     if (!minimized) {
-      panel.style.height = `${state.height}px`;
+      // G10: when the onLayout owner positions the panel it also owns
+      // its height (e.g. 100% of the reserved column); only the
+      // minimized (header-only) height is forced here.
+      if (!layoutOwned) panel.style.height = `${state.height}px`;
       for (const child of Array.from(panel.children)) {
         const el = child as HTMLElement;
         if (el === controlsHost || el === opts.header || el.dataset.resizeHandle) continue;

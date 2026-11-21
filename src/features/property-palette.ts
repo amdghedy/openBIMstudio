@@ -48,7 +48,12 @@ import { coreThicknessFromLayers } from "../modules/justification";
 import { units } from "../core/units";
 import { svgIcon, type IconName } from "./icon-set";
 import { levels } from "../modules/levels";
-import { makeDockable, type DockHandle } from "./dockable";
+import { makeDockable, type DockHandle, type DockSide } from "./dockable";
+import {
+  resolveTypeSelector,
+  retypeElements,
+  type TypeSelectorDeps,
+} from "./type-selector";
 import { selection } from "./selection";
 import {
   listWallTypePresets,
@@ -87,6 +92,246 @@ panel.append(header, body);
 let expanded = true;
 let visible = false;
 let dockHandle: DockHandle | null = null;
+/** Last selection target the palette auto-opened for (G10, see below). */
+let lastSelectionTargetKey: string | null = null;
+/** Reserved flex column the palette lives in while docked left (G10), or null. */
+let dockColumn: HTMLElement | null = null;
+
+/** Deps for the Type Selector engine: the live family service + wall catalog. */
+function typeSelectorDeps(): TypeSelectorDeps {
+  return {
+    familyService: ((ctx.features as any).family ?? null) as TypeSelectorDeps["familyService"],
+    wallPresets: listWallTypePresets(),
+  };
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   G10 — Type Selector (Revit: Type Selector at the top of the Properties
+   palette + "Edit Type" opening Type Properties)
+   ═════════════════════════════════════════════════════════════════════════ */
+function makeTypeSelectorBlock(elements: AuthoredElement[]): HTMLElement | null {
+  const deps = typeSelectorDeps();
+  const model = resolveTypeSelector(elements, deps);
+  if (model.kind === "none" || !model.options.length) return null;
+
+  const block = document.createElement("div");
+  block.dataset.g10TypeSelector = "1";
+  block.style.cssText = "border-bottom:1px solid var(--border-subtle,#1e2029)";
+
+  const headerRow = document.createElement("div");
+  headerRow.style.cssText =
+    "display:flex;align-items:center;gap:6px;padding:7px 12px;" +
+    "background:var(--bg-elevated,#181a23);user-select:none";
+  const title = document.createElement("span");
+  title.textContent = "Type Selector";
+  title.style.cssText = "font-weight:600;font-size:11.5px;letter-spacing:.2px";
+  const source = document.createElement("span");
+  source.textContent = model.sourceName;
+  source.style.cssText = "font-size:10.5px;color:var(--text-tertiary,#6b7280)";
+  headerRow.append(title, source);
+
+  const list = document.createElement("div");
+  list.style.cssText = "padding:6px 12px 10px;display:grid;gap:6px";
+
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex;gap:6px;align-items:center";
+
+  const sel = document.createElement("select");
+  sel.dataset.testid = "type-selector";
+  sel.setAttribute("aria-label", "Type Selector");
+  sel.style.cssText =
+    "flex:1;min-width:0;box-sizing:border-box;padding:4px 6px;" +
+    "background:var(--bg-inset,#0e1017);border:1px solid var(--border-default,#2a2e3a);" +
+    "border-radius:4px;color:var(--text-primary,#e8eaf0);font:12px system-ui;cursor:pointer";
+  const head = model.varies
+    ? `<option value="" selected>&lt;varies&gt;</option>`
+    : model.currentId == null
+      ? `<option value="">— select type —</option>`
+      : "";
+  sel.innerHTML =
+    head +
+    model.options
+      .map(
+        (o) =>
+          `<option value="${escapeHtml(o.id)}" ${o.id === model.currentId ? "selected" : ""}>${escapeHtml(o.name)}</option>`,
+      )
+      .join("");
+  sel.onchange = () => {
+    const newTypeId = sel.value || null;
+    if (!newTypeId || newTypeId === model.currentId) return;
+    const targets = elements.filter((e) => getElements().some((g) => g.id === e.id));
+    if (!targets.length) return;
+    const before = targets.map((e) => JSON.parse(JSON.stringify(e)));
+    const res = retypeElements(targets, newTypeId, deps);
+    if (!res.retyped.length) {
+      sel.value = model.currentId ?? "";
+      return;
+    }
+    const after = targets.map((e) => JSON.parse(JSON.stringify(e)));
+    rebuildAuthored();
+    markAuthoringDirty();
+    if (res.skipped.length > 0) {
+      window.dispatchEvent(new CustomEvent("obs-toast", {
+        detail: {
+          message: `Type → ${res.retyped.length} element(s); ${res.skipped.length} unchanged (different family)`,
+          kind: "success",
+        },
+      }));
+    }
+    const byId = new Map(targets.map((e, i) => [e.id, i] as const));
+    history.push({
+      label: "Type Selector · " + (targets.length === 1 ? targets[0].name || targets[0].id : `${targets.length} elements`),
+      apply: () => {
+        for (const [id, i] of byId) {
+          const live = getElements().find((g) => g.id === id);
+          if (live) Object.assign(live, JSON.parse(JSON.stringify(after[i])));
+        }
+        rebuildAuthored();
+        markAuthoringDirty();
+        render();
+      },
+      revert: () => {
+        for (const [id, i] of byId) {
+          const live = getElements().find((g) => g.id === id);
+          if (live) Object.assign(live, JSON.parse(JSON.stringify(before[i])));
+        }
+        rebuildAuthored();
+        markAuthoringDirty();
+        render();
+      },
+    });
+    render();
+  };
+
+  const editTypeBtn = document.createElement("button");
+  editTypeBtn.type = "button";
+  editTypeBtn.dataset.testid = "edit-type";
+  editTypeBtn.textContent = "Edit Type";
+  editTypeBtn.title = "Open Type Properties for the selected type";
+  editTypeBtn.style.cssText =
+    "flex:none;padding:4px 10px;background:var(--bg-inset,#0e1017);" +
+    "border:1px solid var(--border-default,#2a2e3a);border-radius:4px;" +
+    "color:var(--text-primary,#e8eaf0);font:12px system-ui;cursor:pointer;white-space:nowrap";
+  editTypeBtn.onclick = () => {
+    const exec = (window as any).__obsBIMExperience?.execute;
+    if (typeof exec === "function") {
+      exec("modify.typeProperties");
+    } else {
+      window.dispatchEvent(new CustomEvent("obs-toast", {
+        detail: { message: "Type Properties is not available yet", kind: "warn" },
+      }));
+    }
+  };
+
+  row.append(sel, editTypeBtn);
+  list.appendChild(row);
+
+  if (model.varies) {
+    const hint = document.createElement("div");
+    hint.style.cssText = "font-size:10px;color:var(--text-tertiary,#6b7280)";
+    hint.textContent = "Mixed selection — picking a type re-types only the elements whose family offers it.";
+    list.appendChild(hint);
+  }
+
+  block.append(headerRow, list);
+  return block;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   G10 — Docking: dock-left reserves a flex column in the workspace
+   (the panel is reparented out of the viewport overlay into a column
+   inserted before the viewport, so the canvas shifts right instead of
+   being covered). Dock right / float keep the overlay positioning the
+   generic dockable controller provides.
+   ═════════════════════════════════════════════════════════════════════════ */
+function ensureDockColumn(): boolean {
+  const parent = ctx.rightHost?.parentElement;
+  if (!parent || !ctx.rightHost) return false;
+  if (!dockColumn) {
+    const col = document.createElement("div");
+    col.id = "obs-pp-dock-left";
+    col.style.cssText =
+      "display:flex;flex-direction:column;flex:0 0 320px;height:100%;" +
+      "background:var(--bg-floating,#1c1e28);border-right:1px solid var(--border-default,#2a2e3a);" +
+      "overflow:hidden";
+    dockColumn = col;
+  }
+  // Re-assert placement on every layout pass: the ribbon re-parents
+  // rightHost into mainRow after palette setup, which would otherwise
+  // strand the column in #app (a column flex — the 320px basis would
+  // become its height and it would stretch full-width). insertBefore
+  // is a no-op move when the column is already correctly placed.
+  parent.insertBefore(dockColumn, ctx.rightHost);
+  return true;
+}
+
+function teardownDockColumn(): void {
+  if (!dockColumn) return;
+  if (panel.parentElement === dockColumn) ctx.rightHost.appendChild(panel);
+  panel.style.position = "";
+  panel.style.width = "";
+  panel.style.height = "";
+  panel.style.flex = "";
+  panel.style.borderRadius = "10px";
+  panel.style.border = "1px solid var(--border-default,#2a2e3a)";
+  panel.style.boxShadow = "0 12px 36px rgba(0,0,0,.55)";
+  dockColumn.remove();
+  dockColumn = null;
+}
+
+/** Dockable onLayout owner: left docks into the reserved column, anything else overlays. */
+function paletteDockLayout(
+  side: DockSide,
+  _panel: HTMLElement,
+  state: { width: number; height: number },
+): boolean {
+  if (side !== "left") {
+    teardownDockColumn();
+    return false;
+  }
+  if (!ensureDockColumn()) return false;
+  if (panel.parentElement !== dockColumn) dockColumn!.appendChild(panel);
+  dockColumn!.style.flex = `0 0 ${Math.max(260, state.width)}px`;
+  panel.style.position = "relative";
+  panel.style.left = "auto";
+  panel.style.right = "auto";
+  panel.style.top = "auto";
+  panel.style.width = "100%";
+  panel.style.height = "100%";
+  panel.style.flex = "1 1 auto";
+  panel.style.borderRadius = "0";
+  panel.style.border = "none";
+  panel.style.boxShadow = "none";
+  syncDockColumnVisibility();
+  return true;
+}
+
+/** The reserved column only takes space while the palette is actually shown. */
+function syncDockColumnVisibility(): void {
+  if (!dockColumn) return;
+  const dockedLeft = dockHandle?.side?.() === "left";
+  const shown = dockedLeft && panel.style.display !== "none";
+  dockColumn.style.display = shown ? "" : "none";
+}
+
+/** Header button cycling the dock side (left → right → floating). */
+function makeDockCycleButton(): HTMLButtonElement {
+  const b = document.createElement("button");
+  const side = dockHandle?.side?.() ?? "right";
+  b.textContent = side === "left" ? "⇤ Left" : side === "right" ? "⇥ Right" : "⧉ Float";
+  b.title = "Dock: click to cycle left → right → floating (right-click the title bar for all sides)";
+  b.style.cssText =
+    "padding:2px 6px;background:transparent;color:var(--text-secondary);" +
+    "border:1px solid var(--border-default);border-radius:4px;cursor:pointer;font-size:10px;white-space:nowrap";
+  b.onclick = () => {
+    const cur = dockHandle?.side?.() ?? "right";
+    const next: DockSide = cur === "left" ? "right" : cur === "right" ? "float" : "left";
+    dockHandle?.dock(next);
+    syncDockColumnVisibility();
+    render();
+  };
+  return b;
+}
 
 /* ═════════════════════════════════════════════════════════════════════════
    Field I/O
@@ -623,7 +868,7 @@ function renderHeader(mode: "defaults" | "edit", typeLabel: string, elementName?
     render();
   };
 
-  header.append(icon, text, collapseBtn);
+  header.append(icon, text, makeDockCycleButton(), collapseBtn);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -871,7 +1116,12 @@ function renderToolPanel(desc: ToolPanelDescriptor): HTMLElement {
 /* ═════════════════════════════════════════════════════════════════════════
    Render
    ═════════════════════════════════════════════════════════════════════════ */
-function render() {
+function render(): void {
+  renderInner();
+  syncDockColumnVisibility();
+}
+
+function renderInner() {
   const target = getPaletteTarget();
 
   if (!target) {
@@ -891,24 +1141,40 @@ function render() {
   if (dockHandle) dockHandle.show();
   else panel.style.display = "flex";
 
-  // Multi-select: constraints (any) + wall type when all are walls/curtain
+  // Multi-select: Type Selector first (G10), then constraints (linears
+  // only) + wall type when all are walls/curtain walls.
   if (target.mode === "edit-multi") {
     header.innerHTML = "";
     const ht = document.createElement("div");
     ht.textContent = `${target.elementIds.length} elements selected`;
     ht.style.cssText = "font-weight:600;flex:1";
     header.appendChild(ht);
+    header.appendChild(makeDockCycleButton());
     body.innerHTML = "";
+    const multiSelected = target.elementIds
+      .map((id) => getElements().find((e) => e.id === id))
+      .filter(Boolean) as AuthoredElement[];
     try {
-      body.appendChild(makeConstraintMultiBlock(target.elementIds));
+      const ts = makeTypeSelectorBlock(multiSelected);
+      if (ts) body.appendChild(ts);
     } catch (err) {
-      console.warn("[property-palette] multi constraints failed", err);
+      console.warn("[property-palette] type selector failed", err);
+    }
+    const constraintTypes = new Set([
+      "wall", "curtain-wall", "beam", "strip", "mline",
+      "duct", "pipe", "cable-tray", "conduit", "brace",
+    ]);
+    const allLinear = multiSelected.length > 0 &&
+      multiSelected.every((e) => constraintTypes.has(String(e.type)));
+    if (allLinear) {
+      try {
+        body.appendChild(makeConstraintMultiBlock(target.elementIds));
+      } catch (err) {
+        console.warn("[property-palette] multi constraints failed", err);
+      }
     }
     try {
-      const selected = target.elementIds
-        .map((id) => getElements().find((e) => e.id === id))
-        .filter(Boolean) as AuthoredElement[];
-      const allWalls = selected.length > 0 && selected.every(
+      const allWalls = multiSelected.length > 0 && multiSelected.every(
         (e) => e.type === "wall" || e.type === "curtain-wall",
       );
       if (allWalls) body.appendChild(makeWallTypeMultiBlock(target.elementIds));
@@ -952,6 +1218,16 @@ function render() {
 
   body.innerHTML = "";
   body.style.display = expanded ? "block" : "none";
+
+  // G10 — Type Selector tops the palette whenever element(s) are selected.
+  if (element) {
+    try {
+      const ts = makeTypeSelectorBlock([element]);
+      if (ts) body.appendChild(ts);
+    } catch (err) {
+      console.warn("[property-palette] type selector failed", err);
+    }
+  }
 
   // Contextual tool parameters come first while a tool is active.
   if (toolPanelDesc) {
@@ -1380,6 +1656,7 @@ export function openPropertyPalette() {
   visible = true;
   if (dockHandle) dockHandle.show();
   else panel.style.display = "flex";
+  syncDockColumnVisibility();
   if (!getPaletteTarget()) renderViewProperties();
   else render();
 }
@@ -1387,6 +1664,7 @@ export function closePropertyPalette() {
   visible = false;
   if (dockHandle) dockHandle.hide();
   else panel.style.display = "none";
+  syncDockColumnVisibility();
 }
 export function isPropertyPaletteVisible(): boolean {
   return visible;
@@ -1637,7 +1915,11 @@ export function setupPropertyPalette(): void {
     header,
     minWidth: 260,
     minHeight: 280,
-    defaultDock: "right",
+    // G10 — Revit docks the Properties palette left by default; the
+    // onLayout owner reserves a flex column for it (see paletteDockLayout).
+    // A stored dock side (localStorage) still wins for returning users.
+    defaultDock: "left",
+    onLayout: paletteDockLayout,
     defaultWidth: 320,
     defaultHeight: 520,
     margin: 8,
@@ -1653,11 +1935,63 @@ export function setupPropertyPalette(): void {
   // properties panel automatically. (Supersedes the earlier
   // closed-by-default behaviour for tool activation only: selection and
   // manual open/close still behave exactly as before.)
+  //
+  // G10 — auto-open on selection, through the notification that actually
+  // fires. The selection.onChange handler below intends this, but 3D
+  // clicks never emit through the `selection` manager: authoring's
+  // applySelection() only recolors meshes, and setSelectedAuthored()
+  // reports through notifyAuthoringChange() instead. So an edit target
+  // arriving here opens the palette (once per target — closing it
+  // manually while the same element stays selected does not re-open it).
+  // setSelectedAuthored() also clears the target for multi-selection,
+  // so the edit-multi target (and the Type Selector's varies state) is
+  // built here too, with the same classification as the onChange handler.
   onAuthoringChange(() => {
     try {
       if (isDrawToolActive() && !visible) {
         openPropertyPalette();
         return;
+      }
+    } catch (err) { console.warn("[property-palette] auto-open failed", err); }
+    try {
+      const target = getPaletteTarget();
+      if (!target) {
+        lastSelectionTargetKey = null;
+      } else if (target.mode === "edit" || target.mode === "edit-multi") {
+        const key = target.mode === "edit"
+          ? `edit:${target.elementId}`
+          : `edit-multi:${target.elementIds.join(",")}`;
+        if (key !== lastSelectionTargetKey) {
+          lastSelectionTargetKey = key;
+          if (!visible) {
+            openPropertyPalette();
+            return;
+          }
+        }
+      } else {
+        lastSelectionTargetKey = null;
+      }
+    } catch (err) { console.warn("[property-palette] auto-open failed", err); }
+    try {
+      if (!getPaletteTarget()) {
+        const ids = getSelectedIds();
+        if (ids.length > 1) {
+          const selected = ids
+            .map((id) => getElements().find((e) => e.id === id))
+            .filter(Boolean) as AuthoredElement[];
+          if (selected.length >= 2) {
+            lastSelectionTargetKey = `edit-multi:${selected.map((e) => e.id).join(",")}`;
+            setPaletteTarget({
+              mode: "edit-multi",
+              elementIds: selected.map((e) => e.id),
+              type: selected[0].type as any,
+            });
+            if (!visible) {
+              openPropertyPalette();
+              return;
+            }
+          }
+        }
       }
     } catch (err) { console.warn("[property-palette] auto-open failed", err); }
     if (!visible) return;
@@ -1709,15 +2043,28 @@ export function setupPropertyPalette(): void {
             if (!visible) openPropertyPalette(); else render();
             return;
           }
+          // G10 — any other multi-selection of authored elements still
+          // gets an edit-multi target, so the Type Selector (varies
+          // state) is available for mixed-type selections too.
+          if (selected.length >= 2) {
+            setPaletteTarget({
+              mode: "edit-multi",
+              elementIds: selected.map((w) => w.id),
+              type: (selected[0].type as any) || "wall",
+            });
+            if (!visible) openPropertyPalette(); else render();
+            return;
+          }
         }
       } catch (err) { console.warn("[property-palette] auto-open failed", err); }
       if (visible) render();
     });
   } catch { /* */ }
 
-  // Show at top/right by default — not hidden behind other chrome.
+  // G10 — the palette starts docked left (Revit default) but closed;
+  // it opens on selection / tool activation / explicit open.
   closePropertyPalette();
-  try { dockHandle.dock("right"); } catch { /* */ }
+  try { dockHandle.dock("left"); } catch { /* */ }
   render();
 
   ctx.features.propertyPalette = {
@@ -1726,6 +2073,7 @@ export function setupPropertyPalette(): void {
     isVisible: isPropertyPaletteVisible,
     rerender: render,
     dock: (side: "left" | "right" | "float") => dockHandle?.dock(side),
+    dockSide: () => dockHandle?.side?.() ?? null,
     resetLayout: () => dockHandle?.reset(),
   };
 }

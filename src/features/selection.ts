@@ -856,6 +856,23 @@ export function setupClickToSelect(): void {
         } catch { /* optional authoring bridge */ }
       }
 
+      // G10 — the click may have opened the Properties palette between
+      // pointerup and the awaited raycast resolving, shifting the
+      // viewport: the re-picks below then use the stale pointer event
+      // against the moved canvas and miss, and this handler would clear
+      // (or steal for a fragment) the selection the input router has
+      // just made. The router's click handler has already run by now,
+      // so a non-empty authored selection means it owns this plain
+      // click — do not touch it. Modifier clicks keep the old
+      // behaviour: they explicitly multi-select / re-target.
+      const hasModifier = !!(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey);
+      if (!hasModifier) {
+        try {
+          const authoring: any = tryUse("authoring") as any;
+          if ((authoring?.getSelectedIds?.() ?? []).length > 0) return;
+        } catch { /* optional authoring bridge */ }
+      }
+
       // If the authored-element handler already owns this click, do not let
       // the fragment selector clear that selection.
       if (!hit) {
