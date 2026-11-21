@@ -28,6 +28,7 @@ import { buildFamilyConnectorPreviewLayout, projectedDeltaToLocalAxisDelta, type
 import { connectorDirectionToYawPitch, yawPitchToConnectorDirection } from "../modules/families/connector-orientation";
 // openbim-families:formula-engine-ui
 import { evaluateParameters } from "../modules/families/formula-engine";
+import { captureManualSyncOverrides } from "../modules/families/placement";
 
 const PANEL_ID = "obs-family-browser";
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -1077,7 +1078,10 @@ function buildFormulaDiagnosticsBlock(
 //
 // "Instances of this family" section. Counts every authored element
 // whose familyId matches, groups by type, and exposes a "Sync instances"
-// button that re-resolves params from the family definition.
+// button that re-resolves params from the family definition, preserving
+// each instance's overrides (captured against the current type
+// resolution just before syncing; see placement.ts
+// captureManualSyncOverrides).
 function buildInstancesSection(fam: FamilyDefinition): HTMLElement {
   const sec = document.createElement("div");
   sec.style.cssText = "margin-top:8px;border-top:1px solid #1e2029;padding-top:8px";
@@ -1138,7 +1142,13 @@ function buildInstancesSection(fam: FamilyDefinition): HTMLElement {
       toast("Authoring not ready.", "warn");
       return;
     }
-    const n = auth.syncFamilyInstances(fam.id, selectedTypeId ?? null);
+    // Capture each target instance's overrides against the CURRENT type
+    // resolution before syncing, and pass them through: without the map
+    // the sync re-resolves from the type alone and wipes overrides.
+    // A null capture (family service not ready) falls back to the old
+    // uncaptured sync rather than blocking the button.
+    const overrides = captureManualSyncOverrides(fam.id, selectedTypeId ?? null);
+    const n = auth.syncFamilyInstances(fam.id, selectedTypeId ?? null, overrides);
     toast(
       n > 0
         ? "Synced " + n + " instance" + (n === 1 ? "" : "s")

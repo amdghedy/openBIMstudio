@@ -355,3 +355,79 @@ export function swapFamilyType(
   ) ?? 0;
   return { swapped: true, instancesSynced };
 }
+
+/**
+ * Capture per-instance overrides for a manual "Sync instances" action
+ * (family-browser button), so the sync re-resolves from the current type
+ * without wiping them.
+ *
+ * Each target instance's stored geometry values are compared against
+ * what its type resolves to *right now*, via `extractInstanceOverrides`
+ * — the same delta Slice 1 uses for type edits, except the comparison
+ * here is against the current type (there is no pre-change type to
+ * compare against on a manual sync). Only keys that can legitimately
+ * carry a per-instance override are captured:
+ *
+ *   - instance-scope family parameters (e.g. `thickness`, `elevation`),
+ *     and geometry keys the family does not declare at all
+ *     (placement-level values, per-instance by nature);
+ *   - a type-scope parameter is NEVER captured. `editFamilyParameter`
+ *     routes type-scope edits to the type, so no UI path ever writes a
+ *     type-scope value onto an instance: a stored type-scope value that
+ *     differs from the current type resolution is a stale inherited
+ *     value (the type changed out-of-band, e.g. via a catalog import),
+ *     not an override. Capturing it would freeze the stale value and
+ *     make the manual sync a no-op for exactly the keys it exists to
+ *     refresh.
+ *
+ * Residual limit (inherent without a separate override record on the
+ * element, as Slice 1 already noted): an instance-scope key whose *type*
+ * value changed out-of-band, on an instance the user never overrode,
+ * is indistinguishable from a genuine override and is preserved rather
+ * than refreshed. The capture errs towards preserving instance data.
+ *
+ * `familyTypeId` null means all types of the family (the button syncs
+ * every instance then); otherwise only instances of that type are
+ * captured, mirroring `syncFamilyInstances`. Returns null when the
+ * family service is not ready, so the caller can fall back to an
+ * uncaptured sync; otherwise a (possibly empty) per-element map.
+ */
+export function captureManualSyncOverrides(
+  familyId: string,
+  familyTypeId: string | null,
+): Map<string, Record<string, any>> | null {
+  const svc = familyService();
+  if (!svc) return null;
+  const family = svc.get(familyId);
+  if (!family) return null;
+  const auth: any = (ctx.features as any).authoring;
+  const elements: AuthoredElement[] = auth?.getElements?.() ?? [];
+
+  const overrideKeys = GEOMETRY_KEYS.filter((key) => {
+    const param = family.parameters.find((p: FamilyParameter) => p.name === key);
+    return !param || param.scope !== "type";
+  });
+
+  const captured = new Map<string, Record<string, any>>();
+  // One resolution per type (null = family defaults for untyped
+  // instances); instances of the same type share it.
+  const resolvedByType = new Map<string, Record<string, any> | null>();
+  for (const el of elements) {
+    if (el.familyId !== familyId) continue;
+    if (familyTypeId !== null && el.familyTypeId !== familyTypeId) continue;
+    const typeId = el.familyTypeId ?? familyTypeId;
+    const cacheKey = typeId ?? "";
+    if (!resolvedByType.has(cacheKey)) {
+      resolvedByType.set(cacheKey, svc.resolveParams(familyId, typeId));
+    }
+    const currentResolved = resolvedByType.get(cacheKey);
+    if (!currentResolved) continue;
+    const ov = extractInstanceOverrides(
+      currentResolved,
+      (el.params ?? {}) as Record<string, any>,
+      overrideKeys,
+    );
+    if (Object.keys(ov).length) captured.set(el.id, ov);
+  }
+  return captured;
+}
