@@ -49,7 +49,9 @@ jobs:
         # document-chain = the core authoring→documentation→export chain in a
         # real browser (production bundle); edit-undo-save = state round-trip.
         # orbit-rtl/native-ifc/smoke stay from the original smoke set.
-        run: npx playwright test --project=${{ matrix.browser }} tests/e2e/smoke.spec.ts tests/e2e/orbit-rtl.spec.ts tests/e2e/native-ifc-roundtrip.spec.ts tests/e2e/edit-undo-save.spec.ts tests/e2e/document-chain.spec.ts --reporter=list
+        # Firefox cannot create WebGL when headless on the GPU-less runner (measured: FEATURE_FAILURE_WEBGL_EXHAUSTED_DRIVERS);
+        # headed under a virtual display it renders through llvmpipe and boots.
+        run: ${{ matrix.browser == 'firefox' && 'PW_HEADED=1 xvfb-run -a -s "-screen 0 1280x1024x24"' || '' }} npx playwright test --project=${{ matrix.browser }} tests/e2e/smoke.spec.ts tests/e2e/orbit-rtl.spec.ts tests/e2e/native-ifc-roundtrip.spec.ts tests/e2e/edit-undo-save.spec.ts tests/e2e/document-chain.spec.ts --reporter=list
       - name: Upload report and screenshots
         if: always()
         uses: actions/upload-artifact@v4
