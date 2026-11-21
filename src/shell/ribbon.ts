@@ -820,7 +820,7 @@ let boundsOn = false;
    ═════════════════════════════════════════════════════════════════════════ */
 const WORKSPACES = [
   { id: "authoring", label: "Authoring", caption: "Model + families", tab: "architecture" },
-  { id: "mep", label: "MEP Delivery", caption: "Systems + coordination", tab: "mechanical" },
+  { id: "mep", label: "MEP Delivery", caption: "Systems + coordination", tab: "systems" },
   { id: "coordination", label: "Coordination", caption: "Federation + alignment", tab: "coordinate" },
   { id: "qa", label: "QA / QC", caption: "Clash + IDS + issues", tab: "clash" },
   { id: "documentation", label: "Documentation", caption: "Sheets + views", tab: "view" },
@@ -844,6 +844,12 @@ function setActiveWorkspace(id: string) {
 /* ═════════════════════════════════════════════════════════════════════════
    Tabs
    ═════════════════════════════════════════════════════════════════════════ */
+/* Tab order is Revit order (see src/shell/ribbon-order.ts, the testable
+   order model — tests/ribbon-tab-order.test.cjs pins TABS to that model).
+   Deviations from Revit, all documented in ribbon-order.ts: File is kept
+   as the browser equivalent of the application menu; Edit stays permanent
+   because its dialog launchers are selection-independent; Coordinate /
+   Clash Detective / X Dim are product tabs kept after Manage. */
 const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
   // ════════════════════════════════ FILE ═══════════════════════════════
   {
@@ -1145,10 +1151,12 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     ],
   },
 
-  // ════════════════════════════ MECHANICAL ═════════════════════════════
+  // ═══════════════════════════ SYSTEMS (Revit) ═══════════════════════════
+  // G1a: Mechanical + Electrical merged — every tool kept, regrouped.
+  // "Electrical" is one group (was Containment/Power/Lighting/Equipment).
   {
-    id: "mechanical",
-    label: "Mechanical",
+    id: "systems",
+    label: "Systems",
     items: () => [
       groupLabel("HVAC"),
       toolBtn("duct", "Duct", "duct", "DU"),
@@ -1215,12 +1223,28 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       toolBtn("sprinkler", "Sprinkler", "sprinkler"),
       toolBtn("sprinkler-main", "Main", "sprinkler-main"),
       toolBtn("fire-pump", "Pump", "fire-pump"),
+      sep(),
+      groupLabel("Electrical"),
+      toolBtn("cable-tray", "Cable tray", "cable-tray"),
+      toolBtn("cable-tray-fitting", "Tray Ftg", "cable-tray-fitting"),
+      toolBtn("conduit", "Conduit", "conduit"),
+      toolBtn("conduit-fitting", "Cond Ftg", "conduit-fitting"),
+      toolBtn("wire", "Wire", "wire"),
+      toolBtn("panel", "Panel", "panel"),
+      toolBtn("switch", "Switch", "switch"),
+      toolBtn("outlet", "Outlet", "outlet"),
+      toolBtn("junction-box", "Box", "junction-box"),
+      toolBtn("lighting-fixture", "Fixture", "lighting-fixture"),
+      toolBtn("emergency-light", "Emergency", "emergency-light"),
+      toolBtn("lighting-switch", "Switch", "lighting-switch"),
+      toolBtn("transformer", "Transformer", "transformer"),
+      toolBtn("generator", "Generator", "generator"),
+      sep(),
       groupLabel("Systems"),
       systemBrowserButton(),
       mepFabButton(),
       mepToolkitButton(),
       pidModelerButton(),
-      sep(),
       sep(),
       groupLabel("Display"),
       b("system", "MEP colors", safe(() => toggleMepColors(), "MEP colors"),
@@ -1237,39 +1261,6 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("conn", "Hanger Spacing", safe(() => void openHangerSpacingDialog(), "Hanger spacing calculator"), {
         title: "SMACNA / MSS SP-69 hanger count, spacing and rod sizing for a straight run",
       }),
-      sep(),
-      groupLabel("Properties"),
-      propertiesButton(),
-    ],
-  },
-
-  // ════════════════════════════ ELECTRICAL ═════════════════════════════
-  {
-    id: "electrical",
-    label: "Electrical",
-    items: () => [
-      groupLabel("Containment"),
-      toolBtn("cable-tray", "Cable tray", "cable-tray"),
-      toolBtn("cable-tray-fitting", "Tray Ftg", "cable-tray-fitting"),
-      toolBtn("conduit", "Conduit", "conduit"),
-      toolBtn("conduit-fitting", "Cond Ftg", "conduit-fitting"),
-      sep(),
-      groupLabel("Power"),
-      toolBtn("wire", "Wire", "wire"),
-      toolBtn("panel", "Panel", "panel"),
-      toolBtn("switch", "Switch", "switch"),
-      toolBtn("outlet", "Outlet", "outlet"),
-      toolBtn("junction-box", "Box", "junction-box"),
-      sep(),
-      groupLabel("Lighting"),
-      toolBtn("lighting-fixture", "Fixture", "lighting-fixture"),
-      toolBtn("emergency-light", "Emergency", "emergency-light"),
-      toolBtn("lighting-switch", "Switch", "lighting-switch"),
-      sep(),
-      groupLabel("Equipment"),
-      toolBtn("equipment", "Equip", "equipment"),
-      toolBtn("transformer", "Transformer", "transformer"),
-      toolBtn("generator", "Generator", "generator"),
       sep(),
       groupLabel("Properties"),
       propertiesButton(),
@@ -2006,398 +1997,49 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     ],
   },
 
-
-  // ════════════════════════════ COORDINATE ═════════════════════════════
+  // ══════════════════════════ COLLABORATE (Revit) ══════════════════════════
+  // G1a: Live Sync + Worksets moved here from Manage. Share links do
+  // not exist on this base yet (unlanded differentiator branch) —
+  // they join this tab when that branch lands.
   {
-    id: "coordinate",
-    label: "Coordinate",
+    id: "collaborate",
+    label: "Collaborate",
     items: () => [
-      groupLabel("Review"),
-      b("measure", "Measure", safe(() => toggleMeasure(), "Measure"), {
-        active: isMeasureEnabled(),
-        title: "Double-click point A then point B. Red = X, green = Y, blue = Z, cyan = total",
-      }),
-      b("clear", "Clear Meas.", safe(() => clearMeasurements(), "Clear measurements"), { title: "Remove every measurement from the view" }),
-      b("section", "Section", safe(() => toggleSection(), "Section"), { active: isSectionOn() }),
+      groupLabel("Live Sync"),
+      b("system", "Live Sync", safe(() => (ctx.features as any).collaborationPanel?.toggle?.(), "Collaboration"), { title: "Join a real-time collaboration session" }),
       sep(),
-      groupLabel("Placement"),
-      b("origin", "Align…", safe(() => toggleAlign(), "Model alignment"), { title: "Model alignment window" }),
-      b("tree", "Models", safe(() => toggleToolWindow("models"), "Models list"), { active: isToolWindowOpen("models"), title: "Loaded models list" }),
-      b("origin", "Origin↔Origin", safe(() => alignOriginToOrigin(), "Origin")),
-      b("recenter", "Recenter", safe(() => recenterSceneNow(), "Recenter")),
-      b("reset-offsets", "Reset", safe(() => resetOffsets(), "Reset offsets")),
-      b("refresh", "Refresh", safe(() => void refreshModelSelectionUI(), "Refresh models")),
-    ],
-  },
-
-  // ══════════════════════════ CLASH DETECTIVE ══════════════════════════
-  {
-    id: "clash",
-    label: "Clash Detective",
-    items: () => [
-      groupLabel("Clash Rules"),
-      b("clash", "Test Setup", safe(() => { void refreshModelSelectionUI(); toggleToolWindow("clash"); }, "Clash test setup"), {
-        active: isToolWindowOpen("clash"),
-        title: "Test name, method, scope, Selection A / B, tolerance, run, results and scenarios",
-      }),
-      b("crop-reset", "Crop Box", safe(() => toggleToolWindow("crop"), "Crop box"), {
-        active: isToolWindowOpen("crop"),
-        title: "Crop margin around the active clash: -10 cm / +10 cm / reset 30 cm / remove",
-      }),
-      b("clash", "Categories", () => (window as any).__obsOpenClashCategories?.(), { title: "Category Clash Rules" }),
-      sep(),
-      groupLabel("Tests"),
-      b("save", "Save", safe(async () => {
+      groupLabel("Worksets"),
+      b("workset", "Init", safe(() => {
+        (window as any).__obsWorksets?.init?.();
+      }, "Init worksets"), { title: "Initialise default worksets" }),
+      b("workset", "New", safe(async () => {
         const { promptLine } = await import("../features/form-modal");
         const name = await promptLine(
-          "Save Clash Scenario",
-          "Scenario name",
-          "Scenario",
-          "e.g. Mechanical-vs-Architecture",
+          "Create Workset",
+          "Workset name",
+          `Workset ${((window as any).__obsWorksets?.list?.() ?? []).length + 1}`,
+          "e.g. Walls, Furniture, MEP",
         );
-        if (name == null) return;
-        createScenario(name.trim() || "Scenario");
-      }, "Save scenario"), { title: "Save current A/B + scope + rules + statuses as a scenario" }),
-      b("folder-recent", "Load", safe(async () => {
-        const list = listScenarios();
-        if (!list.length) { toast("No saved scenarios.", "info"); return; }
-        const { pickFromList } = await import("../features/form-modal");
-        const choice = await pickFromList(
-          "Load Clash Scenario",
-          "Pick a scenario",
-          list.map((s) => ({ value: s.id, label: s.name })),
-        );
-        if (!choice) return;
-        void loadScenario(choice);
-      }, "Load scenario"), { title: "Load a saved clash scenario" }),
-      b("csv", "Export", safe(() => exportScenariosJson(), "Export scenarios"),
-        { title: "Export all saved scenarios to a JSON file" }),
-      b("folder", "Import", safe(() => {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = "application/json,.json";
-        input.onchange = () => {
-          if (input.files?.[0]) void importScenariosJson(input.files[0]);
-        };
-        input.click();
-      }, "Import scenarios"), { title: "Import scenarios from a JSON file" }),
-      sep(),
-
-      groupLabel("Select"),
-      b("select-all", "→ A", safe(() => addSelectionToA(), "Add to A"),
-        { title: "Add the current viewport selection's categories to Selection A" }),
-      b("show-all", "→ B", safe(() => addSelectionToB(), "Add to B"),
-        { title: "Add the current viewport selection's categories to Selection B" }),
-      b("mirror", "Swap", safe(() => swapSelections(), "Swap"),
-        { title: "Swap Selection A ↔ B" }),
-      b("delete", "Clear A", safe(() => clearSelectionA(), "Clear A"),
-        { title: "Clear Selection A" }),
-      b("clear", "Clear B", safe(() => clearSelectionB(), "Clear B"),
-        { title: "Clear Selection B" }),
-      sep(),
-
-      groupLabel("Rules"),
-      b("crop-shrink", "Tol −", safe(() => changeTolerance(-0.005), "Tolerance −"),
-        { title: "Reduce the contact tolerance by 5 mm" }),
-      b("crop-expand", "Tol +", safe(() => changeTolerance(0.005), "Tolerance +"),
-        { title: "Increase the contact tolerance by 5 mm" }),
-      b("clearance", "Clr −", safe(() => changeClearance(-0.1), "Clearance −"),
-        { title: "Reduce the clearance band by 10 cm" }),
-      b("interference", "Clr +", safe(() => changeClearance(0.1), "Clearance +"),
-        { title: "Increase the clearance band by 10 cm" }),
-      b("settings", "Rules…", safe(() => {
-        uiAlert(
-          `Clash rules:\n\n` +
-          `Tolerance:      ${(getTolerance() * 1000).toFixed(0)} mm\n` +
-          `Clearance band: ${(getClearance() * 100).toFixed(0)} cm\n\n` +
-          `Full editor: left panel → Clash Detection.`,
-        );
-      }, "Rules"), { title: "Show the current tolerance and clearance settings" }),
-      sep(),
-
-      groupLabel("Run"),
-      b("clash", "Run Test", safe(() => runElementClashDetection(), "Run clash"),
-        { kbd: "F5", title: "Execute the current clash test — Selection A vs Selection B" }),
-      b("refresh", "Refresh", safe(() => refreshModelSelectionUI(), "Refresh sets"),
-        { title: "Reload the A / B category tree from the loaded models" }),
-      b("close", "Cancel", safe(() => cancelClash(), "Cancel"),
-        { title: "Stop the currently running clash engine" }),
-      b("clear", "Reset", safe(() => clearClash(), "Clear results"),
-        { title: "Remove all clash results and highlights" }),
-      sep(),
-
-      groupLabel("Review"),
-      b("back", "Prev", safe(() => focusPreviousClash(), "Previous"),
-        { kbd: "[", title: "Focus the previous clash" }),
-      b("front", "Next", safe(() => focusNextClash(), "Next"),
-        { kbd: "]", title: "Focus the next clash" }),
-      b("origin", "Re-focus", safe(() => focusActiveClash(), "Focus"),
-        { title: "Re-highlight and re-crop the active clash" }),
-      b("crop-expand", "Crop +", safe(() => changeCropMargin(0.1), "Crop +"),
-        { title: "Enlarge the crop box by 10 cm" }),
-      b("crop-shrink", "Crop −", safe(() => changeCropMargin(-0.1), "Crop −"),
-        { title: "Shrink the crop box by 10 cm" }),
-      b("crop-remove", "Crop ✕", safe(() => { removeCropBox(); fitAll(); }, "Remove crop"),
-        { title: "Remove the crop box" }),
-      sep(),
-
-      groupLabel("Status"),
-      b("new-file", "New", safe(() => setStatusForAll("new"), "All New"),
-        { title: "Mark every clash as New" }),
-      b("energy", "Active", safe(() => setStatusForAll("active"), "All Active"),
-        { title: "Mark every clash as Active" }),
-      b("check", "Reviewed", safe(() => setStatusForAll("reviewed"), "All Reviewed"),
-        { title: "Mark every clash as Reviewed" }),
-      b("symbol", "Approved", safe(() => setStatusForAll("approved"), "All Approved"),
-        { title: "Mark every clash as Approved" }),
-      b("ids", "Resolved", safe(() => setStatusForAll("resolved"), "All Resolved"),
-        { title: "Mark every clash as Resolved" }),
-      b("refresh", "Cycle", safe(() => cycleActiveClashStatus(), "Cycle status"),
-        { title: "Cycle the focused clash through New → Active → Reviewed → Approved → Resolved" }),
-      sep(),
-
-      groupLabel("Isolate"),
-      b("isolate", "Only A", safe(() => isolateSelectionA(), "Isolate A"),
-        { title: "Hide everything except Selection A" }),
-      b("bounds", "Only B", safe(() => isolateSelectionB(), "Isolate B"),
-        { title: "Hide everything except Selection B" }),
-      b("show-all", "Show All", safe(() => showAllElements(), "Show all"),
-        { title: "Undo any isolate / hide operation" }),
-      sep(),
-
-      groupLabel("Report"),
-      b("report", "Preview", safe(() => previewClashReportHtml(), "Preview report"),
-        { title: "Open the clash report in a new tab" }),
-      b("save", "HTML", safe(() => exportClashReportHtml(), "HTML report"),
-        { title: "Download the report as a self-contained HTML file" }),
-      b("csv", "CSV", safe(() => exportClashCsv(), "CSV report"),
-        { title: "Export the clash table as CSV (Excel-ready)" }),
-      b("new-sheet", "XLS", safe(() => exportClashReportXls(), "XLS report"),
-        { title: "Export the clash table as an Excel spreadsheet" }),
-      sep(),
-
-      groupLabel("Coordinates"),
-      b("origin", "Origin↔Origin", safe(() => alignOriginToOrigin(), "Origin"),
-        { title: "Keep shared project coordinates (BIM-style)" }),
-      b("recenter", "Recenter", safe(() => recenterSceneNow(), "Recenter"),
-        { title: "Move the first model to the scene origin" }),
-      b("reset-offsets", "Reset", safe(() => resetOffsets(), "Reset"),
-        { title: "Place models as authored" }),
-      b("origin", "Publish", safe(() => { void alignOriginToOrigin(); toast("Shared Coordinates: publish current project origin relationship", "success"); }, "Publish Coordinates")),
-      b("origin", "Acquire", safe(() => { void alignOriginToOrigin(); toast("Shared Coordinates: acquire alignment from linked context", "success"); }, "Acquire Coordinates")),
-      b("origin", "Specify", safe(() => void openProjectInfo(), "Specify Coordinates")),
-      sep(),
-
-      hint(`Navisworks-style · ${getClashCount()} result(s) · A vs B · F5 runs · [ ] navigates`),
-    ],
-  },
-
-  // ══════════════════════════════ EDIT ═════════════════════════════════
-  {
-    id: "edit",
-    label: "Edit",
-    items: () => [
-      groupLabel("Select"),
-      b("settings", "Selection & Snapping", safe(() => toggleSelectionSnappingPalette(), "Selection and snapping palette"), { active: isSelectionSnappingPaletteVisible(), title: "Configure selection filters, object snap modes, snap priorities and drafting profiles (Ctrl+Shift+P)" }),
-      b("modify", "Modify", safe(() => {
-        try { (ctx.features as any).selection?.clear?.(); } catch {}
-        setAuthoringTool("select");
-        toast("Modify: click an element to edit", "info");
-      }, "Modify tool"), { kbd: "Esc", title: "Press Esc to exit any active tool" }),
-      b("check", "Links", safe(() => {
-        const next = !getSelectionPrefs().links;
-        setSelectionPref("links", next);
-        toast("Select links: " + (next ? "ON — linked models are selectable" : "OFF — linked models are protected from selection"), "info");
-      }, "Select links"), { title: "Allow selecting elements in linked federation models" }),
-      b("check", "Pinned", safe(() => {
-        const next = !getSelectionPrefs().pinned;
-        setSelectionPref("pinned", next);
-        toast("Select pinned: " + (next ? "ON" : "OFF — pinned elements are skipped by every pick"), "info");
-      }, "Select pinned"), { title: "Allow selecting pinned elements (Modify ▸ Pin to pin)" }),
-      planned("check", "By Face", "Face sub-selection is planned for a future release. Element-level selection and FRAG edit (vertex editing) are available today."),
-      planned("check", "Drag Sel", "Drag-on-selection is planned for a future release. Move is available via grips, the Move tool and Modify ▸ Move."),
-      sep(),
-
-      groupLabel("Clipboard"),
-      b("copy", "Copy", safe(() => {
-        void import("../features/modify-actions").then((m) => m.copySelectionToClipboard());
-      }, "Copy"), { kbd: "Ctrl+C" }),
-      b("clear", "Cut", safe(() => {
-        void import("../features/modify-actions").then((m) => {
-          const n = m.copySelectionToClipboard();
-          if (!n) return; // nothing selected — copySelectionToClipboard already warned
-          try { deleteSelectedElement(); toast(`Cut ${n} element(s) — Ctrl+V to paste`, "success"); }
-          catch { toast("Cut failed while deleting selection", "warn"); }
-        });
-      }, "Cut"), { kbd: "Ctrl+X", title: "Copy the selection to the clipboard, then delete it" }),
-      b("save", "Paste", safe(() => {
-        void import("../features/modify-actions").then((m) => m.pasteFromClipboard());
-      }, "Paste"), { kbd: "Ctrl+V", title: "Place copies of the clipboard slightly offset from the originals" }),
-      b("beam", "Join", safe(async () => {
-        try {
-          const { getJoinsCleanupService } = await import("../modules/joins-cleanup");
-          const svc = getJoinsCleanupService();
-          const joins = await svc.autoJoin();
-          toast(joins.length ? `Join geometry: ${joins.length} join(s) created/cleaned` : "Join geometry: no joinable element pairs found", joins.length ? "success" : "info");
-        } catch (err) {
-          toast("Join geometry failed — see console for details", "warn");
-        }
-      }, "Join geometry"), { title: "Auto-join geometry of authored elements (walls, floors, frames) and clean duplicate overlaps" }),
-      sep(),
-
-      groupLabel("BIM Authoring"),
-      b("component", "BIM Objects", safe(() => toggleBimObjectStudio(), "BIM Object Studio"), {
-        active: isBimObjectStudioVisible(),
-        title: "Open the professional BIM Object Studio: searchable Architecture, Structure, MEP, Fire, Electrical, ELV, Site and Generic families",
-      }),
-      sep(),
-      groupLabel("Element"),
-      b("move", "Make Editable", safe(async () => {
-        const n = await beginEditFromSelection();
-        if (!n) toast("Nothing selected — pick elements in the viewport first.", "warn");
-        else toast(`Editing ${n} element(s). Drag the gizmo.`, "success");
-      }, "Edit selected"), {
-        title: "Create professional Native Twins from linked IFC/FRAG elements while preserving the source object, exact geometry, dimensions and BIM metadata",
-      }),
-      b("folder-recent", "Edits", safe(() => toggleFragEditPanel(), "FRAG edits panel"), {
-        active: isFragEditPanelVisible(),
-        title: "Show the FRAG edits panel",
-      }),
-      b("close", "Cancel", safe(async () => {
-        const id = getSelectedEditId();
-        if (!id) { toast("No edit selected.", "warn"); return; }
-        await removeEdit(id);
-        toast("Edit reverted.", "info");
-      }, "Revert edit"), {
-        title: "Revert the currently selected edit — restores the original element",
-      }),
-      b("clear", "Clear All", safe(async () => {
-        if (!getEditCount()) { toast("No edits to clear.", "info"); return; }
-        if (!(await confirmDialog("Revert edits", `Revert all ${getEditCount()} edit(s)?`))) return;
-        await clearAllEdits();
-        toast("All edits reverted.", "success");
-      }, "Clear all edits"), {
-        title: "Revert every FRAG edit and restore all originals",
-      }),
-      sep(),
-
-      groupLabel("Gizmo"),
-      b("move", "Move", safe(() => gizmo_setMode("move"), "Move"), {
-        active: gizmo_getMode() === "move",
-        title: "Move mode — drag the coloured arrows",
-      }),
-      b("rotate", "Rotate", safe(() => gizmo_setMode("rotate"), "Rotate"), {
-        active: gizmo_getMode() === "rotate",
-        title: "Rotate mode — drag the coloured rings",
-      }),
-      b("component", "Scale", safe(() => gizmo_setMode("scale"), "Scale"), {
-        active: gizmo_getMode() === "scale",
-        title: "Scale mode — drag the coloured handles",
-      }),
-      b("close", "Off", safe(() => gizmo_setMode("none"), "Off"), {
-        active: gizmo_getMode() === "none",
-        title: "Turn the gizmo off",
-      }),
-      sep(),
-      groupLabel("Solid Forms"),
-      b("slab", "Extrude", safe(() => void openExtrudeDialog(), "Extrude solid"), {
-        title: "Extrude a closed profile into a watertight B-Rep solid (v68 solid kernel)",
-      }),
-      b("circle", "Revolve", safe(() => void openRevolveDialog(), "Revolve solid"), {
-        title: "Revolve an (r,z) profile about an axis — full or partial angle",
-      }),
-      b("wall", "Sweep", safe(() => void openSolidSweepDialog(), "Sweep solid"), {
-        title: "Sweep a profile along a 3D polyline with per-segment frames",
-      }),
-      b("roof", "Blend", safe(() => void openBlendDialog(), "Blend/loft solid"), {
-        title: "Loft between two closed sections",
-      }),
-      b("clear", "Subtract", safe(() => void openBooleanDialog(), "Boolean subtract"), {
-        title: "Boolean A − B on convex operands (exact half-space composition)",
-      }),
-      b("mass", "Bool (Any)", safe(() => void openGeneralBooleanDialog(), "General boolean"), {
-        title: "v70 general boolean: union/intersect/subtract with NON-CONVEX operands and exact coplanar resolution",
-      }),
-      b("shaft", "Shell", safe(() => void openShellDialog(), "Shell/hollow solid"), {
-        title: "Hollow extrusion with miter offset — exact wall thickness (v70)",
-      }),
-      b("mass-floor", "Loft N", safe(() => void openLoftDialog(), "N-section loft"), {
-        title: "Loft through 2–N sections with optional explicit levels (v70)",
-      }),
-      b("connection", "Fuse", safe(() => void openFuseDialog(), "Fuse solids"), {
-        title: "n-ary fuse of solids via the general union (v70)",
-      }),
-      b("opening", "Cut Voids", safe(() => void openVoidDialog(), "Cut voids"), {
-        title: "Cut box/cylinder voids (openings) with the rollback-guaranteed void engine",
-      }),
-      b("inspect", "Validate Last", safe(() => validateLastSolid(), "Validate last solid"), {
-        title: "Full watertightness/manifold diagnostics with recovery actions",
-      }),
-      sep(),
-      groupLabel("Modify Engine"),
-      b("move", "Move", safe(() => void openModifyMoveDialog(), "v68 Move"), {
-        title: "Move selection through the v68 command pipeline (preview → validate → commit)",
-      }),
-      b("rotate", "Rotate", safe(() => void openModifyRotateDialog(), "v68 Rotate"), {
-        title: "Rodrigues rotation about a plan pivot via the v68 command pipeline",
-      }),
-      b("array", "Array", safe(() => void openModifyArrayDialog(), "v68 Linear array"), {
-        title: "Linear array with cloned authored elements",
-      }),
-      b("mirror", "Mirror", safe(() => void openModifyMirrorDialog(), "v68 Mirror"), {
-        title: "Mirror the selection about an axis; copy keeps originals",
-      }),
-      sep(),
-      groupLabel("Group 1 Tools (v71)"),
-      b("move", "Move+", safe(() => void openGroup1MoveDialog(), "v71 Move tool"), {
-        title: "Group 1 Move: numeric Δ + axis constraint, hosted rigid follow, undo/redo (spec §4)",
-      }),
-      b("rotate", "Rotate+", safe(() => void openGroup1RotateDialog(), "v71 Rotate tool"), {
-        title: "Group 1 Rotate: pivot + angle + angular snap, hosted co-rotation (spec §5)",
-      }),
-      b("mirror", "Mirror+", safe(() => void openGroup1MirrorDialog(), "v71 Mirror tool"), {
-        title: "Group 1 Mirror: M = 2ddᵀ − I, θ' = 2φ − θ, relationship cloning (spec §6)",
-      }),
-      b("undo", "Undo G1", safe(() => { const ok = group1Undo(); toast(ok ? "Group 1 undo applied" : "Nothing to undo", ok ? "success" : "warn"); }, "v71 undo"), {
-        title: "Undo the last Group 1 transaction (Move/Rotate/Mirror are one unit each)",
-      }),
-      b("undo", "Redo G1", safe(() => { const ok = group1Redo(); toast(ok ? "Group 1 redo applied" : "Nothing to redo", ok ? "success" : "warn"); }, "v71 redo"), {
-        title: "Redo the last undone Group 1 transaction",
-      }),
-      b("inspect", "Sel Inspector", safe(() => void openSelectionInspectorDialog(), "v71 selection engine"), {
-        title: "Hit-testing priority, window/crossing modes, filters, hosted expansion (spec §2)",
-      }),
-      b("grid", "Ref Picker", safe(() => void openReferencePickerDialog(), "v71 reference service"), {
-        title: "Acquire typed references with canonical frames; command eligibility check (spec §3)",
-      }),
-      sep(),
-      groupLabel("Snaps"),
-      b("origin", "Snap settings", safe(() => toggleSnapSettings(), "Object snaps"), {
-        active: isSnapSettingsVisible(),
-        title: "Endpoint, midpoint, center, grid, intersection, perpendicular, nearest, vertex…",
-      }),
-      b("grid", "All snaps", safe(() => { snapping.enableAllTypes(); snapping.setEnabled(true); toast("All object snaps ON", "success"); }, "Enable all snaps")),
-      b("clear", "Snaps off", safe(() => { snapping.setEnabled(false); toast("Snaps OFF", "info"); }, "Disable snaps")),
-      sep(),
-
-      groupLabel("Focus"),
-      b("origin", "Focus", safe(() => {
-        const id = getSelectedEditId();
-        if (!id) { toast("No edit selected.", "warn"); return; }
-        focusEdit(id);
-      }, "Focus"), {
-        title: "Zoom the camera to the selected edit",
-      }),
-      b("show-all", "Revert All", safe(async () => {
-        if (!getEditCount()) { toast("No edits.", "info"); return; }
-        if (!(await confirmDialog("Revert edits", `Revert all ${getEditCount()} edit(s)?`))) return;
-        await clearAllEdits();
-      }, "Revert all"), {
-        title: "Revert every edit and unhide all originals",
-      }),
-      sep(),
-
-      hint(`${getEditCount()} element(s) edited · changes persist in the project`),
+        if (!name) return;
+        (window as any).__obsWorksets?.create?.(name);
+      }, "New workset"), { title: "Create a new workset" }),
+      b("workset", "List", safe(() => {
+        const list = (window as any).__obsWorksets?.list?.() ?? [];
+        const summary = (window as any).__obsWorksets?.summary?.();
+        toast(`${summary.total} worksets, ${summary.totalElements} elements, ${summary.ownedByUser} borrowed by you`, "info", 4000);
+        console.table(list.map((w: any) => ({ id: w.id, name: w.name, owner: w.owner, elements: w.elementIds.size })));
+      }, "List worksets"), { title: "List all worksets with element counts" }),
+      b("workset", "Borrow", safe(() => {
+        const ids = (ctx.features as any).authoring?.getSelectedIds?.() ?? [];
+        if (!ids.length) { toast("Select an element first", "warn"); return; }
+        (window as any).__obsWorksets?.borrow?.(ids[0]);
+      }, "Borrow"), { title: "Borrow selected element for editing" }),
+      b("workset", "Release", safe(() => {
+        const ids = (ctx.features as any).authoring?.getSelectedIds?.() ?? [];
+        if (!ids.length) { toast("Select an element first", "warn"); return; }
+        (window as any).__obsWorksets?.release?.(ids[0]);
+        toast(`Released element ${ids[0]}`, "success");
+      }, "Release"), { title: "Release borrowed element back to pool" }),
     ],
   },
 
@@ -2858,46 +2500,10 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         title: "Registry stats, relationships, MEP connector status and snapping engine state in one panel",
       }),
       sep(),
-      groupLabel("Collaboration"),
-      b("system", "Live Sync", safe(() => (ctx.features as any).collaborationPanel?.toggle?.(), "Collaboration"), { title: "Join a real-time collaboration session" }),
-      sep(),
       groupLabel("View Tools"),
       b("crop", "View Tools", safe(() => {
         (window as any).__obsOpenViewToolsManager?.();
       }, "View tools manager"), { kbd: "^⇧V", title: "Open the View Tools Manager panel (scope boxes + filters + crop regions) — Ctrl+Shift+V" }),
-      sep(),
-      groupLabel("Worksets"),
-      b("workset", "Init", safe(() => {
-        (window as any).__obsWorksets?.init?.();
-      }, "Init worksets"), { title: "Initialise default worksets" }),
-      b("workset", "New", safe(async () => {
-        const { promptLine } = await import("../features/form-modal");
-        const name = await promptLine(
-          "Create Workset",
-          "Workset name",
-          `Workset ${((window as any).__obsWorksets?.list?.() ?? []).length + 1}`,
-          "e.g. Walls, Furniture, MEP",
-        );
-        if (!name) return;
-        (window as any).__obsWorksets?.create?.(name);
-      }, "New workset"), { title: "Create a new workset" }),
-      b("workset", "List", safe(() => {
-        const list = (window as any).__obsWorksets?.list?.() ?? [];
-        const summary = (window as any).__obsWorksets?.summary?.();
-        toast(`${summary.total} worksets, ${summary.totalElements} elements, ${summary.ownedByUser} borrowed by you`, "info", 4000);
-        console.table(list.map((w: any) => ({ id: w.id, name: w.name, owner: w.owner, elements: w.elementIds.size })));
-      }, "List worksets"), { title: "List all worksets with element counts" }),
-      b("workset", "Borrow", safe(() => {
-        const ids = (ctx.features as any).authoring?.getSelectedIds?.() ?? [];
-        if (!ids.length) { toast("Select an element first", "warn"); return; }
-        (window as any).__obsWorksets?.borrow?.(ids[0]);
-      }, "Borrow"), { title: "Borrow selected element for editing" }),
-      b("workset", "Release", safe(() => {
-        const ids = (ctx.features as any).authoring?.getSelectedIds?.() ?? [];
-        if (!ids.length) { toast("Select an element first", "warn"); return; }
-        (window as any).__obsWorksets?.release?.(ids[0]);
-        toast(`Released element ${ids[0]}`, "success");
-      }, "Release"), { title: "Release borrowed element back to pool" }),
       sep(),
       groupLabel("Plugins"),
       b("component", "Plugin List", safe(async () => {
@@ -3078,6 +2684,402 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         active: isFragEditPanelVisible(),
         title: "Show the FRAG edits panel",
       }),
+    ],
+  },
+
+  // ── Product tabs (no Revit counterpart) — kept after Manage, see
+  // docs/engineering/REVIT_2D_ENVIRONMENT.md gap G1. ──────────────────
+  // ════════════════════════════ COORDINATE ═════════════════════════════
+  {
+    id: "coordinate",
+    label: "Coordinate",
+    items: () => [
+      groupLabel("Review"),
+      b("measure", "Measure", safe(() => toggleMeasure(), "Measure"), {
+        active: isMeasureEnabled(),
+        title: "Double-click point A then point B. Red = X, green = Y, blue = Z, cyan = total",
+      }),
+      b("clear", "Clear Meas.", safe(() => clearMeasurements(), "Clear measurements"), { title: "Remove every measurement from the view" }),
+      b("section", "Section", safe(() => toggleSection(), "Section"), { active: isSectionOn() }),
+      sep(),
+      groupLabel("Placement"),
+      b("origin", "Align…", safe(() => toggleAlign(), "Model alignment"), { title: "Model alignment window" }),
+      b("tree", "Models", safe(() => toggleToolWindow("models"), "Models list"), { active: isToolWindowOpen("models"), title: "Loaded models list" }),
+      b("origin", "Origin↔Origin", safe(() => alignOriginToOrigin(), "Origin")),
+      b("recenter", "Recenter", safe(() => recenterSceneNow(), "Recenter")),
+      b("reset-offsets", "Reset", safe(() => resetOffsets(), "Reset offsets")),
+      b("refresh", "Refresh", safe(() => void refreshModelSelectionUI(), "Refresh models")),
+    ],
+  },
+
+  // ══════════════════════════ CLASH DETECTIVE ══════════════════════════
+  {
+    id: "clash",
+    label: "Clash Detective",
+    items: () => [
+      groupLabel("Clash Rules"),
+      b("clash", "Test Setup", safe(() => { void refreshModelSelectionUI(); toggleToolWindow("clash"); }, "Clash test setup"), {
+        active: isToolWindowOpen("clash"),
+        title: "Test name, method, scope, Selection A / B, tolerance, run, results and scenarios",
+      }),
+      b("crop-reset", "Crop Box", safe(() => toggleToolWindow("crop"), "Crop box"), {
+        active: isToolWindowOpen("crop"),
+        title: "Crop margin around the active clash: -10 cm / +10 cm / reset 30 cm / remove",
+      }),
+      b("clash", "Categories", () => (window as any).__obsOpenClashCategories?.(), { title: "Category Clash Rules" }),
+      sep(),
+      groupLabel("Tests"),
+      b("save", "Save", safe(async () => {
+        const { promptLine } = await import("../features/form-modal");
+        const name = await promptLine(
+          "Save Clash Scenario",
+          "Scenario name",
+          "Scenario",
+          "e.g. Mechanical-vs-Architecture",
+        );
+        if (name == null) return;
+        createScenario(name.trim() || "Scenario");
+      }, "Save scenario"), { title: "Save current A/B + scope + rules + statuses as a scenario" }),
+      b("folder-recent", "Load", safe(async () => {
+        const list = listScenarios();
+        if (!list.length) { toast("No saved scenarios.", "info"); return; }
+        const { pickFromList } = await import("../features/form-modal");
+        const choice = await pickFromList(
+          "Load Clash Scenario",
+          "Pick a scenario",
+          list.map((s) => ({ value: s.id, label: s.name })),
+        );
+        if (!choice) return;
+        void loadScenario(choice);
+      }, "Load scenario"), { title: "Load a saved clash scenario" }),
+      b("csv", "Export", safe(() => exportScenariosJson(), "Export scenarios"),
+        { title: "Export all saved scenarios to a JSON file" }),
+      b("folder", "Import", safe(() => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "application/json,.json";
+        input.onchange = () => {
+          if (input.files?.[0]) void importScenariosJson(input.files[0]);
+        };
+        input.click();
+      }, "Import scenarios"), { title: "Import scenarios from a JSON file" }),
+      sep(),
+
+      groupLabel("Select"),
+      b("select-all", "→ A", safe(() => addSelectionToA(), "Add to A"),
+        { title: "Add the current viewport selection's categories to Selection A" }),
+      b("show-all", "→ B", safe(() => addSelectionToB(), "Add to B"),
+        { title: "Add the current viewport selection's categories to Selection B" }),
+      b("mirror", "Swap", safe(() => swapSelections(), "Swap"),
+        { title: "Swap Selection A ↔ B" }),
+      b("delete", "Clear A", safe(() => clearSelectionA(), "Clear A"),
+        { title: "Clear Selection A" }),
+      b("clear", "Clear B", safe(() => clearSelectionB(), "Clear B"),
+        { title: "Clear Selection B" }),
+      sep(),
+
+      groupLabel("Rules"),
+      b("crop-shrink", "Tol −", safe(() => changeTolerance(-0.005), "Tolerance −"),
+        { title: "Reduce the contact tolerance by 5 mm" }),
+      b("crop-expand", "Tol +", safe(() => changeTolerance(0.005), "Tolerance +"),
+        { title: "Increase the contact tolerance by 5 mm" }),
+      b("clearance", "Clr −", safe(() => changeClearance(-0.1), "Clearance −"),
+        { title: "Reduce the clearance band by 10 cm" }),
+      b("interference", "Clr +", safe(() => changeClearance(0.1), "Clearance +"),
+        { title: "Increase the clearance band by 10 cm" }),
+      b("settings", "Rules…", safe(() => {
+        uiAlert(
+          `Clash rules:\n\n` +
+          `Tolerance:      ${(getTolerance() * 1000).toFixed(0)} mm\n` +
+          `Clearance band: ${(getClearance() * 100).toFixed(0)} cm\n\n` +
+          `Full editor: left panel → Clash Detection.`,
+        );
+      }, "Rules"), { title: "Show the current tolerance and clearance settings" }),
+      sep(),
+
+      groupLabel("Run"),
+      b("clash", "Run Test", safe(() => runElementClashDetection(), "Run clash"),
+        { kbd: "F5", title: "Execute the current clash test — Selection A vs Selection B" }),
+      b("refresh", "Refresh", safe(() => refreshModelSelectionUI(), "Refresh sets"),
+        { title: "Reload the A / B category tree from the loaded models" }),
+      b("close", "Cancel", safe(() => cancelClash(), "Cancel"),
+        { title: "Stop the currently running clash engine" }),
+      b("clear", "Reset", safe(() => clearClash(), "Clear results"),
+        { title: "Remove all clash results and highlights" }),
+      sep(),
+
+      groupLabel("Review"),
+      b("back", "Prev", safe(() => focusPreviousClash(), "Previous"),
+        { kbd: "[", title: "Focus the previous clash" }),
+      b("front", "Next", safe(() => focusNextClash(), "Next"),
+        { kbd: "]", title: "Focus the next clash" }),
+      b("origin", "Re-focus", safe(() => focusActiveClash(), "Focus"),
+        { title: "Re-highlight and re-crop the active clash" }),
+      b("crop-expand", "Crop +", safe(() => changeCropMargin(0.1), "Crop +"),
+        { title: "Enlarge the crop box by 10 cm" }),
+      b("crop-shrink", "Crop −", safe(() => changeCropMargin(-0.1), "Crop −"),
+        { title: "Shrink the crop box by 10 cm" }),
+      b("crop-remove", "Crop ✕", safe(() => { removeCropBox(); fitAll(); }, "Remove crop"),
+        { title: "Remove the crop box" }),
+      sep(),
+
+      groupLabel("Status"),
+      b("new-file", "New", safe(() => setStatusForAll("new"), "All New"),
+        { title: "Mark every clash as New" }),
+      b("energy", "Active", safe(() => setStatusForAll("active"), "All Active"),
+        { title: "Mark every clash as Active" }),
+      b("check", "Reviewed", safe(() => setStatusForAll("reviewed"), "All Reviewed"),
+        { title: "Mark every clash as Reviewed" }),
+      b("symbol", "Approved", safe(() => setStatusForAll("approved"), "All Approved"),
+        { title: "Mark every clash as Approved" }),
+      b("ids", "Resolved", safe(() => setStatusForAll("resolved"), "All Resolved"),
+        { title: "Mark every clash as Resolved" }),
+      b("refresh", "Cycle", safe(() => cycleActiveClashStatus(), "Cycle status"),
+        { title: "Cycle the focused clash through New → Active → Reviewed → Approved → Resolved" }),
+      sep(),
+
+      groupLabel("Isolate"),
+      b("isolate", "Only A", safe(() => isolateSelectionA(), "Isolate A"),
+        { title: "Hide everything except Selection A" }),
+      b("bounds", "Only B", safe(() => isolateSelectionB(), "Isolate B"),
+        { title: "Hide everything except Selection B" }),
+      b("show-all", "Show All", safe(() => showAllElements(), "Show all"),
+        { title: "Undo any isolate / hide operation" }),
+      sep(),
+
+      groupLabel("Report"),
+      b("report", "Preview", safe(() => previewClashReportHtml(), "Preview report"),
+        { title: "Open the clash report in a new tab" }),
+      b("save", "HTML", safe(() => exportClashReportHtml(), "HTML report"),
+        { title: "Download the report as a self-contained HTML file" }),
+      b("csv", "CSV", safe(() => exportClashCsv(), "CSV report"),
+        { title: "Export the clash table as CSV (Excel-ready)" }),
+      b("new-sheet", "XLS", safe(() => exportClashReportXls(), "XLS report"),
+        { title: "Export the clash table as an Excel spreadsheet" }),
+      sep(),
+
+      groupLabel("Coordinates"),
+      b("origin", "Origin↔Origin", safe(() => alignOriginToOrigin(), "Origin"),
+        { title: "Keep shared project coordinates (BIM-style)" }),
+      b("recenter", "Recenter", safe(() => recenterSceneNow(), "Recenter"),
+        { title: "Move the first model to the scene origin" }),
+      b("reset-offsets", "Reset", safe(() => resetOffsets(), "Reset"),
+        { title: "Place models as authored" }),
+      b("origin", "Publish", safe(() => { void alignOriginToOrigin(); toast("Shared Coordinates: publish current project origin relationship", "success"); }, "Publish Coordinates")),
+      b("origin", "Acquire", safe(() => { void alignOriginToOrigin(); toast("Shared Coordinates: acquire alignment from linked context", "success"); }, "Acquire Coordinates")),
+      b("origin", "Specify", safe(() => void openProjectInfo(), "Specify Coordinates")),
+      sep(),
+
+      hint(`Navisworks-style · ${getClashCount()} result(s) · A vs B · F5 runs · [ ] navigates`),
+    ],
+  },
+
+  // ══════════════════════════════ EDIT ═════════════════════════════════
+  {
+    id: "edit",
+    label: "Edit",
+    items: () => [
+      groupLabel("Select"),
+      b("settings", "Selection & Snapping", safe(() => toggleSelectionSnappingPalette(), "Selection and snapping palette"), { active: isSelectionSnappingPaletteVisible(), title: "Configure selection filters, object snap modes, snap priorities and drafting profiles (Ctrl+Shift+P)" }),
+      b("modify", "Modify", safe(() => {
+        try { (ctx.features as any).selection?.clear?.(); } catch {}
+        setAuthoringTool("select");
+        toast("Modify: click an element to edit", "info");
+      }, "Modify tool"), { kbd: "Esc", title: "Press Esc to exit any active tool" }),
+      b("check", "Links", safe(() => {
+        const next = !getSelectionPrefs().links;
+        setSelectionPref("links", next);
+        toast("Select links: " + (next ? "ON — linked models are selectable" : "OFF — linked models are protected from selection"), "info");
+      }, "Select links"), { title: "Allow selecting elements in linked federation models" }),
+      b("check", "Pinned", safe(() => {
+        const next = !getSelectionPrefs().pinned;
+        setSelectionPref("pinned", next);
+        toast("Select pinned: " + (next ? "ON" : "OFF — pinned elements are skipped by every pick"), "info");
+      }, "Select pinned"), { title: "Allow selecting pinned elements (Modify ▸ Pin to pin)" }),
+      planned("check", "By Face", "Face sub-selection is planned for a future release. Element-level selection and FRAG edit (vertex editing) are available today."),
+      planned("check", "Drag Sel", "Drag-on-selection is planned for a future release. Move is available via grips, the Move tool and Modify ▸ Move."),
+      sep(),
+
+      groupLabel("Clipboard"),
+      b("copy", "Copy", safe(() => {
+        void import("../features/modify-actions").then((m) => m.copySelectionToClipboard());
+      }, "Copy"), { kbd: "Ctrl+C" }),
+      b("clear", "Cut", safe(() => {
+        void import("../features/modify-actions").then((m) => {
+          const n = m.copySelectionToClipboard();
+          if (!n) return; // nothing selected — copySelectionToClipboard already warned
+          try { deleteSelectedElement(); toast(`Cut ${n} element(s) — Ctrl+V to paste`, "success"); }
+          catch { toast("Cut failed while deleting selection", "warn"); }
+        });
+      }, "Cut"), { kbd: "Ctrl+X", title: "Copy the selection to the clipboard, then delete it" }),
+      b("save", "Paste", safe(() => {
+        void import("../features/modify-actions").then((m) => m.pasteFromClipboard());
+      }, "Paste"), { kbd: "Ctrl+V", title: "Place copies of the clipboard slightly offset from the originals" }),
+      b("beam", "Join", safe(async () => {
+        try {
+          const { getJoinsCleanupService } = await import("../modules/joins-cleanup");
+          const svc = getJoinsCleanupService();
+          const joins = await svc.autoJoin();
+          toast(joins.length ? `Join geometry: ${joins.length} join(s) created/cleaned` : "Join geometry: no joinable element pairs found", joins.length ? "success" : "info");
+        } catch (err) {
+          toast("Join geometry failed — see console for details", "warn");
+        }
+      }, "Join geometry"), { title: "Auto-join geometry of authored elements (walls, floors, frames) and clean duplicate overlaps" }),
+      sep(),
+
+      groupLabel("BIM Authoring"),
+      b("component", "BIM Objects", safe(() => toggleBimObjectStudio(), "BIM Object Studio"), {
+        active: isBimObjectStudioVisible(),
+        title: "Open the professional BIM Object Studio: searchable Architecture, Structure, MEP, Fire, Electrical, ELV, Site and Generic families",
+      }),
+      sep(),
+      groupLabel("Element"),
+      b("move", "Make Editable", safe(async () => {
+        const n = await beginEditFromSelection();
+        if (!n) toast("Nothing selected — pick elements in the viewport first.", "warn");
+        else toast(`Editing ${n} element(s). Drag the gizmo.`, "success");
+      }, "Edit selected"), {
+        title: "Create professional Native Twins from linked IFC/FRAG elements while preserving the source object, exact geometry, dimensions and BIM metadata",
+      }),
+      b("folder-recent", "Edits", safe(() => toggleFragEditPanel(), "FRAG edits panel"), {
+        active: isFragEditPanelVisible(),
+        title: "Show the FRAG edits panel",
+      }),
+      b("close", "Cancel", safe(async () => {
+        const id = getSelectedEditId();
+        if (!id) { toast("No edit selected.", "warn"); return; }
+        await removeEdit(id);
+        toast("Edit reverted.", "info");
+      }, "Revert edit"), {
+        title: "Revert the currently selected edit — restores the original element",
+      }),
+      b("clear", "Clear All", safe(async () => {
+        if (!getEditCount()) { toast("No edits to clear.", "info"); return; }
+        if (!(await confirmDialog("Revert edits", `Revert all ${getEditCount()} edit(s)?`))) return;
+        await clearAllEdits();
+        toast("All edits reverted.", "success");
+      }, "Clear all edits"), {
+        title: "Revert every FRAG edit and restore all originals",
+      }),
+      sep(),
+
+      groupLabel("Gizmo"),
+      b("move", "Move", safe(() => gizmo_setMode("move"), "Move"), {
+        active: gizmo_getMode() === "move",
+        title: "Move mode — drag the coloured arrows",
+      }),
+      b("rotate", "Rotate", safe(() => gizmo_setMode("rotate"), "Rotate"), {
+        active: gizmo_getMode() === "rotate",
+        title: "Rotate mode — drag the coloured rings",
+      }),
+      b("component", "Scale", safe(() => gizmo_setMode("scale"), "Scale"), {
+        active: gizmo_getMode() === "scale",
+        title: "Scale mode — drag the coloured handles",
+      }),
+      b("close", "Off", safe(() => gizmo_setMode("none"), "Off"), {
+        active: gizmo_getMode() === "none",
+        title: "Turn the gizmo off",
+      }),
+      sep(),
+      groupLabel("Solid Forms"),
+      b("slab", "Extrude", safe(() => void openExtrudeDialog(), "Extrude solid"), {
+        title: "Extrude a closed profile into a watertight B-Rep solid (v68 solid kernel)",
+      }),
+      b("circle", "Revolve", safe(() => void openRevolveDialog(), "Revolve solid"), {
+        title: "Revolve an (r,z) profile about an axis — full or partial angle",
+      }),
+      b("wall", "Sweep", safe(() => void openSolidSweepDialog(), "Sweep solid"), {
+        title: "Sweep a profile along a 3D polyline with per-segment frames",
+      }),
+      b("roof", "Blend", safe(() => void openBlendDialog(), "Blend/loft solid"), {
+        title: "Loft between two closed sections",
+      }),
+      b("clear", "Subtract", safe(() => void openBooleanDialog(), "Boolean subtract"), {
+        title: "Boolean A − B on convex operands (exact half-space composition)",
+      }),
+      b("mass", "Bool (Any)", safe(() => void openGeneralBooleanDialog(), "General boolean"), {
+        title: "v70 general boolean: union/intersect/subtract with NON-CONVEX operands and exact coplanar resolution",
+      }),
+      b("shaft", "Shell", safe(() => void openShellDialog(), "Shell/hollow solid"), {
+        title: "Hollow extrusion with miter offset — exact wall thickness (v70)",
+      }),
+      b("mass-floor", "Loft N", safe(() => void openLoftDialog(), "N-section loft"), {
+        title: "Loft through 2–N sections with optional explicit levels (v70)",
+      }),
+      b("connection", "Fuse", safe(() => void openFuseDialog(), "Fuse solids"), {
+        title: "n-ary fuse of solids via the general union (v70)",
+      }),
+      b("opening", "Cut Voids", safe(() => void openVoidDialog(), "Cut voids"), {
+        title: "Cut box/cylinder voids (openings) with the rollback-guaranteed void engine",
+      }),
+      b("inspect", "Validate Last", safe(() => validateLastSolid(), "Validate last solid"), {
+        title: "Full watertightness/manifold diagnostics with recovery actions",
+      }),
+      sep(),
+      groupLabel("Modify Engine"),
+      b("move", "Move", safe(() => void openModifyMoveDialog(), "v68 Move"), {
+        title: "Move selection through the v68 command pipeline (preview → validate → commit)",
+      }),
+      b("rotate", "Rotate", safe(() => void openModifyRotateDialog(), "v68 Rotate"), {
+        title: "Rodrigues rotation about a plan pivot via the v68 command pipeline",
+      }),
+      b("array", "Array", safe(() => void openModifyArrayDialog(), "v68 Linear array"), {
+        title: "Linear array with cloned authored elements",
+      }),
+      b("mirror", "Mirror", safe(() => void openModifyMirrorDialog(), "v68 Mirror"), {
+        title: "Mirror the selection about an axis; copy keeps originals",
+      }),
+      sep(),
+      groupLabel("Group 1 Tools (v71)"),
+      b("move", "Move+", safe(() => void openGroup1MoveDialog(), "v71 Move tool"), {
+        title: "Group 1 Move: numeric Δ + axis constraint, hosted rigid follow, undo/redo (spec §4)",
+      }),
+      b("rotate", "Rotate+", safe(() => void openGroup1RotateDialog(), "v71 Rotate tool"), {
+        title: "Group 1 Rotate: pivot + angle + angular snap, hosted co-rotation (spec §5)",
+      }),
+      b("mirror", "Mirror+", safe(() => void openGroup1MirrorDialog(), "v71 Mirror tool"), {
+        title: "Group 1 Mirror: M = 2ddᵀ − I, θ' = 2φ − θ, relationship cloning (spec §6)",
+      }),
+      b("undo", "Undo G1", safe(() => { const ok = group1Undo(); toast(ok ? "Group 1 undo applied" : "Nothing to undo", ok ? "success" : "warn"); }, "v71 undo"), {
+        title: "Undo the last Group 1 transaction (Move/Rotate/Mirror are one unit each)",
+      }),
+      b("undo", "Redo G1", safe(() => { const ok = group1Redo(); toast(ok ? "Group 1 redo applied" : "Nothing to redo", ok ? "success" : "warn"); }, "v71 redo"), {
+        title: "Redo the last undone Group 1 transaction",
+      }),
+      b("inspect", "Sel Inspector", safe(() => void openSelectionInspectorDialog(), "v71 selection engine"), {
+        title: "Hit-testing priority, window/crossing modes, filters, hosted expansion (spec §2)",
+      }),
+      b("grid", "Ref Picker", safe(() => void openReferencePickerDialog(), "v71 reference service"), {
+        title: "Acquire typed references with canonical frames; command eligibility check (spec §3)",
+      }),
+      sep(),
+      groupLabel("Snaps"),
+      b("origin", "Snap settings", safe(() => toggleSnapSettings(), "Object snaps"), {
+        active: isSnapSettingsVisible(),
+        title: "Endpoint, midpoint, center, grid, intersection, perpendicular, nearest, vertex…",
+      }),
+      b("grid", "All snaps", safe(() => { snapping.enableAllTypes(); snapping.setEnabled(true); toast("All object snaps ON", "success"); }, "Enable all snaps")),
+      b("clear", "Snaps off", safe(() => { snapping.setEnabled(false); toast("Snaps OFF", "info"); }, "Disable snaps")),
+      sep(),
+
+      groupLabel("Focus"),
+      b("origin", "Focus", safe(() => {
+        const id = getSelectedEditId();
+        if (!id) { toast("No edit selected.", "warn"); return; }
+        focusEdit(id);
+      }, "Focus"), {
+        title: "Zoom the camera to the selected edit",
+      }),
+      b("show-all", "Revert All", safe(async () => {
+        if (!getEditCount()) { toast("No edits.", "info"); return; }
+        if (!(await confirmDialog("Revert edits", `Revert all ${getEditCount()} edit(s)?`))) return;
+        await clearAllEdits();
+      }, "Revert all"), {
+        title: "Revert every edit and unhide all originals",
+      }),
+      sep(),
+
+      hint(`${getEditCount()} element(s) edited · changes persist in the project`),
     ],
   },
 

@@ -270,6 +270,7 @@
     "test:dep-safety": "node tests/dependency-safety.test.cjs",
     "test:webifc-abi": "node tests/webifc-abi.test.cjs",
     "test:ribbon-collapse": "node tests/ribbon-collapse.test.cjs",
+    "test:ribbon-tab-order": "node tests/ribbon-tab-order.test.cjs",
     "test:server-hardening": "node tests/server-hardening.test.cjs",
     "test:share-links": "node tests/share-links.test.cjs",
     "test:service-worker": "node tests/service-worker.test.cjs",
