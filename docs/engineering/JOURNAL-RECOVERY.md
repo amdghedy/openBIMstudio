@@ -166,6 +166,17 @@ and still offered, not quarantined. Proven by
 - **Manual open after a crash now replays.** `openProject` runs the
   validated recovery for the project being opened when its crash
   marker exists — see "When replay runs" above.
+- **The recovery banner survives a slow boot.** The banner is created
+  mid-boot (project-recovery step) but the outcome only lands at the
+  end of boot (project-crash-recovery), and its 30 s auto-dismiss ran
+  from creation — on a slow boot the banner was already gone when the
+  outcome arrived, and `updateRecoveryBanner` silently no-opped, so
+  the user never learned what was recovered (the #101 browser specs
+  only passed because boot was fast enough). Now the outcome re-creates
+  the banner if the timer already removed it — unless the user
+  deliberately dismissed it — and restarts the 30 s clock from the
+  outcome (`src/features/project-recovery.ts`: `createRecoveryBanner` /
+  `scheduleBannerDismiss` / `updateRecoveryBanner`).
 - **`recoverProjectState()` is deleted.** The blind `Journal.open`
   replay helper had no callers and could throw on a corrupt snapshot.
   Crash recovery uses the validated core only. The append path's

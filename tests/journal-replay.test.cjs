@@ -290,5 +290,24 @@ check("crash marker is cleared only after triage, never before a retry is due", 
   assert.match(wiring, /restore write failed:/);
   assert.match(wiring, /marker kept for retry/);
 });
+check("recovery banner survives a slow boot: the outcome re-creates it and restarts the dismiss clock", () => {
+  // The banner is created mid-boot (project-recovery step) but the
+  // outcome only lands at the end of boot (project-crash-recovery).
+  // A fixed 30 s timer from creation meant the banner was already gone
+  // — and updateRecoveryBanner silently no-opped — on any slow boot,
+  // so the user never learned what was recovered.
+  const ui = read("src/features/project-recovery.ts");
+  const updateAt = ui.indexOf("export function updateRecoveryBanner");
+  assert.ok(updateAt > 0, "updateRecoveryBanner must exist");
+  const body = ui.slice(updateAt, ui.indexOf("function rowLabel", updateAt));
+  assert.doesNotMatch(body, /if \(!banner\) return;/, "a missing banner must not silently drop the outcome");
+  assert.match(body, /bannerDismissedByUser/, "a user-dismissed banner must stay dismissed");
+  assert.match(body, /createRecoveryBanner\(\)/, "the outcome must re-create a banner the timer already removed");
+  assert.match(body, /scheduleBannerDismiss\(banner\)/, "the outcome must restart the 30 s clock from the outcome");
+  // The timer itself must be restartable, not a fresh fire-and-forget
+  // timeout per call (which would dismiss the banner early).
+  assert.match(ui, /clearTimeout\(bannerDismissTimer\)/);
+  assert.match(ui, /bannerDismissedByUser = true/, "only a deliberate dismiss may suppress the re-creation");
+});
 
 console.log(`PASS journal replay (${passed} checks)`);

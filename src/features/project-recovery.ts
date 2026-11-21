@@ -31,11 +31,19 @@ const REASON_LABEL: Record<string, string> = {
 };
 
 let bannerShown = false;
+/** Set when the user deliberately dismisses the banner — the outcome must not resurrect it. */
+let bannerDismissedByUser = false;
+/** The auto-dismiss timer, so the outcome can restart the 30 s clock. */
+let bannerDismissTimer: ReturnType<typeof setTimeout> | undefined;
 
-/** Dismissible banner after an unclean shutdown. */
-function showRecoveryBanner(): void {
-  if (bannerShown) return;
-  bannerShown = true;
+/** Restart the 30 s auto-dismiss clock for the given banner. */
+function scheduleBannerDismiss(banner: HTMLElement): void {
+  if (bannerDismissTimer !== undefined) clearTimeout(bannerDismissTimer);
+  bannerDismissTimer = setTimeout(() => { if (banner.isConnected) banner.remove(); }, 30_000);
+}
+
+/** Build the banner element (no latch, no timer — the callers own those). */
+function createRecoveryBanner(): HTMLDivElement {
   const id = "obs-recovery-banner";
   document.getElementById(id)?.remove();
   const banner = document.createElement("div");
@@ -56,6 +64,7 @@ function showRecoveryBanner(): void {
   open.textContent = "How to recover";
   open.style.cssText = "padding:4px 12px;background:var(--bg-hover,#232633);color:inherit;border:1px solid var(--border-default,#2a2e3a);border-radius:4px;cursor:pointer;font-size:11px";
   open.onclick = () => {
+    bannerDismissedByUser = true;
     banner.remove();
     void confirmDialog("Recovering unsaved work",
       "1. Open the affected project (File → Open Project…).\n" +
@@ -66,11 +75,18 @@ function showRecoveryBanner(): void {
   const close = document.createElement("button");
   close.textContent = "Dismiss";
   close.style.cssText = "padding:4px 12px;background:var(--bg-hover,#232633);color:inherit;border:1px solid var(--border-default,#2a2e3a);border-radius:4px;cursor:pointer;font-size:11px";
-  close.onclick = () => banner.remove();
+  close.onclick = () => { bannerDismissedByUser = true; banner.remove(); };
   row.appendChild(close);
   banner.appendChild(row);
   document.body.appendChild(banner);
-  setTimeout(() => { if (banner.isConnected) banner.remove(); }, 30_000);
+  return banner;
+}
+
+/** Dismissible banner after an unclean shutdown (once per page load). */
+function showRecoveryBanner(): void {
+  if (bannerShown) return;
+  bannerShown = true;
+  scheduleBannerDismiss(createRecoveryBanner());
 }
 
 /**
@@ -80,10 +96,22 @@ function showRecoveryBanner(): void {
  * actually happened — never a claim of full recovery when it was partial.
  * Also exposed as data attributes so the browser spec can assert the
  * outcome without parsing prose.
+ *
+ * Rank 4: the banner's 30 s auto-dismiss starts at creation, but the
+ * outcome only arrives at the end of boot (main.ts step
+ * "project-crash-recovery"). On a slow boot the banner was already gone
+ * when the outcome landed and this function silently no-opped — the user
+ * never learned what was recovered. So if the banner is gone (and the
+ * user did not deliberately dismiss it), re-create it here and restart
+ * the 30 s clock from the outcome, not from mid-boot creation.
  */
 export function updateRecoveryBanner(summary: CrashRecoverySummary): void {
-  const banner = document.getElementById("obs-recovery-banner");
-  if (!banner) return;
+  let banner: HTMLElement | null = document.getElementById("obs-recovery-banner");
+  if (!banner) {
+    if (bannerDismissedByUser) return;
+    banner = createRecoveryBanner();
+  }
+  scheduleBannerDismiss(banner);
   banner.dataset.recoveryStatus = summary.status;
   banner.dataset.replayedCount = String(summary.appliedSeqs.length);
   banner.dataset.quarantinedCount = String(summary.quarantined.length);
