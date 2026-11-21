@@ -54,6 +54,7 @@ declare module 'web-ifc' {
   CreateIfcAnnotation?(args: any): Promise<any>;
   CreateIfcRoof?(args: any): Promise<any>;
   CreateIfcWindow?(args: any): Promise<any>;
+  OpenModel(data: Uint8Array): number;
   Init(): Promise<void>;
 
 }
