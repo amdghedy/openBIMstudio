@@ -3,16 +3,20 @@
 Milestone 1 turns four things that were shown as "done" but did nothing into working features, and adds the
 first real BIM-interchange path (IFC export of the authored model).
 
-## Install (3 steps)
+## Install (3 steps) — RETIRED 2026-11-21
 
-1. Copy `src/modules/bim-gaps/` from this package into your project's `src/modules/`.
-2. `node scripts/install-bim-gaps.mjs <projectRoot>` (add `--dry-run` first if you like).
-   It makes three small edits, marker `openbim-bim-gaps:v1`, keeps originals in `.bim-gaps-backup/`, preserves
-   CRLF/LF, and tells you if an anchor was not found instead of guessing:
-   - `src/critical-gaps-boot.ts` - starts the bim-gaps boot
-   - `src/shell/file-menu.ts` - File > Export > Model -> IFC4 / IFC2X3
-   - `src/modules/export/native-twin-ifc.ts` - valid IFC GlobalIds
-3. `npx tsc --noEmit` then `npm run dev`. The console prints `[bim-gaps] <version>: N/N steps started` (5/5 for M1 alone, 6/6 with M2).
+> **The installer is retired.** `scripts/install-bim-gaps.mjs` was deleted on
+> 2026-11-21 (hardening plan item 21; see
+> `docs/engineering/decisions/2026-11-21-installer-patch-retired.md`). The
+> bim-gaps package is part of this repo now, not an external package to
+> install: the boot hook and File-menu entries are wired directly, and the
+> native-twin GlobalId fix is in `src/modules/export/native-twin-ifc.ts`.
+> Do not re-create the script — a dry run on current `main` showed 2 of its
+> 11 edits already unpatchable (anchors gone) and one edit would break the
+> build with a duplicate `newIfcGuid` import.
+
+1. Copy `src/modules/bim-gaps/` from this package into your project's `src/modules/`. (Historical step — the package is in-tree now.)
+2. `npx tsc --noEmit` then `npm run dev`. The console prints `[bim-gaps] <version>: N/N steps started` (5/5 for M1 alone, 6/6 with M2).
    (the command palette entry "BIM gaps: show status" prints the table again.)
 
 To run the tests: copy `tests/` next to `package.json` and run `node tests/run-tests.mjs`.

@@ -36,10 +36,14 @@ read (and where a new document belongs).
 The `*_V67`–`*_V73` documents (e.g. `BIM_AUTHORING_REVIEW_V67.md`,
 `AUTHORING_CORE_V68.md`, `MODIFY_GROUP1_SPEC_V71.md`, `MODELING_PANEL_V73.md`)
 and `RVT_GAPS_M1–M3` are **design-and-delivery records for specific
-milestones**. They explain why a subsystem looks the way it does, and the
-installer scripts they reference (e.g. `scripts/install-bim-gaps.mjs`,
-`scripts/install-m4.mjs`) still run idempotently. For the *current* state of a
-capability, prefer the living documents above and the tool catalogue.
+milestones**. They explain why a subsystem looks the way it does. The
+installer scripts they reference (`scripts/install-bim-gaps.mjs`,
+`scripts/install-m4.mjs`) were **retired and deleted on 2026-11-21**
+(hardening plan item 21; see
+`docs/engineering/decisions/2026-11-21-installer-patch-retired.md`) — the
+milestone docs are historical records, not install instructions. For the
+*current* state of a capability, prefer the living documents above and the
+tool catalogue.
 
 ## Conventions
 

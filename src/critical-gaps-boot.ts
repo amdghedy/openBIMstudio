@@ -488,8 +488,11 @@ async function runOnce(): Promise<void> {
   });
 
   // ── M4 layer: View Templates + Visibility/Graphics + Auto-Dimensions ───
-  // The installer (scripts/install-m4.mjs) was never applied to this boot,
-  // so modules/auto-dimensions + view-templates sat unreachable.
+  // M4 was originally delivered as an external installer package
+  // (scripts/install-m4.mjs, retired 2026-11-21 — see
+  // docs/engineering/decisions/2026-11-21-installer-patch-retired.md).
+  // It is wired directly here instead, so modules/auto-dimensions +
+  // view-templates are reachable at boot.
   await safe("m4-view-dims", async () => {
     const m: Any = await import("./features/m4-view-dims-boot");
     await m.setupM4ViewDims?.();

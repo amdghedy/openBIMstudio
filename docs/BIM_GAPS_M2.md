@@ -5,15 +5,21 @@ Before M2 these types had no mesh in the authoring engine. The ST / RA / CW / RF
 scene objects at the origin that were not saved, selectable, scheduled or exported. M2 turns all six into ordinary authored
 elements. This package is cumulative (M1 + M2).
 
-## Install (upgrade from M1, or fresh)
+## Install (upgrade from M1, or fresh) — RETIRED 2026-11-21
 
-1. Copy `src/modules/bim-gaps/` over your project's folder (10 files, all plain ASCII).
-2. `node scripts/install-bim-gaps.mjs <projectRoot>` (use `--dry-run` first if you like). It is idempotent and now makes six
-   small edits (M1: boot hook, File menu, native-twin GlobalIds. M2: `createMesh` asks `window.__obsMeshBuilders` for unknown
-   types, cost takeoff gets rows for the new types, the three feature alignment buttons start the click tools). Originals go to
-   `.bim-gaps-backup/`; CRLF/LF is preserved; an anchor that is not found is reported, never guessed.
-3. `npx tsc --noEmit`, `npm run dev`. Console: `[bim-gaps] 1.1.0-m2: 6/6 steps started` (7/7 with M3).
-4. Tests: copy `tests/` next to `package.json`, `node tests/run-tests.mjs` (works on Windows).
+> **The installer is retired.** `scripts/install-bim-gaps.mjs` was deleted on
+> 2026-11-21 (hardening plan item 21; see
+> `docs/engineering/decisions/2026-11-21-installer-patch-retired.md`). The
+> package is in-tree now. The M2 hook call sites the installer used to inject
+> (cost-takeoff `__obsM2Quantities` rows, the three feature-alignment buttons'
+> `__obsM2.start` calls) were never inserted into this tree — the M2 hooks are
+> registered by `m2-register.ts` / `m2-tools.ts` but have no production
+> callers, and `setupBimGaps()` itself is never invoked. Re-enabling them is
+> a separate implementation task with tests, not an installer run.
+
+1. Copy `src/modules/bim-gaps/` over your project's folder (10 files, all plain ASCII). (Historical step — the package is in-tree now.)
+2. `npx tsc --noEmit`, `npm run dev`. Console: `[bim-gaps] 1.1.0-m2: 6/6 steps started` (7/7 with M3).
+3. Tests: copy `tests/` next to `package.json`, `node tests/run-tests.mjs` (works on Windows).
 
 ## Using it
 

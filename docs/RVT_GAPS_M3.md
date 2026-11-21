@@ -35,12 +35,19 @@ what lies beyond is drawn as projection. "Right" / "left" look directions are ne
 
 **PDF**: filled polygons are drawn with raw PDF path operators in page coordinates (`m3-pdf-fill.ts`); the old path is the fallback.
 
-## Install
+## Install — RETIRED 2026-11-21
 
-1. Copy `src/modules/bim-gaps/` (now 15 files) over the project's folder.
-2. `node scripts/install-bim-gaps.mjs <projectRoot>` (`--dry-run` first if you like). It is idempotent, now eleven small edits in
-   ten files; the new ones are in `generators/plan.ts` (two lines), `section.ts`, `elevation.ts` and `export/pdf.ts`.
-3. `npx tsc --noEmit`, `npm run dev`. Console: `[bim-gaps] 1.2.0-m3: 7/7 steps started`.
+> **The installer is retired.** `scripts/install-bim-gaps.mjs` was deleted on
+> 2026-11-21 (hardening plan item 21; see
+> `docs/engineering/decisions/2026-11-21-installer-patch-retired.md`). The
+> M3 hook call sites the installer used to inject into `generators/plan.ts`,
+> `section.ts`, `elevation.ts` and `export/pdf.ts` (`__obsViewExt` lines) were
+> never inserted into this tree — the view-extension hooks are registered by
+> `m3-register.ts` but have no production callers. (The sheet-PDF fill itself
+> was fixed directly in `pdf.ts`, not via the installer.)
+
+1. Copy `src/modules/bim-gaps/` (now 15 files) over the project's folder. (Historical step — the package is in-tree now.)
+2. `npx tsc --noEmit`, `npm run dev`. Console: `[bim-gaps] 1.2.0-m3: 7/7 steps started`.
 4. Run the palette command **"Views: regenerate all views and sheets"** once (sheets cache scenes), then open a plan, section,
    elevation and a sheet.
 5. Tests: copy `tests/` next to `package.json`, `node tests/run-tests.mjs`.

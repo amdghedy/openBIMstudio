@@ -17,18 +17,20 @@ BIM-feature alignment package for **openBIMstudio**.
 | Screen-space dimension overlay | Dimension strings in views | SVG overlay |
 | Command palette + Command Center + toolbar | Ribbon / QAT | boot inject |
 
-## Install
+## Install — RETIRED 2026-11-21
 
-From the **openBIMstudio project root**:
+> **The installer is retired.** `scripts/install-m4.mjs` was deleted on
+> 2026-11-21 (hardening plan item 21; see
+> `docs/engineering/decisions/2026-11-21-installer-patch-retired.md`). M4 is
+> wired directly: `src/critical-gaps-boot.ts` imports
+> `src/features/m4-view-dims-boot.ts` and calls `setupM4ViewDims()` at boot.
+> Do not re-create the script — a dry run on current `main` showed its boot
+> patch was already a no-op and its copy step would copy the repo's own `src/`
+> onto itself (861 files).
+
+From the **openBIMstudio project root**, just run the checks:
 
 ```bash
-# Copy package next to the repo (or unzip)
-# Then:
-node path/to/bim-compatibility-m4/scripts/install-m4.mjs .
-
-# Dry-run first (optional):
-node path/to/bim-compatibility-m4/scripts/install-m4.mjs . --dry-run
-
 npm run typecheck
 npm run dev
 ```
@@ -122,6 +124,8 @@ src/modules/auto-dimensions/
   auto-dimensions-ui.ts
   setup.ts
 src/features/m4-view-dims-boot.ts
-scripts/install-m4.mjs
 docs/M4_VIEW_TEMPLATES_AUTO_DIMS.md
 ```
+(`scripts/install-m4.mjs` was part of the original package listing; it was
+retired and deleted on 2026-11-21 — see
+`docs/engineering/decisions/2026-11-21-installer-patch-retired.md`.)
