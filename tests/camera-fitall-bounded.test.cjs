@@ -1,0 +1,10 @@
+const fs = require("fs"), assert = require("assert");
+const s = fs.readFileSync("src/features/camera-tools.ts", "utf8");
+const body = s.slice(s.indexOf("export function fitAll("), s.indexOf("export function fitAll(") + 1800);
+let n = 0; const t = (m, f) => { f(); n++; };
+t("retry count is bounded", () => { assert.match(s, /FIT_ALL_MAX_RETRIES = \d+/); assert.match(body, /fitAllRetries < FIT_ALL_MAX_RETRIES/); });
+t("only one retry timer chain exists (previous timer cleared on every call)", () => assert.match(body, /clearTimeout\(fitAllRetryTimer\)/));
+t("the empty-bounds warning is logged once, not per retry", () => { assert.match(body, /fitAllWarned/); assert.ok(!/setTimeout[^;]*\n[^;]*console\.warn/.test(body)); });
+t("event-handler use (fitAll passed an Event) resets the counter: only a literal true counts as a retry", () => assert.match(body, /isRetry !== true/));
+t("no unconditional 200 ms re-arm remains", () => assert.strictEqual((s.match(/setTimeout\(\(\) => \{ try \{ fitAll\(\)/g) || []).length, 0));
+console.log(`=== camera fitAll bounded: ${n} passed ===`);
