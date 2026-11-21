@@ -5,7 +5,7 @@
 | Module | Role |
 |--------|------|
 | `types.ts` | `FamilyDefinition`, parameters, type/instance scope, basic geometry specs |
-| `formula-engine.ts` | Topo-sorted formulas, cycle detection, Math helpers |
+| `formula-engine.ts` | Topo-sorted formulas, cycle detection, Math helpers, `if()` / boolean ops / comparisons, unit helpers (`mm`, `ft`, `deg`), dependency graph — the enhanced engine was integrated here (the separate `formula-engine-enhanced.ts` was deleted; see below) |
 | `parametric-geometry.ts` | box / cylinder / extrusion / composed / custom |
 | `registry.ts` + `store.ts` | CRUD, resolveParams, buildGeometry |
 | `builtin-families.ts` | Seed walls, doors, windows, MEP, … |
@@ -23,16 +23,17 @@
 
 ## Integration (minimal)
 
-### 1. The enhanced formula engine was deleted (2026-11-21, hardening item 17)
+### 1. The enhanced formula engine is integrated — no import change needed
 
-`formula-engine-enhanced.ts` was never wired in: no code imported it, and
-the swap this section used to instruct was never applied. The file was
-deleted as dead. The live
-engine is `formula-engine.ts` (`evaluateParameters`, `evaluateFormula`),
-imported by `parametric-engine.ts`, `registry.ts`, `parametric-geometry.ts`
-and `family-browser.ts`. If the enhanced operators (`if()`, boolean ops,
-comparisons, unit helpers, dependency graph) are ever wanted, reintroduce
-them by extending `formula-engine.ts` — do not resurrect a parallel engine.
+The enhanced engine used to live in a separate `formula-engine-enhanced.ts`
+that nothing imported. It is now the implementation of `formula-engine.ts`
+itself (scientific notation, string/boolean results, `sind`/`xor`/`to_*`
+builtins, precise error messages, dependency graph), with the old engine's
+`^` power operator, infix word operators (`and`/`or`/`eq`/…), and the
+`evaluateFormula()` one-off export preserved for compatibility. The
+separate file was deleted. Every existing formula in the builtins, the
+sample door, and the 56 seed families evaluates identically — see
+`tests/formula-engine.test.cjs`.
 
 ### 2. Switch the service factory
 

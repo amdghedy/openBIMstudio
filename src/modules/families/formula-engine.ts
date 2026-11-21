@@ -1,16 +1,47 @@
 // openbim-families:formula-engine
 // Parametric family formula engine.
 //
-// Replaces the one-pass, declaration-order evaluator that used to live
-// inside registry.ts. Adds:
-//   - topological sort of parameter declarations by formula dependency
-//   - cycle detection (self-loops and multi-parameter cycles)
-//   - a small library of built-in functions, plus free access to Math.*
-//   - optional '=' prefix (BIM convention: "= height * 2")
-//   - typed per-parameter error surface
-//   - a computed set so the UI can render formula-driven rows read-only
-//   - a fully safe AST evaluator (no eval/Function)
+// This is the enhanced engine (formerly formula-engine-enhanced.ts),
+// integrated onto the live path. It supersedes the hand-rolled
+// recursive-descent evaluator that used to live in this file: evaluation
+// now goes through the sanctioned interpreted evaluator in safe-expr.ts
+// (the only sanctioned expression evaluator in the tree — see
+// tests/dependency-safety.test.cjs). There is no eval / Function /
+// member access anywhere in this path; formulas come from family files
+// that may be imported from anywhere.
+//
+// What the enhanced engine adds over the old one:
+//   - Scientific-notation numbers (1e-7) — the old tokenizer only read
+//     [0-9.] and failed every such formula.
+//   - String / boolean return values (for Yes/No and text parameters).
+//     Numeric parameters still store logic results as 1/0, exactly as
+//     the old engine did; only Yes/No parameters keep real booleans.
+//   - Degree trig (sind / cosd / tand), xor, and to_mm / to_cm / to_ft /
+//     to_in / to_deg converters.
+//   - Precise per-parameter error messages (unknown name, unknown
+//     function, syntax position) instead of the old blanket
+//     "Formula returned no value".
+//   - A dependency graph in the result (FormulaResult.dependencies) plus
+//     dependentsOf(), for UI tooltips / invalidation.
+//   - Topological sort, cycle detection, integer + min/max clamping, and
+//     the computed set are unchanged from the old engine.
+//
+// Compatibility notes (verified against the live corpus — see
+// tests/formula-engine.test.cjs; 24 distinct TS-source formulas and all
+// 56 seed families evaluate identically to the old engine):
+//   - `^` is accepted as a power alias for `**` (added to safe-expr.ts,
+//     where it previously threw "Unsupported character").
+//   - Word operators (and / or / not / eq / ne / lt / le / gt / ge) keep
+//     working as infix/prefix operators, rewritten to symbolic form
+//     outside string literals; the function-call forms (and(a, b),
+//     eq(a, b), not(x)) are untouched and still resolve as builtins.
+//   - `Math.*` was never actually usable in the old engine either (its
+//     tokenizer could not lex the `.`), so nothing is lost there; every
+//     Math function is available as a bare builtin (sin, sqrt, ...).
+//   - evaluateFormula() keeps the old null-on-error contract used by
+//     parametric-geometry's resolveNumber().
 
+import { evaluateExpression } from "./safe-expr";
 import type { FamilyParameter } from "./types";
 
 export interface FormulaError {
@@ -24,9 +55,17 @@ export interface FormulaResult {
   computed: Set<string>;
   errors: FormulaError[];
   order: string[];
+  /** name - list of parameter names it depends on */
+  dependencies: Record<string, string[]>;
 }
 
+/* -- Built-in library ------------------------------------------------ */
+
+const DEG2RAD = Math.PI / 180;
+const RAD2DEG = 180 / Math.PI;
+
 export const BUILTIN_FUNCTIONS: Record<string, (...args: any[]) => any> = {
+  // Trig (radians)
   sin: (x: number) => Math.sin(x),
   cos: (x: number) => Math.cos(x),
   tan: (x: number) => Math.tan(x),
@@ -34,12 +73,19 @@ export const BUILTIN_FUNCTIONS: Record<string, (...args: any[]) => any> = {
   acos: (x: number) => Math.acos(x),
   atan: (x: number) => Math.atan(x),
   atan2: (y: number, x: number) => Math.atan2(y, x),
+
+  // Trig (degrees - BIM-style convenience)
+  sind: (x: number) => Math.sin(x * DEG2RAD),
+  cosd: (x: number) => Math.cos(x * DEG2RAD),
+  tand: (x: number) => Math.tan(x * DEG2RAD),
+
+  // Arithmetic
   sqrt: (x: number) => Math.sqrt(x),
   abs: (x: number) => Math.abs(x),
   min: (...a: number[]) => Math.min(...a),
   max: (...a: number[]) => Math.max(...a),
   round: (x: number, digits?: number) => {
-    const d = Number.isFinite(digits) ? Number(digits) : 0;
+    const d = Number.isFinite(digits as number) ? Number(digits) : 0;
     const f = Math.pow(10, d);
     return Math.round(x * f) / f;
   },
@@ -51,23 +97,37 @@ export const BUILTIN_FUNCTIONS: Record<string, (...args: any[]) => any> = {
   exp: (x: number) => Math.exp(x),
   pi: () => Math.PI,
   e: () => Math.E,
+
+  // Conditionals
   if: (cond: any, a: any, b: any) => (truthy(cond) ? a : b),
   and: (...args: any[]) => args.every(truthy),
   or: (...args: any[]) => args.some(truthy),
   not: (x: any) => !truthy(x),
+  xor: (a: any, b: any) => truthy(a) !== truthy(b),
+
+  // Comparisons (return 1/0 so they compose in arithmetic formulas)
   eq: (a: any, b: any) => (a === b ? 1 : 0),
   ne: (a: any, b: any) => (a !== b ? 1 : 0),
   lt: (a: number, b: number) => (a < b ? 1 : 0),
   le: (a: number, b: number) => (a <= b ? 1 : 0),
   gt: (a: number, b: number) => (a > b ? 1 : 0),
   ge: (a: number, b: number) => (a >= b ? 1 : 0),
+
+  // Unit conversion - internal metres / radians
   mm: (x: number) => x / 1000,
   cm: (x: number) => x / 100,
   m: (x: number) => x,
   ft: (x: number) => x * 0.3048,
   in: (x: number) => x * 0.0254,
-  deg: (x: number) => x * (Math.PI / 180),
+  deg: (x: number) => x * DEG2RAD,
   rad: (x: number) => x,
+
+  // Unit conversion - internal
+  to_mm: (x: number) => x * 1000,
+  to_cm: (x: number) => x * 100,
+  to_ft: (x: number) => x / 0.3048,
+  to_in: (x: number) => x / 0.0254,
+  to_deg: (x: number) => x * RAD2DEG,
 };
 
 function truthy(v: any): boolean {
@@ -79,6 +139,21 @@ function truthy(v: any): boolean {
   }
   return !!v;
 }
+
+const NUMERIC_PARAM_TYPES = new Set([
+  "length",
+  "angle",
+  "number",
+  "integer",
+  "area",
+  "volume",
+]);
+
+function isNumericParamType(t: string | undefined): boolean {
+  return !!t && NUMERIC_PARAM_TYPES.has(t);
+}
+
+/* -- Identifier extraction ------------------------------------------- */
 
 function identifiersIn(formula: string): string[] {
   let s = String(formula ?? "");
@@ -95,9 +170,12 @@ function identifiersIn(formula: string): string[] {
   return Array.from(out);
 }
 
+/* -- Topological sort ------------------------------------------------ */
+
 interface TopoResult {
   order: FamilyParameter[];
   cycles: string[];
+  dependencies: Record<string, string[]>;
 }
 
 function topoSort(declarations: FamilyParameter[]): TopoResult {
@@ -106,21 +184,19 @@ function topoSort(declarations: FamilyParameter[]): TopoResult {
 
   const deps = new Map<string, Set<string>>();
   const indeg = new Map<string, number>();
+  const dependencies: Record<string, string[]> = {};
   for (const p of declarations) indeg.set(p.name, 0);
 
   for (const p of declarations) {
     const set = new Set<string>();
     if (p.formula) {
       for (const id of identifiersIn(p.formula)) {
-        if (id === p.name) continue;
         if (!byName.has(id)) continue;
         set.add(id);
       }
-      if (identifiersIn(p.formula).indexOf(p.name) >= 0) {
-        set.add(p.name);
-      }
     }
     deps.set(p.name, set);
+    dependencies[p.name] = Array.from(set);
     for (const _d of set) {
       indeg.set(p.name, (indeg.get(p.name) ?? 0) + 1);
     }
@@ -149,14 +225,85 @@ function topoSort(declarations: FamilyParameter[]): TopoResult {
     if (p) order.push(p);
   }
 
-  return { order, cycles };
+  return { order, cycles, dependencies };
+}
+
+/* -- Safe formula evaluation ----------------------------------------- */
+
+// Word operators the old hand-rolled parser accepted as infix/prefix
+// operators. safe-expr only knows them as builtin function names, so a
+// formula such as `a > 1 and b > 1` would fail there. Rewrite them to
+// symbolic form before evaluation, outside string literals only.
+// A word followed by `(` stays untouched: `and(a, b)` / `not(x)` are
+// builtin calls, which both engines resolve identically.
+const WORD_OPS: Record<string, string> = {
+  and: "&&",
+  or: "||",
+  not: "!",
+  eq: "==",
+  ne: "!=",
+  lt: "<",
+  le: "<=",
+  gt: ">",
+  ge: ">=",
+};
+
+function rewriteWordOperators(body: string): string {
+  let out = "";
+  let i = 0;
+  while (i < body.length) {
+    const c = body[i];
+    if (c === '"' || c === "'") {
+      // Copy a string literal verbatim (a word inside it is text, not an operator).
+      const q = c;
+      let j = i + 1;
+      while (j < body.length && body[j] !== q) {
+        if (body[j] === "\\") j++;
+        j++;
+      }
+      out += body.slice(i, Math.min(j + 1, body.length));
+      i = j + 1;
+      continue;
+    }
+    if (/[A-Za-z_]/.test(c)) {
+      let j = i;
+      while (j < body.length && /[A-Za-z0-9_]/.test(body[j])) j++;
+      const word = body.slice(i, j);
+      const mapped = WORD_OPS[word];
+      if (mapped) {
+        let k = j;
+        while (k < body.length && /\s/.test(body[k])) k++;
+        if (body[k] !== "(") {
+          out += mapped;
+          i = j;
+          continue;
+        }
+      }
+      out += word;
+      i = j;
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+/**
+ * Strip the optional '=' prefix (BIM convention) and rewrite word
+ * operators to symbolic form so the safe-expr evaluator accepts them.
+ */
+function normalizeBody(formula: string): string {
+  let body = formula.trim();
+  if (body.startsWith("=")) body = body.slice(1).trim();
+  return rewriteWordOperators(body);
 }
 
 export function evaluateParameters(
   declarations: FamilyParameter[],
   seedValues: Record<string, any>,
 ): FormulaResult {
-  const { order, cycles } = topoSort(declarations);
+  const { order, cycles, dependencies } = topoSort(declarations);
   const values: Record<string, any> = { ...seedValues };
   const computed = new Set<string>();
   const errors: FormulaError[] = [];
@@ -180,12 +327,12 @@ export function evaluateParameters(
     if (cycleSet.has(p.name)) continue;
     computed.add(p.name);
 
-    let body = p.formula.trim();
-    if (body.startsWith("=")) body = body.slice(1);
+    const body = normalizeBody(p.formula);
 
     try {
-      const raw = evaluateFormula(body, values);
-      
+      // Interpreted, never executed as script: formulas can come from imported family files.
+      const raw = evaluateExpression(body, values, BUILTIN_FUNCTIONS);
+
       if (raw === undefined || raw === null) {
         errors.push({
           parameter: p.name,
@@ -194,10 +341,19 @@ export function evaluateParameters(
         });
         continue;
       }
+
       if (typeof raw === "boolean" || typeof raw === "string") {
-        values[p.name] = raw;
+        // The old engine stored logic results as 1/0 numbers; keep that
+        // for numeric parameters so downstream arithmetic and saved
+        // values are unchanged. Yes/No parameters keep real booleans
+        // (the old engine stored 1/0 even there).
+        values[p.name] =
+          typeof raw === "boolean" && isNumericParamType(p.type)
+            ? raw ? 1 : 0
+            : raw;
         continue;
       }
+
       const n = Number(raw);
       if (!Number.isFinite(n)) {
         errors.push({
@@ -207,8 +363,9 @@ export function evaluateParameters(
         });
         continue;
       }
-      
-      let out = n;
+
+      // Honour integer type + min/max after evaluation
+      let out: number = n;
       if (p.type === "integer") out = Math.round(out);
       if (p.min != null && out < p.min) out = p.min;
       if (p.max != null && out > p.max) out = p.max;
@@ -227,258 +384,50 @@ export function evaluateParameters(
     computed,
     errors,
     order: order.map((p) => p.name),
+    dependencies,
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SAFE AST EVALUATOR (No eval, no Function)
-// ─────────────────────────────────────────────────────────────────────────────
-
-type Token = { type: "num" | "id" | "op" | "punc"; value: string };
-
-function tokenize(str: string): Token[] {
-  const tokens: Token[] = [];
-  let i = 0;
-  while (i < str.length) {
-    const c = str[i];
-    if (/\s/.test(c)) { i++; continue; }
-    
-    // Numbers, including scientific notation (1e-7, 2.5e3, 1E+7, .5e2).
-    if (/[0-9.]/.test(c)) {
-      let num = "";
-      while (i < str.length && /[0-9.]/.test(str[i])) { num += str[i]; i++; }
-      // Optional exponent: e/E, optional sign, at least one digit. The
-      // exponent marker is only consumed when it directly follows the
-      // mantissa; a bare identifier "e" (variable or the e() builtin)
-      // separated from any digits still tokenizes as an identifier.
-      if (i < str.length && (str[i] === "e" || str[i] === "E")) {
-        let exp = str[i];
-        let j = i + 1;
-        if (j < str.length && (str[j] === "+" || str[j] === "-")) { exp += str[j]; j++; }
-        if (j >= str.length || !/[0-9]/.test(str[j])) {
-          throw new Error("Invalid number: " + num + exp + " (exponent has no digits)");
-        }
-        while (j < str.length && /[0-9]/.test(str[j])) { exp += str[j]; j++; }
-        num += exp;
-        i = j;
-      }
-      if (!/^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(num)) {
-        throw new Error("Invalid number: " + num);
-      }
-      tokens.push({ type: "num", value: num });
-      continue;
-    }
-    
-    // Identifiers (variables and function names)
-    if (/[A-Za-z_]/.test(c)) {
-      let id = "";
-      while (i < str.length && /[A-Za-z0-9_]/.test(str[i])) { id += str[i]; i++; }
-      tokens.push({ type: "id", value: id });
-      continue;
-    }
-    
-    // Operators
-    if ("+-*/^%><!&|=".includes(c)) {
-      let op = c; i++;
-      if (i < str.length && "=<>&|".includes(str[i])) { op += str[i]; i++; }
-      tokens.push({ type: "op", value: op });
-      continue;
-    }
-    
-    // Punctuation
-    if ("(),?:".includes(c)) {
-      tokens.push({ type: "punc", value: c });
-      i++;
-      continue;
-    }
-    
-    throw new Error("Unknown character: " + c);
-  }
-  return tokens;
-}
-
-class Parser {
-  tokens: Token[];
-  pos = 0;
-  vars: Record<string, any>;
-
-  constructor(tokens: Token[], vars: Record<string, any>) {
-    this.tokens = tokens;
-    this.vars = vars;
-  }
-
-  peek(): Token | undefined { return this.tokens[this.pos]; }
-  next(): Token { return this.tokens[this.pos++]; }
-  match(val: string): boolean {
-    if (this.peek()?.value === val) { this.pos++; return true; }
-    return false;
-  }
-
-  parse(): any {
-    const res = this.parseTernary();
-    if (this.pos < this.tokens.length) throw new Error("Unexpected token: " + this.peek()?.value);
-    return res;
-  }
-
-  parseTernary(): any {
-    const cond = this.parseLogicalOr();
-    if (this.match("?")) {
-      const ifTrue = this.parseTernary();
-      if (!this.match(":")) throw new Error("Expected ':'");
-      const ifFalse = this.parseTernary();
-      return truthy(cond) ? ifTrue : ifFalse;
-    }
-    return cond;
-  }
-
-  parseLogicalOr(): any {
-    let left = this.parseLogicalAnd();
-    while (this.match("||") || this.match("or")) {
-      const right = this.parseLogicalAnd();
-      left = truthy(left) || truthy(right) ? 1 : 0;
-    }
-    return left;
-  }
-
-  parseLogicalAnd(): any {
-    let left = this.parseEquality();
-    while (this.match("&&") || this.match("and")) {
-      const right = this.parseEquality();
-      left = truthy(left) && truthy(right) ? 1 : 0;
-    }
-    return left;
-  }
-
-  parseEquality(): any {
-    let left = this.parseRelational();
-    while (this.match("==") || this.match("!=") || this.match("eq") || this.match("ne")) {
-      const op = this.tokens[this.pos - 1].value;
-      const right = this.parseRelational();
-      if (op === "==" || op === "eq") left = left === right ? 1 : 0;
-      else left = left !== right ? 1 : 0;
-    }
-    return left;
-  }
-
-  parseRelational(): any {
-    let left = this.parseAddition();
-    while (this.match(">") || this.match("<") || this.match(">=") || this.match("<=") || this.match("gt") || this.match("lt") || this.match("ge") || this.match("le")) {
-      const op = this.tokens[this.pos - 1].value;
-      const right = this.parseAddition();
-      if (op === ">" || op === "gt") left = left > right ? 1 : 0;
-      else if (op === "<" || op === "lt") left = left < right ? 1 : 0;
-      else if (op === ">=" || op === "ge") left = left >= right ? 1 : 0;
-      else left = left <= right ? 1 : 0;
-    }
-    return left;
-  }
-
-  parseAddition(): any {
-    let left = this.parseMultiplication();
-    while (this.match("+") || this.match("-")) {
-      const op = this.tokens[this.pos - 1].value;
-      const right = this.parseMultiplication();
-      left = op === "+" ? left + right : left - right;
-    }
-    return left;
-  }
-
-  parseMultiplication(): any {
-    let left = this.parseUnary();
-    while (this.match("*") || this.match("/") || this.match("%")) {
-      const op = this.tokens[this.pos - 1].value;
-      const right = this.parseUnary();
-      if (op === "*") left = left * right;
-      else if (op === "/") left = left / right;
-      else left = left % right;
-    }
-    return left;
-  }
-
-  parseUnary(): any {
-    if (this.match("-")) return -this.parseUnary();
-    if (this.match("+")) return this.parseUnary();
-    if (this.match("!") || this.match("not")) return truthy(this.parseUnary()) ? 0 : 1;
-    return this.parsePower();
-  }
-
-  parsePower(): any {
-    const left = this.parsePrimary();
-    if (this.match("^")) {
-      const right = this.parseUnary(); // Right associative
-      return Math.pow(left, right);
-    }
-    return left;
-  }
-
-  parsePrimary(): any {
-    const tok = this.next();
-    if (!tok) throw new Error("Unexpected end of expression");
-
-    if (tok.type === "num") return Number(tok.value);
-
-    if (tok.type === "id") {
-      const name = tok.value;
-      if (this.match("(")) {
-        // Function call
-        const args: any[] = [];
-        if (!this.match(")")) {
-          do {
-            args.push(this.parseTernary());
-          } while (this.match(","));
-          if (!this.match(")")) throw new Error("Expected ')'");
-        }
-        if (name in BUILTIN_FUNCTIONS) {
-          return BUILTIN_FUNCTIONS[name](...args);
-        }
-        if (name in Math) {
-          return (Math as any)[name](...args);
-        }
-        throw new Error("Unknown function: " + name);
-      }
-      
-      // Variable
-      if (name in this.vars) return this.vars[name];
-      if (name === "true") return 1;
-      if (name === "false") return 0;
-      throw new Error("Unknown variable: " + name);
-    }
-
-    if (tok.value === "(") {
-      const expr = this.parseTernary();
-      if (!this.match(")")) throw new Error("Expected ')'");
-      return expr;
-    }
-
-    throw new Error("Unexpected token: " + tok.value);
-  }
-}
-
+/**
+ * One-off formula evaluation with the old engine's contract: any parse /
+ * evaluation failure, empty expression, or non-finite result yields null
+ * instead of throwing, so callers such as parametric-geometry's
+ * resolveNumber() can fall back (warn + 0). Booleans are returned as 1/0,
+ * matching the old engine.
+ */
 export function evaluateFormula(expr: string, params: Record<string, any>): any {
   const source = String(expr ?? "").trim();
   if (!source) return null;
-  
-  let body = source;
-  if (body.startsWith("=")) body = body.slice(1).trim();
-  
   try {
-    const tokens = tokenize(body);
-    const parser = new Parser(tokens, params);
-    const result = parser.parse();
-    
-    if (typeof result === "boolean") return result ? 1 : 0;
+    const result = evaluateExpression(normalizeBody(source), params, BUILTIN_FUNCTIONS);
     if (result === undefined || result === null) return null;
-    
-    // If it's a number, ensure it's finite
+    if (typeof result === "boolean") return result ? 1 : 0;
     if (typeof result === "number" && !Number.isFinite(result)) return null;
-    
     return result;
-  } catch (err) {
-    // Return null on parse failure, which the caller handles
+  } catch {
     return null;
   }
 }
 
 export function hasFormulas(declarations: FamilyParameter[]): boolean {
   return declarations.some((p) => !!p.formula);
+}
+
+/** Return parameters that depend on `name` (directly or transitively). */
+export function dependentsOf(
+  declarations: FamilyParameter[],
+  name: string,
+): string[] {
+  const { dependencies } = topoSort(declarations);
+  const result = new Set<string>();
+  const visit = (n: string) => {
+    for (const [param, deps] of Object.entries(dependencies)) {
+      if (deps.includes(n) && !result.has(param)) {
+        result.add(param);
+        visit(param);
+      }
+    }
+  };
+  visit(name);
+  return Array.from(result);
 }

@@ -85,5 +85,6 @@ Matching BIM "from all sides" is several milestones of work; this is the depende
   of authored elements back into BIM.
 - **M5 - Worksharing.** Element-level ownership / locks, sync, conflict handling and presence instead of whole-project
   last-write-wins.
-- **M6 - Hardening.** Remove dead code (COBie, BCF 2.1, federation, standards report, model-health and the enhanced formula
-  engine exist but are unreachable), typed APIs instead of `as any`, one boot path, CI.
+- **M6 - Hardening.** Remove dead code (COBie, BCF 2.1, federation, standards report and model-health exist but are
+  unreachable — the enhanced formula engine was integrated into `formula-engine.ts` and its separate file deleted),
+  typed APIs instead of `as any`, one boot path, CI.

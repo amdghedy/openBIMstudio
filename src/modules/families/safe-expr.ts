@@ -5,14 +5,15 @@
  * so they must never be able to run arbitrary script. This is a small parser/interpreter for
  * arithmetic, comparisons, logic, the ternary operator, string/number/boolean literals, named
  * values and calls to an explicit function table. There is no property access, no assignment and
- * no access to globals.
+ * no access to globals. `^` is accepted as a power alias for `**` (families-engine compat:
+ * the old hand-rolled formula parser used `^`).
  */
 export type Scope = Record<string, unknown>;
 export type FnTable = Record<string, (...args: any[]) => unknown>;
 
 type Tok = { t: "num" | "str" | "id" | "op" | "end"; v: string };
 
-const OPS = ["===", "!==", "**", "==", "!=", "<=", ">=", "&&", "||", "+", "-", "*", "/", "%", "<", ">", "!", "?", ":", "(", ")", ","];
+const OPS = ["===", "!==", "**", "==", "!=", "<=", ">=", "&&", "||", "+", "-", "*", "/", "%", "^", "<", ">", "!", "?", ":", "(", ")", ","];
 const MAX_LEN = 2000;
 const MAX_DEPTH = 64;
 
@@ -107,7 +108,7 @@ export function evaluateExpression(source: string, scope: Scope, fns: FnTable): 
   }
   function pow(): unknown {
     const base = unary();
-    if (isOp("**")) { p++; return Math.pow(base as number, pow() as number); }
+    if (isOp("**") || isOp("^")) { p++; return Math.pow(base as number, pow() as number); }
     return base;
   }
   function unary(): unknown {

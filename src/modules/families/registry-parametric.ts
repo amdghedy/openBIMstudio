@@ -121,7 +121,7 @@ export function createParametricFamilyService(): ParametricFamilyService {
         return {
           object: null,
           params: {},
-          formula: { values: {}, computed: new Set(), errors: [], order: [] },
+          formula: { values: {}, computed: new Set(), errors: [], order: [], dependencies: {} },
           constraints: null,
           errors: [`Family not found: ${familyId}`],
           warnings: [],
