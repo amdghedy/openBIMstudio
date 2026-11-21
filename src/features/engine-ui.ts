@@ -74,6 +74,9 @@ import { SelectionEngine, type SelectableElement } from "../modules/selection";
 import { ReferenceService } from "../modules/references";
 import { getTransactionService } from "../modules/transaction";
 import { placeOpening, type HostGeometry, type HostedOpening } from "../modules/hosting";
+import { attachElementToHost } from "../modules/families/placement";
+import { hostGeometryFromElement } from "../modules/families/family-hosting";
+import type { AuthoredElement } from "../modules/projects/types";
 import { ParameterEngine, type ParameterDefinition } from "../modules/parameter-engine";
 import type { GeometryDiagnostic } from "../modules/solid-kernel/validate";
 
@@ -1409,6 +1412,11 @@ interface AuthoredLike {
   id: string;
   type: string;
   name?: string;
+  /** BIM-style: the family this element instantiates (optional). */
+  familyId?: string;
+  familyTypeId?: string;
+  /** Generic family host attachment (Slice 9). */
+  hostAttachment?: { hostId: string; hostKind: "wall" | "face"; [k: string]: any };
   params: {
     start?: [number, number];
     end?: [number, number];
@@ -1670,6 +1678,96 @@ export async function openHostedOpeningDialog(): Promise<void> {
     notify("success", `Opening placed on ${host.name ?? host.id}`);
   } catch (e) {
     notify("error", `Opening failed: ${(e as Error).message}`);
+  }
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   8b. Host family — Architecture tab (Slice 9 generic family hosting)
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Host a family instance on a wall or a face through Slice 9's
+ * placement.ts wiring. The instance keeps its current position,
+ * projected onto the host — no numbers to type — and follows the host
+ * when it moves (authoring.ts re-derives hosted placements once per
+ * rebuild). A point that does not fit the host is reported, not
+ * silently placed: attachElementToHost throws and the error is shown.
+ */
+export async function openHostFamilyDialog(): Promise<void> {
+  const all = authoredList();
+  // Only point-based family instances can be hosted: the attachment is
+  // projected from the instance's current world point.
+  const instances = all.filter((e) => e.familyId && e.params?.point);
+  if (!instances.length) {
+    notify("warn", "No placed family instances to host — place a family first (Parametric Families panel, Ctrl+Shift+F)");
+    return;
+  }
+  const walls = all.filter((e) => e.type === "wall" && e.params?.start && e.params?.end);
+  const slabs = all.filter(
+    (e) => e.type === "slab" && Array.isArray((e.params as any)?.polygon) && (e.params as any).polygon.length >= 3,
+  );
+  // One option per (host element, host kind): a wall can host on its line
+  // or on its face, a slab on its top face. Encoding the kind in the value
+  // keeps every listed combination valid — there is no way to pick a slab
+  // as a wall host or a wall as a slab host.
+  const hostOptions: Array<[string, string]> = [];
+  for (const wl of walls) {
+    hostOptions.push([`wall:${wl.id}`, `${wl.name ?? wl.id} — on wall`]);
+    hostOptions.push([`face:${wl.id}`, `${wl.name ?? wl.id} — on face`]);
+  }
+  for (const s of slabs) hostOptions.push([`face:${s.id}`, `${s.name ?? s.id} — on top face`]);
+  if (!hostOptions.length) {
+    notify("warn", "No host walls or floors — draw a wall first");
+    return;
+  }
+  const selected = new Set(selectedAuthoredIds());
+  const defaultInstance = instances.find((e) => selected.has(e.id)) ?? instances[0];
+  const selectedWall = walls.find((e) => selected.has(e.id));
+  const defaultHost = selectedWall ? `wall:${selectedWall.id}` : hostOptions[0][0];
+  const r = await openFormModal({
+    title: "Host Family",
+    subtitle: "Attach a family instance to a wall or a face. The instance keeps its current position, projected onto the host, and follows the host when it moves.",
+    fields: [
+      { kind: "select", key: "instance", label: "Family instance", default: defaultInstance.id,
+        options: instances.map((e) => [e.id, `${e.name ?? e.id} (${e.type})`] as [string, string]) },
+      { kind: "select", key: "host", label: "Host", default: defaultHost, options: hostOptions },
+    ],
+    submitLabel: "Host Family",
+  });
+  if (!r) return;
+  try {
+    const instance = instances.find((e) => e.id === String(r.instance));
+    if (!instance) throw new Error("the selected instance is gone");
+    const rawHost = String(r.host ?? "");
+    const sepIdx = rawHost.indexOf(":");
+    const kind = rawHost.slice(0, sepIdx) as "wall" | "face";
+    const hostId = rawHost.slice(sepIdx + 1);
+    if ((kind !== "wall" && kind !== "face") || !hostId) throw new Error("the selected host is not valid");
+    const hostEl = all.find((e) => e.id === hostId);
+    if (!hostEl) throw new Error("the selected host is gone");
+    const host = hostGeometryFromElement(hostEl as unknown as AuthoredElement, kind);
+    if (!host) throw new Error(`${hostEl.name ?? hostEl.id} cannot host as a ${kind}`);
+    const pt = instance.params.point!;
+    const world: [number, number, number] = [
+      pt[0],
+      pt[1],
+      typeof instance.params.elevation === "number" ? instance.params.elevation : 0,
+    ];
+    const placement = attachElementToHost(instance as unknown as AuthoredElement, host, world);
+    try { (w.__obsAuthoring as Any)?.rebuildAuthored?.(); } catch { /* ignore */ }
+    const a: Any = (instance as Any).hostAttachment ?? {};
+    showReportCard("Family Hosted", [
+      ["Instance", instance.name ?? instance.id],
+      ["Host", `${hostEl.name ?? hostEl.id} (${kind})`],
+      ["Attachment", kind === "wall"
+        ? `s = ${Number(a.s ?? 0).toFixed(2)} m · elevation ${Number(a.elevation ?? 0).toFixed(2)} m · offset ${Number(a.offset ?? 0).toFixed(2)} m`
+        : `u = ${Number(a.u ?? 0).toFixed(2)} m · v = ${Number(a.v ?? 0).toFixed(2)} m · offset ${Number(a.offset ?? 0).toFixed(2)} m`],
+      ["World position", `(${placement.point[0].toFixed(2)}, ${placement.point[1].toFixed(2)}) @ ${placement.elevation.toFixed(2)} m`],
+      ["Facing", `${placement.rotation.toFixed(1)}°`],
+    ], "The instance now follows its host: move the host and the instance is re-derived from the host geometry.");
+    notify("success", `Hosted ${instance.name ?? instance.id} on ${hostEl.name ?? hostEl.id}`);
+  } catch (e) {
+    notify("error", `Hosting failed: ${(e as Error).message}`);
   }
 }
 
