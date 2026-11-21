@@ -89,7 +89,7 @@ The UI registry describes visibility getters, toggle callbacks, availability, op
 | Project information/browser | src/features/project-info.ts; src/features/project-browser.ts | Project metadata and navigation. |
 | Importer and file menu | src/features/importer.ts; src/features/file-interop.ts; src/features/file-menu.ts; src/shell/file-menu.ts | Supported extensions, parser errors, fidelity. |
 | Manage links | src/features/manage-links.ts; src/features/link-tools.ts | Reload, detach, transforms, missing files. |
-| Federation | src/modules/federation/manager.ts; src/modules/federation/store.ts; src/modules/federation/types.ts | Source models, transforms, coordinate systems, persistence. |
+| Federation | src/modules/federation/manager.ts; src/modules/federation/types.ts | Source models, transforms, coordinate systems, persistence. |
 | Collaboration | src/modules/collaboration/realtime-client.ts; src/modules/collaboration/workshare-client.ts | Server requirements, authentication, conflict resolution, concurrency. |
 | CDE | src/modules/cde/; src/features/cde-panel.ts | Provider registry, HTTP, storage; ACC, Dalux and SharePoint provider code requires live-operation verification. |
 | App loader | src/features/app-loader.ts | Loading state and error recovery. |
@@ -108,8 +108,8 @@ These modules indicate the project's authoring scope. They do not establish feat
 | Levels | src/modules/levels/; src/features/level-chip.ts | Elevation, associations, display and persistence. |
 | Rooms | src/modules/rooms/rooms.ts; src/modules/bim-gaps/room-detect.ts; src/modules/bim-gaps/room-tool.ts | Boundary rules, holes, area, tagging and update behavior. Existing milestone notes describe room behavior as non-associative and note an unwired plan-panel workflow. |
 | Stairs and railings | src/modules/stairs/stairs.ts; src/modules/railings/railings.ts | Geometry parameters, edits and export. |
-| Curtain walls | src/modules/curtain-wall/curtain-wall.ts; src/modules/curtainWall/panelTypes.ts | Grids, mullions, panels, openings and edits. |
-| Roofs | src/modules/roofs/complexRoof.ts | Supported roof forms and editing. |
+| Curtain walls | src/modules/curtain-wall/curtain-wall.ts | Grids, mullions, panels, openings and edits. |
+| Roofs | src/modules/bim-gaps/m2-geometry.ts; src/modules/bim-gaps/roof-ceiling-from-walls.ts | Supported roof forms and editing. |
 | Materials | src/modules/materials/materials.ts | Assignment, appearance, persistence and export mapping. |
 | Shared parameters | src/modules/shared-params/shared-params.ts | Definitions, binding and export mapping. |
 | Type catalogs | src/modules/type-catalog/type-catalog.ts | Type data and instance/type propagation. |

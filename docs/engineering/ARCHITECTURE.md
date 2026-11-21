@@ -79,7 +79,7 @@ Multi-model coordination, issues, standards, model checking, live collaboration 
 
 drawing editing/linking, drawings, parsers, export formats and point-cloud underlays.
 
-`cad` · `cad-link` · `cad-viewer` · `drawings` · `dwg-linking` · `export` · `pdf-review` · `pdf-underlay` · `gis` · `point-cloud` · `rvt` · `solids`
+`cad` · `cad-link` · `cad-viewer` · `drawings` · `export` · `pdf-underlay` · `gis` · `point-cloud` · `rvt` · `solids`
 
 ### Project delivery, cost, scheduling and automation
 
@@ -215,10 +215,8 @@ Site components/topography plus daylight, energy and generative-design analysis.
       "cad-link",
       "cad-viewer",
       "drawings",
-      "dwg-linking",
       "export",
       "gis",
-      "pdf-review",
       "pdf-underlay",
       "point-cloud",
       "rvt",

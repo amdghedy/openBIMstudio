@@ -15,7 +15,6 @@
 | File | Capability |
 |------|------------|
 | **`parametric-engine.ts`** | Full pipeline: shared → type → instance → formulas → **constraints** → geometry (sweep / revolve / loft / void / conditional / nested / array) |
-| **`formula-engine-enhanced.ts`** | `if()`, boolean ops, comparisons, unit helpers (`mm`, `ft`, `deg`), dependency graph |
 | **`constraint-graph.ts`** | equality, offset, ratio, sum, difference, fixed, distance |
 | **`array-expander.ts`** | Linear / rotational / grouped arrays with alternate mirror |
 | **`nested-families.ts`** | Nested family refs + param mapping + shared flag |
@@ -24,18 +23,16 @@
 
 ## Integration (minimal)
 
-### 1. Prefer the enhanced formula engine
+### 1. The enhanced formula engine was deleted (2026-11-21, hardening item 17)
 
-In `registry.ts` (or anywhere that imports `evaluateParameters`):
-
-```ts
-// was:
-import { evaluateParameters } from "./formula-engine";
-// become:
-import { evaluateParameters } from "./formula-engine-enhanced";
-```
-
-Or rename: copy `formula-engine-enhanced.ts` over `formula-engine.ts`.
+`formula-engine-enhanced.ts` was never wired in: no code imported it, and
+the swap this section used to instruct was never applied. The file was
+deleted as dead. The live
+engine is `formula-engine.ts` (`evaluateParameters`, `evaluateFormula`),
+imported by `parametric-engine.ts`, `registry.ts`, `parametric-geometry.ts`
+and `family-browser.ts`. If the enhanced operators (`if()`, boolean ops,
+comparisons, unit helpers, dependency graph) are ever wanted, reintroduce
+them by extending `formula-engine.ts` — do not resurrect a parallel engine.
 
 ### 2. Switch the service factory
 

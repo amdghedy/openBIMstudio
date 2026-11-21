@@ -139,6 +139,8 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 ## P1-01 — Freeze `__obs*` globals with ESLint; typed service registry
 
 > **Status correction (2026-11-20):** open — the ESLint freeze was never wired in: `hardening.eslintrc.json` exists, but there is no eslint dependency, no lint script and no CI lint step; `src/core/registry.ts` has no importers.
+>
+> **Update (2026-11-21, hardening item 17):** the freeze is now wired **report-only** — flat `eslint.config.mjs` (warn-level `no-restricted-syntax` + `no-explicit-any`), `lint:hardening` script, non-blocking CI step; baseline 3,585 warnings / 0 errors (any 3,017, `__obs` 568). `hardening.eslintrc.json` deleted. `src/core/registry.ts` deleted as dead (zero importers, empty interfaces); the freeze message now points at `src/core/services.ts`, the registry that is actually used. Error-level freeze and the 3-service migration remain open.
 
 - **Labels:** `hardening`, `P1`, `high`
 - **Phase / Estimate:** Phase 1 / 2 days
@@ -162,6 +164,8 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 ## P1-02 — TypeScript strictification wave 1 (src/modules, src/core)
 
 > **Status correction (2026-11-20):** open — `tsconfig.strict.json` is referenced nowhere outside docs; the main tsconfig has `noUnusedLocals: false`; `src/` has ~2,723 explicit `any`s and no any-count ratchet runs in CI.
+>
+> **Update (2026-11-21, hardening item 17):** `tsconfig.strict.json` fixed to a runnable config (was missing target/lib/module, so its error count measured a broken ES5 default: 13,200 errors as-shipped) and given a `typecheck:strict` script. Recorded starting count: **6,353 errors across 583 files** (top: TS18048 2,385, TS2532 1,705, TS2345 946). Report-only — not a CI gate; the ratchet job and the `src/core`-green criterion remain open.
 
 - **Labels:** `hardening`, `P1`, `high`
 - **Phase / Estimate:** Phase 1 / 3 days (spread over weeks; convert-on-touch)
