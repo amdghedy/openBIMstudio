@@ -248,6 +248,14 @@ export async function saveProject(silent = false) {
       (current as any).classificationAssignments = cl.serializeAssignments();
     } catch { /* classification optional */ }
 
+    // User families travel with the project — a project opened on
+    // another machine keeps its custom families instead of losing them
+    // while its instances keep dangling familyIds.
+    try {
+      const fam = await import("../families/store");
+      (current as any).userFamilies = fam.familyStore.serializeUserFamilies();
+    } catch { /* families optional */ }
+
     try {
       const annot = await import("../views/annotation-store");
       current.annotations = annot.serializeAll();
@@ -751,6 +759,41 @@ export async function openProject(id: string) {
     recordLastProjectId(id); // so the next boot can auto-reopen
     loader?.set?.("Done.", 1);
     notify();
+    // User families travel with the project. This MUST run after
+    // notify() above: the family store's project-change hook clears the
+    // store and reloads from localStorage, which would wipe a restore
+    // done any earlier. Same legacy guard as classification: a document
+    // without the field (older project) keeps the working families it has.
+    try {
+      if ((doc as any).userFamilies != null) {
+        const fam = await import("../families/store");
+        const report = fam.familyStore.restoreUserFamilies((doc as any).userFamilies);
+        if (report.skipped.length) {
+          load.issues.push(
+            `Dropped ${report.skipped.length} invalid user famil${report.skipped.length === 1 ? "y" : "ies"} from the saved document: ` +
+            report.skipped.map((s) => `${s.id} (${s.reason})`).join(", "),
+          );
+        }
+      }
+    } catch { /* families optional */ }
+
+    // Missing families on instances are reported, never silently
+    // dropped: the elements stay in the document with their familyId
+    // intact, so re-importing the family restores them.
+    try {
+      const fam = await import("../families/store");
+      const { findMissingFamilies } = await import("../families/project-families");
+      const missing = findMissingFamilies(doc.elements ?? [], (fid) => fam.familyStore.get(fid) != null);
+      if (missing.length) {
+        const byFamily = new Map<string, number>();
+        for (const m of missing) byFamily.set(m.familyId, (byFamily.get(m.familyId) ?? 0) + 1);
+        load.issues.push(
+          `${missing.length} element(s) reference ${byFamily.size} missing famil${byFamily.size === 1 ? "y" : "ies"}: ` +
+          [...byFamily.entries()].map(([fid, n]) => `${fid} (${n} element${n === 1 ? "" : "s"})`).join(", ") +
+          ". The elements were kept; re-import the family to restore them.",
+        );
+      }
+    } catch { /* families optional */ }
     // Surface every repair made while loading — never a silent fix.
     if (load.issues.length || load.migrations.length) {
       const detail = [...load.migrations, ...load.issues].join(" ");

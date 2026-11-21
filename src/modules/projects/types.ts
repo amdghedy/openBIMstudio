@@ -3,6 +3,7 @@ import type { Issue } from "../issues/types";
 import type { CostData } from "../cost/types";
 import type { MepModelSnapshot } from "../mep/model-lifecycle";
 import type { DocumentationSnapshot } from "../documentation/documentation-persistence";
+import type { FamilyDefinition } from "../families/types";
 
 // ── Geometry / authored element types ─────────────────────────────────────
 export type Vec2 = [number, number];
@@ -378,6 +379,16 @@ export interface ProjectDoc {
    *  unknown systems or codes are dropped, legacy documents keep their
    *  working copy. */
   classificationAssignments?: unknown[];
+
+  /** User (non-built-in) family definitions: they travel with the
+   *  project so a project opened on another machine keeps its custom
+   *  families instead of losing them while its instances keep dangling
+   *  `familyId`s. Tolerantly parsed on restore (see
+   *  src/modules/families/project-families.ts) — invalid entries are
+   *  skipped and reported, legacy documents without the field keep
+   *  their working copy. Built-ins are re-seeded on boot and are never
+   *  stored here. */
+  userFamilies?: FamilyDefinition[];
 
   /** Plan-view dimensions (aligned / linear / chains) drawn in the 2D floor plan. */
   planDimensions?: unknown[];

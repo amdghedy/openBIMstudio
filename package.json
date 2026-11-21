@@ -154,6 +154,7 @@
     "test:solid-bvh": "node tests/solid-bvh.test.cjs",
     "test:seed-families": "node tests/seed-families.test.cjs",
     "test:builtin-family-data": "node tests/builtin-family-data.test.cjs",
+    "test:families-in-project": "node tests/families-in-project.test.cjs",
     "test:standards-json-pack": "node tests/standards-json-pack.test.cjs",
     "test:icu-lite": "node tests/icu-lite.test.cjs",
     "test:icu-catalog": "node tests/icu-catalog.test.cjs",

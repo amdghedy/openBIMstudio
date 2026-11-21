@@ -7,6 +7,11 @@
 import type { FamilyDefinition, FamilyType } from "./types";
 import { getCurrentProject, onProjectChanged } from "../projects/projects";
 import { CURRENT_FAMILY_SCHEMA_VERSION, migrateFamilyDefinition } from "./migration";
+import {
+  partitionFamilyDefinitions,
+  serializeUserFamilies as serializeUserFamiliesPure,
+  type FamilyRestoreReport,
+} from "./project-families";
 
 const DEFAULT_STORAGE_KEY = "obs.families.v1.global";
 
@@ -94,6 +99,32 @@ class FamilyStore {
 
   list(): FamilyDefinition[] {
     return [...this.byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /**
+   * The user families that travel with the project document: everything
+   * that is not a built-in, deep-cloned. Called by the project save
+   * path; see `src/modules/families/project-families.ts`.
+   */
+  serializeUserFamilies(): FamilyDefinition[] {
+    return serializeUserFamiliesPure([...this.byId.values()]);
+  }
+
+  /**
+   * Restore user families carried by a project document (see
+   * `project-families.ts`). The document wins over the local copy for a
+   * family id it carries. Invalid entries are skipped and reported,
+   * never fatal; valid ones are persisted to this project's localStorage
+   * key so the next open finds them even without the document.
+   */
+  restoreUserFamilies(raw: unknown): FamilyRestoreReport {
+    const { valid, skipped } = partitionFamilyDefinitions(raw);
+    for (const def of valid) this.byId.set(def.id, def);
+    if (valid.length) {
+      this.persist();
+      this.emit();
+    }
+    return { restored: valid.length, skipped };
   }
 
   get(id: string): FamilyDefinition | null {
