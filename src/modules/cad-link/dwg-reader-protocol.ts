@@ -57,7 +57,52 @@ export type DwgThumbnailResponse =
 
 export type DwgReaderResponse = DwgParseResponse | DwgThumbnailResponse;
 
+/** Reader-side payload ceiling (issue #90): mirrors the `dwg` file-guard limit
+ * (src/core/file-guard.ts). The main-thread caller checks the File size first;
+ * the worker re-checks the transferred bytes so a malformed request fails as a
+ * typed reader error instead of handing unbounded bytes to the wasm parser. */
+export const DWG_READER_MAX_BYTES = 256 * 1024 * 1024;
+
+/** Longest file name the worker accepts (File names are OS-bounded; this only
+ * stops a hand-built request from smuggling an unbounded string into logs). */
+export const DWG_READER_MAX_FILE_NAME = 1024;
+
 /** Known DWG version stamps (offset 0, 6 ASCII chars) -> human readable label. */
+
+export type DwgReaderRequestValidation =
+  | { ok: true; request: DwgReaderRequest }
+  | { ok: false; id: number | null; message: string };
+
+/**
+ * Validate an incoming reader-worker request BEFORE the bytes reach the wasm
+ * parser (issue #90). Same-origin workers are trusted code, but a buggy or
+ * future caller must fail as a typed `invalid-file` error, never crash the
+ * worker or hang the main thread's parse timeout. Mirrors the solid reader
+ * worker's payload validation.
+ */
+export function validateDwgReaderRequest(req: unknown): DwgReaderRequestValidation {
+  if (!req || typeof req !== "object") {
+    return { ok: false, id: null, message: "The DWG reader received a malformed request (expected an object)." };
+  }
+  const r = req as Record<string, unknown>;
+  const id = typeof r.id === "number" && Number.isSafeInteger(r.id) && r.id >= 0 ? r.id : null;
+  if (id === null) {
+    return { ok: false, id: null, message: "The DWG reader received a request without a valid numeric id." };
+  }
+  if (r.kind !== "parse" && r.kind !== "thumbnail") {
+    return { ok: false, id, message: `The DWG reader received an unknown request kind (${String(r.kind)}).` };
+  }
+  if (!(r.bytes instanceof ArrayBuffer)) {
+    return { ok: false, id, message: "The DWG reader received an invalid file payload (expected file bytes as an ArrayBuffer)." };
+  }
+  if (r.bytes.byteLength === 0 || r.bytes.byteLength > DWG_READER_MAX_BYTES) {
+    return { ok: false, id, message: `The DWG reader received an invalid file payload (expected file bytes up to ${DWG_READER_MAX_BYTES / 1024 / 1024} MB).` };
+  }
+  if (typeof r.fileName !== "string" || r.fileName.length === 0 || r.fileName.length > DWG_READER_MAX_FILE_NAME) {
+    return { ok: false, id, message: "The DWG reader received a request without a valid file name." };
+  }
+  return { ok: true, request: req as DwgReaderRequest };
+}
 const DWG_VERSION_LABELS: Record<string, string> = {
   AC1006: "DWG R10",
   AC1009: "DWG R11/R12",
@@ -99,4 +144,53 @@ export class DwgParseError extends Error {
     this.code = code;
     this.detail = detail;
   }
+}
+
+/* ── Reply validation (main-thread side, issue #90) ───────────────────── */
+/**
+ * The worker is same-origin, but its replies cross a trust boundary too: a
+ * worker that returns `ok: true` with a non-object `doc`, a negative
+ * `entityCount`, or a non-string thumbnail payload must fail as a typed
+ * error — not hand garbage to the CAD link layer. These validators are pure
+ * so node tests can exercise them without spawning a worker.
+ */
+const DWG_ERROR_CODES: ReadonlySet<string> = new Set([
+  "init-failed", "invalid-file", "unsupported-version", "parse-failed", "internal",
+]);
+
+export type DwgParseSuccessData = { doc: unknown; summary: string; version: string; entityCount: number };
+export type DwgThumbSuccessData = { mime: string; dataB64: string };
+
+export function validateDwgParseSuccess(res: unknown):
+  | { ok: true; data: DwgParseSuccessData }
+  | { ok: false; message: string } {
+  if (!res || typeof res !== "object") return { ok: false, message: "The DWG reader returned a malformed response (expected an object)." };
+  const r = res as Record<string, unknown>;
+  if (typeof r.doc !== "object" || r.doc === null) return { ok: false, message: "The DWG reader returned a success without a document object." };
+  if (typeof r.summary !== "string" || typeof r.version !== "string") return { ok: false, message: "The DWG reader returned a success without summary/version strings." };
+  if (!Number.isSafeInteger(r.entityCount) || (r.entityCount as number) < 0) return { ok: false, message: "The DWG reader returned a success with an invalid entity count." };
+  return { ok: true, data: { doc: r.doc, summary: r.summary as string, version: r.version as string, entityCount: r.entityCount as number } };
+}
+
+export function validateDwgThumbSuccess(res: unknown):
+  | { ok: true; data: DwgThumbSuccessData }
+  | { ok: false; message: string } {
+  if (!res || typeof res !== "object") return { ok: false, message: "The DWG reader returned a malformed response (expected an object)." };
+  const r = res as Record<string, unknown>;
+  if (typeof r.mime !== "string" || r.mime.length === 0) return { ok: false, message: "The DWG reader returned a thumbnail without a mime type." };
+  if (typeof r.dataB64 !== "string") return { ok: false, message: "The DWG reader returned a thumbnail without base64 data." };
+  return { ok: true, data: { mime: r.mime as string, dataB64: r.dataB64 as string } };
+}
+
+export function validateDwgFailure(res: unknown):
+  | { ok: true; code: DwgReaderErrorCode; message: string; detail?: string }
+  | { ok: false; message: string } {
+  if (!res || typeof res !== "object") return { ok: false, message: "The DWG reader returned a malformed response (expected an object)." };
+  const r = res as Record<string, unknown>;
+  if (typeof r.code !== "string" || !DWG_ERROR_CODES.has(r.code)) return { ok: false, message: "The DWG reader returned a failure without a known error code." };
+  if (typeof r.message !== "string" || r.message.length === 0) return { ok: false, message: "The DWG reader returned a failure without a message." };
+  const out: { code: DwgReaderErrorCode; message: string; detail?: string } =
+    { code: r.code as DwgReaderErrorCode, message: r.message as string };
+  if (typeof r.detail === "string") out.detail = r.detail;
+  return { ok: true, ...out };
 }

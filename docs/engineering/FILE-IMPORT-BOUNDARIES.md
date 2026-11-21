@@ -34,7 +34,7 @@ These are not JSON payloads and are not routed through `safeLoad`. Each calls th
 | `src/modules/point-cloud/parsers.ts` | LAS | `guardLasHeader` (signature, record length, point count vs file size, data offset) | by parser point cap |
 | `src/modules/point-cloud/point-cloud.ts` | PLY / PCD | size guard | 2 GB |
 
-Failure behaviour: a rejected file throws `FileGuardError` ("… The file was not opened and your project is unchanged."). Callers invoke the guard before any state write, which `tests/file-guard.test.cjs` asserts by source ordering. That is a static ordering proof, not a runtime browser test.
+Failure behaviour: a rejected file throws `FileGuardError` ("… The file was not opened and your project is unchanged."). Callers invoke the guard before any state write, which `tests/file-guard.test.cjs` asserts by source ordering. The runtime counterpart is `tests/e2e/hostile-file-load.spec.ts`, which loads hostile files in a real browser and asserts the live project is unchanged.
 
 Still format-specific and NOT covered by the shared guard: the contents of DWG/DXF/IFC/PDF are validated only by their parsers (isolated worker / child process), RVT/other desktop-only formats are refused outright, and CSV family catalogs use their own row/column limits.
 
@@ -42,25 +42,38 @@ Still format-specific and NOT covered by the shared guard: the contents of DWG/D
 
 `scripts/check-safe-load-coverage.mjs` scans application source (including shell entry points), checks the known JSON import boundaries, and rejects direct `JSON.parse(file.text())`, assigned `File.text()` values parsed without `safeLoad`, and `.then()`-chain parses (`file.text().then((txt) => JSON.parse(txt))` and `file.text().then(JSON.parse)`). The `.then()` shape is what hid the `.markups.json` loader: the parse sat inside a promise callback, invisible to the first two checks. The CI unit battery runs `test:safe-load` and `test:safe-load-audit`; the static audit is a separate required CI step.
 
-## Long-tail triage — remaining `JSON.parse` sites (checked on `main` @ `d19735f`)
+## Long-tail triage — remaining `JSON.parse` sites (checked on `main` @ `d19735f`, updated for the rank-3 completion on `eabab92`)
 
-Full scan: 147 non-clone `JSON.parse` sites in `src/` + `server/` + `api/` + `worker/`. Most are in-memory clones, same-origin preference reads, or undo snapshots of the app's own `JSON.stringify` output — none of those is a file/network/peer boundary and they are grouped at the bottom. The rows below are the sites that *do* touch file, network or peer input. Only the markups loader is fixed by this change; the rest are recorded here so the next audit does not re-litigate them, and the follow-ups are sequenced, not done here.
+Full scan: 147 non-clone `JSON.parse` sites in `src/` + `server/` + `api/` + `worker/`. Most are in-memory clones, same-origin preference reads, or undo snapshots of the app's own `JSON.stringify` output — none of those is a file/network/peer boundary and they are grouped at the bottom. The rows below are the sites that *do* touch file, network or peer input. Status as of this branch (`fix/revit-3-safeload`): the markups loader was fixed by item 3, the GeoJSON / factors / shared-parameters / SSE / CDE / AI-provider / journal rows by the `fix/file-import-boundaries` rebase (import90), and the worker-message rows by the rank-3 remainder work. Only the server rows and the dormant schedule importer remain unguarded, with owners named.
 
 | Site | Input | Guarded? | Risk / follow-up |
 |---|---|---|---|
-| `src/features/cad-viewer.ts:13215` (now `safeLoad`) | `.markups.json` sidecar | **Yes — this change** (`safeLoad` + `MarkupsFileSchema`) | Was the audit escape: `.then()`-chain parse, no size/schema/depth guard. Fixed. |
-| `src/modules/gis/gis-core.ts:21` via `src/features/file-interop.ts:294` (+ `restoreAux`, `:154`) | `.geojson` file / persisted aux blob | **No** — no size or node bound before `JSON.parse`; geometry walk is depth-capped at 8 and coordinates are coerced to finite numbers, props are stringified | Medium — local DoS from a hostile `.geojson`, same failure shape as #231. Follow-up: size guard + complexity cap before parse. |
-| `src/modules/schedule-4d/factor-import.ts:39` via `src/features/timeline-panel.ts:66` | EPD carbon-factor CSV/JSON file | **No** size/depth bound; values are validated (finite, non-negative, unit enum) before merge | Low-medium — worst case is a slow parse, not state corruption. Follow-up: size cap. |
-| `src/modules/families/shared-parameters.ts:206` (`import()`) | Shared-parameter JSON | **No** — array-shape check + per-field `normalize` only, no size/depth bound | Low-medium — no direct file-input caller was found in this pass (registered as the `sharedParameters` feature); verify the caller before deciding the guard. |
+| `src/features/cad-viewer.ts:13215` (now `safeLoad`) | `.markups.json` sidecar | **Yes** (`safeLoad` + `MarkupsFileSchema`) | Was the audit escape: `.then()`-chain parse, no size/schema/depth guard. Fixed (item 3, rebased in this branch). |
+| `src/modules/gis/gis-core.ts:21` via `src/features/file-interop.ts:294` (+ `restoreAux`, `:154`) | `.geojson` file / persisted aux blob | **Yes** — `safeLoad` (20 MB, depth 32, 2M nodes) + 100,000-feature / 5M-vertex walker caps; `__proto__` keys stripped by safeLoad (B37) | Fixed by the import90 rebase in this branch. |
+| `src/modules/schedule-4d/factor-import.ts:39` via `src/features/timeline-panel.ts:66` | EPD carbon-factor CSV/JSON file | **Yes** — 5 MB / 50,000 rows (`FACTORS_MAX_BYTES` / `FACTORS_MAX_ROWS`) | Fixed by the import90 rebase in this branch. |
+| `src/modules/families/shared-parameters.ts:206` (`import()`) | Shared-parameter JSON | **Yes** — 1 MB / 10,000 entries (`SHARED_PARAMETERS_MAX_BYTES` / `SHARED_PARAMETERS_MAX_COUNT`) | Fixed by the import90 rebase in this branch. Still no direct file-input caller in `src/`; the caps apply if one is wired up. |
 | `src/modules/schedules/schedule-store.ts:95` (`importSchedules`) | Schedule JSON | **No** — and dormant: no callers in `src/` | None live. Guard if/when it is wired to a file input. |
-| `src/modules/collaboration/realtime-client.ts:115,124` | SSE presence/change events from the collab server | **No** client-side schema; server bounds change payloads to 2 MB | Medium-low — server is the project's own, token-authenticated; a malicious/buggy peer could still push unshaped data into the store. Follow-up: client-side `RemoteChange` schema. |
-| `src/features/agent-bridge.ts:301` | SSE `agent-order` from the agent relay | **No** schema; `try/catch` + `String()` coercion; orders execute commands | Medium-low — relies on relay token auth + origin allow-list. Relay hardening is item 5 (#92), not this change. |
-| `src/modules/cde/http.ts:20` (`requestJson`) | HTTP JSON from a user-configured CDE provider | **No** size bound; generic `T`, no schema | Low-medium — provider is user-configured and trusted; a misbehaving provider can send unbounded JSON. Follow-up: response size cap. |
-| `src/features/ai-providers.ts:320,458,535` | SSE stream lines from a configured AI provider (Anthropic / OpenAI / Ollama) | **No** per-line size cap; the line buffer grows until a newline arrives | Low — provider is user-configured and key-authenticated; per-line parse failures are skipped. Follow-up: cap the line buffer. |
+| `src/modules/collaboration/realtime-client.ts:115,124` | SSE presence/change events from the collab server | **Yes** — 2 MB event cap (`MAX_SSE_EVENT_BYTES`) + shape checks (presence array, change object with string `clientId`/`type`) | Fixed by the import90 rebase in this branch. |
+| `src/features/agent-bridge.ts:301` | SSE `agent-order` from the agent relay | **Yes** — 2 MB event cap + shape check (`orderId`/`cmd`/`ask` strings) | Fixed by the import90 rebase in this branch. |
+| `src/modules/cde/http.ts:20` (`requestJson`) | HTTP JSON from a user-configured CDE provider | **Yes** — 10 MB response cap (`MAX_JSON_RESPONSE_BYTES`, content-length pre-check + byte-length check before parse) | Fixed by the import90 rebase in this branch. |
+| `src/features/ai-providers.ts:320,458,535` | SSE stream lines from a configured AI provider (Anthropic / OpenAI / Ollama) | **Yes** — 1 MB per-line cap (`MAX_SSE_LINE_BYTES`) in all three streaming loops | Fixed by the import90 rebase in this branch. |
 | `src/modules/rvt/rvt-core.ts:278` (`readGlbJson`) | GLB JSON chunk from the RVT conversion output | Partial — chunk length is checked against the buffer; `try/catch` returns `null` | Low — input is the project's own converter output, not a raw file. |
-| `src/modules/projects/indexeddb-journal.ts:81` (`appendLine`) | Journal op lines from the app's own IndexedDB | **No** — no `try/catch`; a corrupt line rejects the append | Low — same-origin store the app itself wrote; self-inflicted only. |
+| `src/modules/projects/indexeddb-journal.ts:81` (`appendLine`) | Journal op lines from the app's own IndexedDB | **Yes** — corrupt lines now throw a typed error instead of a raw `JSON.parse` throw | Fixed by the import90 rebase in this branch. |
 | `server/index.mjs:91,396,496,567,607`, `server/upload-store.mjs:85` | Server store files + project/room/agent PUT bodies | **No** (see #91 / #92) | Owned by items 4 (#91, corrupt-load hole at `:91`) and 5 (#92, unvalidated PUT bodies) — not this change. |
 | `worker/auth.ts:232`, `worker/index.ts:260` | Worker-side JWT payload / request JSON | Out of scope for #90 file boundaries | Not a browser file import; no change here. |
+
+Worker-message boundaries (not `JSON.parse` sites, recorded here because the
+item-3 triage named them as the remaining gap): the DWG reader worker and
+the clash worker now validate incoming messages, and both clients validate
+replies — see inventory B31. DWG: `validateDwgReaderRequest` (ArrayBuffer,
+1..256 MiB) in `dwg-reader-protocol.ts`, replies via
+`validateDwgParseSuccess` / `validateDwgThumbSuccess` /
+`validateDwgFailure`. Clash: `validateClashWorkerRequest` /
+`validateClashWorkerReply` in `src/modules/clash/clash-worker-protocol.ts`
+(250,000 items, 1,000,000 triangles, finite boxes/coords). Adversarial
+proof: `tests/file-import-hostile.test.cjs` (30 checks). Runtime proof
+that a failed load leaves the project unchanged:
+`tests/e2e/hostile-file-load.spec.ts`.
 
 Not boundaries (no guard needed, recorded so the next audit does not re-litigate them):
 

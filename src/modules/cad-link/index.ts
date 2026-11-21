@@ -19,6 +19,9 @@ import { surveyToProject } from "../project-base-point/types";
 import { setUnderlaySegments, clearUnderlayData } from "../../features/cad-underlay-snap";
 import { getSceneBackground } from "../../features/view-graphics";
 import { uiAlert } from "../../core/notify";
+import {
+  validateDwgFailure, validateDwgParseSuccess, validateDwgThumbSuccess,
+} from "./dwg-reader-protocol";
 
 export * from "./core";
 
@@ -157,16 +160,33 @@ function ensureReaderWorker(): Worker {
     }
     pendingParses.delete(res.id);
     clearTimeout(p.timer);
+    pendingParses.delete(res.id);
+    clearTimeout(p.timer);
     if (p.kind === "thumbnail") {
       const t = res as { ok?: boolean; mime?: string; dataB64?: string; code?: string; message?: string; detail?: string };
-      if (t.ok) p.resolve({ mime: t.mime ?? "image/bmp", dataB64: t.dataB64 ?? "" });
-      else p.reject(new Error(describeDwgError({ code: String(t.code ?? "internal"), message: String(t.message ?? "thumbnail failed"), detail: t.detail })));
+      if (t.ok) {
+        // Validate the success payload (issue #90): a worker that answers
+        // `ok: true` with a non-string thumbnail must fail closed, not hand
+        // garbage to the caller. A malformed reply distrusts the worker, so
+        // the next parse gets a fresh one.
+        const checked = validateDwgThumbSuccess(res);
+        if (!checked.ok) { resetReaderWorker(); p.reject(new Error(checked.message)); return; }
+        p.resolve({ mime: checked.data.mime, dataB64: checked.data.dataB64 });
+      } else {
+        const checked = validateDwgFailure(res);
+        if (!checked.ok) { resetReaderWorker(); p.reject(new Error(checked.message)); return; }
+        p.reject(new Error(describeDwgError({ code: checked.code, message: checked.message, detail: checked.detail })));
+      }
       return;
     }
     if (res.ok) {
-      p.resolve({ doc: res.doc as DxfDocument, summary: res.summary, version: res.version, entityCount: res.entityCount });
+      const checked = validateDwgParseSuccess(res);
+      if (!checked.ok) { resetReaderWorker(); p.reject(new Error(checked.message)); return; }
+      p.resolve({ doc: checked.data.doc as DxfDocument, summary: checked.data.summary, version: checked.data.version, entityCount: checked.data.entityCount });
     } else {
-      p.reject(new Error(describeDwgError(res)));
+      const checked = validateDwgFailure(res);
+      if (!checked.ok) { resetReaderWorker(); p.reject(new Error(checked.message)); return; }
+      p.reject(new Error(describeDwgError({ code: checked.code, message: checked.message, detail: checked.detail })));
     }
   });
   readerWorker.addEventListener("error", (ev: ErrorEvent) => {

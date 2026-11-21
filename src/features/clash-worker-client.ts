@@ -18,6 +18,7 @@ import {
   type ClashRules,
   type ElementClash,
 } from "../modules/clash/clash-core";
+import { validateClashWorkerReply } from "../modules/clash/clash-worker-protocol";
 import type { ClashCoreItem } from "../modules/clash/clash-core";
 
 // -- Unified cancel signal -----------------------------------------------
@@ -147,7 +148,24 @@ function rehydrateClash(s: SerializedClash): ElementClash {
 }
 
 function onWorkerMessage(e: MessageEvent<InMessage>): void {
-  const msg = e.data;
+  // Validate the reply before touching it (issue #90): an unvalidated
+  // `result` used to be rehydrated blindly, so a malformed reply threw
+  // inside this handler and left the pending request hanging. A malformed
+  // reply rejects the pending request and terminates the worker, so the
+  // next run gets a fresh one (fail-closed, like the error path).
+  const checked = validateClashWorkerReply(e.data);
+  if (!checked.ok) {
+    console.error("[clash-worker] malformed reply from worker", checked.message);
+    if (checked.requestId) {
+      const p = pending.get(checked.requestId);
+      if (p) { pending.delete(checked.requestId); p.reject(new Error(checked.message)); }
+    }
+    if (worker) { try { worker.terminate(); } catch { /* */ } worker = null; }
+    return;
+  }
+  // The validator proved the shape; the local InMessage type is the same
+  // contract, so this cast is sound.
+  const msg = checked.reply as unknown as InMessage;
   const p = pending.get(msg.requestId);
   if (!p) return;
 

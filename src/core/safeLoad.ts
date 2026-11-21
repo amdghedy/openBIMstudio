@@ -61,7 +61,43 @@ export function safeLoad<T>(file: string, raw: string,
   const parsed = schema.safeParse(json);
   if (!parsed.success) return { ok: false, error: { stage: "schema", file,
     issues: parsed.error.issues.map((i) => `${i.path.length ? i.path.join(".") : "<root>"}: ${i.message}`) } };
-  return { ok: true, value: parsed.data };
+  return { ok: true, value: stripProtoKeys(parsed.data) };
+}
+
+/**
+ * Defense in depth against prototype pollution (issue #90): no safeLoad
+ * schema declares a `__proto__` field, so a `__proto__` own-key in a file
+ * can never be legitimate data — but several schemas are deliberately
+ * permissive (`.passthrough()`, `z.record`, `z.unknown()` elements), so one
+ * would survive into the returned value. A consumer that later does
+ * `Object.assign(target, value)` or a deep merge would then mutate the
+ * target's prototype. Strip every `__proto__` own-key at any depth before
+ * the value leaves safeLoad. `constructor` / `prototype` keys are left
+ * alone: assigning them as own properties is inert, and no consumer in this
+ * tree deep-merges untrusted data (verified: the only deep merge,
+ * `i18n.deepMerge`, runs over shipped locale catalogues, never file data).
+ * Iterative walk; the visited set guards against a cycle if a schema ever
+ * returns a cyclic value.
+ */
+export function stripProtoKeys<T>(value: T): T {
+  const seen = new Set<object>();
+  const pending: unknown[] = [value];
+  while (pending.length) {
+    const current = pending.pop()!;
+    if (current === null || typeof current !== "object") continue;
+    if (seen.has(current)) continue;
+    seen.add(current);
+    if (Array.isArray(current)) {
+      for (const child of current) pending.push(child);
+      continue;
+    }
+    const record = current as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(record, "__proto__")) {
+      delete record["__proto__"];
+    }
+    for (const key of Object.keys(record)) pending.push(record[key]);
+  }
+  return value;
 }
 
 export const LegacyProjectJsonSchema = z.object({

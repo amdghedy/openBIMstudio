@@ -13,6 +13,9 @@ import {
   type ClashRules,
   type ElementClash,
 } from "../modules/clash/clash-core";
+import {
+  validateClashWorkerRequest,
+} from "../modules/clash/clash-worker-protocol";
 import type { Tri } from "../modules/clash/geometry";
 
 type InMessage =
@@ -110,26 +113,36 @@ function post(msg: OutMessage): void {
 self.addEventListener("message", (event: MessageEvent<InMessage>) => {
   const data = event.data;
 
-  if (data.type === "cancel") {
-    cancelled.add(data.requestId);
+  // Validate the request before any item is deserialized (issue #90): clash
+  // items come from model geometry, and model geometry comes from files, so
+  // an unbounded or NaN item list would otherwise OOM or hang the worker.
+  // A rejected request is a typed error reply, never a crash or a hang.
+  const checked = validateClashWorkerRequest(data);
+  if (!checked.ok) {
+    if (checked.requestId !== null) {
+      post({ type: "error", requestId: checked.requestId, message: checked.message });
+    }
+    return;
+  }
+  const req = checked.request;
+  if (req.type === "cancel") {
+    cancelled.add(req.requestId);
     return;
   }
 
-  if (data.type !== "run") return;
-
-  const { requestId } = data;
+  const { requestId } = req;
   cancelled.delete(requestId);
 
   void (async () => {
     try {
-      const items = data.items.map(deserializeItem);
+      const items = req.items.map(deserializeItem);
 
       const clashes = await runClashCore(items, {
-        rules: data.rules,
-        method: data.method,
-        groups: data.groups,
-        selfPairs: data.selfPairs,
-        ...(data.sides ? { sides: data.sides } : {}),
+        rules: req.rules,
+        method: req.method,
+        groups: req.groups,
+        selfPairs: req.selfPairs,
+        ...(req.sides ? { sides: req.sides } : {}),
         onProgress: (p) => post({ type: "progress", requestId, progress: p }),
         shouldCancel: () => cancelled.has(requestId),
         yield: () => Promise.resolve(),

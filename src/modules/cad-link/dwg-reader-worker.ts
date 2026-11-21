@@ -9,30 +9,43 @@
  * wasm asset from the same origin.
  */
 import { parseDwgBytes, extractDwgThumbnail, toDwgParseError } from "./dwg-parse-core";
+import { validateDwgReaderRequest } from "./dwg-reader-protocol";
 import type { DwgReaderRequest, DwgReaderResponse } from "./dwg-reader-protocol";
 
 self.addEventListener("message", (ev: MessageEvent<DwgReaderRequest>) => {
   const req = ev.data;
-  if (!req || typeof req.id !== "number") return;
   const post = (res: DwgReaderResponse) => (self as unknown as Worker).postMessage(res);
-  if (req.kind === "thumbnail") {
-    post({ id: req.id, kind: "started" });
-    extractDwgThumbnail(req.bytes, req.fileName)
-      .then((thumb): DwgReaderResponse => ({ id: req.id, kind: "thumbnail", ok: true, mime: thumb.mime, dataB64: thumb.dataB64 }))
+  // Validate the request payload before the bytes reach the wasm parser
+  // (issue #90): a malformed request fails as a typed `invalid-file` error
+  // instead of crashing the worker or hanging the main thread's timeout.
+  // Without a numeric id there is no pending entry to answer, so drop it.
+  const checked = validateDwgReaderRequest(req);
+  if (!checked.ok) {
+    if (checked.id !== null) {
+      post((req as { kind?: unknown } | null)?.kind === "thumbnail"
+        ? { id: checked.id, kind: "thumbnail", ok: false, code: "invalid-file", message: checked.message }
+        : { id: checked.id, ok: false, code: "invalid-file", message: checked.message });
+    }
+    return;
+  }
+  const valid = checked.request;
+  if (valid.kind === "thumbnail") {
+    post({ id: valid.id, kind: "started" });
+    extractDwgThumbnail(valid.bytes, valid.fileName)
+      .then((thumb): DwgReaderResponse => ({ id: valid.id, kind: "thumbnail", ok: true, mime: thumb.mime, dataB64: thumb.dataB64 }))
       .catch((e): DwgReaderResponse => {
         const { code, message, detail } = toDwgParseError(e);
-        return { id: req.id, kind: "thumbnail", ok: false, code, message, detail };
+        return { id: valid.id, kind: "thumbnail", ok: false, code, message, detail };
       })
       .then(post);
     return;
   }
-  if (req.kind !== "parse") return;
   // Ack before touching the bytes: the worker processes messages sequentially,
   // so this also tells the main thread when its parse timer actually starts.
-  post({ id: req.id, kind: "started" });
-  parseDwgBytes(req.bytes, req.fileName)
+  post({ id: valid.id, kind: "started" });
+  parseDwgBytes(valid.bytes, valid.fileName)
     .then((res): DwgReaderResponse => ({
-      id: req.id,
+      id: valid.id,
       ok: true,
       doc: res.doc,
       summary: res.summary,
@@ -41,7 +54,7 @@ self.addEventListener("message", (ev: MessageEvent<DwgReaderRequest>) => {
     }))
     .catch((e): DwgReaderResponse => {
       const { code, message, detail } = toDwgParseError(e);
-      return { id: req.id, ok: false, code, message, detail };
+      return { id: valid.id, ok: false, code, message, detail };
     })
     .then((res) => {
       // Transfer the doc back; DxfDocument is plain JSON data.

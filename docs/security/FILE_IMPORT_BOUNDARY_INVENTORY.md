@@ -1,7 +1,15 @@
 # File Import Boundary Inventory
 
-Issue #90 — complete file-import security. Base: `main` @ `e8e5afb`
-(2026-11-20). Branch: `fix/file-import-boundaries`.
+Issue #90 — complete file-import security. Base: `main` @ `eabab92`
+(2026-11-21). Branch: `fix/revit-3-safeload` (Revit parity rank 3).
+
+This branch rebases the `fix/file-import-boundaries` inventory (base
+`e8e5afb`) and the `fix/safeload-markups-audit` (item 3) and
+`fix/las-guard-full-buffer` (item LAS) branches onto `eabab92`, and adds
+the remaining rank-3 work: prototype-pollution hardening in safeLoad,
+DWG/clash worker message + reply validation, and the runtime browser
+proof that a failed load leaves the project unchanged. Boundaries B1–B36
+are the import90 inventory; B37 is new in this branch.
 
 This is the authoritative inventory of every untrusted input boundary in
 openBIMstudio: every place a file, archive, URL response, worker message or
@@ -424,10 +432,10 @@ Per-format size ceilings (`FILE_LIMITS`, `src/core/file-guard.ts`):
   `complexity`).
 - **Regression test:** `tests/safe-load.test.cjs` (markups cases),
   `tests/safe-load-coverage-audit.test.cjs`.
-- **Status:** **Pending elsewhere** — implemented on branch
-  `fix/safeload-markups-audit` (commit `57a3041`, item 3), not merged to
-  main and not part of this PR. The code on main still parses this file
-  with a bare `JSON.parse` in a `.then()` chain.
+- **Status:** **Guarded + tested** — landed in this branch: the
+  `fix/safeload-markups-audit` commit (`57a3041`, item 3) rebased onto
+  `eabab92` as `14a1d58`. Main `eabab92` still parses this file with a bare
+  `JSON.parse` in a `.then()` chain; this branch is the fix.
 
 ### B19 — Saved views (localStorage JSON)
 
@@ -580,13 +588,12 @@ Per-format size ceilings (`FILE_LIMITS`, `src/core/file-guard.ts`):
 - **Error behaviour:** `FileGuardError`; file not opened.
 - **Regression test:** `tests/file-guard.test.cjs`,
   `tests/point-cloud-parsers.test.cjs` (15 checks).
-- **Status:** **Pending elsewhere** — PR #240's guard is wired, but
-  `parseLas` passes only the first 4,096 bytes to `guardLasHeader`, so
-  every real LAS file with more than ~148–193 declared points is falsely
-  rejected. The one-line fix (pass the full buffer) is on branch
-  `fix/las-guard-full-buffer` (commit `4db20ed`, item LAS), not merged.
-  The guard contract itself is pinned by a test in this PR's suite
-  (guard accepts the 1,000-point header over the full buffer).
+- **Status:** **Guarded + tested** — landed in this branch: the
+  `fix/las-guard-full-buffer` commit (`4db20ed`, item LAS) rebased onto
+  `eabab92` as `441158d`. `parseLas` now passes the full buffer to
+  `guardLasHeader`, so valid LAS files with >~148–193 declared points are
+  accepted; the 1,000-point regression case is in
+  `tests/point-cloud-parsers.test.cjs`.
 
 ### B28 — Drag-and-drop and file inputs (transport, not formats)
 
@@ -677,19 +684,33 @@ Per-format size ceilings (`FILE_LIMITS`, `src/core/file-guard.ts`):
     reply validated — see B15).
   - DWG reader: `src/modules/cad-link/dwg-reader-worker.ts` (protocol in
     `dwg-reader-protocol.ts`); main thread `src/modules/cad-link/index.ts:133`.
-  - Clash worker: `src/features/clash-worker-client.ts:91`.
+    Request validated by `validateDwgReaderRequest` (ArrayBuffer, 1..256 MiB,
+    `parse`|`thumbnail`, file name) before the wasm parser runs; replies
+    validated by `validateDwgParseSuccess` / `validateDwgThumbSuccess` /
+    `validateDwgFailure` before the CAD link layer sees them.
+  - Clash worker: `src/features/clash-worker-client.ts:91`; worker
+    `src/workers/clash.worker.ts`. Requests validated by
+    `validateClashWorkerRequest` in `src/modules/clash/clash-worker-protocol.ts`
+    (items ≤ 250,000, triangles ≤ 1,000,000, finite boxes with min ≤ max,
+    finite triangle coordinates, rules/method/groups shape) before any item
+    is deserialized; replies validated by `validateClashWorkerReply` in
+    `onWorkerMessage` before rehydration.
 - **Validation:** workers are same-origin and created by the app; the
-  threat model is a buggy caller, not a remote attacker. The solid and
-  RVT workers now validate payload shape and fail typed instead of
-  hanging; the DWG and clash workers were not changed by this PR.
+  threat model is a buggy caller, not a remote attacker — plus hostile
+  geometry reaching the engine, since clash items come from model geometry
+  and model geometry comes from files. Every worker now validates payload
+  shape and fails typed instead of hanging: solid and RVT (pre-existing),
+  DWG and clash (added by this branch, rank 3).
 - **Error behaviour:** typed failure posted back; the main thread's
-  per-request timeout rejects pending calls.
+  per-request timeout rejects pending calls. A malformed clash reply
+  rejects the pending request and terminates the worker (fail-closed);
+  a malformed DWG reply rejects and respawns the reader worker.
 - **Regression test:** `tests/solid-reader-isolation.test.cjs`,
   `tests/dwg-reader-isolation.test.cjs`, `tests/dwg-worker-lifecycle.test.cjs`,
-  `tests/file-import-boundaries.test.cjs` (solid worker validation).
-- **Status:** Guarded + tested for solid/RVT; DWG/clash worker message
-  validation is unchanged and has no adversarial-message test — see
-  "Boundaries without test evidence".
+  `tests/file-import-boundaries.test.cjs` (solid worker validation),
+  `tests/file-import-hostile.test.cjs` (DWG request/reply + clash
+  request/reply adversarial cases, 30 checks).
+- **Status:** Guarded + tested for all four workers.
 
 ### B32 — Live collaboration SSE (presence / changes)
 
@@ -807,6 +828,36 @@ Per-format size ceilings (`FILE_LIMITS`, `src/core/file-guard.ts`):
 - **Status:** Guarded via the format boundaries. No test evidence for the
   CustomEvent bridge's file handling beyond the format tests.
 
+### B37 — Prototype pollution via permissive JSON schemas (cross-cutting)
+
+- **Entry points:** every `safeLoad` call site whose schema is deliberately
+  permissive: `GeoJsonSchema` (`.passthrough()`), `LegacyProjectJsonSchema`
+  (`.passthrough()`), `ProjectFileSchema.doc` (`z.record`), clash-scenario
+  `z.unknown()` elements — see B12, B16, B17, B20.
+- **File type:** any JSON file routed through safeLoad.
+- **Validation:** `safeLoad` now strips every `__proto__` own-key at any
+  depth from the schema-validated value before returning it
+  (`stripProtoKeys` in `src/core/safeLoad.ts`, added by this branch, rank 3).
+  No safeLoad schema declares a `__proto__` field, so the strip can never
+  remove legitimate data; a `__proto__` key inside a GeoJSON feature's
+  properties is dropped and the feature still imports. `constructor` /
+  `prototype` keys are preserved as inert data: assigning them as own
+  properties cannot pollute `Object.prototype`, and no consumer in this
+  tree deep-merges untrusted data (verified: the only deep merge,
+  `i18n.deepMerge`, runs over shipped locale catalogues registered in
+  `locale-boot.ts`, never file data).
+- **Size limit:** the safeLoad call site's own limits.
+- **Complexity limit:** the safeLoad call site's own limits.
+- **Parser:** safeLoad.
+- **Isolation:** main thread; the strip runs on the zod output, which is
+  freshly built, so no caller-owned object is mutated.
+- **Error behaviour:** n/a — keys are removed, the load proceeds.
+- **Regression test:** `tests/file-import-hostile.test.cjs` (sections A–C):
+  root / nested / array `__proto__` payloads, `constructor.prototype`
+  payloads, hostile GeoJSON properties, hostile project docs — each
+  asserting `({}).polluted === undefined` afterwards.
+- **Status:** Guarded + tested.
+
 ## Non-boundaries (recorded so the next audit does not re-litigate them)
 
 - In-memory JSON clones / undo snapshots (`plan-view-panel.ts`,
@@ -836,33 +887,39 @@ Honest list — these are inventoried but have no regression test proving
 the rejection, for the stated reason. Do not close #90 on the strength of
 this document alone.
 
-1. **Runtime "failed load leaves the project unchanged" browser test.**
-   The ordering proofs in `tests/file-import-boundaries.test.cjs` are
-   static (source-index) checks, as are the ordering proofs in
-   `tests/file-guard.test.cjs`. No Playwright test loads a hostile file in
-   a real browser and asserts the active project is byte-identical
-   afterwards. Open.
-2. **DWG / DXF / IFC / PDF parser internals.** The guards bound size,
+Closed in this branch (rank 3) — kept here as the record of what was open:
+
+- ~~Runtime "failed load leaves the project unchanged" browser test.~~
+  Closed by `tests/e2e/hostile-file-load.spec.ts`: a wall is authored in
+  a real browser, then truncated `.obs.json`, oversized `.geojson`,
+  prototype-pollution `.geojson`, garbage `.ifc` and truncated `.ifczip`
+  are fed through the real import pipeline; the project snapshot is
+  identical after each, `Object.prototype` stays clean, and there are no
+  uncaught page errors. A valid GeoJSON control proves the harness can
+  tell acceptance from rejection.
+- ~~DWG / clash worker message validation (B31).~~ Closed by
+  `tests/file-import-hostile.test.cjs` (sections D–G): DWG request/reply
+  and clash request/reply adversarial cases, 30 checks.
+- ~~Markups sidecar (B18) / LAS false rejection (B27).~~ Both landed in
+  this branch via rebase (see B18 / B27).
+
+Still open:
+
+1. **DWG / DXF / IFC / PDF parser internals.** The guards bound size,
    signature and archive structure; malformed content *inside* those
    bounds is handled by the parsers (LibreDWG, web-ifc, pdf-lib, the
    in-repo DXF reader). IFC parser timeouts are issue #231 (separate
    workstream); DWG/DXF have no malformed-input fuzz corpus.
-3. **Three.js mesh loaders (B14).** No per-loader malformed-input
+2. **Three.js mesh loaders (B14).** No per-loader malformed-input
    fixtures; bounded only by the 200 MB size limit.
-4. **DWG / clash worker message validation (B31).** The DWG and clash
-   workers do not validate incoming message shape the way the solid and
-   RVT workers now do.
-5. **Drop-handler DOM wiring (B28).** The drop handlers themselves are
-   browser-only; only the format boundaries they feed are tested.
-6. **RVT on a real `.rvt` file (B15).** No issued deliverable has ever
+3. **Drop-handler DOM wiring (B28).** The drop handlers themselves are
+   browser-only. The browser spec above drives the same `importFiles`
+   pipeline the drop handlers feed, but a synthetic DOM `drop` event
+   with real files has never been dispatched in a test.
+4. **RVT on a real `.rvt` file (B15).** No issued deliverable has ever
    been opened in the tool it was issued for; the in-browser RVT decode
    has only ever run on synthetic fixtures.
-7. **Markups sidecar (B18)** — fixed on `fix/safeload-markups-audit`,
-   not merged; the code on main is still unguarded.
-8. **LAS false rejection (B27)** — fixed on `fix/las-guard-full-buffer`,
-   not merged; valid LAS files with >~148–193 points are still rejected
-   on main.
-9. **Server-side closed-format signatures (B30).** RVT/NWD/NWC uploads
+5. **Server-side closed-format signatures (B30).** RVT/NWD/NWC uploads
    are accepted with `signatureChecked: false` — there is no public magic
    to verify; documented limitation, not a bug that can be fixed in-repo.
 
@@ -904,5 +961,37 @@ this document alone.
   `package.json` + `scripts/ci-unit-tests.mjs` — new suite wired in.
 
 Nothing in this PR merges, closes #90, or changes a limit that existing
-tests depend on. The two pending branches (B18 markups, B27 LAS) are
-deliberately not duplicated here.
+tests depend on.
+
+## What changed in the rank-3 completion (this branch, vs main @ eabab92)
+
+Rebase of the work above plus the two branches it deliberately did not
+duplicate, then the remainder:
+
+- `fix/safeload-markups-audit` (`57a3041`) rebased as `14a1d58`:
+  `MarkupsFileSchema` + safeLoad-routed `load-mk` handler, `.then()`-chain
+  detection in `scripts/check-safe-load-coverage.mjs`, 8 required
+  boundaries (B18).
+- `fix/las-guard-full-buffer` (`4db20ed`) rebased as `441158d`: full
+  buffer to `guardLasHeader` (B27).
+- `src/core/safeLoad.ts` — `stripProtoKeys`: every `__proto__` own-key
+  stripped from validated output at any depth (B37).
+- `src/modules/cad-link/dwg-reader-protocol.ts` + `dwg-reader-worker.ts`
+  + `src/modules/cad-link/index.ts` — DWG request validation
+  (ArrayBuffer, 1..256 MiB) and reply validation, fail-closed with
+  worker respawn (B31).
+- `src/modules/clash/clash-worker-protocol.ts` (new) +
+  `src/workers/clash.worker.ts` + `src/features/clash-worker-client.ts`
+  — clash request validation (250,000 items, 1,000,000 triangles, finite
+  boxes/coords) and reply validation before rehydration (B31).
+- `tests/file-import-hostile.test.cjs` (new) — 30 adversarial checks:
+  prototype pollution, DWG/clash worker request + reply validation.
+- `tests/e2e/hostile-file-load.spec.ts` (new) — the runtime browser
+  proof: hostile loads leave the live project unchanged.
+- `package.json` + `scripts/ci-unit-tests.mjs` — `test:file-import-hostile`
+  wired in.
+
+Still not closed by this branch: parser internals (DWG/DXF/IFC/PDF fuzz),
+three.js mesh-loader fixtures, the DOM `drop` event itself, RVT on a real
+`.rvt`, server-side closed-format signatures — see "Boundaries without
+test evidence" above.
