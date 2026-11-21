@@ -93,7 +93,7 @@ export const RIBBON_TAB_ORDER: readonly RibbonTabOrder[] = [
   {
     id: "structure",
     label: "Structure",
-    groups: ["Framing", "Found", "Connections", "Truss Builder", "Rebar", "Properties"],
+    groups: ["Framing", "Foundations", "Connections", "Truss Builder", "Reinforcement", "Properties"],
   },
   {
     id: "systems",

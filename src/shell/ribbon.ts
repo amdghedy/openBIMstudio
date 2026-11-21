@@ -513,6 +513,55 @@ function toolBtn(icon: IconName, label: string, tool: string, kbd = ""): HTMLBut
   );
 }
 
+/* ── G6: M2 placement buttons ────────────────────────────────────────────
+ * Stairs / Railing / Roof / Ceiling are Milestone-2 placement tools
+ * (src/modules/bim-gaps/m2-tools.ts): click points in the viewport, Esc
+ * cancels. They must be started with startM2Tool directly — NOT with
+ * toolBtn. toolBtn calls the module-level setAuthoringTool, which
+ * bypasses the M2 redirect installed on ctx.features.authoring
+ * (installM2Redirects), and the authoring click handler has no case for
+ * these tools, so a toolBtn leaves a dead tool active. Order pinned by
+ * src/shell/ribbon-draw-order.ts. */
+function m2Btn(
+  icon: IconName,
+  label: string,
+  kind: "stairs" | "railing" | "roof" | "ceiling",
+  kbd = "",
+  shape: "straight" | "L" | "U" = "straight",
+): HTMLButtonElement {
+  return b(
+    icon,
+    label,
+    safe(async () => {
+      const { startM2Tool } = await import("../modules/bim-gaps/m2-tools");
+      startM2Tool(kind, shape);
+    }, label),
+    { kbd, title: `${label} placement tool — click points in the viewport (Esc cancels)` },
+  );
+}
+
+/* ── G6: Model Group button ──────────────────────────────────────────────
+ * Revit's Model Group creates a group from the current selection (then
+ * instances can be placed from it). Same flow as the GP shortcut
+ * (bim-input-compatibility.ts): prompt for a name, group the selection. */
+function modelGroupButton(): HTMLButtonElement {
+  return b(
+    "component",
+    "Model Group",
+    safe(async () => {
+      const ids = selectedAuthored().map((e) => e.id);
+      if (!ids.length) { toast("Select elements to group first", "info"); return; }
+      const { promptLine } = await import("../features/form-modal");
+      const name = await promptLine("Create group", "Group name:", "Group");
+      if (name == null) return;
+      const g = (window as any).__obsGroups?.createFromSelection?.(name, ids, true);
+      if (g) toast(`Group "${name}" created`, "success");
+      else toast("Groups module not loaded", "warn");
+    }, "Model group"),
+    { kbd: "GP", title: "Group the selected elements into a model group (Revit: Model Group)" },
+  );
+}
+
 function safe(fn: Action, label = "action"): Action {
   return async () => {
     try {
@@ -926,19 +975,30 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     label: "Architecture",
     items: () => [
       groupLabel("Build"),
+      // G6 — Revit Build order (src/shell/ribbon-draw-order.ts):
+      // Wall, Door, Window, Component, Column, Roof, Ceiling, Floor,
+      // Curtain Wall, Railing, Ramp, Stair, Room, Model Line, Model Group.
+      // Door/Window moved here from Openings; Beam moved out (Structure
+      // only); Roof/Ceiling/Railing/Stair are M2 placement tools (m2Btn).
       toolBtn("wall", "Wall", "wall", "WA"),
-      toolBtn("floor", "Floor", "slab", "SL"),
-      toolBtn("roof", "Roof", "roof"),
-      toolBtn("column", "Column", "column", "CM"),
-      toolBtn("beam", "Beam", "beam", "BM"),
-      toolBtn("component", "Comp", "equipment"),
-      bimObjectStudioButton(),
-      toolBtn("ceiling", "Ceiling", "ceiling"),
-      toolBtn("ramp", "Ramp", "ramp", "RM"),
-      sep(),
-      groupLabel("Openings"),
       toolBtn("door", "Door", "door", "DR"),
       toolBtn("window", "Window", "window", "WN"),
+      toolBtn("component", "Comp", "equipment"),
+      bimObjectStudioButton(),
+      toolBtn("column", "Column", "column", "CM"),
+      m2Btn("roof", "Roof", "roof", "RF"),
+      m2Btn("ceiling", "Ceiling", "ceiling", "CL"),
+      toolBtn("floor", "Floor", "slab", "SL"),
+      toolBtn("wall", "Curtain Wall", "curtain-wall", "CW"),
+      m2Btn("railing", "Railing", "railing", "RA"),
+      // Ramp has no shortcut: the old "RM" kbd label was wrong, RM is Room.
+      toolBtn("ramp", "Ramp", "ramp"),
+      m2Btn("stairs", "Stair", "stairs", "ST", "straight"),
+      toolBtn("room", "Room", "room", "RM"),
+      toolBtn("mline", "Model Line", "mline"),
+      modelGroupButton(),
+      sep(),
+      groupLabel("Openings"),
       toolBtn("opening", "Opening", "opening"),
       toolBtn("shaft", "Shaft", "shaft"),
       b("opening", "Hosted Opening", safe(() => void openHostedOpeningDialog(), "Hosted opening (v68)"), {
@@ -966,10 +1026,14 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       levelInput(),
       sep(),
       groupLabel("Circulation"),
-      b("stairs", "Stairs", safe(() => {
-        (window as any).__obsStairs?.buildStair?.({});
-        toast("Stairs created (straight run)", "success");
-      }, "Stairs"), { title: "Build a straight-run stair" }),
+      // G6 — Stair is a placement tool now: click the run start, then the
+      // run end (Shift = orthogonal, Esc = cancel). The straight run sits
+      // in Build (Revit order); L/U shapes live here. Winder / Spiral
+      // have no placement session (stairs.ts builds at a fixed origin and
+      // M2 geometry has no winder/spiral shape), so they stay instant-build
+      // rather than being dropped — see ribbon-draw-order.ts deviations.
+      m2Btn("stairs", "Stair L-Shape", "stairs", "", "L"),
+      m2Btn("stairs", "Stair U-Shape", "stairs", "", "U"),
       b("stairs", "Winder", safe(() => {
         (window as any).__obsStairs?.buildStair?.({ runType: "winder" });
         toast("Winder stair created", "success");
@@ -1082,17 +1146,23 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     label: "Structure",
     items: () => [
       groupLabel("Framing"),
+      // G6 — Revit Structure panel order: Beam, Brace, Column, Wall, Floor,
+      // Truss. Beam System (Revit position 2) does not exist — no engine
+      // support; see ribbon-draw-order.ts deviations.
       toolBtn("beam", "Beam", "beam", "BM"),
-      toolBtn("column", "Column", "column", "CM"),
       toolBtn("brace", "Brace", "brace", "BR"),
-      toolBtn("truss", "Truss", "truss", "TS"),
+      toolBtn("column", "Column", "column", "CM"),
       toolBtn("wall", "Wall", "wall"),
       toolBtn("floor", "Floor", "slab"),
+      toolBtn("truss", "Truss", "truss", "TS"),
       sep(),
-      groupLabel("Found"),
-      toolBtn("footing", "Pad", "footing", "FT"),
-      toolBtn("strip", "Strip", "strip", "SF"),
-      toolBtn("slab", "Mat", "slab"),
+      // G6 — group renamed to Revit's "Foundations"; buttons renamed to
+      // Revit's Isolated / Wall / Slab (same footing / strip / slab tools).
+      // Pile is kept after Slab as a product extra (no Revit counterpart).
+      groupLabel("Foundations"),
+      toolBtn("footing", "Isolated", "footing", "FT"),
+      toolBtn("strip", "Wall", "strip", "SF"),
+      toolBtn("slab", "Slab", "slab"),
       toolBtn("pile", "Pile", "pile"),
       sep(),
       groupLabel("Connections"),
@@ -1135,7 +1205,10 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast("Fink truss built", "success");
       }, "Fink"), { title: "Build a Fink truss" }),
       sep(),
-      groupLabel("Rebar"),
+      // G6 — group renamed to Revit's "Reinforcement". Area / Path / Fabric
+      // reinforcement do not exist (no engine support); the group keeps the
+      // working tools: Generate Rebar, Export BBS, Clash Review.
+      groupLabel("Reinforcement"),
       b("rebar", "Generate Rebar", safe(() => {
         (window as any).__obsRebarViewport?.generate?.();
       }, "Generate rebar"), { title: "Generate 3D rebar inside the selected beam/column/footing" }),
