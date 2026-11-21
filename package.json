@@ -341,8 +341,7 @@
     "test:critical-workflow-packs-34567": "node tests/critical-workflow-packs-34567.test.cjs",
     "test:critical-workflow-pack-8": "node tests/critical-workflow-pack-8.test.cjs",
     "test:safe-load": "node tests/safe-load.test.cjs",
-    "test:safe-load-audit": "node tests/safe-load-coverage-audit.test.cjs"
-  },
+    "test:safe-load-audit": "node tests/safe-load-coverage-audit.test.cjs"  },
   "dependencies": {
     "@emotion/react": "^11.11.4",
     "@emotion/styled": "^11.11.5",

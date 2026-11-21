@@ -15,7 +15,6 @@
 const { execSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
-const os = require("node:os");
 
 let pass = 0;
 let fail = 0;
@@ -36,8 +35,15 @@ function throws(fn, substr) {
 
 // ── Compile ─────────────────────────────────────────────────────────────
 const root = path.resolve(__dirname, "..");
-const tmpOut = fs.mkdtempSync(path.join(os.tmpdir(), "obs-family-hosting-"));
+// Compile INSIDE the repo (not os.tmpdir()): placement.ts imports
+// parametric-engine.ts (Slice 1), which requires "three", and node can
+// only resolve it from inside the repo tree. Same pattern as
+// tests/parametric-voids-sweeps-lofts.test.cjs.
+const tmpOut = fs.mkdtempSync(path.join(root, ".family-hosting-test-"));
 fs.writeFileSync(path.join(tmpOut, "package.json"), '{"type": "commonjs"}');
+process.on("exit", () => {
+  try { fs.rmSync(tmpOut, { recursive: true, force: true }); } catch { /* */ }
+});
 execSync(
   "npx tsc --rootDir src --outDir " + JSON.stringify(tmpOut) +
   " --module commonjs --moduleResolution node --target ES2022 --skipLibCheck --noCheck" +

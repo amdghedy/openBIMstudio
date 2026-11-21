@@ -586,13 +586,18 @@ function gripSize(point: THREE.Vector3): number {
   if (!camera || !host) return 0.07;
   const pixels = 8;
   if (camera.isOrthographicCamera) {
-    return Math.max(0.025, Math.min(0.12,
-      Math.abs((camera.top - camera.bottom) / (camera.zoom || 1)) / Math.max(1, host.clientHeight) * pixels));
+    // Screen-constant: the world size of `pixels` on screen. There is no
+    // upper clamp on purpose — the formula already yields exactly 8 px at
+    // any zoom, and clamping it (as the old 0.12 m cap did) shrank the
+    // grip to ~1 px when zoomed out, making it unclickable. The lower
+    // bound only stops it vanishing when the camera is very close.
+    return Math.max(0.025,
+      Math.abs((camera.top - camera.bottom) / (camera.zoom || 1)) / Math.max(1, host.clientHeight) * pixels);
   }
   const distance = Math.max(0.1, camera.position.distanceTo(point));
   const fov = THREE.MathUtils.degToRad(camera.fov ?? 50);
-  return Math.max(0.025, Math.min(0.16,
-    2 * distance * Math.tan(fov / 2) * pixels / Math.max(1, host.clientHeight)));
+  return Math.max(0.025,
+    2 * distance * Math.tan(fov / 2) * pixels / Math.max(1, host.clientHeight));
 }
 
 function addConstraintLine(

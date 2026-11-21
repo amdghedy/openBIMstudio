@@ -186,6 +186,16 @@ function toast(message: string, kind: ToastKind = "info", ms = 2400): void {
     el.classList.add("obs-toast--out");
     setTimeout(() => el.remove(), 250);
   }, ms);
+  // Ribbon toasts used to render only — they never reached the obs-toast
+  // bus, so event listeners (the toast log a browser test reads, the
+  // toolbox/browser refresh triggers) never saw them. Dispatch the event
+  // too, marked fromRibbon so the bridge below does not render a second
+  // copy; the bus is the single observation path for every toast.
+  try {
+    window.dispatchEvent(new CustomEvent("obs-toast", {
+      detail: { kind, message, timeout: ms, fromRibbon: true },
+    }));
+  } catch { /* non-browser env */ }
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -377,6 +387,53 @@ async function openMassFloorsDialog(): Promise<void> {
     else rows.push({ mass: m.name ?? m.id });
   }
   await showObjectsDialog("Mass floors", rows, `${masses.length} mass(es)`);
+}
+
+/** Convert one conceptual mass into native authored elements (Revit parity Rank 6). */
+async function openMassToElementsDialog(): Promise<void> {
+  const mc = (window as any).__obsMass;
+  if (!mc) { toast("Mass module not loaded", "warn"); return; }
+  const masses = mc.list();
+  if (!masses.length) { toast("No masses created yet", "info"); return; }
+  let mass = masses[0];
+  if (masses.length > 1) {
+    const { openFormModal } = await import("../features/form-modal");
+    const r = await openFormModal({
+      title: "Mass to Elements",
+      subtitle: "Convert one conceptual mass into native walls, floors and roof.",
+      fields: [
+        { kind: "select", key: "mass", label: "Mass", default: masses[0].id,
+          options: masses.map((m: any) => [m.id, m.name ?? m.id] as [string, string]) },
+      ],
+      submitLabel: "Convert",
+    });
+    if (!r) return;
+    mass = masses.find((m: any) => m.id === String(r.mass)) ?? masses[0];
+  }
+  const authoring = (window as any).__obsAuthoring;
+  if (typeof authoring?.createElementByType !== "function") { toast("Authoring is not ready", "warn"); return; }
+  try {
+    const { convertMassToElements } = await import("../modules/parametric/mass-to-elements");
+    const report = await convertMassToElements(mass, {
+      createElement: (type, params) => authoring.createElementByType(type, params),
+    });
+    const { showObjectsDialog } = await import("../features/form-modal");
+    const rows: Array<Record<string, unknown>> = report.created.map((c) => ({
+      face: c.faceIndex, classified: c.suggestedType, element: c.elementType,
+      area: `${c.areaM2.toFixed(2)} m²`, id: c.elementId,
+    }));
+    for (const s of report.skipped) {
+      rows.push({ face: s.faceIndex, classified: s.suggestedType, element: "— skipped", area: "", id: s.reason });
+    }
+    await showObjectsDialog(
+      `Mass to elements — ${mass.name ?? mass.id}`,
+      rows,
+      `${report.created.length} element(s) created${report.skipped.length ? `, ${report.skipped.length} skipped` : ""}`,
+    );
+    toast(`Created ${report.created.length} element(s) from "${mass.name ?? mass.id}"`, "success");
+  } catch (e) {
+    toast(`Mass conversion failed: ${(e as Error).message}`, "error");
+  }
 }
 
 function exportKeynoteLegendCsv(count: number): void {
@@ -1004,6 +1061,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("mass", "Mass Floors", safe(async () => {
         await openMassFloorsDialog();
       }, "Mass floors"), { title: "Extract mass floor areas from conceptual masses" }),
+      b("mass", "Mass to Elements", safe(async () => {
+        await openMassToElementsDialog();
+      }, "Mass to elements"), { title: "Convert a conceptual mass into native walls, floors and roof" }),
       sep(),
       groupLabel("Properties"),
       propertiesButton(),
@@ -1940,6 +2000,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("mass", "Mass Floors", safe(async () => {
         await openMassFloorsDialog();
       }, "Mass floors"), { title: "Slice mass into mass floors per level" }),
+      b("mass", "Mass to Elements", safe(async () => {
+        await openMassToElementsDialog();
+      }, "Mass to elements"), { title: "Convert a conceptual mass into native walls, floors and roof" }),
     ],
   },
 
@@ -3625,6 +3688,7 @@ export function setupRibbon() {
   // Bridge notify + legacy obs-toast → ribbon toast (single path, no double-fire)
   window.addEventListener("obs-toast", ((e: CustomEvent) => {
     const d = e.detail ?? {};
+    if (d.fromRibbon) return; // already rendered by toast(); the event is for other listeners
     const kind = d.kind ?? "info";
     const message = String(d.message ?? "");
     const timeout = d.timeout ?? d.ms ?? (kind === "error" ? 6000 : 2400);

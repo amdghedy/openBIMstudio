@@ -2223,7 +2223,7 @@ function createMeshBase(el: AuthoredElement): THREE.Object3D | null {
   }
 
   const mat = new THREE.MeshLambertMaterial({ color });
-  if (el.type === "slab") mat.side = THREE.DoubleSide;
+  if (el.type === "slab" || el.type === "roof" || el.type === "ceiling") mat.side = THREE.DoubleSide;
   let mesh: THREE.Mesh | null = null;
 
   if (p.start && p.end) {
@@ -2286,7 +2286,13 @@ function createMeshBase(el: AuthoredElement): THREE.Object3D | null {
     mesh.position.y = p.elevation;
   }
 
-  if (!mesh && el.type === "slab" && p.polygon && p.polygon.length >= 3) {
+  // Polygon slabs, roofs and ceilings share one builder: a flat extrusion
+  // of the footprint by params.height at params.elevation. Roofs used to
+  // fall through this branch (the old guard was slab-only), so a
+  // type-"roof" element existed in the store but rendered nothing — the
+  // mass-to-elements conversion's roof was invisible. The ribbon Roof
+  // tool never showed this because it draws type-"slab" elements.
+  if (!mesh && (el.type === "slab" || el.type === "roof" || el.type === "ceiling") && p.polygon && p.polygon.length >= 3) {
     // Sloped floor: properties.slope (%) + properties.slopeDirection (deg,
     // 0 = +X) drive the sloped-floor engine (modules/floors). The lowest
     // edge stays at params.elevation — the slope-arrow tail convention.
@@ -2309,14 +2315,14 @@ function createMeshBase(el: AuthoredElement): THREE.Object3D | null {
       const holes = verticalOpeningHolePaths(el);
       if (holes.length) {
         console.warn(
-          `[authoring] slab ${el.id} is sloped with ${holes.length} vertical opening(s): ` +
+          `[authoring] ${el.type} ${el.id} is sloped with ${holes.length} vertical opening(s): ` +
           "hole punching on sloped slabs is not supported yet — openings are drawn flat. " +
           "Set slope back to 0 or move the openings to a flat slab.",
         );
       }
     } else {
       if (slopePct > 0.01) {
-        console.warn(`[authoring] sloped-floor geometry rejected for slab ${el.id} (slope ${slopePct}% out of range or degenerate polygon) — rendering flat.`);
+        console.warn(`[authoring] sloped-floor geometry rejected for ${el.type} ${el.id} (slope ${slopePct}% out of range or degenerate polygon) — rendering flat.`);
       }
       const shape = new THREE.Shape();
       p.polygon.forEach(([x, z], i) => (i === 0 ? shape.moveTo(x, -z) : shape.lineTo(x, -z)));
