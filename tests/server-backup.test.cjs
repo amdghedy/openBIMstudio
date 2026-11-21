@@ -75,3 +75,28 @@ const { pathToFileURL } = require("node:url");
   r = m.readJsonWithRecovery(path.join(d2, "absent.json"), 7); assert.strictEqual(r.value, 7);
   console.log("=== server backup integrity: all assertions passed ===");
 })().catch((e) => { console.error(e); process.exit(1); });
+
+// ── Same-timestamp ordering (fixed clock) ──
+(async () => {
+  const m = await import(pathToFileURL(path.join(__dirname, "..", "server", "backup.mjs")));
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "obs-backup-clock-"));
+  const f = path.join(d, "projects.json");
+  const realIso = Date.prototype.toISOString;
+  Date.prototype.toISOString = () => "2026-01-01T00:00:00.000Z"; // every backup gets the same timestamp
+  try {
+    for (let v = 1; v <= 12; v++) m.writeJsonWithBackup(f, { v });
+  } finally {
+    Date.prototype.toISOString = realIso;
+  }
+  const backups = m.listBackups(f);
+  assert.strictEqual(backups.length, m.BACKUP_KEEP, "retention keeps exactly BACKUP_KEEP with a frozen clock");
+  // Each backup holds the state before one write: after 12 writes, backups of v=1..11 exist and the newest BACKUP_KEEP (v=7..11) are kept.
+  const versions = backups.map((b) => JSON.parse(fs.readFileSync(b, "utf8")).v);
+  const expected = Array.from({ length: m.BACKUP_KEEP }, (_, i) => 12 - m.BACKUP_KEEP + i);
+  assert.deepStrictEqual(versions, expected, `same-millisecond backups must stay in write order, got ${versions}`);
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(f, "utf8")), { v: 12 });
+  console.log("=== server backup: same-timestamp ordering passed ===");
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
