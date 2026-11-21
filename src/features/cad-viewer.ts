@@ -21,7 +21,8 @@
  */
 
 import { readCadFile } from "../modules/cad-link/index";
-import { BlockLibrary, makeBlock, instantiateBlock, blockToDocument, blockExtent, validateBlockName, type BlockDef } from "../modules/drawings/cad-blocks";
+import { makeBlock, instantiateBlock, blockToDocument, blockExtent, validateBlockName, type BlockDef } from "../modules/drawings/cad-blocks";
+import { blockLib, persistBlockLib } from "../modules/drawings/block-library-store";
 import { importSvg } from "../modules/drawings/svg-import";
 import { FIELD_KINDS, evaluateField, type FieldKind } from "../modules/drawings/cad-fields";
 import { aciToRgb, rgbToCss } from "../modules/drawings/aci";
@@ -526,19 +527,6 @@ let xmlPicker: HTMLInputElement | null = null;
 let tabs: DocTab[] = [];
 let active: DocTab | null = null;
 let nextTabId = 1;
-/** Block library shared by every drawing tab; persisted in this browser. */
-const BLOCK_LIB_KEY = "obs.cad.blocks";
-const blockLib: BlockLibrary = (() => {
-  try {
-    const raw = localStorage.getItem(BLOCK_LIB_KEY);
-    if (raw) return BlockLibrary.fromJSON(JSON.parse(raw)).lib;
-  } catch { /* storage unavailable or corrupt: start empty */ }
-  return new BlockLibrary();
-})();
-/** Returns false when the browser refused to store (quota), so the caller can say so. */
-function persistBlockLib(): boolean {
-  try { localStorage.setItem(BLOCK_LIB_KEY, JSON.stringify(blockLib.toJSON())); return true; } catch { return false; }
-}
 /** Shared cross-drawing clipboard (COPYCLIP in one tab, PASTECLIP in another). */
 let clip: CadClip | null = null;
 
@@ -7789,7 +7777,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           const nm = `PasteBlock_${Date.now().toString(36)}`;
           const def = makeBlock(nm, moved, { x: p.x, y: p.y }, doc?.layers as any, "PASTEBLOCK");
           blockLib.add(def, true);
-          try { localStorage.setItem(BLOCK_LIB_KEY, JSON.stringify(blockLib.toJSON())); } catch { /* */ }
+          persistBlockLib();
           const placed = instantiateBlock(def, def.base, { scale: 1, rotation: 0 });
           addEntities(placed);
           logCmd(`PASTEBLOCK: created block "${nm}" and inserted at pick.`);
