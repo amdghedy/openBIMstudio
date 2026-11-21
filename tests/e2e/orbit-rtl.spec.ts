@@ -253,7 +253,8 @@ DATA;
   return head + body.join('\n') + '\n' + rel + '\nENDSEC;\nEND-ISO-10303-21;\n';
 }
 
-test('PROFILE: orbit a 1,600-wall model with the CPU profiler on (prints the hottest functions)', async ({ page }) => {
+test('PROFILE: orbit a 1,600-wall model with the CPU profiler on (prints the hottest functions)', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'uses the Chrome DevTools Protocol CPU profiler (Chromium-only API); not a product limitation');
   test.setTimeout(240000);
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
