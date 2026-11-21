@@ -47,6 +47,7 @@ import { getNorthState, onNorthChanged, planRotationDeg, setNorthState, formatNo
 import { edgeMidpoint, insertVertex, removeVertex, moveVertex, isValidBoundary } from "../modules/views/boundary-edit";
 import { toolState } from "../modules/views/tools";
 import { findPlanSnap as findPlanFeatureSnap, snapSvgMarkup, type PlanSnapHit } from "../modules/views/plan-snap";
+import { resolveDoubleClickAction } from "../modules/double-click/double-click-dispatch";
 import {
   generatePlanView,
   listAvailableLevels,
@@ -4523,6 +4524,19 @@ window.addEventListener("mouseup", () => {
   planDimDrag = null;
   if (dr.moved) { recordDims("Move dimension", dr.before); footerStatus("Dimension moved - Ctrl+Z undo"); }
 });
+/**
+ * G5: run `modify.typeProperties` from the plan view. bim-experience owns
+ * the command, and it imports this module, so the call goes through the
+ * window handle (same pattern as ribbon.ts) with a dynamic-import fallback.
+ */
+function openTypePropertiesForPlan(): void {
+  const exp: any = (window as any).__obsBIMExperience;
+  if (typeof exp?.execute === "function") { exp.execute("modify.typeProperties"); return; }
+  void import("./bim-experience").then((m: any) => {
+    m.executeBimCommand?.("modify.typeProperties");
+  }).catch(() => { /* */ });
+}
+
 canvasWrap.addEventListener("dblclick", async (e) => {
   if (planMode !== "select") return;
   const w = clientToWorld(e.clientX, e.clientY);
@@ -4553,17 +4567,37 @@ canvasWrap.addEventListener("dblclick", async (e) => {
     return;
   }
   const d = w ? hitDimension(w.x, w.z) : null;
-  if (!d) return;
-  e.preventDefault(); e.stopPropagation();
-  const cur = d.textOverride ?? "";
-  const next = await promptLine("Dimension text", "Dimension text (leave empty to show the measured value)", cur);
-  if (next == null) return;
-  const beforeSnap = dimSnapshot();
-  const txt = next.trim();
-  if (txt) d.textOverride = txt; else delete d.textOverride;
-  recordDims("Edit dimension text", beforeSnap);
-  planDimSel = d;
-  if (currentPlan) renderPlan(currentPlan);
+  if (d) {
+    e.preventDefault(); e.stopPropagation();
+    const cur = d.textOverride ?? "";
+    const next = await promptLine("Dimension text", "Dimension text (leave empty to show the measured value)", cur);
+    if (next == null) return;
+    const beforeSnap = dimSnapshot();
+    const txt = next.trim();
+    if (txt) d.textOverride = txt; else delete d.textOverride;
+    recordDims("Edit dimension text", beforeSnap);
+    planDimSel = d;
+    if (currentPlan) renderPlan(currentPlan);
+    return;
+  }
+  // G5: double-click a model element opens Type Properties for it.
+  // Annotations and dimensions keep priority above; empty space falls
+  // through to the fitPlanView listener below (unchanged).
+  const near = w ? nearestAuthoredAt(w) : { element: null, distance: 0 };
+  if (near.element) {
+    const action = resolveDoubleClickAction(
+      { kind: "authored-element", elementId: String(near.element.id) },
+      { view: "plan", shiftKey: e.shiftKey },
+    );
+    if (action.kind === "open-type-properties") {
+      e.preventDefault(); e.stopPropagation();
+      setPlanSelectedElement(near.element, "replace");
+      openTypePropertiesForPlan();
+      return;
+    }
+    // Shift+double-click resolves to fit-element; the plan has no
+    // per-element fit, so fall through to the whole-view fit below.
+  }
 }, true);
 
 // Middle-button pan (BIM). Shift+left drag pans only in Navigate/Pan: while placing, Shift = ortho constraint.
