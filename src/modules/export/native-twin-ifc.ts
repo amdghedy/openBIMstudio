@@ -24,10 +24,29 @@ export interface TwinIfcSource {
   geometry?: { positions?: number[] | Float32Array };
 }
 
+/**
+ * Encode text as an ISO 10303-21 string body (without the surrounding quotes).
+ * STEP rules: an apostrophe is doubled (`''`), a backslash is doubled (`\\`), and any character outside printable ASCII
+ * (including control characters and newlines) is written as `\X2\<UTF-16 hex>\X0\`. The former `\'` form ended the
+ * string early in every conforming reader, so a name such as "Owner's room" produced a corrupt file.
+ */
 function esc(s: string): string {
-  return String(s ?? "")
-    .replace(/\\/g, "\\\\")
-    .replace(/'/g, "\\'");
+  const str = String(s ?? "");
+  let out = "";
+  let wide = "";
+  const flush = () => { if (wide) { out += `\\X2\\${wide}\\X0\\`; wide = ""; } };
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i); // UTF-16 code unit: surrogate pairs stay as two units, as \X2\ requires
+    if (code >= 0x20 && code <= 0x7e) {
+      flush();
+      const ch = str[i];
+      out += ch === "'" ? "''" : ch === "\\" ? "\\\\" : ch;
+    } else {
+      wide += code.toString(16).toUpperCase().padStart(4, "0");
+    }
+  }
+  flush();
+  return out;
 }
 
 /**
