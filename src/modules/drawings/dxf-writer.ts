@@ -6,6 +6,7 @@
 import type { DxfDocument, DxfEntity, DxfLayer, DxfPoint, DxfViewport } from "./dxf-types";
 import { ensureLinetypes, fontDxfFile, isTrueTypeFont, lineweightToDxf, linetypesInUse } from "./cad-styles";
 import { TEXT_LINE_PITCH } from "../cad-viewer/viewer-math";
+import { nativeIfValid, splineDxfBody, ellipseDxfBody } from "./native-curves";
 
 function pair(code: number, value: string | number): string {
   return `${code}\n${value}\n`;
@@ -281,6 +282,10 @@ function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TE
     s += pair(51, e.endAngle);
   } else if (hatchEntities && e.type === "LWPOLYLINE" && e.hatch && !e.hatch.wipeout && e.hatch.loops.some((l) => l.length >= 3)) {
     s += writeHatch(e);
+  } else if (e.type === "LWPOLYLINE" && !legacyPrologue && nativeIfValid(e)) {
+    const n = nativeIfValid(e)!;
+    s += entityHead(e, n.kind);
+    s += n.kind === "SPLINE" ? splineDxfBody(n, pair) : ellipseDxfBody(n, pair);
   } else if (e.type === "LWPOLYLINE") {
     s += entityHead(e, "LWPOLYLINE");
     s += pair(90, e.points.length);

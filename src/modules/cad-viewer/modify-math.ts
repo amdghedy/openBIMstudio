@@ -12,6 +12,7 @@
  */
 
 import type { DxfEntity, DxfPoint, DxfHatch } from "../drawings/dxf-types";
+import { carryNative, type AffineOps } from "../drawings/native-curves";
 
 export interface Pt {
   x: number;
@@ -60,7 +61,7 @@ function mapHatch(h: DxfHatch, f: (p: Pt) => Pt): DxfHatch {
 
 /* ── Entity transforms ── */
 
-export function translateEnt(e: DxfEntity, dx: number, dy: number): DxfEntity {
+function translateEntCore(e: DxfEntity, dx: number, dy: number): DxfEntity {
   switch (e.type) {
     case "LINE":
       return { ...e, start: translatePt(e.start, dx, dy), end: translatePt(e.end, dx, dy) };
@@ -86,7 +87,7 @@ export function translateEnt(e: DxfEntity, dx: number, dy: number): DxfEntity {
 }
 
 /** Rotates counter-clockwise by `deg` around (cx, cy). */
-export function rotateEnt(e: DxfEntity, cx: number, cy: number, deg: number): DxfEntity {
+function rotateEntCore(e: DxfEntity, cx: number, cy: number, deg: number): DxfEntity {
   const rad = deg * DEG;
   switch (e.type) {
     case "LINE":
@@ -135,7 +136,7 @@ export function rotateEnt(e: DxfEntity, cx: number, cy: number, deg: number): Dx
 }
 
 /** Mirrors across the infinite line through a→b. Text stays readable (MIRRTEXT=0). */
-export function mirrorEnt(e: DxfEntity, a: Pt, b: Pt): DxfEntity {
+function mirrorEntCore(e: DxfEntity, a: Pt, b: Pt): DxfEntity {
   switch (e.type) {
     case "LINE":
       return { ...e, start: mirrorPt(e.start, a, b), end: mirrorPt(e.end, a, b) };
@@ -185,7 +186,7 @@ export function mirrorEnt(e: DxfEntity, a: Pt, b: Pt): DxfEntity {
   }
 }
 
-export function scaleEnt(e: DxfEntity, cx: number, cy: number, k: number): DxfEntity {
+function scaleEntCore(e: DxfEntity, cx: number, cy: number, k: number): DxfEntity {
   if (!Number.isFinite(k) || k <= 0) return e;
   switch (e.type) {
     case "LINE":
@@ -1517,5 +1518,38 @@ export function stretchEnts(ents: DxfEntity[], win: { minX: number; minY: number
         // Stretch moves the anchor; the direction is relative and unchanged.
         return inside(e.start) ? translateEnt(e, dp.x, dp.y) : e;
     }
+  });
+}
+
+
+/* ── Native SPLINE / ELLIPSE data follows affine edits (see drawings/native-curves.ts) ── */
+const carry = (src: DxfEntity, out: DxfEntity, ops: AffineOps): DxfEntity =>
+  out !== src && src.type === "LWPOLYLINE" && out.type === "LWPOLYLINE" ? carryNative(src, out, ops) : out;
+
+export function translateEnt(e: DxfEntity, dx: number, dy: number): DxfEntity {
+  return carry(e, translateEntCore(e, dx, dy), { pt: (p) => ({ x: p.x + dx, y: p.y + dy }), vec: (v) => v });
+}
+
+export function rotateEnt(e: DxfEntity, cx: number, cy: number, deg: number): DxfEntity {
+  const rad = deg * DEG, c = Math.cos(rad), sn = Math.sin(rad);
+  return carry(e, rotateEntCore(e, cx, cy, deg), {
+    pt: (p) => rotatePt(p, { x: cx, y: cy }, rad),
+    vec: (v) => ({ x: v.x * c - v.y * sn, y: v.x * sn + v.y * c }),
+  });
+}
+
+export function mirrorEnt(e: DxfEntity, a: Pt, b: Pt): DxfEntity {
+  const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+  return carry(e, mirrorEntCore(e, a, b), {
+    pt: (p) => mirrorPt(p, a, b),
+    vec: (v) => { const d = v.x * ux + v.y * uy; return { x: 2 * d * ux - v.x, y: 2 * d * uy - v.y }; },
+    reflect: true,
+  });
+}
+
+export function scaleEnt(e: DxfEntity, cx: number, cy: number, k: number): DxfEntity {
+  return carry(e, scaleEntCore(e, cx, cy, k), {
+    pt: (p) => scalePt(p, { x: cx, y: cy }, k),
+    vec: (v) => ({ x: v.x * k, y: v.y * k }),
   });
 }

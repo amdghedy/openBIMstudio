@@ -39,6 +39,7 @@ import { convertMleader, convertTable, convertMline, convertImage, convertTolera
 import { aciToRgb } from "./aci";
 import type { MlineStyle } from "./acad-extra-entities";
 import { convertHelix, convertMesh, convertPolyface, convertPolygonMesh, convertSolidWire } from "./acad-solid-entities";
+import { attachNative } from "./native-curves";
 
 type Any = Record<string, any>;
 
@@ -503,7 +504,16 @@ function convertEntity(e: Any, cx: Ctx, depth: number, insertLayer: string | nul
         cx.skip("SPLINE (no usable points)");
         return [];
       }
-      return [{ ...c, type: "LWPOLYLINE", points: pts, closed: e.closed === true }];
+      const spl: any = { ...c, type: "LWPOLYLINE", points: pts, closed: e.closed === true };
+      const w = Array.isArray(e.weights) ? e.weights.map(Number) : [];
+      if (ctrl.length >= 2 && knots.length === ctrl.length + deg + 1 && knots.every(Number.isFinite)) {
+        attachNative(spl, {
+          kind: "SPLINE", degree: deg, closed: e.closed === true, controlPoints: ctrl, knots,
+          ...(w.length === ctrl.length && w.every(Number.isFinite) ? { weights: w } : {}),
+          ...(fit.length ? { fitPoints: fit } : {}),
+        });
+      }
+      return [spl];
     }
     case "ELLIPSE": {
       const center = pt(e.center);
@@ -513,7 +523,11 @@ function convertEntity(e: Any, cx: Ctx, depth: number, insertLayer: string | nul
       const a1raw = Number(e.endParam ?? Math.PI * 2);
       const closed = Math.abs(a1raw - a0 - Math.PI * 2) < 1e-9;
       const pts = ellipsePoints(center, maj, ratio, a0, closed ? a0 + Math.PI * 2 : a1raw);
-      return [{ ...c, type: "LWPOLYLINE", points: pts, closed }];
+      const ell: any = { ...c, type: "LWPOLYLINE", points: pts, closed };
+      if (Number.isFinite(center.x + center.y + maj.x + maj.y + ratio + a0 + a1raw) && ratio > 0) {
+        attachNative(ell, { kind: "ELLIPSE", center, majorAxis: maj, ratio, startParam: a0, endParam: closed ? a0 + Math.PI * 2 : a1raw });
+      }
+      return [ell];
     }
     case "TEXT":
     case "ATTRIB":

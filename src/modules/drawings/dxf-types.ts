@@ -24,6 +24,8 @@ export interface DxfLayer {
   plot?: boolean;
 }
 
+import type { NativeCurve } from "./native-curves";
+
 /** Fields every entity carries. */
 interface DxfEntityBase {
   layer: string;
@@ -131,6 +133,12 @@ export type DxfEntity =
       closed?: boolean;
       /** Present when this polyline is the boundary of a hatch / solid fill. */
       hatch?: DxfHatch;
+      /**
+       * True SPLINE / ELLIPSE definition behind this tessellated polyline (see native-curves.ts).
+       * Only valid while `nativeSig` matches the current points.
+       */
+      native?: NativeCurve;
+      nativeSig?: string;
     })
   | (DxfEntityBase & {
       type: "TEXT";
