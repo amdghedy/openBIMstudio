@@ -293,3 +293,6 @@ probe shows that reading is transient post-boot settling, not retention
 | `bench/check-budgets.mjs` | `scripts/budget.json` enforcement |
 | `bench/results/*.json` | raw measurement files (baseline + after) |
 | `bench/fixtures/` | deterministic IFC corpus + checksums |
+
+## Budget gate semantics (fail-closed)
+`node bench/check-budgets.mjs [--require bundle,import,node]` — default requires `bundle`. A required check whose input is missing, malformed, or non-finite **fails** (non-zero exit); non-required missing inputs print `SKIPPED <check>` on stderr. Import/node checks need `bench/results/{browser,node}-after.json` produced by `bench-browser.mjs` / `bench-node.mjs`; CI does not yet produce them, so only the bundle budget is a blocking release gate today. Tested by `tests/perf-budget-gate.test.cjs`.

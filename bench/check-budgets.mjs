@@ -10,85 +10,95 @@
  * bench/bench-node.mjs (never fabricates). Exit 1 on any breach.
  *
  * Usage:
- *   node bench/check-budgets.mjs [--results browser-after] [--node-results node-after]
+ *   node bench/check-budgets.mjs [--require bundle,import,node] [--results browser-after] [--node-results node-after]
+ *
+ * FAIL-CLOSED: a check named by --require (default: bundle) that cannot be evaluated — missing dist/, missing or
+ * malformed results JSON, missing large-fixture entry, non-finite metric — is a FAILURE, never a skip.
+ * Checks not required are reported as SKIPPED (visibly) when their input is absent, but still fail on a breach.
+ * OBS_BENCH_ROOT overrides the repository root (used by tests).
  */
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const budget = JSON.parse(readFileSync(path.join(root, "scripts", "budget.json"), "utf8"));
-const resultsDir = path.join(root, "bench", "results");
-
-const brName = (() => {
-  const i = process.argv.indexOf("--results");
-  return i > 0 ? process.argv[i + 1] : "browser-after";
-})();
-const ndName = (() => {
-  const i = process.argv.indexOf("--node-results");
-  return i > 0 ? process.argv[i + 1] : "node-after";
-})();
+const root = process.env.OBS_BENCH_ROOT ? path.resolve(process.env.OBS_BENCH_ROOT) : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const arg = (name, dflt) => { const i = process.argv.indexOf(name); return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : dflt; };
+const required = new Set(arg("--require", "bundle").split(",").map((x) => x.trim()).filter(Boolean));
+const brName = arg("--results", "browser-after");
+const ndName = arg("--node-results", "node-after");
 
 let failed = 0;
 const fail = (msg) => { console.error("  BUDGET FAIL:", msg); failed++; };
 const ok = (msg) => console.log("  budget ok:", msg);
+/** Missing input: failure when the check is required, otherwise a visible skip. */
+const missing = (check, msg) => { if (required.has(check)) fail(`${check}: ${msg} (required)`); else console.warn(`  SKIPPED ${check}: ${msg}`); };
+const finite = (v) => typeof v === "number" && Number.isFinite(v);
+
+let budget;
+try { budget = JSON.parse(readFileSync(path.join(root, "scripts", "budget.json"), "utf8")); }
+catch (e) { console.error("  BUDGET FAIL: scripts/budget.json unreadable or malformed:", e.message); process.exit(1); }
+const resultsDir = path.join(root, "bench", "results");
+
+function readJson(file) {
+  try { return { value: JSON.parse(readFileSync(file, "utf8")) }; }
+  catch (e) { return { error: e.code === "ENOENT" ? "file missing" : "malformed JSON: " + e.message }; }
+}
 
 // ── bundle ───────────────────────────────────────────────────────────────
 {
   const assetsDir = path.join(root, "dist", "assets");
-  if (!existsSync(assetsDir)) {
-    console.warn("  (dist/ missing — run npm run build first; bundle budget skipped)");
-  } else {
+  if (!existsSync(assetsDir)) missing("bundle", "dist/assets missing — run the production build first");
+  else {
     const budgetKB = budget.bundle?.maxMainJsKB ?? 2500;
-    // "main" = the largest non-vendor, non-worker entry chunk (index-*.js)
     const files = readdirSync(assetsDir).filter((f) => /^index-.*\.js$/.test(f));
-    let worst = 0;
-    for (const f of files) {
-      const kb = readFileSync(path.join(assetsDir, f)).length / 1024;
-      if (kb > worst) worst = kb;
+    if (!files.length) missing("bundle", "no index-*.js main chunk found in dist/assets");
+    else {
+      let worst = 0;
+      for (const f of files) worst = Math.max(worst, readFileSync(path.join(assetsDir, f)).length / 1024);
+      if (worst <= budgetKB) ok(`main bundle ${Math.round(worst)} KB ≤ ${budgetKB} KB`);
+      else fail(`main bundle ${Math.round(worst)} KB > ${budgetKB} KB`);
     }
-    if (worst <= budgetKB) ok(`main bundle ${Math.round(worst)} KB ≤ ${budgetKB} KB`);
-    else fail(`main bundle ${Math.round(worst)} KB > ${budgetKB} KB`);
   }
 }
 
-// ── import (large fixture) ───────────────────────────────────────────────
+// ── import (large fixture, browser measurement) ──────────────────────────
 {
-  const p = path.join(resultsDir, `${brName}.json`);
-  if (!existsSync(p)) {
-    console.warn(`  (${brName}.json missing — run bench/bench-browser.mjs first; import budgets skipped)`);
-  } else {
-    const b = JSON.parse(readFileSync(p, "utf8"));
-    const large = b.suites?.["ifc-load"]?.large;
-    if (large) {
+  const r = readJson(path.join(resultsDir, `${brName}.json`));
+  if (r.error) missing("import", `${brName}.json ${r.error}`);
+  else {
+    const large = r.value.suites?.["ifc-load"]?.large;
+    if (!large) missing("import", "no large entry in suites.ifc-load");
+    else if (!finite(large.loadTotalMs) || large.loadTotalMs <= 0) fail(`import: loadTotalMs invalid (${large.loadTotalMs})`);
+    else {
       const maxS = budget.import?.maxSeconds ?? 60;
       if (large.loadTotalMs / 1000 <= maxS) ok(`large load ${(large.loadTotalMs / 1000).toFixed(1)} s ≤ ${maxS} s`);
       else fail(`large load ${(large.loadTotalMs / 1000).toFixed(1)} s > ${maxS} s`);
       const maxMB = budget.import?.maxPeakMB ?? 1500;
-      if (large.heapAfterMB > 0 && large.heapAfterMB <= maxMB) ok(`large heap ${large.heapAfterMB} MB ≤ ${maxMB} MB`);
-      else if (large.heapAfterMB > maxMB) fail(`large heap ${large.heapAfterMB} MB > ${maxMB} MB`);
-    } else {
-      console.warn("  (no large entry in results; import budget skipped)");
+      if (!finite(large.heapAfterMB)) missing("import", "heapAfterMB missing or non-finite");
+      else if (large.heapAfterMB <= maxMB) ok(`large heap ${large.heapAfterMB} MB ≤ ${maxMB} MB`);
+      else fail(`large heap ${large.heapAfterMB} MB > ${maxMB} MB`);
     }
   }
 }
 
-// ── node: keep parse under the import budget too (CPU upper bound) ───────
+// ── node: parse the large fixture under the import budget (CPU upper bound) ──
 {
-  const p = path.join(resultsDir, `${ndName}.json`);
-  if (existsSync(p)) {
-    const n = JSON.parse(readFileSync(p, "utf8"));
-    const large = n.suites?.["ifc-parse"]?.large;
-    const maxS = budget.import?.maxSeconds ?? 60;
-    if (large && large.parseMs) {
-      if (large.parseMs.median / 1000 <= maxS) ok(`node parse large ${(large.parseMs.median / 1000).toFixed(2)} s ≤ ${maxS} s`);
-      else fail(`node parse large ${(large.parseMs.median / 1000).toFixed(2)} s > ${maxS} s`);
+  const r = readJson(path.join(resultsDir, `${ndName}.json`));
+  if (r.error) missing("node", `${ndName}.json ${r.error}`);
+  else {
+    const med = r.value.suites?.["ifc-parse"]?.large?.parseMs?.median;
+    if (med === undefined) missing("node", "no suites.ifc-parse.large.parseMs.median");
+    else if (!finite(med) || med <= 0) fail(`node: parse median invalid (${med})`);
+    else {
+      const maxS = budget.import?.maxSeconds ?? 60;
+      if (med / 1000 <= maxS) ok(`node parse large ${(med / 1000).toFixed(2)} s ≤ ${maxS} s`);
+      else fail(`node parse large ${(med / 1000).toFixed(2)} s > ${maxS} s`);
     }
   }
 }
 
 if (failed) {
-  console.error(`=== Perf budget: ${failed} breach(es) ===`);
+  console.error(`=== Perf budget: ${failed} failure(s) ===`);
   process.exit(1);
 }
-console.log("=== Perf budget: all checks passed ===");
+console.log("=== Perf budget: all evaluated checks passed ===");
