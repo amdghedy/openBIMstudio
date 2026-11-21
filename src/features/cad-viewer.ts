@@ -676,6 +676,8 @@ export function openCadViewer(file?: File): void {
     // Keyboard ownership: while a drawing tab is active the BIM global shortcut
     // registry yields the drawing-editor shortcuts to this viewer (see shortcuts.ts).
     (window as any).__obsCadOwnsKeys = () => !!active && !!shell && shell.style.display !== "none";
+    // Read-only probe for browser tests (rejected imports must leave the drawing unchanged).
+    (window as any).__obsCadEntityCount = () => ribbonActive?.aiSnapshot().entityCount ?? -1;
   } catch {
     /* */
   }
