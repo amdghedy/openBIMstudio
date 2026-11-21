@@ -34,11 +34,13 @@ jobs:
         run: npm i --no-save @playwright/test@1.57.0 && npx playwright install --with-deps ${{ matrix.browser }}
       - name: Build production app for browser tests
         run: npm run build
-      - name: Boot diagnostic (fast, prints the real failure message)
-        # Added because every Firefox test timed out at ~33 s with no visible reason and the 25-minute job limit
-        # cancelled the run before any error was printed.
+      - name: Boot probe (prints console, page errors and WebGL status)
         continue-on-error: true
-        run: npx playwright test --project=${{ matrix.browser }} tests/e2e/smoke.spec.ts -g "boots" --retries=0 --max-failures=1 --reporter=list
+        run: |
+          npm run preview -- --host 127.0.0.1 > /tmp/preview.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:3000/ >/dev/null && break; sleep 1; done
+          node scripts/browser-boot-probe.mjs ${{ matrix.browser }}
+          kill %1 || true
       - name: Run browser specs
         # document-chain = the core authoring→documentation→export chain in a
         # real browser (production bundle); edit-undo-save = state round-trip.
