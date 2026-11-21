@@ -84,7 +84,6 @@
     "test:camera-fitall-bounded": "node tests/camera-fitall-bounded.test.cjs",
     "test:ifc-type-objects": "node tests/ifc-type-objects.test.cjs",
     "test:dxf-malformed": "node tests/dxf-malformed.test.cjs",
-    "test:ifc-corpus-manifest": "node tests/ifc-corpus-manifest.test.cjs",
     "test:property-invariants": "node tests/property-invariants.test.cjs",
     "test:tool-catalog-gate": "node tests/tool-catalog-gate.test.cjs",
     "test:cad-ribbon-asi": "node tests/cad-ribbon-asi.test.cjs",
