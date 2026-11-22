@@ -1,5 +1,5 @@
 import { handleLinkedInRequest, LinkedInVault, type LinkedInEnv } from "./linkedin";
-import { AuthVault, googleStartUrl, googleCallback, googleSetupPage, googleStatus, googlePopupCallbackPage, sendResetEmail } from "./auth";
+import { AuthVault, googleStart, verifyGoogleState, clearOAuthStateCookie, googleCallback, googleSetupPage, googleStatus, googlePopupCallbackPage, sendResetEmail } from "./auth";
 
 /**
  * Open BIM Studio edge worker.
@@ -206,14 +206,23 @@ export default {
       return googleStatus(env);
     }
     if (url.pathname === "/api/auth/google/start") {
-      const start = googleStartUrl(request, env);
+      const start = googleStart(request, env);
       // Not configured: a styled explanation page instead of raw JSON — this is
       // a top-level browser navigation, the user would otherwise see JSON.
       if (!start) return googleSetupPage(request);
-      return Response.redirect(start, 302);
+      return new Response(null, { status: 302, headers: { location: start.location, "set-cookie": start.setCookie, "cache-control": "no-store" } });
     }
     if (url.pathname === "/api/auth/google/callback") {
-      const popup = new URL(request.url).searchParams.get("state") === "popup";
+      // The state must match the cookie set at /start; otherwise this callback was not started by this browser.
+      const mode = verifyGoogleState(request);
+      const done = (res: Response): Response => {
+        const out = new Response(res.body, res);
+        out.headers.append("set-cookie", clearOAuthStateCookie());
+        return out;
+      };
+      if (!mode) return done(googleSetupPage(request, { reason: "Google sign-in could not be verified for this browser. Please start the sign-in again.", status: 400 }));
+      const popup = mode === "popup";
+      return done(await (async (): Promise<Response> => {
       try {
         const info = await googleCallback(request, env);
         const stub = env.AUTH.get(env.AUTH.idFromName("global"));
@@ -241,6 +250,7 @@ export default {
         const reason = `Google sign-in failed (${code}). Please try again.`;
         return popup ? googlePopupCallbackPage(false, reason) : googleSetupPage(request, { reason, status: 502 });
       }
+      })());
     }
     if (url.pathname === "/api/auth/forgot" && request.method === "POST") {
       // Orchestrated here (not the raw DO forward) so the worker can email the

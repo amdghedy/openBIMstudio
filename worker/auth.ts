@@ -518,8 +518,29 @@ export function googleSetupPage(request: Request, opts: { reason?: string; statu
   });
 }
 
-/** Build the Google consent redirect. Returns null when credentials are missing. */
-export function googleStartUrl(request: Request, env: AuthEnv): string | null {
+/** Short-lived cookie binding an OAuth round trip to the browser that started it (login-CSRF defence). */
+export const OAUTH_STATE_COOKIE = "obs_oauth";
+const OAUTH_STATE_TTL_S = 600;
+
+function oauthNonce(): string {
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  return [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+}
+
+/**
+ * Build the Google consent redirect plus the cookie that binds it to this browser. Returns null when
+ * credentials are missing. The OAuth `state` is "<popup|app>.<random nonce>"; the nonce is also stored in an
+ * HttpOnly cookie, and the callback only proceeds when both match. Without this binding an attacker could
+ * start the flow with their own Google account and make a victim's browser complete it (login CSRF).
+ */
+export function googleStart(request: Request, env: AuthEnv): { location: string; setCookie: string } | null {
   if (!env.GOOGLE_CLIENT_ID) return null;
   const url = new URL(request.url);
   const origin = url.origin;
@@ -528,6 +549,7 @@ export function googleStartUrl(request: Request, env: AuthEnv): string | null {
   // of navigating the whole app away. `prompt=select_account` makes Google
   // list the previously used accounts, speeding up repeat sign-ins.
   const popup = url.searchParams.get("popup") === "1";
+  const nonce = oauthNonce();
   const params = new URLSearchParams({
     client_id: env.GOOGLE_CLIENT_ID,
     redirect_uri: `${origin}/api/auth/google/callback`,
@@ -535,9 +557,29 @@ export function googleStartUrl(request: Request, env: AuthEnv): string | null {
     scope: "openid email profile",
     access_type: "online",
     prompt: "select_account",
-    state: popup ? "popup" : "app",
+    state: `${popup ? "popup" : "app"}.${nonce}`,
   });
-  return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+  return {
+    location: `https://accounts.google.com/o/oauth2/v2/auth?${params}`,
+    setCookie: `${OAUTH_STATE_COOKIE}=${nonce}; Path=/api/auth/google; HttpOnly; Secure; SameSite=Lax; Max-Age=${OAUTH_STATE_TTL_S}`,
+  };
+}
+
+/** Cookie that deletes the OAuth binding cookie (sent on every callback outcome: it is single-use). */
+export function clearOAuthStateCookie(): string {
+  return `${OAUTH_STATE_COOKIE}=; Path=/api/auth/google; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+}
+
+/**
+ * Validates the callback's `state` against the binding cookie. Returns the flow mode ("popup" or "app") when
+ * they match, or null when the state is missing, malformed or not bound to this browser.
+ */
+export function verifyGoogleState(request: Request): "popup" | "app" | null {
+  const state = new URL(request.url).searchParams.get("state") ?? "";
+  const m = /^(popup|app)\.([0-9a-f]{32})$/.exec(state);
+  const cookie = readCookie(request, OAUTH_STATE_COOKIE);
+  if (!m || !cookie || !/^[0-9a-f]{32}$/.test(cookie)) return null;
+  return timingSafeEqual(m[2], cookie) ? (m[1] as "popup" | "app") : null;
 }
 
 /**
@@ -612,7 +654,9 @@ export async function googleCallback(request: Request, env: AuthEnv): Promise<{ 
     headers: { authorization: `Bearer ${accessToken}` },
   });
   if (!infoRes.ok) throw new Error("userinfo-failed");
-  const info = await infoRes.json() as { email?: string; name?: string; sub?: string };
+  const info = await infoRes.json() as { email?: string; email_verified?: boolean | string; name?: string; sub?: string };
   if (!info.email) throw new Error("no-email");
+  // An unverified address must never be linked to (or take over) an account that owns that email.
+  if (info.email_verified !== true && info.email_verified !== "true") throw new Error("email-not-verified");
   return { email: info.email, name: info.name ?? info.email.split("@")[0], sub: info.sub };
 }

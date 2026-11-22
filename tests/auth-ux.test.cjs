@@ -62,7 +62,7 @@ t("auth.ts: sendResetEmail uses Resend only when RESEND_API_KEY exists", () => {
 
 // ── 2. worker: Google popup + forgot orchestration ──
 t("auth.ts: google start carries state=popup; callback page postMessages + closes", () => {
-  const start = src(auth, "export function googleStartUrl", "\n/**\n * Email the reset link");
+  const start = src(auth, "export function googleStart(", "\n/** Cookie that deletes");
   assert.ok(/popup \? "popup" : "app"/.test(start), "state must mark the popup flow");
   assert.ok(/prompt: "select_account"/.test(start), "select_account must stay (remembers previous accounts)");
   const cb = src(auth, "export function googlePopupCallbackPage", "\n/** Exchange the consent code");
@@ -80,7 +80,7 @@ t("index.ts: forgot is orchestrated (mail when key set, resetUrl otherwise)", ()
 
 t("index.ts: callback branches popup vs top-level /?signedin=1", () => {
   const fn = src(worker, 'url.pathname === "/api/auth/google/callback"', 'url.pathname === "/api/auth/forgot"');
-  assert.ok(fn.includes('searchParams.get("state") === "popup"'), "callback must read the popup state");
+  assert.ok(fn.includes('verifyGoogleState(request)') && fn.includes('mode === "popup"'), "callback must read the verified popup state");
   assert.ok(fn.includes('location: "/?signedin=1"'), "top-level flow must land on /?signedin=1");
   assert.ok(fn.includes("googlePopupCallbackPage(true)"), "popup success page missing");
   assert.ok(fn.includes("RESEND_API_KEY?") || worker.includes("RESEND_API_KEY?"), "Env must declare RESEND_API_KEY");

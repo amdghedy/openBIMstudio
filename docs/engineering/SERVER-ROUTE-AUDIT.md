@@ -17,4 +17,18 @@ Startup fails closed: a non-loopback bind needs `OBS_SERVER_TOKEN` (≥16 chars,
 
 Tests: `tests/server-hardening.test.cjs` (ROUTE MATRIX covers every row above ×3 credential variants + `?token=`; unauthenticated PUT leaves no state; startup, origin, rate, size, SSE, upload cases).
 
-Not covered: TLS (terminated by a reverse proxy), the Cloudflare worker (`worker/index.ts`: visit counter, LinkedIn/Google auth) which has its own routes and was not audited here, and a real multi-client load test.
+## Cloudflare worker (`worker/index.ts`, `worker/auth.ts`)
+
+Audited for the Google sign-in and cloud-account routes.
+
+| Finding | Status |
+|---|---|
+| Google OAuth `state` was the fixed string `popup`/`app`, never bound to the browser that started the flow: login CSRF (an attacker could get a victim signed in as the attacker). | **Fixed**: `state` is `<mode>.<128-bit nonce>` and the nonce is also kept in a 10-minute HttpOnly/Secure/SameSite=Lax cookie scoped to `/api/auth/google`. The callback verifies both (constant-time) and clears the cookie on every outcome. |
+| Google `email_verified` was not checked, so an unverified address could be linked to a local account with that email. | **Fixed**: callback rejects anything but `email_verified: true`. |
+| Passwords use PBKDF2-SHA-256 with 100 000 iterations. | Accepted: 100 000 is the Workers runtime cap for PBKDF2; documented, not changed. |
+| Login and forgot-password limits are per email address per minute, not per client IP. | Open: a credential-stuffing run across many addresses is not throttled per source. |
+| `/api/visits` answers `access-control-allow-origin: *`. | Accepted: public counter, no credentials. |
+
+Tests: `tests/worker-oauth-state.test.cjs` (9 checks on the real `auth.ts`).
+
+Not covered: TLS (terminated by a reverse proxy), LinkedIn auth (`worker/linkedin.ts`), `api/visits.ts`, and a real multi-client load test.
