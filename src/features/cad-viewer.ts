@@ -2382,6 +2382,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         if (!bb) return;
         if (
           e.type !== "POINT" &&
+          e.type !== "INSERT" &&
           (bb.maxX - bb.minX) * v.scale < 0.4 &&
           (bb.maxY - bb.minY) * v.scale < 0.4
         ) return;
