@@ -51,6 +51,19 @@ export const MATURITY_STATUSES: readonly MaturityStatus[] = [
 
 export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
   {
+    id: "catalogue-family-generator",
+    area: "Families",
+    status: "experimental",
+    source: ["src/features/catalogue-family-generator.ts", "src/modules/families/catalogue-intake.ts"],
+    evidence: ["tests/catalogue-family-generator.test.mjs"],
+    limitations: [
+      "First delivery supports local CSV, TSV, TXT and JSON intake and creates dimension-driven bounding-box family templates through the existing family store; it does not reconstruct manufacturer-accurate geometry",
+      "PDF OCR, XLSX, DWG, DXF, STEP, SAT, automatic connector placement and native Revit RFA export are not implemented",
+      "No browser end-to-end test yet verifies the launcher, import interaction or family creation workflow",
+    ],
+    affirmedIn: APP_VERSION,
+  },
+  {
     id: "schedule-import-formats",
     area: "4D/5D scheduling",
     status: "experimental",
