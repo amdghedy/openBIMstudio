@@ -23,9 +23,17 @@ test('2D editor: rejected imports leave the drawing unchanged and import keeps w
   await openPaletteWith(page, 'Drawing Editor');
   await page.keyboard.press('Enter');
   await expect(page.locator('.obs-cad-shell, .obs-cad-viewer').first()).toBeVisible({ timeout: 30000 });
-  const count = () => page.evaluate(() => (window as any).__obsCadEntityCount?.() ?? -1);
-  await expect.poll(count, { timeout: 15000 }).toBeGreaterThanOrEqual(0);
-
+  // Entity count straight from the editor's own CENSUS command (no test-only globals).
+  const count = async (): Promise<number> => {
+    await page.locator('[data-r=cmd]').first().fill('CENSUS');
+    await page.locator('[data-r=cmd]').first().press('Enter');
+    const text = await page.locator('[data-r=cmdhist]').first().innerText();
+    const lines = text.split('\n').filter((l) => /CENSUS: /.test(l));
+    const last = lines[lines.length - 1] ?? '';
+    if (/\(empty\)/.test(last)) return 0;
+    return [...last.matchAll(/=(\d+)/g)].reduce((n, m) => n + Number(m[1]), 0);
+  };
+  await expect.poll(async () => (await page.locator('[data-r=cmd]').count()) > 0, { timeout: 15000 }).toBe(true);
   const input = page.locator('[data-r=importfile]').first();
   const before0 = await count();
   await input.setInputFiles({ name: 'ok.dxf', mimeType: 'text/plain', buffer: Buffer.from(validDxf) });
