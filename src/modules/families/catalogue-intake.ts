@@ -38,7 +38,7 @@ const HEADER_ALIASES: Record<string, CatalogueField> = {
   width: "width", w: "width", overallwidth: "width", overallw: "width", depth: "depth", d: "depth", overalldepth: "depth", length: "depth",
   height: "height", h: "height", overallheight: "height", overallh: "height",
   airflow: "airflow", airflowrate: "airflow", airvolume: "airflow", volumeflow: "airflow", volumeflowrate: "airflow", flow: "airflow",
-  airflowratels: "airflow", volumeflowratels: "airflow", flowratels: "airflow",
+  airflowratels: "airflow", volumeflowratels: "airflow", flowratels: "airflow", airflowls: "airflow", volumeflowls: "airflow", flowls: "airflow",
   staticpressure: "staticPressure", pressure: "staticPressure", externalstaticpressure: "staticPressure", esp: "staticPressure",
   power: "power", inputpower: "power", totalinputpower: "power", ratedpower: "power", kw: "power",
   voltage: "voltage", supplyvoltage: "voltage", ratedvoltage: "voltage", nominalvoltage: "voltage", volt: "voltage",
@@ -53,7 +53,7 @@ function normalizePerformanceValue(value: number, header: string, field: Catalog
   if (field === "airflow") {
     const raw = header.toLowerCase().replace(/[^a-z0-9³]/g, "");
     if (/(m3s|m³s)$/.test(raw)) return value * 3600;
-    if (/(lps|litrespersecond|literspersecond)$/.test(unit)) return value * 3.6;
+    if (/(ls|lps|litrespersecond|literspersecond)$/.test(unit)) return value * 3.6;
   }
   if (field === "staticPressure" && /kpa$/.test(unit)) return value * 1000;
   if (field === "power" && /(watt|watts|w)$/.test(unit) && !/kw$/.test(unit)) return value / 1000;
