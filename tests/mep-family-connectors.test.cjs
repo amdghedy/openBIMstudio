@@ -92,6 +92,17 @@ try {
     ], instance), /must be non-zero/);
   });
 
+  const registrySource = fs.readFileSync(path.join(root, "src/modules/families/registry.ts"), "utf8");
+  const placementSource = fs.readFileSync(path.join(root, "src/modules/families/placement.ts"), "utf8");
+  test("family service resolves type-specific connector definitions before family fallback", () => {
+    assert.match(registrySource, /type\?\.connectorDefs \?\? fam\.connectorDefs \?\? \[\]/);
+    assert.match(registrySource, /deriveFamilyInstanceConnectors\(ownerElementId, definitions, instanceObject\)/);
+  });
+  test("placement bridge registers transformed family ports with the MEP lifecycle", () => {
+    assert.match(placementSource, /export function syncPlacementConnectors/);
+    assert.match(placementSource, /lifecycle\.onElementChanged\(ownerElementId, connectors\)/);
+  });
+
   console.log("=== MEP family connector tests: " + pass + " passed, " + fail + " failed ===");
   process.exitCode = fail ? 1 : 0;
 } finally {
