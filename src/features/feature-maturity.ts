@@ -78,7 +78,7 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
       "XLSX imports visible worksheets and reads cached formula results only; formula recalculation, XLSM and legacy XLS are unsupported",
       "Dimensions use the explicitly selected family unit; selected performance units are normalized (airflow m³/s and L/s to m³/h, kPa to Pa, W to kW, kV to V)",
       "Geometry is limited to generic parametric box and cylinder primitives; manufacturer-accurate solids, DWG/DXF/STEP/SAT extraction and drawing-derived geometry are not implemented",
-      "Multiple numbered ports and type-specific connector layouts are supported; the placement bridge can transform and register ports with MepModelLifecycle, but the authoring host must still call syncPlacementConnectors after every placement and relevant geometry or transform edit",
+      "Multiple numbered ports and type-specific connector layouts are supported; the common authoring rebuild registers world-space ports with MepModelLifecycle after placement and geometry/transform edits; external placement hosts must call syncPlacementConnectors",
       "Live MEP connection persistence, end-to-end browser placement verification, and real manufacturer catalogue validation remain outstanding",
       "Native Revit RFA generation is unavailable; it requires a version-specific Windows Revit API companion and validation in the target Revit installation",
     ],
