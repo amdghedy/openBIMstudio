@@ -3880,13 +3880,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   const rebuildIndex = (): void => {
     setActiveBlocks(doc?.blocks);
     let b: M.BBox | null = null;
-    for (let i = 0; i < ents.length; i++) {
-      const e = ents[i];
-      if (!e) throw new Error(`rebuildIndex: empty entity slot ${i} of ${ents.length}`);
-      let bb: M.BBox;
-      try { bb = M.entityBBox(e); } catch (err) { throw new Error(`rebuildIndex: ${e.type} #${i} of ${ents.length}: ${(err as Error).message}`); }
-      b = M.unionBBox(b, bb);
-    }
+    for (const e of ents) b = M.unionBBox(b, M.entityBBox(e));
     bounds = b ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 };
     idx = M.buildIndex(ents, bounds);
   };
@@ -3934,6 +3928,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       redoStack.push(act);
     }
     rebuildIndex();
+    // Selection holds indices into the old entity list; after a replace they may point past the end.
+    sel.clear();
     showProps();
     draw();
     logCmd("Command: UNDO");
@@ -3982,6 +3978,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       markDirty();
     }
     rebuildIndex();
+    // Selection holds indices into the old entity list; after a replace they may point past the end.
+    sel.clear();
     showProps();
     draw();
     logCmd("Command: REDO");
