@@ -8,6 +8,7 @@
 
 import type * as THREE from "three";
 import type { ConnectorDefinition } from "../object-hierarchy";
+import type { MepConnector } from "../mep/connectors";
 
 export type FamilyCategory =
   | "wall" | "slab" | "column" | "beam" | "brace" | "truss" | "footing"
@@ -144,6 +145,13 @@ export interface FamilyService {
     typeId: string | null,
     overrides?: Record<string, any>,
   ): THREE.Object3D | null;
+  /** Build world-space MEP ports using type-specific definitions or family fallback. */
+  buildConnectors?(
+    ownerElementId: string,
+    familyId: string,
+    typeId: string | null,
+    instanceObject: THREE.Object3D,
+  ): MepConnector[];
 
   registerCustomBuilder(name: string, fn: CustomGeometryBuilder): void;
 
