@@ -92,6 +92,7 @@ import { toggleMepColors, isMepColoringActive } from "../features/mep-coloring";
 // ── MEP parametric design toolkit ──────────────────────────────────────
 import { openMepDesignToolkit, showResultDialog, type ResultRow } from "../features/mep-fabrication";
 import { openParametricToolkit } from "../features/parametric-tools";
+import { openFamilyCreatorEngine, openParamFamilyPanel } from "../features/parametric-family-panel";
 
 // ── Selection prefs (Edit-tab toggles — real engine gating) ───────────
 import { getSelectionPrefs, setSelectionPref } from "../core/selection-prefs";
@@ -1426,8 +1427,19 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Fittings"), { title: "Pick a fabrication fitting by type" }),
       sep(),
       groupLabel("Load from Library"),
+      b("new-family", "Family Creator", safe(() => openFamilyCreatorEngine(), "Family Creator engine"), {
+        title: "Parametric Family Creator — parameters, constraints, extrusion / revolve / sweep geometry, library save",
+      }),
       b("new-family", "Family", safe(() => openFamilyLibrary(), "Types & materials"), {
         title: "Element types and materials library",
+      }),
+      b("component", "Sketch Family", safe(() => {
+        void import("../features/family-sketch-editor").then((m) => m.openFamilySketchEditor());
+      }, "Sketch family"), {
+        title: "Draw a plan outline and create a parametric family from it",
+      }),
+      b("component", "Family Panel", safe(() => openParamFamilyPanel(), "Parametric family panel"), {
+        title: "Inspect and edit family parameters, rebuild geometry, open sketch",
       }),
       b("component", "Materials", safe(async () => {
         const m = (window as any).__obsMaterials;

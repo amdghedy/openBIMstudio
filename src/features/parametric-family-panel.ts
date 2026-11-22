@@ -354,7 +354,47 @@ export function toggleParamFamilyPanel(): void {
   else openParamFamilyPanel();
 }
 
+/** Open the Family Creator engine (OBSFamilyEditor modal + parametric panel). */
+export function openFamilyCreatorEngine(): void {
+  const editor = (window as Any).OBSFamilyEditor;
+  if (editor && typeof editor.open === "function") {
+    try {
+      editor.open();
+    } catch (e) {
+      console.warn("[family-creator] OBSFamilyEditor.open failed", e);
+    }
+  } else {
+    toast("warn", "Family Creator engine is still loading — try again in a moment.");
+  }
+  // Always surface the parametric family panel for type/param/sketch workflow
+  try {
+    openParamFamilyPanel();
+  } catch { /* */ }
+  try {
+    window.dispatchEvent(new CustomEvent("obs:param-ribbon-command", { detail: { id: "fam-edit" } }));
+  } catch { /* */ }
+}
+
 export function setupParametricFamilyPanel(): void {
+  void import("./command-palette").then(({ registerCommand }) => {
+    registerCommand({
+      id: "family.creator",
+      label: "Family Creator",
+      category: "Families",
+      hint: "Open the parametric family creator engine",
+      run: () => openFamilyCreatorEngine(),
+    });
+    registerCommand({
+      id: "family.sketch",
+      label: "Family from sketch",
+      category: "Families",
+      hint: "Draw a profile and create a parametric family",
+      run: () => {
+        void import("./family-sketch-editor").then((m) => m.openFamilySketchEditor());
+      },
+    });
+  }).catch(() => { /* palette optional at boot */ });
+
   const launch = document.createElement("button");
   launch.id = "obs-param-launch";
   launch.type = "button";
