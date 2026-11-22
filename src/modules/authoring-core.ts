@@ -34,7 +34,15 @@ import {
   threeGeometryToIndexedMesh, summarizeGateDiagnostics,
   listQuarantinedSolids, isQuarantined, clearQuarantinedSolids,
   ValidationGateError,
+  // K4 unified Boolean post-condition: one post-condition for all
+  // three engines + general-kernel fallback for three-csg-ts cuts.
+  applyBooleanPostcondition, postconditionThreeCsgResult,
+  recordBooleanCutFailure, MIN_REMOVED_VOLUME_M3,
 } from "./solid-kernel";
+// K4 THREE adapter (imported directly, not via the barrel: it needs
+// `three` / `three-csg-ts`, which do not resolve from the /tmp dirs
+// Node tests compile the barrel into).
+import { subtractThreeMesh } from "./solid-kernel/three-boolean";
 import {
   ModelingSession, DEFAULT_SNAP_SETTINGS,
   getColumnReferenceGeometry, getWallLocationLine, calculateWallEndpoint,
@@ -123,6 +131,14 @@ export function setupAuthoringCore(): void {
     clearQuarantinedSolids,
     quarantinedSolids: listQuarantinedSolids,
     ValidationGateError,
+    // K4 unified Boolean post-condition (one post-condition for all
+    // three engines; three-csg-ts cuts fall back to the general kernel
+    // and surface total failures instead of keeping uncut solids).
+    applyBooleanPostcondition,
+    postconditionThreeCsgResult,
+    recordBooleanCutFailure,
+    MIN_REMOVED_VOLUME_M3,
+    subtractThreeMesh,
   };
   w.__obsSolids = solidsApi;
   features().solidKernel = solidsApi;

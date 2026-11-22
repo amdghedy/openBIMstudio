@@ -161,6 +161,7 @@
     "test:solids": "node tests/solids.test.cjs",
     "test:solid-kernel-weld": "node tests/solid-kernel-weld.test.cjs",
     "test:validation-gate": "node tests/validation-gate.test.cjs",
+    "test:boolean-postcondition": "node tests/boolean-postcondition.test.cjs",
     "test:solid-bvh": "node tests/solid-bvh.test.cjs",
     "test:seed-families": "node tests/seed-families.test.cjs",
     "test:builtin-family-data": "node tests/builtin-family-data.test.cjs",

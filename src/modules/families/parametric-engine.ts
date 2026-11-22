@@ -13,7 +13,8 @@
  */
 
 import * as THREE from "three";
-import { CSG } from "three-csg-ts";
+import { recordBooleanCutFailure } from "../solid-kernel/boolean-postcondition";
+import { subtractThreeMesh } from "../solid-kernel/three-boolean";
 import type {
   FamilyDefinition,
   FamilyGeometrySpec,
@@ -766,7 +767,9 @@ function collectMeshes(root: THREE.Object3D, invGroup: THREE.Matrix4): Collected
 /**
  * Subtract every void part of a composed group from its solids, with
  * the repo's existing CSG path (`three-csg-ts`, as used for door/window
- * openings in authoring.ts — no new dependency).
+ * openings in authoring.ts — no new dependency), under the K4 unified
+ * Boolean post-condition (`subtractThreeMesh`: three-csg-ts result is
+ * gated, with the general-kernel fallback).
  *
  * `CSG.fromMesh` transforms vertices by the mesh's LOCAL matrix, so
  * each mesh is first re-expressed with its matrix relative to the
@@ -774,8 +777,10 @@ function collectMeshes(root: THREE.Object3D, invGroup: THREE.Matrix4): Collected
  * child of the group with that same relative matrix. Meshes whose
  * bounding box does not touch any void are left exactly as built (no
  * CSG round-trip). A void that touches nothing costs nothing. A
- * subtraction that throws keeps the original solid and records a
- * warning — a failed cut must never silently drop the solid.
+ * subtraction that fails on BOTH engines keeps the original solid and
+ * records a warning (plus a quarantine-registry record) — a failed cut
+ * must never silently drop the solid, and never silently keep an
+ * uncut one either.
  */
 function subtractVoids(
   group: THREE.Group,
@@ -791,27 +796,33 @@ function subtractVoids(
 
   for (const s of solidMeshes) {
     let working: THREE.Mesh | null = null;
-    for (const v of voidMeshes) {
+    for (let vi = 0; vi < voidMeshes.length; vi++) {
+      const v = voidMeshes[vi];
       if (!s.box.intersectsBox(v.box)) continue;
-      try {
-        const src = working ?? (() => {
-          const tmp = new THREE.Mesh(s.mesh.geometry, s.mesh.material as THREE.Material);
-          tmp.matrix.copy(s.rel);
-          return tmp;
-        })();
-        const cutter = new THREE.Mesh(v.mesh.geometry, v.mesh.material as THREE.Material);
-        cutter.matrix.copy(v.rel);
-        const result = CSG.toMesh(
-          CSG.fromMesh(src).subtract(CSG.fromMesh(cutter)),
-          s.rel,
-          s.mesh.material as THREE.Material,
-        );
-        result.userData = { ...(s.mesh.userData ?? {}) };
-        working = result;
-      } catch (err) {
-        const msg = `void subtraction failed: ${err instanceof Error ? err.message : String(err)}`;
+      const src = working ?? (() => {
+        const tmp = new THREE.Mesh(s.mesh.geometry, s.mesh.material as THREE.Material);
+        tmp.matrix.copy(s.rel);
+        return tmp;
+      })();
+      const cutter = new THREE.Mesh(v.mesh.geometry, v.mesh.material as THREE.Material);
+      cutter.matrix.copy(v.rel);
+      // K4: the three-csg-ts result is gated, with the general-kernel
+      // fallback; a total failure keeps the uncut solid AND records
+      // the failure (warnings[] + quarantine registry), never silently.
+      const out = subtractThreeMesh(src, cutter, s.mesh.material as THREE.Material, `family-void:${vi}`);
+      if (out.cut) {
+        working = out.mesh;
+      } else {
+        const msg = `void subtraction failed: ${out.failure!.reason}`;
         warnings.push(msg);
         console.warn("[parametric-engine] " + msg);
+        recordBooleanCutFailure({
+          elementId: "family-void",
+          label: `void ${vi}`,
+          diagnostics: out.failure!.diagnostics.map((d) => ({ code: d.code, message: d.message })),
+          volumeBefore: out.failure!.volumeBefore,
+          source: "family-void-cut",
+        });
       }
     }
     if (working) {

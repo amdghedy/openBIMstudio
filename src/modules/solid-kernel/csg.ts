@@ -36,7 +36,7 @@
  */
 
 import type { IndexedMesh, Pt3 } from "../adaptive";
-import { assertCommitEligible } from "./validation-gate";
+import { applyBooleanPostcondition } from "./boolean-postcondition";
 import {
   COPLANAR_CHECK_TOLERANCE,
   PLANE_MATCH_TOLERANCE,
@@ -465,10 +465,12 @@ export function booleanOp(op: BooleanOp, a: IndexedMesh, b: IndexedMesh): Indexe
   if (faces.length === 0) {
     throw new Error(`booleanOp(${op}): result is empty`);
   }
-  // K1: every Boolean result is gated (welded, then validated) before it
-  // is returned — with QUARANTINE, not refusal, on this kernel. Measured
-  // on the chain base (61cedf7, both hand-built boxes and the kernel's
-  // own generateVoid boxes): the convex splitter is seam-inconsistent
+  // K1/K4: every Boolean result is gated (welded, then validated) before
+  // it is returned — through the ONE shared post-condition
+  // (applyBooleanPostcondition), with QUARANTINE, not refusal, on this
+  // kernel. Measured on the chain base (61cedf7, both hand-built boxes
+  // and the kernel's own generateVoid boxes): the convex splitter is
+  // seam-inconsistent
   // whenever it actually splits — subtract interior / through /
   // flush / side-protruding cutters give 12–26 non-manifold-edge
   // diagnostics, union/intersect on overlapping non-coplanar operands
@@ -484,7 +486,7 @@ export function booleanOp(op: BooleanOp, a: IndexedMesh, b: IndexedMesh): Indexe
   // consistency, or route cutVoids through generalBoolean (clean on the
   // same operands, measured) — both are kernel work beyond this gate.
   // The disjoint-union case needs no splitting and gates `ok`.
-  return assertCommitEligible({ vertices, faces }, `boolean:${op}`, { source: "convex-kernel", onRefused: "quarantine" });
+  return applyBooleanPostcondition({ vertices, faces }, `boolean:${op}`, { engine: "convex-kernel", onRefused: "quarantine" }).mesh;
 }
 
 /** Convenience: a − b (spec 2.9 solid−void; b must be convex). */

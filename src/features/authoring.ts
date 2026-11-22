@@ -32,7 +32,6 @@ import {
 import { clampBendRadius, defaultBendRadius, elbowGeometry, turnAngle, arcPoints as elbowArcPoints } from "../modules/mep/elbow-geometry";
 import { applyResolvedParams } from "../modules/families/placement";
 import * as THREE from "three";
-import { CSG } from "three-csg-ts";
 import { ctx } from "../core/context";
 import { register, type AuthoringService } from "../core/services";
 import { getSelectionPrefs } from "../core/selection-prefs";
@@ -60,6 +59,8 @@ import {
   gateSolid, recordQuarantinedSolid, clearQuarantinedSolid,
   threeGeometryToIndexedMesh, summarizeGateDiagnostics,
 } from "../modules/solid-kernel/validation-gate";
+import { recordBooleanCutFailure } from "../modules/solid-kernel/boolean-postcondition";
+import { subtractThreeMesh } from "../modules/solid-kernel/three-boolean";
 import type { WallSweepPlacement } from "../modules/wall-sweeps/types";
 import { isValidBoundary } from "../modules/views/boundary-edit";
 import { pointFootprintHandles, resizePointFootprint, type FootprintGrip } from "../modules/views/grip-geometry";
@@ -158,6 +159,9 @@ interface WallOpening {
   width: number;
   height: number;
   sill: number;
+  /** Hosted door/window element that owns this opening (for failure toasts). */
+  hostId?: string;
+  kind?: "door" | "window";
 }
 
 type PendingOp =
@@ -1355,7 +1359,7 @@ function openingsForWall(wallId: string): WallOpening[] {
     const degenerate = holeW < 0.02 || holeH < 0.02;
     const fullFace = hostLen > 0.05 && H > 0.05 && holeW >= hostLen * 0.9 && holeH >= H * 0.9;
     if (degenerate || fullFace) continue;
-    out.push({ offset, width: w, height: h, sill });
+    out.push({ offset, width: w, height: h, sill, hostId: el.id, kind: el.type as "door" | "window" });
   }
   return out;
 }
@@ -1495,6 +1499,66 @@ function computeWallEndFaces(
 
 
 /**
+ * K4 — subtract one opening/cutter from a wall mesh under the unified
+ * Boolean post-condition (three-csg-ts, gated, with the general-kernel
+ * fallback — see `subtractThreeMesh`). On success the cut mesh is
+ * returned (and any stale FAILED-TO-CUT record for this opening is
+ * cleared). On total failure on BOTH engines the UNCUT mesh is
+ * returned, but it is never displayed as if the opening exists: the
+ * element is quarantined via K1's registry (record id
+ * `<elementId>:cut:<label>`, so K1's rebuild gate — which clears an
+ * element's record when its mesh validates clean again — cannot erase
+ * a cut failure, since the uncut wall IS a valid solid and the missing
+ * opening is the defect), the mesh is flagged
+ * (`userData.cutFailed` / `cutFailedOpenings`), and the user gets an
+ * error toast naming the opening. The toast fires once per element +
+ * opening: rebuilds re-attempt the cut and must not re-toast every
+ * time (`recordBooleanCutFailure` returns false when the record
+ * already exists).
+ */
+function subtractOpeningWithPostcondition(
+  mesh: THREE.Mesh,
+  cutter: THREE.Mesh,
+  label: string,
+  el: AuthoredElement,
+  material: THREE.Material,
+): THREE.Mesh {
+  const elementId = el.id;
+  const displayName = el.name ?? elementId;
+  const out = subtractThreeMesh(mesh, cutter, material, `wall:${elementId} ${label}`);
+  if (out.cut) {
+    // A cut that succeeds now clears a stale FAILED-TO-CUT record for
+    // this opening (e.g. the user fixed the hosted element).
+    clearQuarantinedSolid(`${elementId}:cut:${label}`);
+    return out.mesh;
+  }
+  const failure = out.failure!;
+  const isNew = recordBooleanCutFailure({
+    elementId,
+    label,
+    diagnostics: failure.diagnostics.map((d) => ({ code: d.code, message: d.message })),
+    volumeBefore: failure.volumeBefore,
+  });
+  mesh.userData.cutFailed = true;
+  const failed = new Set<string>(
+    Array.isArray(mesh.userData.cutFailedOpenings) ? (mesh.userData.cutFailedOpenings as string[]) : [],
+  );
+  failed.add(label);
+  mesh.userData.cutFailedOpenings = [...failed];
+  if (isNew) {
+    try {
+      window.dispatchEvent(new CustomEvent("obs-toast", {
+        detail: {
+          message: `${displayName}: the ${label} opening could not be cut — the wall is shown uncut (FAILED TO CUT). ${failure.reason}`,
+          kind: "error",
+        },
+      }));
+    } catch { /* toast is cosmetic */ }
+  }
+  return mesh;
+}
+
+/**
  * Cut door/window openings through a wall mesh or compound Group (all layers).
  * Preserves BIM authoring software-like behaviour: openings pierce every compound layer.
  */
@@ -1525,34 +1589,33 @@ function cutOpeningsInWallObject(
     let mesh = meshes[mi];
     const mat = mesh.material;
     for (const op of openings) {
-      try {
-        const holeGeo = new THREE.BoxGeometry(op.width, T + 0.35, op.height);
-        const holeMesh = new THREE.Mesh(holeGeo, new THREE.MeshLambertMaterial({ visible: false }));
-        const cx = ax + dirX * op.offset;
-        const cz = az + dirZ * op.offset;
-        const cy = (p.elevation ?? 0) + op.sill + op.height / 2;
-        holeMesh.position.set(cx, cy, cz);
-        // Orient hole: width along wall, thickness through wall, height up
-        const up = new THREE.Vector3(0, 1, 0);
-        const along = new THREE.Vector3(dirX, 0, dirZ);
-        const through = new THREE.Vector3(normalX, 0, normalZ);
-        const m = new THREE.Matrix4().makeBasis(along, up, through);
-        holeMesh.quaternion.setFromRotationMatrix(m);
-        holeMesh.updateMatrixWorld(true);
-        mesh.updateMatrixWorld(true);
-        const result = CSG.toMesh(CSG.fromMesh(mesh).subtract(CSG.fromMesh(holeMesh)), mesh.matrix, mat as THREE.Material);
-        result.userData = { ...mesh.userData };
-        result.position.copy(mesh.position);
-        result.quaternion.copy(mesh.quaternion);
-        result.scale.copy(mesh.scale);
+      const holeGeo = new THREE.BoxGeometry(op.width, T + 0.35, op.height);
+      const holeMesh = new THREE.Mesh(holeGeo, new THREE.MeshLambertMaterial({ visible: false }));
+      const cx = ax + dirX * op.offset;
+      const cz = az + dirZ * op.offset;
+      const cy = (p.elevation ?? 0) + op.sill + op.height / 2;
+      holeMesh.position.set(cx, cy, cz);
+      // Orient hole: width along wall, thickness through wall, height up
+      const up = new THREE.Vector3(0, 1, 0);
+      const along = new THREE.Vector3(dirX, 0, dirZ);
+      const through = new THREE.Vector3(normalX, 0, normalZ);
+      const m = new THREE.Matrix4().makeBasis(along, up, through);
+      holeMesh.quaternion.setFromRotationMatrix(m);
+      holeMesh.updateMatrixWorld(true);
+      mesh.updateMatrixWorld(true);
+      // K4: three-csg-ts result is gated and falls back to the
+      // general kernel; on total failure the uncut mesh is returned
+      // AND flagged FAILED-TO-CUT (registry + toast), never displayed
+      // as if the opening exists.
+      const label = `${op.kind ?? "opening"} ${op.hostId ?? ""}`.trim();
+      const result = subtractOpeningWithPostcondition(mesh, holeMesh, label, el, mat as THREE.Material);
+      if (result !== mesh) {
         if (mesh.parent) {
           mesh.parent.add(result);
           mesh.parent.remove(mesh);
         }
         mesh = result;
         meshes[mi] = mesh;
-      } catch (err) {
-        console.warn("[compound] opening cut failed", err);
       }
     }
   }
@@ -1716,15 +1779,14 @@ function buildWallWithOpenings(
       }
       holeMesh.updateMatrixWorld(true);
 
-      try {
-        const bspA = CSG.fromMesh(mesh);
-        const bspB = CSG.fromMesh(holeMesh);
-        const resultBsp = bspA.subtract(bspB);
-        mesh = CSG.toMesh(resultBsp, mesh.matrix, mat);
-        mesh.updateMatrixWorld(true);
-      } catch (err) {
-        console.warn("[CSG] door subtraction failed", err);
-      }
+      // K4: three-csg-ts result is gated and falls back to the general
+      // kernel; on total failure the uncut mesh is kept AND flagged
+      // FAILED-TO-CUT (registry + toast), never displayed as if the
+      // opening exists.
+      mesh.updateMatrixWorld(true);
+      const label = `${op.kind ?? "opening"} ${op.hostId ?? ""}`.trim();
+      mesh = subtractOpeningWithPostcondition(mesh, holeMesh, label, el, mat);
+      mesh.updateMatrixWorld(true);
     }
   }
 
@@ -1734,16 +1796,20 @@ function buildWallWithOpenings(
     for (const sw of reveals) {
       const cut = generateRevealCutter(p.start, p.end, T, p.elevation, sw);
       if (!cut) continue;
-      try {
-        const g = new THREE.BufferGeometry();
-        g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(cut.positions), 3));
-        const cutter = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ visible: false }));
-        cutter.updateMatrixWorld(true);
-        mesh = CSG.toMesh(CSG.fromMesh(mesh).subtract(CSG.fromMesh(cutter)), mesh.matrix, mat);
-        mesh.updateMatrixWorld(true);
-      } catch (err) {
-        console.warn("[CSG] reveal subtraction failed", err);
-      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(cut.positions), 3));
+      const cutter = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ visible: false }));
+      cutter.updateMatrixWorld(true);
+      mesh.updateMatrixWorld(true);
+      // K4: the reveal cutter is position-only (no normals), so
+      // three-csg-ts ALWAYS threw on it and the reveal was never cut —
+      // the old `catch { console.warn }` swallowed that on every wall.
+      // The post-condition falls back to the general kernel, which
+      // needs positions only, so reveals now cut; a total failure is
+      // flagged FAILED-TO-CUT (registry + toast) instead.
+      const label = `reveal ${sw.profileId} at ${(sw.startOffset ?? 0).toFixed(2)} m`;
+      mesh = subtractOpeningWithPostcondition(mesh, cutter, label, el, mat);
+      mesh.updateMatrixWorld(true);
     }
   }
 
@@ -3861,8 +3927,9 @@ async function createElement(
   // K1 validation gate: the mesh this element would commit must pass the
   // kernel validity gate before the element enters the model. The probe
   // mesh is built (then disposed) so the gate sees the final geometry,
-  // including three-csg opening/reveal cuts — K4 owns surfacing
-  // three-csg failures themselves; this gate covers their output.
+  // including three-csg opening/reveal cuts — K4 gates those cuts at
+  // the source (general-kernel fallback; FAILED-TO-CUT quarantine +
+  // error toast on total failure); this gate covers their output.
   // Calibration: only the unbuildable subset (empty mesh / non-finite
   // geometry) refuses creation outright. Every other failure quarantines
   // the element (recorded in the quarantine registry + warning toast)

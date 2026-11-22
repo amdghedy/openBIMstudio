@@ -83,7 +83,7 @@
 
 import type { IndexedMesh, Pt3 } from "../adaptive";
 import { dot, cross, sub, createRobustInsideTester, type SupportPlane } from "./csg";
-import { assertCommitEligible } from "./validation-gate";
+import { applyBooleanPostcondition } from "./boolean-postcondition";
 import {
   BARYCENTRIC_TOLERANCE,
   EDGE_KEY_GRID,
@@ -700,8 +700,10 @@ export function generalBoolean(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedM
       `generalBoolean(${op}): result is empty — the solids do not ${op === "intersect" ? "overlap" : "produce material for this operation"}`,
     );
   }
-  // K1: every Boolean result is gated (welded, then validated) before it
-  // is returned. Hard errors throw ValidationGateError — EXCEPT when the
+  // K1/K4: every Boolean result is gated (welded, then validated) before
+  // it is returned — through the ONE shared post-condition
+  // (applyBooleanPostcondition). Hard errors throw ValidationGateError —
+  // EXCEPT when the
   // operation itself recorded skipped degenerate INPUT triangles. The
   // PE-10 contract for degenerate input is skip + record + return a
   // volume-exact result, and the degenerate face corrupts the coplanar
@@ -715,10 +717,10 @@ export function generalBoolean(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedM
   // degenerate-input record) still throw. Fixing the coplanar
   // corruption itself is kernel work beyond this gate.
   const hadDegenerateInput = diagnostics.some((d) => d.code === "degenerate-triangle-skipped");
-  return assertCommitEligible({ vertices, faces }, `boolean:${op}`, {
-    source: "general-kernel",
+  return applyBooleanPostcondition({ vertices, faces }, `boolean:${op}`, {
+    engine: "general-kernel",
     onRefused: hadDegenerateInput ? "quarantine" : "throw",
-  });
+  }).mesh;
 }
 
 /**

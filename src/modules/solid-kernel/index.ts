@@ -12,3 +12,8 @@ export * from "./loft";
 export * from "./voids";
 export * from "./validate";
 export * from "./validation-gate";
+export * from "./boolean-postcondition";
+// NOTE: ./three-boolean is intentionally NOT re-exported here. It
+// imports `three` / `three-csg-ts`, and Node tests compile this barrel
+// into a /tmp dir where external modules do not resolve. Import it
+// directly (src/modules/solid-kernel/three-boolean) where needed.
