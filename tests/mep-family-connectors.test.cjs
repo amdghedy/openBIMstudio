@@ -94,9 +94,15 @@ try {
 
   const registrySource = fs.readFileSync(path.join(root, "src/modules/families/registry.ts"), "utf8");
   const placementSource = fs.readFileSync(path.join(root, "src/modules/families/placement.ts"), "utf8");
+  const authoringSource = fs.readFileSync(path.join(root, "src/features/authoring.ts"), "utf8");
   test("family service resolves type-specific connector definitions before family fallback", () => {
     assert.match(registrySource, /type\?\.connectorDefs \?\? fam\.connectorDefs \?\? \[\]/);
     assert.match(registrySource, /deriveFamilyInstanceConnectors\(ownerElementId, definitions, instanceObject\)/);
+  });
+  test("authoring rebuild resolves per-type ports before family-level fallback", () => {
+    assert.match(authoringSource, /family\.types\?\.find\(\(type: any\) => type\.id === el\.familyTypeId\)/);
+    assert.match(authoringSource, /familyType\?\.connectorDefs \?\? family\.connectorDefs \?\? \[\]/);
+    assert.match(authoringSource, /deriveFamilyInstanceConnectors\(el\.id, definitions, instanceObject\)/);
   });
   test("placement bridge registers transformed family ports with the MEP lifecycle", () => {
     assert.match(placementSource, /export function syncPlacementConnectors/);
