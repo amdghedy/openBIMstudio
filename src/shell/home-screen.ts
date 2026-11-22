@@ -152,8 +152,93 @@ const SHOWCASE = [
       "manage layers and styles, dimension and hatch, then plot or export. Click any card below for a deeper guide.",
   },
   {
-    cls: "obs-page--3d",
+    cls: "obs-page--fam",
     num: "02",
+    eyebrow: "PARAMETRIC FAMILIES & GENERATION",
+    title: "A parametric family engine behind every element.",
+    copy:
+      "Families are defined, not copied: sketch a profile once and the engine regenerates every " +
+      "type from formulas and a solved constraint graph. Built-in seeds cover walls, doors, windows " +
+      "and MEP components, and nested families plus arrays compose them into real assemblies. " +
+      "The engine is in active development — the sketch editor and library surface are experimental.",
+    cards: [
+      {
+        icon: "FAM", title: "Parametric family engine",
+        desc: "Sketch-based families solved through a constraint pipeline — geometry regenerated from data.",
+        detailTitle: "From sketch to geometry",
+        detailBody:
+          "The engine runs a full pipeline: shared → type → instance parameters, then formulas, then the " +
+          "constraint graph, then geometry. Geometry kinds cover extrusion, sweep, revolve, loft, voids and " +
+          "conditional shapes, so a family is authored once and every type regenerates from parameters — " +
+          "no copied geometry to keep in sync.",
+        bullets: [
+          "Family sketch editor with the constraint graph (equality, offset, ratio, sum, difference, fixed, distance)",
+          "Geometry kinds: extrusion, sweep, revolve, loft, void, conditional, composed",
+          "Type / instance parameter scopes resolved per family",
+          "Status: experimental — actively developed",
+        ],
+        howTo: "Open the Family Browser → pick a family → edit its sketch and constraints in the Family Sketch Editor.",
+      },
+      {
+        icon: "FX", title: "Formula-driven parameters",
+        desc: "Topo-sorted formulas with cycle detection, math builtins and unit helpers.",
+        detailTitle: "The formula engine",
+        detailBody:
+          "Parameters evaluate in dependency order through a topologically sorted graph with cycle detection. " +
+          "Formulas support if() and boolean/comparison operators, infix word operators (and/or/eq), scientific " +
+          "notation, math helpers, unit helpers (mm, ft, deg) and to_* conversions — with precise error " +
+          "messages when a formula goes wrong.",
+        bullets: [
+          "Dependency graph + cycle detection across parameter formulas",
+          "if(), boolean and comparison operators; infix and/or/eq",
+          "Unit helpers mm / ft / deg and to_* conversions",
+          "sind / xor and math builtins for real parametrics",
+        ],
+        howTo: "In the Family Sketch Editor, set a parameter's formula — e.g. Height = Width * 2.1.",
+      },
+      {
+        icon: "NES", title: "Nested families & arrays",
+        desc: "Compose families into assemblies; expand linear, rotational and grouped arrays.",
+        detailTitle: "Nesting and generation",
+        detailBody:
+          "Nested family references carry parameter mapping and a shared flag so assemblies stay parametric. " +
+          "The array expander lays out members linearly, rotationally or in groups — with an alternate mirror " +
+          "pattern for stairs and seating — and exposes reporting values that schedules can read.",
+        bullets: [
+          "Nested family refs with parameter mapping + shared flag",
+          "Linear / rotational / grouped arrays",
+          "Alternate mirror pattern for repeating members",
+          "Reporting values feeding schedules",
+        ],
+        howTo: "In the Family Sketch Editor, add a nested family reference or define an array on a member.",
+      },
+      {
+        icon: "LIB", title: "Family library & type catalogs",
+        desc: "Seed families, loaded libraries, shared parameters and catalog sync.",
+        detailTitle: "The family library",
+        detailBody:
+          "Built-in families seed walls, doors, windows and MEP components (56 seed families). The library " +
+          "loader brings external family libraries into the project, and catalog sync keeps type catalogs and " +
+          "shared parameters consistent with the type selector and property palette.",
+        bullets: [
+          "Built-in seed families: walls, doors, windows, MEP",
+          "Library loader for external family libraries",
+          "Type catalogs + shared parameters (catalog sync)",
+          "Type selector and property palette integration",
+        ],
+        howTo: "Family Browser → Library tab, or pick types from the Type Selector in the 3D platform.",
+      },
+    ],
+    chips: ["SKETCH", "CONSTRAINTS", "FORMULAS", "TYPES", "NESTED", "ARRAYS", "CONNECTORS", "CATALOGS", "SHARED PARAMS", "BUILT-INS"],
+    cta: ["data-openfam", "Open the family browser"],
+    overviewTitle: "Topic 02 — Parametric Families & Generation",
+    overviewBody:
+      "Author parametric families: sketch with constraints, drive parameters with formulas, nest families " +
+      "into assemblies and expand arrays. Click a card for a focused explanation of each capability.",
+  },
+  {
+    cls: "obs-page--3d",
+    num: "03",
     eyebrow: "3D BIM & COORDINATION",
     title: "Author, federate and coordinate in one 3D environment.",
     copy:
@@ -254,14 +339,14 @@ const SHOWCASE = [
     ],
     chips: ["IFC", "FEDERATION", "SECTION BOX", "WALK MODE", "VIEWCUBE", "SCHEDULES", "SHEETS", "IDS", "WORKSETS", "DESIGN OPTIONS", "POINT CLOUD"],
     cta: ["data-open3d", "Enter the 3D BIM platform"],
-    overviewTitle: "Topic 02 — 3D BIM & Coordination",
+    overviewTitle: "Topic 03 — 3D BIM & Coordination",
     overviewBody:
       "Author, link IFC/FRAG models, coordinate disciplines, run clashes and deliver 4D/5D views. " +
       "Click a card for a focused explanation of each capability.",
   },
   {
     cls: "obs-page--del",
-    num: "03",
+    num: "04",
     eyebrow: "DELIVER, AUTOMATE & SCALE",
     title: "From model to deliverable — and to every device you own.",
     copy:
@@ -361,7 +446,7 @@ const SHOWCASE = [
     ],
     chips: ["IFC", "BCF", "IDS", "CLOUD", "PWA", "PLUGINS", "AI", "SCHEDULES", "SHEETS", "i18n"],
     cta: ["data-open3d", "Open the full platform"],
-    overviewTitle: "Topic 03 — Deliver, Automate & Scale",
+    overviewTitle: "Topic 04 — Deliver, Automate & Scale",
     overviewBody:
       "Handover, formats, cloud, automation, AI and localization. Click any card for a guided explanation " +
       "of how that capability fits your delivery workflow.",
@@ -392,6 +477,34 @@ const VISUAL_2D = `
   <rect x="22" y="180" width="296" height="21" rx="4" fill="rgba(11,13,18,.85)" stroke="#1E2029"/>
   <text x="32" y="194" fill="#6B7280" font-family="monospace" font-size="9.5">Command: _line 25600,18400&#8250;</text>
   <rect class="obsp-caret" x="238" y="185" width="6" height="11" fill="#38BDF8"/>
+</svg>`;
+
+const VISUAL_FAM = `
+<svg viewBox="0 0 340 212" role="presentation" focusable="false">
+  <defs>
+    <pattern id="obsp-famgrid" width="15" height="15" patternUnits="userSpaceOnUse">
+      <path d="M15 0H0V15" fill="none" stroke="rgba(167,139,250,.10)" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="340" height="212" fill="url(#obsp-famgrid)"/>
+  <rect x="60" y="30" width="90" height="130" fill="none" stroke="#A78BFA" stroke-width="1.6"/>
+  <path d="M60 30 H150 M60 160 H150" stroke="#C4B5FD" stroke-width="1"/>
+  <circle cx="142" cy="96" r="3.5" fill="none" stroke="#A78BFA" stroke-width="1.2"/>
+  <path d="M60 172 H150 M60 168 v8 M150 168 v8" stroke="#F59E0B" stroke-width="1"/>
+  <path d="M64 169.6 60 172 64 174.4 M146 169.6 150 172 146 174.4" fill="none" stroke="#F59E0B" stroke-width="1"/>
+  <text x="82" y="184" fill="#F59E0B" font-family="monospace" font-size="10">900</text>
+  <path d="M170 52 H300" stroke="rgba(196,181,253,.8)" stroke-width="1"/>
+  <path d="M170 48 v8 M300 48 v8" stroke="#C4B5FD" stroke-width="1"/>
+  <rect x="206" y="60" width="88" height="20" rx="4" fill="rgba(11,13,18,.85)" stroke="#1E2029"/>
+  <text x="212" y="74" fill="#A78BFA" font-family="monospace" font-size="9.5">H = W * 2.1</text>
+  <g class="obsp-famtree">
+    <path d="M214 108 H286 M250 108 V128 M214 128 H286 M214 124 v8 M286 124 v8 M250 128 V148 M232 148 H268 M232 144 v8 M268 144 v8" fill="none" stroke="rgba(167,139,250,.55)" stroke-width="1.1"/>
+    <circle cx="214" cy="108" r="2.4" fill="#A78BFA"/><circle cx="286" cy="108" r="2.4" fill="#A78BFA"/>
+    <circle cx="214" cy="128" r="2.4" fill="#A78BFA"/><circle cx="286" cy="128" r="2.4" fill="#A78BFA"/>
+    <circle cx="232" cy="148" r="2.4" fill="#C4B5FD"/><circle cx="268" cy="148" r="2.4" fill="#C4B5FD"/>
+  </g>
+  <rect x="22" y="192" width="296" height="14" rx="3" fill="rgba(11,13,18,.85)" stroke="#1E2029"/>
+  <text x="32" y="202" fill="#6B7280" font-family="monospace" font-size="8.5">Family: Door-Parametric — 4 constraints solved, 12 types</text>
 </svg>`;
 
 const VISUAL_3D = `
@@ -783,7 +896,7 @@ function buildStatic() {
           <button class="obs-page__cta" ${p.cta[0]} type="button">${esc(p.cta[1])} <span aria-hidden="true">→</span></button>
         </div>
         <div class="obs-page__visual" aria-hidden="true">
-          ${p.cls === "obs-page--2d" ? VISUAL_2D : p.cls === "obs-page--3d" ? VISUAL_3D : VISUAL_DEL}
+          ${p.cls === "obs-page--2d" ? VISUAL_2D : p.cls === "obs-page--fam" ? VISUAL_FAM : p.cls === "obs-page--3d" ? VISUAL_3D : VISUAL_DEL}
         </div>
       </article>`).join("")}
     </div>
@@ -917,6 +1030,12 @@ function buildStatic() {
   (inner.querySelector("#obs-hero-2d") as HTMLButtonElement | null)?.addEventListener("click", open2dEngine);
   (inner.querySelector("#obs-hero-3d") as HTMLButtonElement | null)?.addEventListener("click", open3dPlatform);
   inner.querySelectorAll<HTMLButtonElement>("[data-open2d]").forEach((b) => { b.onclick = open2dEngine; });
+  inner.querySelectorAll<HTMLButtonElement>("[data-openfam]").forEach((b) => {
+    b.onclick = () => {
+      hideHome();
+      void import("../features/family-browser").then((m) => m.openFamilyBrowser());
+    };
+  });
   inner.querySelectorAll<HTMLButtonElement>("[data-open3d]").forEach((b) => { b.onclick = open3dPlatform; });
   inner.querySelectorAll<HTMLButtonElement>("[data-focus-create]").forEach((b) => {
     b.onclick = () => {

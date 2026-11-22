@@ -211,16 +211,6 @@ function builtinScopes(getMods: () => Any): EscapeScope[] {
       cancel: () => getMods().sectionCut?.cancelSectionCutDrag?.() === true,
     },
     {
-      // The measure CREATION flow only (pending length-measurer picks):
-      // clears the in-progress measurement without exiting the tool.
-      id: "measure-creation", priority: 725,
-      cancel: () => {
-        const lm: Any = (ctx as Any).lengthMeasurer;
-        if (!lm?.enabled) return false;
-        try { lm.cancelCreation?.(); return true; } catch { return false; }
-      },
-    },
-    {
       // Pending measure picks + OBC creation, then exit measure tool.
       id: "measure-creation", priority: 720,
       cancel: () => {
