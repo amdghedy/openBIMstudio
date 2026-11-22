@@ -564,7 +564,7 @@ function setPlanSelectedIds(ids: readonly string[]): void {
     obsAuthoredSelectionBridge?.(selected.map((x) => x.id));
   } catch { /* selection bridge optional */ }
   renderPlanProperties();
-  if (currentPlan) renderPlan(currentPlan);
+  requestPlanRender();
 }
 
 function setPlanSelectedElement(el: any | null, mode: "replace" | "add" | "toggle" | "remove" = "replace") {
@@ -2619,6 +2619,21 @@ function schedulePlanRender(): void {
   planRenderCoalescer.request(() => {
     if (currentPlan) renderPlan(currentPlan);
   });
+}
+
+/**
+ * G5: re-render the plan, but never synchronously rebuild the SVG between
+ * a mousedown and its mouseup. renderPlan() clears svg.innerHTML, which
+ * destroys the node under the pointer, so the browser pairs the mouseup
+ * with a different node and never fires click/dblclick — double-clicking
+ * a note or tag to edit it silently did nothing. While a mousedown
+ * gesture is held, the render is deferred to the next frame instead.
+ */
+let planRenderHeld = false;
+function requestPlanRender(): void {
+  if (!currentPlan) return;
+  if (planRenderHeld) { schedulePlanRender(); return; }
+  renderPlan(currentPlan);
 }
 
 function renderPlan(plan: PlanView) {
@@ -4871,6 +4886,17 @@ canvasWrap.addEventListener("mousedown", (e) => {
 
   // -- Select: click OR start box (window L?R / crossing R?L) --
   if (planMode === "select" || planMode === "pan") {
+    // G5: hold synchronous plan renders for this gesture. Selection
+    // changes below re-render the plan, and renderPlan() rebuilds the
+    // SVG — doing that inside mousedown destroys the node under the
+    // pointer, so the browser never fires click/dblclick for it. The
+    // hold lifts on mouseup and the deferred render runs on the next
+    // frame, after the gesture's events have paired.
+    planRenderHeld = true;
+    window.addEventListener("mouseup", () => {
+      planRenderHeld = false;
+      schedulePlanRender();
+    }, { once: true });
     // Refresh authored cache so click always sees latest elements
     try {
       void import("./authoring").then((m) => {
@@ -4886,12 +4912,12 @@ canvasWrap.addEventListener("mousedown", (e) => {
         planDimSel = dh;
         planDimDrag = { members: dimMembers(dh), before: dimSnapshot(), moved: false, sx: e.clientX, sy: e.clientY };
         footerStatus(`Dimension selected${dh.chainId ? " (chain - drag moves it, E toggles EQ)" : ""} - Delete removes, double-click edits text, Esc deselects`);
-        if (currentPlan) renderPlan(currentPlan);
+        requestPlanRender();
         e.preventDefault();
         return;
       } else if (planDimSel) {
         planDimSel = null;
-        if (currentPlan) renderPlan(currentPlan);
+        requestPlanRender();
       }
       const ah = hitAnnotation(hit.x, hit.z);
       if (ah) {
@@ -4900,12 +4926,12 @@ canvasWrap.addEventListener("mousedown", (e) => {
         planAnnoSel = ah;
         planAnnoDrag = { sel: ah, dx: ah.obj.x - hit.x, dz: ah.obj.z - hit.z, before: annoSnapshot(), moved: false, sx: e.clientX, sy: e.clientY };
         footerStatus(`${ah.kind === "tag" ? "Tag" : "Note"} selected - drag to move, double-click to edit, Delete removes`);
-        if (currentPlan) renderPlan(currentPlan);
+        requestPlanRender();
         e.preventDefault();
         return;
       } else if (planAnnoSel) {
         planAnnoSel = null;
-        if (currentPlan) renderPlan(currentPlan);
+        requestPlanRender();
       }
     }
     planBoxDragging = true;
@@ -5058,6 +5084,15 @@ canvasWrap.addEventListener("dblclick", async (e) => {
     if (action.kind === "open-type-properties") {
       e.preventDefault(); e.stopPropagation();
       setPlanSelectedElement(near.element, "replace");
+      // G5: the plan→authoring selection bridge is async (dynamic import),
+      // so sync the authoring selection first and only then open Type
+      // Properties — the command reads the authoring selection
+      // synchronously and would otherwise fall back to the active tool
+      // ("select") and show the wrong type's defaults.
+      try {
+        const m = await import("./authoring");
+        m.setSelectedAuthored?.([String(near.element.id)], "replace");
+      } catch { /* bridge optional; the plan selection is already set */ }
       openTypePropertiesForPlan();
       return;
     }

@@ -97,6 +97,38 @@ let lastSelectionTargetKey: string | null = null;
 /** Reserved flex column the palette lives in while docked left (G10), or null. */
 let dockColumn: HTMLElement | null = null;
 
+/**
+ * G5 — deferred auto-open. Selecting an element docks the palette left,
+ * which reserves a 320px flex column and shifts the whole viewport right:
+ * every element's screen position moves, so the second click of a
+ * double-click lands where the element USED to be, the raycast misses,
+ * and Type Properties never opens. The input router's double-click
+ * window is 320ms, so the auto-open waits 400ms after the selection and
+ * re-validates the target before opening: a double-click resolves first,
+ * a single click only sees the palette a beat later. Explicit opens
+ * (ribbon, toggle, API) stay immediate — only the automatic open on
+ * selection / tool activation is deferred.
+ */
+let autoOpenTimer: ReturnType<typeof setTimeout> | null = null;
+const AUTO_OPEN_DELAY_MS = 400;
+
+function cancelAutoOpen(): void {
+  if (autoOpenTimer) { clearTimeout(autoOpenTimer); autoOpenTimer = null; }
+}
+
+function scheduleAutoOpen(): void {
+  cancelAutoOpen();
+  autoOpenTimer = setTimeout(() => {
+    autoOpenTimer = null;
+    try {
+      if (visible) return;
+      const target = getPaletteTarget();
+      if (!target || (target.mode !== "edit" && target.mode !== "edit-multi")) return;
+      openPropertyPalette();
+    } catch (err) { console.warn("[property-palette] deferred auto-open failed", err); }
+  }, AUTO_OPEN_DELAY_MS);
+}
+
 /** Deps for the Type Selector engine: the live family service + wall catalog. */
 function typeSelectorDeps(): TypeSelectorDeps {
   return {
@@ -1653,6 +1685,7 @@ function makeLevelConstraintsBlock(element: AuthoredElement): HTMLElement {
    Public
    ═════════════════════════════════════════════════════════════════════════ */
 export function openPropertyPalette() {
+  cancelAutoOpen();
   visible = true;
   if (dockHandle) dockHandle.show();
   else panel.style.display = "flex";
@@ -1661,6 +1694,7 @@ export function openPropertyPalette() {
   else render();
 }
 export function closePropertyPalette() {
+  cancelAutoOpen();
   visible = false;
   if (dockHandle) dockHandle.hide();
   else panel.style.display = "none";
@@ -1949,7 +1983,9 @@ export function setupPropertyPalette(): void {
   onAuthoringChange(() => {
     try {
       if (isDrawToolActive() && !visible) {
-        openPropertyPalette();
+        // G5: deferred — the dock shifts the viewport, which must not
+        // land between the two clicks of a double-click (see scheduleAutoOpen).
+        scheduleAutoOpen();
         return;
       }
     } catch (err) { console.warn("[property-palette] auto-open failed", err); }
@@ -1964,7 +2000,7 @@ export function setupPropertyPalette(): void {
         if (key !== lastSelectionTargetKey) {
           lastSelectionTargetKey = key;
           if (!visible) {
-            openPropertyPalette();
+            scheduleAutoOpen();
             return;
           }
         }
@@ -1987,7 +2023,7 @@ export function setupPropertyPalette(): void {
               type: selected[0].type as any,
             });
             if (!visible) {
-              openPropertyPalette();
+              scheduleAutoOpen();
               return;
             }
           }
@@ -2009,7 +2045,7 @@ export function setupPropertyPalette(): void {
           const el = getElements().find((x) => x.id === selIds[0]);
           if (el) {
             setPaletteTarget({ mode: "edit", type: el.type as any, elementId: el.id });
-            if (!visible) openPropertyPalette(); else render();
+            if (!visible) scheduleAutoOpen(); else render();
             return;
           }
         }
@@ -2030,7 +2066,7 @@ export function setupPropertyPalette(): void {
               elementIds: walls.map((w) => w.id),
               type: "wall" as any,
             });
-            if (!visible) openPropertyPalette(); else render();
+            if (!visible) scheduleAutoOpen(); else render();
             return;
           }
           // 2+ linear elements (mixed types) → constraints panel
@@ -2040,7 +2076,7 @@ export function setupPropertyPalette(): void {
               elementIds: linears.map((w) => w.id),
               type: (linears[0].type as any) || "wall",
             });
-            if (!visible) openPropertyPalette(); else render();
+            if (!visible) scheduleAutoOpen(); else render();
             return;
           }
           // G10 — any other multi-selection of authored elements still
@@ -2052,7 +2088,7 @@ export function setupPropertyPalette(): void {
               elementIds: selected.map((w) => w.id),
               type: (selected[0].type as any) || "wall",
             });
-            if (!visible) openPropertyPalette(); else render();
+            if (!visible) scheduleAutoOpen(); else render();
             return;
           }
         }
