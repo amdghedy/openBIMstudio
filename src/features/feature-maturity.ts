@@ -60,7 +60,7 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
       "PDF selectable-text table extraction and optional scanned-page OCR through a configured local Ollama vision model are implemented; OCR quality depends on the selected model and page rendering, and every extracted value requires engineering review",
       "PDF table reconstruction currently recognizes a bounded set of column headings and table layouts; multi-column product brochures, rotated tables, complex merged cells and nonstandard units may need manual correction",
       "DWG, DXF, STEP, SAT, manufacturer-accurate product geometry and native Revit RFA export are not implemented; explicit catalogue connector definitions are supported only for one identical family-level port across all types, while inferred port placement, multiple ports per type and type-specific layouts remain unsupported; XLSX reads cached cell values only",
-      "The family preview remains a dimension-driven bounding-box template; browser end-to-end and real manufacturer catalogue verification remain outstanding",
+      "The family preview uses generic box/cylinder primitives only; browser end-to-end and real manufacturer catalogue verification remain outstanding",
     ],
     affirmedIn: APP_VERSION,
   },
