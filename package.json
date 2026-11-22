@@ -383,6 +383,7 @@
     "test:critical-workflow-pack-8": "node tests/critical-workflow-pack-8.test.cjs",
     "test:safe-load": "node tests/safe-load.test.cjs",
     "test:safe-load-audit": "node tests/safe-load-coverage-audit.test.cjs",
+    "test:zod-boundaries": "node tests/zod-boundaries.test.cjs",
     "test:mass-to-elements": "node tests/mass-to-elements.test.cjs",
     "test:family-migration": "node tests/family-migration.test.cjs",
     "test:modify-tab-completion": "node tests/modify-tab-completion.test.cjs",

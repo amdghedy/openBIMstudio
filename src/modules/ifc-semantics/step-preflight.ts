@@ -16,6 +16,14 @@
  *     OpenModel never terminates; a lone `.` after a label that is not an
  *     enumeration close is the same defect).
  * It does NOT validate the schema, entity names or references — that remains the parser's job.
+ *
+ * PE-20 note: this module deliberately imports NOTHING (no Zod, no safeLoad).
+ * scripts/fuzz-ifc-corpus.mjs transpiles this file standalone (ts.transpileModule)
+ * and dynamically imports it as ESM in an isolated child; any import — even a
+ * relative one — makes every fuzz child die at import and reads as a 100%
+ * contained-crash rate. The Zod validation of the parsed header lives at the
+ * real load path instead: src/features/importer.ts calls
+ * assertValidStepFileHeader (src/core/safeLoad.ts) on parseStepHeader's result.
  */
 
 export interface StepPreflightResult {
@@ -212,4 +220,92 @@ export function preflightStep(bytes: Uint8Array): StepPreflightResult {
   if (!sawData) return fail("No DATA; section");
   if (!sawTail || section !== "after") return fail(`Missing ${TAIL_MAGIC} terminator (file truncated?)`);
   return { ok: true };
+}
+
+/* ── STEP header fields (PE-20) ───────────────────────────────────────────
+ * The structural preflight above proves the file IS a STEP stream; this
+ * proves it carries the header identity the importer and every downstream
+ * schema decision depend on. Only the first 64 KiB are read (the HEADER
+ * section sits at the top of every conforming file) and only latin1 text
+ * is decoded, so no allocation scales with the file size.
+ *
+ * FILE_SCHEMA is required and non-empty: a STEP stream without a schema
+ * identity is not a usable IFC file. FILE_NAME must be present (its value
+ * may be empty — some exporters write ''). FILE_DESCRIPTION is optional
+ * metadata and defaults to []. Quoted strings follow the STEP rule that
+ * '' inside a string is one escaped quote.
+ */
+
+export interface StepFileHeader {
+  fileSchema: string;
+  fileName: string;
+  fileDescription: string[];
+}
+
+export type StepHeaderResult =
+  | { ok: true; value: StepFileHeader }
+  | { ok: false; error: string };
+
+const HEADER_SCAN_BYTES = 64 * 1024;
+
+function stepQuotedStrings(text: string): string[] {
+  const out: string[] = [];
+  const re = /'((?:[^']|'')*)'/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) out.push(m[1].replace(/''/g, "'"));
+  return out;
+}
+
+/** Extract the parenthesised argument list of a `KEYWORD(...)` statement. */
+function headerStatementArgs(head: string, keyword: string): string | null {
+  const idx = head.search(new RegExp(keyword + "\\s*\\(", "i"));
+  if (idx < 0) return null;
+  let depth = 0;
+  let inString = false;
+  for (let i = idx; i < head.length; i++) {
+    const c = head[i];
+    if (inString) {
+      if (c === "'") {
+        if (head[i + 1] === "'") { i++; continue; }
+        inString = false;
+      }
+      continue;
+    }
+    if (c === "'") { inString = true; continue; }
+    if (c === "(") depth++;
+    else if (c === ")") {
+      depth--;
+      if (depth === 0) return head.slice(idx, i + 1);
+    } else if (c === ";" && depth === 0) return null;
+  }
+  return null;
+}
+
+export function parseStepHeader(bytes: Uint8Array): StepHeaderResult {
+  const rawHead = new TextDecoder("latin1").decode(bytes.subarray(0, HEADER_SCAN_BYTES));
+  // Header fields live in the HEADER section only; never let a DATA record
+  // that merely mentions FILE_SCHEMA satisfy the check.
+  const endSec = rawHead.search(/ENDSEC\s*;/i);
+  const head = endSec >= 0 ? rawHead.slice(0, endSec) : rawHead;
+  const schemaStmt = headerStatementArgs(head, "FILE_SCHEMA");
+  if (!schemaStmt) return { ok: false, error: "STEP header has no FILE_SCHEMA statement" };
+  const schemaNames = stepQuotedStrings(schemaStmt);
+  if (!schemaNames.length || !schemaNames[0].trim()) {
+    return { ok: false, error: "STEP header FILE_SCHEMA carries no schema name" };
+  }
+  const nameStmt = headerStatementArgs(head, "FILE_NAME");
+  if (!nameStmt) return { ok: false, error: "STEP header has no FILE_NAME statement" };
+  const nameParts = stepQuotedStrings(nameStmt);
+  const descStmt = headerStatementArgs(head, "FILE_DESCRIPTION");
+  const description = descStmt ? stepQuotedStrings(descStmt) : [];
+  const candidate = {
+    fileSchema: schemaNames[0].trim(),
+    fileName: nameParts[0] ?? "",
+    fileDescription: description,
+  };
+  // Plain structural checks only — the Zod shape (StepFileHeaderSchema,
+  // incl. the 128/512/1000 length caps) is enforced at the real load path
+  // by assertValidStepFileHeader in the importer; this module must stay
+  // dependency-free so the fuzz harness can transpile it standalone.
+  return { ok: true, value: candidate };
 }

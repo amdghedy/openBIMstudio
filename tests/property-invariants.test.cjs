@@ -4,6 +4,7 @@ const { execSync } = require("child_process");
 const fs = require("fs"), os = require("os"), path = require("path"), assert = require("assert");
 const root = path.join(__dirname, "..");
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "prop-"));
+fs.symlinkSync(path.join(root, "node_modules"), path.join(out, "node_modules"), "junction");
 execSync(`npx tsc src/modules/bim-gaps/ifc-guid.ts src/modules/ifc-semantics/step-preflight.ts src/modules/export/native-twin-ifc.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --ignoreDeprecations 5.0${process.env.TSC_IGNORE_CONFIG ? " --ignoreConfig" : ""}`, { stdio: "pipe", cwd: root });
 const find = (d, n) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) { const r = find(p, n); if (r) return r; } else if (f.name === n) return p; } };
 const G = require(find(out, "ifc-guid.js")), P = require(find(out, "step-preflight.js")), W = require(find(out, "native-twin-ifc.js"));

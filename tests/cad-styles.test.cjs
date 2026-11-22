@@ -5,6 +5,7 @@ const os = require("os");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "obs-cad-styles-"));
+fs.symlinkSync(path.join(__dirname, "..", "node_modules"), path.join(out, "node_modules"), "junction"); // zod is a runtime dep of compiled safeLoad (PE-20)
 execFileSync("npx", ["tsc", "--rootDir", "src", "--outDir", out, "--module", "commonjs", "--target", "ES2022", "--skipLibCheck", "--noCheck", "src/modules/drawings/dxf-writer.ts", "src/modules/drawings/dxf-reader.ts", "src/modules/drawings/cad-styles.ts"], { stdio: "inherit" });
 const dir = path.join(out, "modules/drawings");
 const S = require(path.join(dir, "cad-styles.js"));

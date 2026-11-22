@@ -32,6 +32,7 @@ import {
   parseBcfMarkup,
   bcfGuid,
 } from "./bcf-markup";
+import { validateBcfParsedTopic, validateBcfViewpoint } from "../../core/safeLoad";
 import { uiAlert } from "../../core/notify";
 
 const MAX_BCF_BYTES = 64 * 1024 * 1024;
@@ -447,6 +448,13 @@ export async function importBCF(file: File): Promise<number> {
       // attribute fallbacks, so both old builds' exports and the conformant
       // writer round-trip. Nested comment text is resolved there too.
       const parsed = parseBcfMarkup(markupXml);
+      // PE-20: the parsed markup is schema-gated before it can touch issue
+      // state. A failure throws inside the per-topic try, so this topic is
+      // skipped and the remaining topics still import.
+      const topicCheck = validateBcfParsedTopic(parsed);
+      if (!topicCheck.ok) {
+        throw new Error(`markup.bcf failed validation: ${(topicCheck.issues ?? []).join("; ")}`);
+      }
 
       let id = parsed.guid || folder;
       while (existing.has(id)) id = guid();
@@ -535,6 +543,15 @@ export async function importBCF(file: File): Promise<number> {
         date: c.date,
         text: c.text,
       }));
+
+      // PE-20: the viewpoint built from viewpoint.bcfv is schema-gated
+      // before it is stored — a corrupt camera (NaN coordinates from a
+      // non-numeric CameraViewPoint, an unknown projection) skips this
+      // topic instead of breaking the camera when the issue is opened.
+      const viewpointCheck = validateBcfViewpoint(viewpoint);
+      if (!viewpointCheck.ok) {
+        throw new Error(`viewpoint.bcfv failed validation: ${(viewpointCheck.issues ?? []).join("; ")}`);
+      }
 
       imported.push({
         id,

@@ -55,6 +55,7 @@ const MANIFEST = path.join(CORPUS, "manifest.json");
 
 // Compile the pure modules under test (same pattern as the other .cjs suites).
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "obs-corpus-manifest-"));
+fs.symlinkSync(path.join(root, "node_modules"), path.join(out, "node_modules"), "junction");
 execSync(
   "npx tsc src/modules/ifc-semantics/step-preflight.ts src/modules/ifc-semantics/index.ts " +
     "src/modules/ifc-semantics/validate.ts --rootDir src --outDir " + out +

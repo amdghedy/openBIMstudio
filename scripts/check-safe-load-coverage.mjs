@@ -33,6 +33,39 @@ const requiredBoundaries = [
   ["src/features/clash.ts", "safeLoad("],
   ["src/features/libredwg-toolkit.ts", "safeLoad("],
   ["src/features/cad-viewer.ts", "safeLoad("],
+  // PE-20 — Zod discipline beyond JSON: each new boundary must keep its
+  // schema wired into its actual load/import path.
+  ["src/modules/drawings/dxf-reader.ts", "assertValidDxfDocument("],
+  ["src/modules/ifc-semantics/step-preflight.ts", "parseStepHeader"],
+  ["src/features/importer.ts", "assertValidStepPreflightResult("],
+  ["src/features/importer.ts", "parseStepHeader("],
+  ["src/features/importer.ts", "assertValidStepFileHeader("],
+  ["src/modules/issues/bcf.ts", "validateBcfParsedTopic("],
+  ["src/modules/issues/bcf.ts", "validateBcfViewpoint("],
+  ["src/modules/families/safe-expr.ts", "validateFormulaExpression"],
+  ["src/modules/families/formula-engine.ts", "validateFormulaExpression("],
+];
+
+/**
+ * Schemas that must exist in the boundary hub (`src/core/safeLoad.ts`).
+ * Guards the PE-20 regression where a boundary quietly falls back to
+ * `z.unknown()` element/scenario contents: the hub must define the real
+ * content schemas, and must not contain an unknown-typed elements or
+ * scenarios array any more.
+ */
+const requiredSchemas = [
+  "ProjectElementSchema",
+  "ClashScenarioSchema",
+  "DxfDocumentSchema",
+  "StepPreflightResultSchema",
+  "StepFileHeaderSchema",
+  "BcfParsedTopicSchema",
+  "BcfViewpointSchema",
+  "FormulaParameterSchema",
+  "FormulaExpressionSchema",
+];
+const forbiddenHubPatterns = [
+  "z.array(z.unknown())",
 ];
 
 // Detect direct JSON.parse(File.text()) and assigned File.text() values.
@@ -106,6 +139,25 @@ if (isMain) {
       failed = true;
     } else {
       console.log(`OK   ${relative}: validated boundary wired`);
+    }
+  }
+
+  // PE-20: the hub must define every boundary schema, and element /
+  // scenario contents must never again be z.unknown().
+  const hubPath = path.join(root, "src/core/safeLoad.ts");
+  const hub = fs.readFileSync(hubPath, "utf8");
+  for (const schema of requiredSchemas) {
+    if (!hub.includes(schema)) {
+      console.error(`FAIL src/core/safeLoad.ts: missing schema ${schema}`);
+      failed = true;
+    } else {
+      console.log(`OK   src/core/safeLoad.ts: schema ${schema} defined`);
+    }
+  }
+  for (const pattern of forbiddenHubPatterns) {
+    if (hub.includes(pattern)) {
+      console.error(`FAIL src/core/safeLoad.ts: forbidden pattern ${pattern} (unvalidated contents)`);
+      failed = true;
     }
   }
 

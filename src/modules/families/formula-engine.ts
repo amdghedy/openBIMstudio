@@ -41,7 +41,8 @@
 //   - evaluateFormula() keeps the old null-on-error contract used by
 //     parametric-geometry's resolveNumber().
 
-import { evaluateExpression } from "./safe-expr";
+import { evaluateExpression, validateFormulaExpression } from "./safe-expr";
+import { FormulaParameterSchema, validateWithSchema } from "../../core/safeLoad";
 import type { FamilyParameter } from "./types";
 
 export interface FormulaError {
@@ -303,18 +304,52 @@ export function evaluateParameters(
   declarations: FamilyParameter[],
   seedValues: Record<string, any>,
 ): FormulaResult {
-  const { order, cycles, dependencies } = topoSort(declarations);
+  // PE-20: declarations are validated BEFORE the topological sort and any
+  // evaluation. A declaration with an unlexable name, an unknown type /
+  // scope, or a non-string / overlong formula is recorded as a
+  // per-parameter error and excluded — it keeps its default/seed value
+  // and is never evaluated, instead of crashing the sort or the evaluator
+  // (or silently evaluating under a meaningless name).
+  const errors: FormulaError[] = [];
+  const validDeclarations: FamilyParameter[] = [];
+  for (const p of declarations) {
+    const check = validateWithSchema(FormulaParameterSchema, p);
+    if (!check.ok) {
+      const raw = p as FamilyParameter | null | undefined;
+      const name = typeof raw?.name === "string" ? raw.name : "<unknown>";
+      const formulaText = typeof raw?.formula === "string" ? raw.formula : "";
+      errors.push({
+        parameter: name,
+        message: `Invalid parameter declaration: ${(check.issues ?? []).join("; ")}`,
+        formula: formulaText,
+      });
+      continue;
+    }
+    validDeclarations.push(check.value as FamilyParameter);
+  }
+
+  const { order, cycles, dependencies } = topoSort(validDeclarations);
   const values: Record<string, any> = { ...seedValues };
   const computed = new Set<string>();
-  const errors: FormulaError[] = [];
+  // Names an expression may reference: declared parameters, seed values
+  // (a formula may legitimately read a seed-only value), builtins, and
+  // the boolean literals. Anything else is an unknown name, reported
+  // before evaluation rather than thrown mid-pass.
+  const allowedNames = new Set<string>([
+    ...validDeclarations.map((d) => d.name),
+    ...Object.keys(seedValues),
+    ...Object.keys(BUILTIN_FUNCTIONS),
+    "true",
+    "false",
+  ]);
 
-  for (const p of declarations) {
+  for (const p of validDeclarations) {
     if (!(p.name in values)) values[p.name] = p.default;
   }
 
   const cycleSet = new Set(cycles);
   for (const c of cycles) {
-    const p = declarations.find((x) => x.name === c);
+    const p = validDeclarations.find((x) => x.name === c);
     errors.push({
       parameter: c,
       message: "Cycle detected in formula references",
@@ -328,6 +363,20 @@ export function evaluateParameters(
     computed.add(p.name);
 
     const body = normalizeBody(p.formula);
+
+    // PE-20: validate the expression (shape + identifier membership)
+    // before evaluating it. An unknown name is the same error the
+    // evaluator would throw; reporting it here keeps the failure
+    // per-parameter and typed instead of aborting the whole pass.
+    const exprCheck = validateFormulaExpression(body, allowedNames);
+    if (!exprCheck.ok) {
+      errors.push({
+        parameter: p.name,
+        message: (exprCheck.issues ?? []).join("; "),
+        formula: p.formula,
+      });
+      continue;
+    }
 
     try {
       // Interpreted, never executed as script: formulas can come from imported family files.
@@ -398,8 +447,19 @@ export function evaluateParameters(
 export function evaluateFormula(expr: string, params: Record<string, any>): any {
   const source = String(expr ?? "").trim();
   if (!source) return null;
+  // PE-20: validate the expression (shape + identifier membership) before
+  // evaluating it. Same null-on-error contract as before: an invalid
+  // expression yields null, never a throw.
+  const body = normalizeBody(source);
+  const allowedNames = new Set<string>([
+    ...Object.keys(params ?? {}),
+    ...Object.keys(BUILTIN_FUNCTIONS),
+    "true",
+    "false",
+  ]);
+  if (!validateFormulaExpression(body, allowedNames).ok) return null;
   try {
-    const result = evaluateExpression(normalizeBody(source), params, BUILTIN_FUNCTIONS);
+    const result = evaluateExpression(body, params, BUILTIN_FUNCTIONS);
     if (result === undefined || result === null) return null;
     if (typeof result === "boolean") return result ? 1 : 0;
     if (typeof result === "number" && !Number.isFinite(result)) return null;

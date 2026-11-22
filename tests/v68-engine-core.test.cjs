@@ -46,6 +46,7 @@ function throws(fn, substr) {
 // ── Compile the module slice ────────────────────────────────────────────
 const root = path.resolve(__dirname, "..");
 const tmpOut = fs.mkdtempSync(path.join(os.tmpdir(), "obs-v68-core-"));
+fs.symlinkSync(path.join(root, "node_modules"), path.join(tmpOut, "node_modules"), "junction"); // zod is a runtime dep of compiled safeLoad (PE-20)
 fs.writeFileSync(path.join(tmpOut, "package.json"), '{"type": "commonjs"}');
 execSync(
   "npx tsc --rootDir src --outDir " + JSON.stringify(tmpOut) +

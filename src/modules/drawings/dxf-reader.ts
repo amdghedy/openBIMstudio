@@ -14,6 +14,7 @@
  * Pure TypeScript, no dependencies.
  */
 import { assertFileAllowed, readHead } from "../../core/file-guard";
+import { assertValidDxfDocument } from "../../core/safeLoad";
 import { lineweightFromDxf } from "./cad-styles";
 import { parseWithAcadEngine } from "./acad-engine";
 import type { DxfDimStyle, DxfDocument, DxfEntity, DxfHatch, DxfLayer, DxfLayout, DxfPoint, DxfTextStyle, DxfUnits, DxfViewport } from "./dxf-types";
@@ -582,7 +583,7 @@ export function parseDxf(text: string): DxfDocument {
     if (!known.has(e.layer)) { known.add(e.layer); layers.push({ name: e.layer, color: 7 }); }
   }
 
-  return {
+  const doc: DxfDocument = {
     layers,
     entities,
     extents: computeExtents(entities),
@@ -597,6 +598,12 @@ export function parseDxf(text: string): DxfDocument {
     dimStyleTable: Object.keys(dimStyleTable).length ? dimStyleTable : undefined,
     skipped: Object.keys(skipped).length ? skipped : undefined,
   };
+  // PE-20: the document model is schema-gated at the parse boundary. The
+  // reader coerces hostile numbers to finite defaults, so a failure here
+  // means the reader itself misbehaved — it must throw, never hand a
+  // malformed document to the scene.
+  assertValidDxfDocument(doc, "DXF document");
+  return doc;
 }
 
 function expandRecs(
@@ -954,6 +961,10 @@ export async function parseDxfFile(file: File | Blob): Promise<DxfDocument> {
       if (!acad.doc.savedView && acad.format !== "dwg" && !isBinary) {
         try { const sv = dxfHeaderView(new TextDecoder("latin1").decode(bytes)); if (sv) acad.doc.savedView = sv; } catch { /* optional */ }
       }
+      // PE-20: the native engine's document is schema-gated exactly like
+      // the ASCII reader's — a non-finite coordinate from engine JSON must
+      // fail the import, not reach the scene.
+      assertValidDxfDocument(acad.doc, `${name} (${acad.format})`);
       return acad.doc;
     }
     if (acad) {
