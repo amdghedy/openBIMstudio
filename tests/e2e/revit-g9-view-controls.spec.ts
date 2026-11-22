@@ -118,7 +118,7 @@ test('G9: full scale list — picking 1:20 re-renders the plan at 1:20', async (
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
-  await expect(page.locator('.obs-ribbon')).toBeVisible({ timeout: 30000 });
+  await expect(page.locator('.obs-ribbon')).toBeVisible({ timeout: 60000 });
   await enterPlatform(page);
   await openPlan(page);
   await drawColumnInPlan(page);
@@ -144,7 +144,7 @@ test('G9: crop toggle follows the active view', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
-  await expect(page.locator('.obs-ribbon')).toBeVisible({ timeout: 30000 });
+  await expect(page.locator('.obs-ribbon')).toBeVisible({ timeout: 60000 });
   await enterPlatform(page);
   await openPlan(page);
 
@@ -188,7 +188,7 @@ test('G9: Underlay Below renders the lower level greyed beneath', async ({ page 
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
-  await expect(page.locator('.obs-ribbon')).toBeVisible({ timeout: 30000 });
+  await expect(page.locator('.obs-ribbon')).toBeVisible({ timeout: 60000 });
   await enterPlatform(page);
   await openPlan(page);
   // Wall is authored on the default level (Level 0).

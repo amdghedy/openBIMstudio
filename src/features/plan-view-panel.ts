@@ -397,7 +397,14 @@ function renderPlanProperties() {
     typeKey = el.type;
   }
 
-  if (!el && (planMode === "pan" || planMode === "navigate")) {
+  // G9: with nothing selected and no placement tool active, the panel
+  // shows the VIEW's properties (Level, View Scale, Underlay, View
+  // Range) — as Revit does. Previously the view panel only appeared in
+  // pan/navigate modes, so in the normal Select mode the Underlay control
+  // was unreachable. Placement tools (linear/point/dim/tag/text/region —
+  // the same set isPlanOverrideToolActive covers) keep showing their type
+  // defaults while armed.
+  if (!el && !isPlanOverrideToolActive()) {
     renderPlanViewProperties();
     return;
   }
@@ -3768,9 +3775,15 @@ async function createAuthoredLinear(x1: number, z1: number, x2: number, z2: numb
     } catch {
       await regenerate();
     }
-    footerStatus(
-      `${planLinearType} · ${Math.hypot(x2 - x1, z2 - z1).toFixed(2)} m · click next point (Enter/Esc to finish)`,
-    );
+    // G9: only re-announce the chain hint while the linear tool is still
+    // active — if the user pressed Esc while this placement was in flight,
+    // cancelAllPlan already reset the tool and the footer; overwriting it
+    // here left a stale "click next point" hint over a cancelled tool.
+    if (planMode === "linear") {
+      footerStatus(
+        `${planLinearType} · ${Math.hypot(x2 - x1, z2 - z1).toFixed(2)} m · click next point (Enter/Esc to finish)`,
+      );
+    }
   } catch (err) {
     console.error("[plan] create linear failed", err);
     footerStatus("Could not place element · see console");
