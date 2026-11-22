@@ -96,17 +96,23 @@ export function estimatePrincipalAngle(entities: DxfEntity[], sampleCap = 12000)
   const samples: Pt[] = [];
   for (const e of entities) {
     if (samples.length >= sampleCap) break;
-    if (e.type === "LINE") {
-      samples.push({ x: e.start.x, y: e.start.y }, { x: e.end.x, y: e.end.y });
-    } else if (e.type === "LWPOLYLINE" && e.points?.length) {
-      for (const pt of e.points) {
-        samples.push({ x: pt.x, y: pt.y });
-        if (samples.length >= sampleCap) break;
+    // References are first-class drawing objects. Include their resolved world-space
+    // geometry so block-only sheets can be auto-uprighted just like flat drawings.
+    const candidates = e.type === "INSERT" ? resolvedOf(e) : [e];
+    for (const candidate of candidates) {
+      if (samples.length >= sampleCap) break;
+      if (candidate.type === "LINE") {
+        samples.push({ x: candidate.start.x, y: candidate.start.y }, { x: candidate.end.x, y: candidate.end.y });
+      } else if (candidate.type === "LWPOLYLINE" && candidate.points?.length) {
+        for (const pt of candidate.points) {
+          samples.push({ x: pt.x, y: pt.y });
+          if (samples.length >= sampleCap) break;
+        }
+      } else if (candidate.type === "CIRCLE" || candidate.type === "ARC") {
+        samples.push({ x: candidate.center.x, y: candidate.center.y });
+      } else if (candidate.type === "TEXT" || candidate.type === "POINT") {
+        samples.push({ x: candidate.position.x, y: candidate.position.y });
       }
-    } else if (e.type === "CIRCLE" || e.type === "ARC") {
-      samples.push({ x: e.center.x, y: e.center.y });
-    } else if (e.type === "TEXT" || e.type === "POINT") {
-      samples.push({ x: e.position.x, y: e.position.y });
     }
   }
   if (samples.length < 16) return 0;
