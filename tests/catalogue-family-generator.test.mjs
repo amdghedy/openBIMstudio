@@ -28,6 +28,26 @@ assert.equal(def.types.length, 2);
 assert.equal(def.types[1].name, "FAN-500");
 assert.equal(def.types[1].values.Width, 0.5);
 assert.equal(def.geometry.kind, "box");
+const typePorts = buildCatalogueFamilyDefinition([
+  { model: "AHU-A", width: 1000, depth: 800, height: 600,
+    "Connector 1 Name": "Supply", "Connector 1 X": 500, "Connector 1 Y": 0, "Connector 1 Z": 300,
+    "Connector 1 Direction X": 1, "Connector 1 Direction Y": 0, "Connector 1 Direction Z": 0,
+    "Connector 1 Domain": "duct", "Connector 1 Shape": "round", "Connector 1 Diameter": 400,
+    "Connector 1 Flow Direction": "out", "Connector 1 System Classification": "supply-air" },
+  { model: "AHU-B", width: 1200, depth: 900, height: 700,
+    "Connector 1 Name": "Supply", "Connector 1 X": 600, "Connector 1 Y": 0, "Connector 1 Z": 350,
+    "Connector 1 Direction X": 1, "Connector 1 Direction Y": 0, "Connector 1 Direction Z": 0,
+    "Connector 1 Domain": "duct", "Connector 1 Shape": "round", "Connector 1 Diameter": 500,
+    "Connector 1 Flow Direction": "out", "Connector 1 System Classification": "supply-air",
+    "Connector 2 Name": "Return", "Connector 2 X": -600, "Connector 2 Y": 0, "Connector 2 Z": 350,
+    "Connector 2 Direction X": -1, "Connector 2 Direction Y": 0, "Connector 2 Direction Z": 0,
+    "Connector 2 Domain": "duct", "Connector 2 Shape": "round", "Connector 2 Diameter": 450,
+    "Connector 2 Flow Direction": "in", "Connector 2 System Classification": "return-air" }
+], { name: "AHU Series", dimensionUnit: "mm" });
+assert.equal(typePorts.types[0].connectorDefs.length, 1);
+assert.equal(typePorts.types[1].connectorDefs.length, 2);
+assert.equal(typePorts.connectorDefs, undefined);
+
 const roundCatalogue = parseDelimitedCatalogue("Model,Width,Depth,Height,Geometry Profile\nPUMP-01,300,300,500,cylinder");
 const roundFamily = buildCatalogueFamilyDefinition(roundCatalogue.rows, { name: "Pump", dimensionUnit: "mm" });
 assert.equal(roundFamily.geometry.kind, "cylinder");
