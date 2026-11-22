@@ -25,6 +25,7 @@ if (!viewer.includes('const visible = (e: DxfEntity) => !e.invisible && !hidden.
 if (!viewer.includes('case "INSERT":') || !viewer.includes("const children = resolvedOf(e)")) throw new Error("Canvas drawEntity does not render a resolved INSERT");
 const p0=viewer.indexOf("function paintEntities("), paint=viewer.slice(p0,p0+7000);
 for (const s of ["const blockChildren = e.type === \"INSERT\" ? resolvedOf(e) : null","showBlockChild","paintStyled(child, parentAlpha)","M.entityBBox(child)"]) if (!paint.includes(s)) throw new Error("Block paint path missing: "+s);
+if (!paint.includes('e.type !== "INSERT"')) throw new Error("Empty/missing block insertion marker must bypass tiny-entity culling");
 if (!math.includes("resolvedOf(e).flatMap((child) => entitySegments(child))") || !math.includes("case \"INSERT\": {")) throw new Error("INSERT pick/snap math path incomplete");
 if (!modify.includes("bindInsert(result, table)") || !modify.includes("blocksOf(src)")) throw new Error("Affine transforms drop block-table binding");
 if (!writer.includes('e.type === "INSERT"') || !writer.includes("doc.blocks")) throw new Error("DXF writer does not serialize native block definitions/references");
