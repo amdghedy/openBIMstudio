@@ -50,6 +50,10 @@ export function undo(model: Model): void {
   model.tx.undo();
 }
 
+export function redo(model: Model): void {
+  model.tx.redo();
+}
+
 export function hashState(model: Model): string {
   return JSON.stringify(stateOf(model));
 }
