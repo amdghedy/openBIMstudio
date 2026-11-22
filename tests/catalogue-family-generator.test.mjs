@@ -28,6 +28,17 @@ assert.equal(def.types.length, 2);
 assert.equal(def.types[1].name, "FAN-500");
 assert.equal(def.types[1].values.Width, 0.5);
 assert.equal(def.geometry.kind, "box");
+const roundCatalogue = parseDelimitedCatalogue("Model,Width,Depth,Height,Geometry Profile\nPUMP-01,300,300,500,cylinder");
+const roundFamily = buildCatalogueFamilyDefinition(roundCatalogue.rows, { name: "Pump", dimensionUnit: "mm" });
+assert.equal(roundFamily.geometry.kind, "cylinder");
+assert.deepEqual(roundFamily.geometry.r, { expr: "Width / 2" });
+assert.equal(roundFamily.types[0].values.Width, 0.3);
+assert.throws(() => buildCatalogueFamilyDefinition([
+  { model: "A", geometryProfile: "box" }, { model: "B", geometryProfile: "cylinder" }
+], { name: "Mixed" }), /same explicit geometry profile/);
+assert.throws(() => buildCatalogueFamilyDefinition([
+  { model: "A", geometryProfile: "mesh-import" }
+], { name: "Unsupported" }), /Unsupported catalogue geometry profile/);
 assert.equal(def.parameters.find((p) => p.name === "Airflow").default, 1200);
 assert.equal(validateCatalogueRows(parsed.rows).length, 0);
 assert.ok(validateCatalogueRows([{ model: "MISSING" }]).some((e) => e.includes("Width")));
