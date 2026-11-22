@@ -2729,8 +2729,14 @@ function syncMepLifecycleFromAuthoredElements(): void {
     if (!el.familyId || linearMepTypes.includes(el.type) || typeof familyService?.get !== "function") return [];
     try {
       const family = familyService.get(el.familyId);
-      return Array.isArray(family?.connectorDefs) && family.connectorDefs.length
-        ? [{ element: el, definitions: family.connectorDefs }]
+      if (!family) return [];
+      // Match FamilyService.buildConnectors precedence exactly: a type's
+      // explicit connector list wins (including an intentional empty list),
+      // otherwise inherit the family-level defaults.
+      const familyType = family.types?.find((type: any) => type.id === el.familyTypeId);
+      const definitions = familyType?.connectorDefs ?? family.connectorDefs ?? [];
+      return Array.isArray(definitions) && definitions.length
+        ? [{ element: el, definitions }]
         : [];
     } catch (e) {
       console.warn("[mep] family connector lookup failed", el.id, e);
