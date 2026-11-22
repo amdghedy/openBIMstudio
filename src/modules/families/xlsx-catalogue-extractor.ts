@@ -12,8 +12,13 @@ const MAX_CELLS = 250_000;
 
 interface SheetRef { name: string; relationshipId: string; target: string; }
 function xmlText(value: string): string {
-  return value.replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+  // Strip XML markup, decode the five predefined XML entities, then remove
+  // any angle brackets introduced by entity decoding. Catalogue values are
+  // plain text only and must never carry markup into downstream renderers.
+  return value.replace(/<[^>]*>/g, "")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&")
+    .replace(/[<>]/g, "");
 }
 function tagValue(xml: string, tag: string): string {
   const match = xml.match(new RegExp("<" + tag + "(?:\\s[^>]*)?>([\\s\\S]*?)</" + tag + ">"));
