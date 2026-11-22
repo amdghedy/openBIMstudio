@@ -327,6 +327,7 @@ await step("authoring", () => setupAuthoring());
 // and expose a features api — they read authoring lazily per call.
 await step("critical-workflow-pack-5", async () => (await import("./modules/bim-gaps/critical-workflow-pack-5")).setupCriticalWorkflowPack5());
 await step("critical-workflow-pack-8", async () => (await import("./modules/bim-gaps/critical-workflow-pack-8")).setupCriticalWorkflowPack8());
+await step("critical-workflow-pack-11", async () => (await import("./modules/bim-gaps/critical-workflow-pack-11")).setupCriticalWorkflowPack11());
 await step("plan-authoring-bridge", () => setupPlanAuthoringBridge());
 await step("central-binding", async () => (await import("./modules/collaboration/central-binding-setup")).setupCentralBinding());
 await step("families", () => setupFamilies());

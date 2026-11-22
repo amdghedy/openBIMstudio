@@ -431,6 +431,30 @@ visibility.content.append(
     action("Reset Visibility", () => {
       void import("../modules/bim-gaps/critical-workflow-pack-9").then((m) => m.resetVisibility3d());
     }),
+    action("Model Health", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-11").then((m) => m.modelHealthAudit());
+    }),
+  ),
+  row(
+    action("Element Census", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-11").then((m) => m.modelCensus());
+    }),
+    action("Export Sel CSV", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-11").then((m) => m.exportSelectionCsv());
+    }),
+  ),
+  row(
+    action("IFC Interop Report", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-11").then((m) => m.showIfcInteropReport());
+    }),
+    action("Family Creator", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-11").then((m) => m.openFamilyCreator());
+    }),
+  ),
+  row(
+    action("Recovery", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-11").then((m) => m.openRecoveryUi());
+    }),
     action("Show All", () => { try { (ctx.hider as any)?.show?.(); } catch {} void import("../modules/bim-gaps/critical-workflow-pack-9").then((m) => m.resetVisibility3d()); }),
   ),
   row(
