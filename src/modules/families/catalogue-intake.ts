@@ -80,13 +80,13 @@ export function parseDelimitedCatalogue(source: string, delimiter?: string): Cat
       const key = mapped[c];
       if (key === "model") continue;
       const raw = cells[c] ?? "";
-      if (!key) { if (raw) item[headers[c]] = raw; continue; }
+      if (!key) { if (raw) (item as Record<string, string | number | undefined>)[headers[c]] = raw; continue; }
       if (!raw) continue;
       if (["width", "depth", "height", "airflow", "staticPressure", "power", "voltage"].includes(key)) {
         const n = Number(raw.replace(/,/g, ""));
         if (!Number.isFinite(n) || n < 0) { errors.push(`Row ${r + 1}: invalid numeric value for ${headers[c]}.`); continue; }
-        item[key] = n;
-      } else item[key] = raw;
+        (item as Record<string, string | number | undefined>)[key] = n;
+      } else (item as Record<string, string | number | undefined>)[key] = raw;
     }
     rows.push(item);
   }
