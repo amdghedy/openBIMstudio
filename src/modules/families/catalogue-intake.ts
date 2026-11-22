@@ -34,12 +34,12 @@ const HEADER_ALIASES: Record<string, CatalogueField> = {
   model: "model", modelnumber: "model", modelno: "model", type: "model", typename: "model",
   manufacturer: "manufacturer", brand: "manufacturer",
   productcode: "productCode", itemcode: "productCode", sku: "productCode",
-  width: "width", w: "width", depth: "depth", d: "depth", length: "depth",
-  height: "height", h: "height",
-  airflow: "airflow", airvolume: "airflow", flow: "airflow",
-  staticpressure: "staticPressure", pressure: "staticPressure", externalstaticpressure: "staticPressure",
-  power: "power", inputpower: "power", kw: "power",
-  voltage: "voltage", volt: "voltage",
+  width: "width", w: "width", overallwidth: "width", overallw: "width", depth: "depth", d: "depth", overalldepth: "depth", length: "depth",
+  height: "height", h: "height", overallheight: "height", overallh: "height",
+  airflow: "airflow", airflowrate: "airflow", airvolume: "airflow", volumeflow: "airflow", volumeflowrate: "airflow", flow: "airflow",
+  staticpressure: "staticPressure", pressure: "staticPressure", externalstaticpressure: "staticPressure", esp: "staticPressure",
+  power: "power", inputpower: "power", totalinputpower: "power", ratedpower: "power", kw: "power",
+  voltage: "voltage", supplyvoltage: "voltage", ratedvoltage: "voltage", nominalvoltage: "voltage", volt: "voltage",
 };
 
 function normalizedHeader(value: string): string {
@@ -75,7 +75,7 @@ export function parseDelimitedCatalogue(source: string, delimiter?: string): Cat
   const nonEmpty = matrix.filter((r) => r.some((v) => v.trim() !== ""));
   if (nonEmpty.length < 2) return { headers: [], rows: [], errors: ["Catalogue must contain a header row and at least one product row."] };
   const headers = nonEmpty[0].map((h) => h.trim());
-  const mapped = headers.map((h) => HEADER_ALIASES[normalizedHeader(h)]);
+  const mapped = headers.map((h) => mapCatalogueHeader(h));
   const modelIndex = mapped.indexOf("model");
   if (modelIndex < 0) return { headers, rows: [], errors: ["A Model, Model Number, Type or Type Name column is required."] };
   const errors: string[] = [];
