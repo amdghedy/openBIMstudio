@@ -46,6 +46,12 @@ function normalizedHeader(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+/** Resolve common manufacturer column headings to the canonical family field. */
+export function mapCatalogueHeader(value: string): CatalogueField | undefined {
+  const key = normalizedHeader(value).replace(/(millimeters|millimetres|mm|centimeters|centimetres|cm|meters|metres|m3h|m3hr|m³h|pa|kw|kv|volt|volts|v)$/i, "");
+  return HEADER_ALIASES[normalizedHeader(value)] ?? HEADER_ALIASES[key];
+}
+
 /** RFC-4180-style delimiter parser supporting quoted fields and escaped quotes. */
 export function parseDelimitedCatalogue(source: string, delimiter?: string): CatalogueParseResult {
   const text = String(source ?? "").replace(/^\uFEFF/, "");
