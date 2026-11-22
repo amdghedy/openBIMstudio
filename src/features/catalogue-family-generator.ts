@@ -70,7 +70,9 @@ function renderRows(): void {
   const host = panel?.querySelector<HTMLElement>("[data-rows]");
   if (!host) return;
   if (!rows.length) { host.innerHTML = '<p class="cfg-muted">No product rows loaded yet. Import a manufacturer catalogue to begin.</p>'; return; }
-  const keys: (keyof CatalogueRow)[] = ["model","manufacturer","productCode","width","depth","height","airflow","staticPressure","power","voltage","sourceSheet","sourceRow","sourcePage"];
+  const fixedKeys: (keyof CatalogueRow)[] = ["model","manufacturer","productCode","width","depth","height","airflow","staticPressure","power","voltage","sourceSheet","sourceRow","sourcePage"];
+  const extraKeys = Array.from(new Set(rows.flatMap((row) => Object.keys(row)))).filter((key) => !fixedKeys.includes(key));
+  const keys = [...fixedKeys, ...extraKeys];
   host.innerHTML = `<div class="cfg-table-wrap"><table><thead><tr>${keys.map((k) => `<th>${escapeHtml(k)}</th>`).join("")}</tr></thead><tbody>${rows.map((r,i) => `<tr>${keys.map((k) => `<td>${escapeHtml(r[k] ?? "—")}</td>`).join("")}</tr>`).join("")}</tbody></table></div><p class="cfg-muted">${rows.length} product type(s) loaded from ${escapeHtml(sourceName)}. Review the source values before creating a family.</p>`;
 }
 function buildPanel(): void {
