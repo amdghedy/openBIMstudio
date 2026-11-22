@@ -7,6 +7,7 @@
  * handled by later importer adapters and must never fabricate values.
  */
 import type { FamilyDefinition, FamilyParameter, FamilyType } from "./types";
+import { buildCatalogueConnectorDefinitions } from "./catalogue-connector-mapping";
 
 export interface CatalogueRow {
   model: string;
@@ -160,6 +161,7 @@ export function buildCatalogueFamilyDefinition(
     ifcEntity: options.ifcEntity ?? "IfcUnitaryEquipment",
     parameters,
     geometry: { kind: "box", w: { ref: "Width" }, d: { ref: "Depth" }, h: { ref: "Height" } },
+    connectorDefs: buildCatalogueConnectorDefinitions(rows, unit),
     types,
     group: first.manufacturer ? `Manufacturer: ${first.manufacturer}` : "Catalogue imports",
   };
