@@ -3,6 +3,7 @@
  * No DOM, no rendering; everything works on the flattened DxfEntity vocabulary the DXF/DWG readers produce.
  */
 import { findFont } from "../drawings/cad-styles";
+import { resolvedOf } from "../drawings/block-refs";
 import type { DxfEntity, DxfLayout, DxfPoint, DxfUnits, DxfViewport } from "../drawings/dxf-types";
 import { pointInPolygon } from "../drawings/hatch-patterns";
 
@@ -378,6 +379,16 @@ export function textOrigin(e: Extract<DxfEntity, { type: "TEXT" }>): { dx: numbe
 
 export function entityBBox(e: DxfEntity): BBox {
   switch (e.type) {
+    case "INSERT": {
+      // Union of the resolved geometry; an unresolvable reference is its insertion point.
+      let b: BBox | null = null;
+      for (const c of resolvedOf(e)) {
+        const cb = entityBBox(c);
+        if (!Number.isFinite(cb.minX + cb.minY + cb.maxX + cb.maxY)) continue;
+        b = b ? { minX: Math.min(b.minX, cb.minX), minY: Math.min(b.minY, cb.minY), maxX: Math.max(b.maxX, cb.maxX), maxY: Math.max(b.maxY, cb.maxY) } : cb;
+      }
+      return b ?? { minX: e.position.x, minY: e.position.y, maxX: e.position.x, maxY: e.position.y };
+    }
     case "LINE": return { minX: Math.min(e.start.x, e.end.x), minY: Math.min(e.start.y, e.end.y), maxX: Math.max(e.start.x, e.end.x), maxY: Math.max(e.start.y, e.end.y) };
     // Infinite construction lines: a degenerate box at the anchor point so
     // zoom-extents and the spatial index ignore the unbounded extent (native
@@ -431,6 +442,7 @@ function polySegs(e: Extract<DxfEntity, { type: "LWPOLYLINE" }>): Array<[Pt, Pt]
 
 /** Straight segments of line-like entities (used for intersections). */
 export function entitySegments(e: DxfEntity): Array<[Pt, Pt]> {
+  if (e.type === "INSERT") return resolvedOf(e).flatMap((child) => entitySegments(child));
   if (e.type === "LINE") return [[e.start, e.end]];
   if (e.type === "LWPOLYLINE") return polySegs(e);
   return [];
@@ -438,6 +450,13 @@ export function entitySegments(e: DxfEntity): Array<[Pt, Pt]> {
 
 export function distToEntity(e: DxfEntity, x: number, y: number): number {
   switch (e.type) {
+    case "INSERT": {
+      const kids = resolvedOf(e);
+      if (!kids.length) return Math.hypot(x - e.position.x, y - e.position.y);
+      let d = Infinity;
+      for (const c of kids) { const v = distToEntity(c, x, y); if (v < d) d = v; }
+      return d;
+    }
     case "LINE": return segDist(x, y, e.start.x, e.start.y, e.end.x, e.end.y);
     case "CIRCLE": return Math.abs(Math.hypot(x - e.center.x, y - e.center.y) - e.radius);
     case "ARC": {
@@ -466,6 +485,16 @@ export function distToEntity(e: DxfEntity, x: number, y: number): number {
 }
 export function nearestOnEntity(e: DxfEntity, x: number, y: number): Pt | null {
   switch (e.type) {
+    case "INSERT": {
+      let best: Pt | null = null, bestD = Infinity;
+      for (const child of resolvedOf(e)) {
+        const p = nearestOnEntity(child, x, y);
+        if (!p) continue;
+        const d = Math.hypot(x - p.x, y - p.y);
+        if (d < bestD) { best = p; bestD = d; }
+      }
+      return best;
+    }
     case "LINE": return nearestOnSeg(x, y, e.start.x, e.start.y, e.end.x, e.end.y);
     case "RAY":
     case "XLINE": {
@@ -811,12 +840,18 @@ export function pickEntity(idx: SpatialIndex, entities: DxfEntity[], x: number, 
 
 /* ───────────────────────── snapping ───────────────────────── */
 
-export type SnapKind = "endpoint" | "midpoint" | "center" | "quadrant" | "intersection" | "perpendicular" | "tangent" | "parallel" | "nearest";
+export type SnapKind = "insertion" | "endpoint" | "midpoint" | "center" | "quadrant" | "intersection" | "perpendicular" | "tangent" | "parallel" | "nearest";
 export interface Snap { x: number; y: number; kind: SnapKind }
-export const ALL_SNAPS: SnapKind[] = ["endpoint", "midpoint", "center", "quadrant", "intersection", "perpendicular", "tangent", "parallel", "nearest"];
+export const ALL_SNAPS: SnapKind[] = ["insertion", "endpoint", "midpoint", "center", "quadrant", "intersection", "perpendicular", "tangent", "parallel", "nearest"];
 
 function keyPoints(e: DxfEntity): Snap[] {
   switch (e.type) {
+    case "INSERT": {
+      // Insertion point first, then the snaps of the geometry inside the reference (as native CAD does).
+      const pts: Snap[] = [{ x: e.position.x, y: e.position.y, kind: "insertion" }];
+      for (const c of resolvedOf(e)) pts.push(...keyPoints(c));
+      return pts;
+    }
     case "LINE": return [{ ...e.start, kind: "endpoint" }, { ...e.end, kind: "endpoint" }, { x: (e.start.x + e.end.x) / 2, y: (e.start.y + e.end.y) / 2, kind: "midpoint" }];
     case "CIRCLE": return [{ x: e.center.x, y: e.center.y, kind: "center" }, ...[0, 90, 180, 270].map((q) => ({ ...arcPt(e, q), kind: "quadrant" as const }))];
     case "ARC": {
@@ -844,7 +879,7 @@ export function segSegIntersection(a: Pt, b: Pt, c: Pt, d: Pt): Pt | null {
   return { x: a.x + t * r.x, y: a.y + t * r.y };
 }
 
-const TIER: Record<SnapKind, number> = { endpoint: 0, midpoint: 0, center: 0, quadrant: 0, intersection: 1, perpendicular: 1, tangent: 1, parallel: 1, nearest: 2 };
+const TIER: Record<SnapKind, number> = { insertion: 0, endpoint: 0, midpoint: 0, center: 0, quadrant: 0, intersection: 1, perpendicular: 1, tangent: 1, parallel: 1, nearest: 2 };
 
 /**
  * Object snap. Optional `fromPt` enables DWG-style PERPENDICULAR: the foot
@@ -1255,6 +1290,7 @@ function pointSig(p: Pt, q: number): string { return `${sigNum(p.x, q)},${sigNum
 export function entitySignature(e: DxfEntity, tol: number): string {
   const q = Math.max(tol, 1e-9);
   switch (e.type) {
+    case "INSERT": return `I|${e.name}|${pointSig(e.position, q)}|${Math.round((e.scale?.x ?? 1) / q)},${Math.round((e.scale?.y ?? 1) / q)}|${Math.round((e.rotation ?? 0) * 1e4)}`;
     case "LINE": { const a = pointSig(e.start, q), b = pointSig(e.end, q); return "L" + (a < b ? `${a}|${b}` : `${b}|${a}`); }
     case "CIRCLE": return `C${pointSig(e.center, q)}r${sigNum(e.radius, q)}`;
     case "ARC": return `A${pointSig(e.center, q)}r${sigNum(e.radius, q)}a${Math.round(norm360(e.startAngle) * 100)}-${Math.round(norm360(e.endAngle) * 100)}`;
