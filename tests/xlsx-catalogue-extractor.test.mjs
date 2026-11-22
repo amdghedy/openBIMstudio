@@ -14,7 +14,7 @@ assert.deepEqual(await listXlsxWorksheets(file), ["Read Me", "Products"]);
 await assert.rejects(() => extractXlsxCatalogue(file), /No Model/);
 const result = await extractXlsxCatalogue(file, "Products");
 assert.equal(result.sheetName, "Products");
-assert.equal(result.rows.length, 2);
+assert.equal(result.rows.length, 3);
 assert.equal(result.rows[0].model, "FAN-300");
 assert.equal(result.rows[0].manufacturer, "Acme & Co");
 assert.equal(result.rows[0].width, 300);
