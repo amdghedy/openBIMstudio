@@ -2,24 +2,72 @@
  * 2D documentation: sheet persistence, scale consistency, dimension units,
  * UNITS-dialog mapping. Every delivered documentation capability is asserted
  * against its real implementation — no mocks, no skipped paths.
+ *
+ * The modules under test are compiled with the PROJECT's own TypeScript
+ * settings (strict, bundler resolution, ESNext — see tsconfig.json) via a
+ * temporary tsconfig that extends it. The old ad-hoc invocation
+ * (`--module commonjs --target es2020`, no strict) stopped typechecking
+ * the growing transitive import graph — ranks 1–3 added safeLoad /
+ * recovery / worksharing imports — and reported dozens of false
+ * TS2339/TS1343 errors that the real project build does not have; both
+ * this suite and test:project-file already fail on live main (d048fef)
+ * for that reason. The emitted ESM is loaded with dynamic import().
  */
 const { execSync } = require("child_process");
 const fs = require("fs"), os = require("os"), path = require("path"), assert = require("assert");
+const { pathToFileURL } = require("url");
 const root = path.join(__dirname, "..");
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "obs-doc2d-"));
+const tsconfigPath = path.join(out, "tsconfig.doc2d.json");
+fs.writeFileSync(tsconfigPath, JSON.stringify({
+  extends: path.join(root, "tsconfig.json"),
+  // The project tsconfig sets noEmit + allowImportingTsExtensions; both
+  // must be overridden to emit the JS this test loads.
+  compilerOptions: { noEmit: false, allowImportingTsExtensions: false, outDir: out },
+  include: [
+    "src/modules/sheets/sheets.ts",
+    "src/modules/views/sheet-layout.ts",
+    "src/modules/views/scene.ts",
+    "src/modules/views/annotations.ts",
+    "src/modules/views/dimension-engine.ts",
+    "src/modules/views/references.ts",
+    "src/modules/cad-viewer/viewer-math.ts",
+    "src/modules/drawings/cad-styles.ts",
+    "src/modules/drawings/hatch-patterns.ts",
+    // Ambient declarations (import.meta.hot/env) the full project build
+    // picks up from src/; the subset must include them explicitly.
+    "src/vite-env.d.ts",
+  ].map((f) => path.join(root, f)),
+}));
 
 try {
-  execSync(
-    "npx tsc src/modules/sheets/sheets.ts src/modules/views/sheet-layout.ts src/modules/views/scene.ts" +
-      " src/modules/views/annotations.ts src/modules/views/dimension-engine.ts src/modules/views/references.ts" +
-      " src/modules/cad-viewer/viewer-math.ts src/modules/drawings/cad-styles.ts src/modules/drawings/hatch-patterns.ts" +
-      " --outDir " + out + " --module commonjs --target es2020 --skipLibCheck",
-    { cwd: root, stdio: "inherit" },
-  );
+  execSync("npx tsc -p " + tsconfigPath, { cwd: root, stdio: "inherit" });
 } catch (e) {
   console.error("tsc failed");
   process.exit(1);
 }
+
+// Plain Node ESM cannot resolve the extensionless relative imports the
+// codebase uses under bundler resolution (`from "./references"`). The emit
+// above keeps those specifiers verbatim, so rewrite them to the emitted
+// `.js` files they name — specifier text only, no code changes.
+const rewriteEsmSpecifiers = (dir) => {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, entry.name);
+    if (entry.isDirectory()) { rewriteEsmSpecifiers(p); continue; }
+    if (!entry.name.endsWith(".js")) continue;
+    const text = fs.readFileSync(p, "utf8");
+    const rewritten = text.replace(/(from\s+|import\s*\(\s*|import\s+)(["'])(\.[^"']*)\2/g, (m, pre, q, spec) => {
+      if (/\.[a-zA-Z0-9]+$/.test(spec)) return m; // already has an extension
+      const base = path.join(path.dirname(p), spec);
+      const target = fs.existsSync(base + ".js") ? spec + ".js"
+        : fs.existsSync(path.join(base, "index.js")) ? spec + "/index.js" : null;
+      return target ? pre + q + target + q : m;
+    });
+    if (rewritten !== text) fs.writeFileSync(p, rewritten);
+  }
+};
+rewriteEsmSpecifiers(out);
 
 const locate = (dir, name) => {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -29,10 +77,10 @@ const locate = (dir, name) => {
   }
   return null;
 };
-const req = (name) => {
+const req = async (name) => {
   const p = locate(out, name);
   assert.ok(p, name + " not produced by tsc");
-  return require(p);
+  return import(pathToFileURL(p).href);
 };
 
 let pass = 0, fail = 0;
@@ -42,8 +90,9 @@ const t = (n, f) => {
 };
 const approx = (a, b, eps = 1e-9) => Math.abs(a - b) < eps;
 
+async function main() {
 // ── Sheet store: persistence round-trip + annotations + undo snapshots ──
-const sheets = req("sheets.js");
+const sheets = await req("sheets.js");
 sheets.bootSheetsStore(); // node: no localStorage → safe default titleblock path
 
 t("project round-trip: sheets, viewports, titleblocks survive save→load", () => {
@@ -105,8 +154,8 @@ t("sheet annotation removal is reflected in the saved payload", () => {
 });
 
 // ── Scale consistency: the annotation-scale invariant at multiple viewport scales ──
-const layout = req("sheet-layout.js");
-const sceneM = req("scene.js");
+const layout = await req("sheet-layout.js");
+const sceneM = await req("scene.js");
 
 const mkView = (scale) => ({
   id: "v1", kind: "plan", name: "V", scale, discipline: "COORD", crop: null,
@@ -171,8 +220,8 @@ t("formatScale renders canonical 1:N text", () => {
 });
 
 // ── Dimension units: metric + imperial ──
-const ann = req("annotations.js");
-const eng = req("dimension-engine.js");
+const ann = await req("annotations.js");
+const eng = await req("dimension-engine.js");
 
 t("formatDimensionValue: mm legacy no-suffix behaviour kept", () => {
   assert.strictEqual(eng.formatDimensionValue(4.2, { unit: "mm", precision: 0 }), "4200");
@@ -198,7 +247,7 @@ t("default styles include an imperial style", () => {
 });
 
 // ── UNITS dialog mapping (CAD drafting workspace) ──
-const M = req("viewer-math.js");
+const M = await req("viewer-math.js");
 
 t("UNITS: Length Type → display unit mapping", () => {
   assert.strictEqual(M.displayUnitForLengthType("Decimal"), "drawing");
@@ -226,3 +275,6 @@ t("CAD units: convertLength + unitLabel across mm/cm/m/in/ft", () => {
 
 console.log(`\ndocumentation-2d: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
+}
+
+main().catch((e) => { console.error(e); process.exit(1); });

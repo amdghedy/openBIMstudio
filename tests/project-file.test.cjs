@@ -1,13 +1,27 @@
-const { execSync } = require("child_process"); const fs=require("fs"),os=require("os"),path=require("path"),assert=require("assert");
+// Compile with the PROJECT's TypeScript settings (strict, bundler, ESNext)
+// via a temp tsconfig extending tsconfig.json: the old ad-hoc
+// `--module commonjs --target es2020` invocation reported false TS2339 /
+// TS1343 errors on the growing transitive import graph (ranks 1-3) that the
+// real project build does not have. Emitted ESM is loaded with import().
+const { execSync } = require("child_process"); const fs=require("fs"),os=require("os"),path=require("path"),assert=require("assert"); const { pathToFileURL } = require("url");
 const out=fs.mkdtempSync(path.join(os.tmpdir(),"pf-"));
 fs.mkdirSync(path.join(out,"src"),{recursive:true});
 fs.symlinkSync(path.join(__dirname,"..","node_modules"),path.join(out,"node_modules"),"junction");
-execSync(`npx tsc src/modules/projects/project-file.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --ignoreDeprecations 5.0`,{stdio:"inherit"});
-const find=(d)=>{for(const f of fs.readdirSync(d)){const p=path.join(d,f);if(fs.statSync(p).isDirectory()){const r=find(p);if(r)return r}else if(f==="project-file.js")return p}};const m=require(find(out));
+const root=path.join(__dirname,"..");
+const tsconfigPath=path.join(out,"tsconfig.pf.json");
+fs.writeFileSync(tsconfigPath,JSON.stringify({extends:path.join(root,"tsconfig.json"),compilerOptions:{noEmit:false,allowImportingTsExtensions:false,outDir:out},include:[path.join(root,"src/modules/projects/project-file.ts"),path.join(root,"src/vite-env.d.ts")]}));
+execSync(`npx tsc -p ${tsconfigPath}`,{stdio:"inherit"});
+// Plain Node ESM cannot resolve the extensionless relative imports the
+// codebase uses under bundler resolution (e.g. `../core/safeLoad`); rewrite
+// those specifiers to the emitted `.js` files they name (text only).
+const rewriteEsmSpecifiers=(dir)=>{for(const e of fs.readdirSync(dir,{withFileTypes:true})){const q=path.join(dir,e.name);if(e.isDirectory()){rewriteEsmSpecifiers(q);continue}if(!e.name.endsWith(".js"))continue;const text=fs.readFileSync(q,"utf8");const rw=text.replace(/(from\s+|import\s*\(\s*|import\s+)(["'])(\.[^"']*)\2/g,(m,pre,qt,spec)=>{if(/\.[a-zA-Z0-9]+$/.test(spec))return m;const base=path.join(path.dirname(q),spec);const tgt=fs.existsSync(base+".js")?spec+".js":fs.existsSync(path.join(base,"index.js"))?spec+"/index.js":null;return tgt?pre+qt+tgt+qt:m});if(rw!==text)fs.writeFileSync(q,rw)}};
+rewriteEsmSpecifiers(out);
+const find=(d)=>{for(const f of fs.readdirSync(d)){if(f==="node_modules")continue;const p=path.join(d,f);if(fs.statSync(p).isDirectory()){const r=find(p);if(r)return r}else if(f==="project-file.js")return p}};
 let pass=0,fail=0;const t=async(n,f)=>{try{await f();pass++;console.log("  PASS "+n)}catch(e){fail++;console.log("  FAIL "+n+": "+e.message)}};
 const doc={id:"p1",name:"Tower: Block A/B",createdAt:1,updatedAt:2,elements:[{id:"w1",type:"wall"}],models:[{id:"m1",name:"a.ifc",bytes:5}],planDimensions:[{x1:0}],planAnnotations:{tags:[{text:"W-1"}],notes:[]}};
 const ifc=new Blob([Uint8Array.from([1,2,3,4,5])]), frag=new Blob([Uint8Array.from([9,8,7])]);
 (async()=>{
+const m=await import(pathToFileURL(find(out)).href);
 await t("round trip keeps doc, dimensions, tags and model bytes",async()=>{
   const f=m.buildProjectFile(doc,[{modelId:"m1",name:"a.ifc",blob:ifc},{modelId:"m2",name:"b.frag",blob:frag}]);
   const r=await m.parseProjectFile(f);
