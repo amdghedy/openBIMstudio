@@ -13,11 +13,14 @@
  *
  * The capture is scope-aware (see placement.ts): only instance-scope
  * parameters and undeclared (placement-level) geometry keys are
- * captured. A type-scope value that differs from the current type
- * resolution can never be a user override — type-scope edits are routed
- * to the type — so it is a stale inherited value (the type changed
- * out-of-band, e.g. via a catalog import) and must follow the type on
- * sync, not be frozen.
+ * captured by diff — plus any key in the instance's override record
+ * (`element.familyOverrides`), any scope. A type-scope value that
+ * differs from the current type resolution and carries NO record can
+ * never be a user override — type-scope edits are routed to the type —
+ * so it is a stale inherited value (the type changed out-of-band, e.g.
+ * via a catalog import) and must follow the type on sync, not be
+ * frozen. The record is what tells a genuine type-scope override apart
+ * from a stale value (FU5 completion).
  *
  * Tests:
  *   M1. Regression: override set, type changed out-of-band, manual sync
@@ -26,13 +29,23 @@
  *   M2. Manual sync with no type selected syncs every type (and untyped
  *       instances), preserving each instance's own overrides; capturing
  *       for one type excludes the other type's instances.
- *   M3. Unit: a stored type-scope deviation is NOT captured (stale
- *       inherited value, not an override); only the instance-scope
- *       override is.
+ *   M3. Unit: a stored type-scope deviation with NO record is NOT
+ *       captured (stale inherited value, not an override); only the
+ *       instance-scope override is. (The recorded case is M5.)
  *   M4. Degenerate cases: no family service / unknown family -> null;
  *       no overrides anywhere -> an (empty) Map, not null.
  *   M1-control. Sensitivity: the same setup synced WITHOUT the captured
  *       map wipes the override — proving M1 guards the bug.
+ *   M5. A RECORDED type-scope override is captured and survives a
+ *       manual sync, while an unrecorded stale value for the same key
+ *       refreshes from the type.
+ *   M6. `editFamilyParameter` records instance-scope writes; writing
+ *       the type value back clears the record; the explicit
+ *       `overrideInstanceParameter` records a type-scope deviation and
+ *       refuses an unknown parameter.
+ *   M7. A type swap records the overrides it re-applies, so a later
+ *       manual sync preserves them instead of wiping them as stale
+ *       deviations from the new type.
  *
  * Run: `node tests/parametric-manual-sync.test.cjs`
  * CI:  `test:parametric-manual-sync` (package.json +
@@ -281,13 +294,14 @@ t("M2 all-types sync preserves each instance's own overrides; per-type capture e
   }
 });
 
-// ── M3. Unit: a stored type-scope deviation is not an override ──
+// ── M3. Unit: a stored type-scope deviation with NO record is not an override ──
 t("M3 unit: stale type-scope value is not captured, instance-scope override is", () => {
   const family = makeFamily();
   const elements = [
-    // height 9 is a stale inherited value (type says 3); thickness 0.3
-    // is a genuine instance override. Only the latter may be captured —
-    // capturing height would freeze the stale value on every later sync.
+    // height 9 is a stale inherited value (type says 3) with NO override
+    // record; thickness 0.3 is a genuine instance override. Only the
+    // latter may be captured — capturing height would freeze the stale
+    // value on every later sync. (The recorded case is M5.)
     { id: "e1", familyId: "fam-test", familyTypeId: "t1", params: { thickness: 0.3, height: 9, width: 2, depth: 1 } },
   ];
   const { teardown } = installDoubles(family, elements);
@@ -295,6 +309,109 @@ t("M3 unit: stale type-scope value is not captured, instance-scope override is",
     const map = P.captureManualSyncOverrides("fam-test", "t1");
     if (!(map instanceof Map)) throw new Error("expected a Map");
     deep(map.get("e1"), { thickness: 0.3 }, "only the instance-scope override is captured");
+  } finally {
+    teardown();
+  }
+});
+
+// ── M5. A RECORDED type-scope override is captured; an unrecorded stale value refreshes ──
+t("M5 recorded type-scope override survives manual sync, unrecorded stale value refreshes", () => {
+  const family = makeFamily();
+  const elements = [
+    { id: "e1", familyId: "fam-test", familyTypeId: "t1", params: { thickness: 0.2, height: 3, width: 2, depth: 1 } },
+    { id: "e2", familyId: "fam-test", familyTypeId: "t1", params: { thickness: 0.2, height: 3, width: 2, depth: 1 } },
+  ];
+  const { manualSync, calls, teardown } = installDoubles(family, elements);
+  try {
+    // e1: a deliberate per-instance override of the TYPE-scope height,
+    // via the explicit override API — the case FU5 could not cover, for
+    // want of a record. e2 carries the same stored value with NO record
+    // (a stale inherited value after the out-of-band change below).
+    const res = P.overrideInstanceParameter(elements[0], "height", 9);
+    if (res.applied !== "instance") throw new Error(`expected the override to apply to the instance, got ${res.applied}`);
+    deep(elements[0].familyOverrides, ["height"], "the override is recorded on the element");
+    elements[1].params.height = 9; // stale, unrecorded
+
+    // Out-of-band type change: height 3 -> 4.
+    family.types[0].values.height = 4;
+
+    const n = manualSync("fam-test", "t1");
+    if (calls.sync.length !== 1) throw new Error("expected exactly one sync call");
+    const map = calls.sync[0].map;
+    deep(map.get("e1"), { height: 9 }, "the recorded type-scope override is captured");
+    if (map.has("e2")) throw new Error("the unrecorded stale value must not be captured");
+    if (n !== 2) throw new Error(`expected 2 instances synced, got ${n}`);
+    near(elements[0].params.height, 9, "e1 keeps its recorded height override");
+    near(elements[1].params.height, 4, "e2 refreshes to the new type height");
+  } finally {
+    teardown();
+  }
+});
+
+// ── M6. Write paths record; writing the type value clears the record ──
+t("M6 instance edit records the override; writing the type value clears it", () => {
+  const family = makeFamily();
+  const elements = [
+    { id: "e1", familyId: "fam-test", familyTypeId: "t1", params: { thickness: 0.2, height: 3, width: 2, depth: 1 } },
+  ];
+  const { teardown } = installDoubles(family, elements);
+  try {
+    const r1 = P.editFamilyParameter(elements[0], "thickness", 0.3);
+    if (r1.applied !== "instance") throw new Error(`expected instance application, got ${r1.applied}`);
+    deep(elements[0].familyOverrides, ["thickness"], "the instance edit is recorded");
+    // Writing the type value back is not a deviation any more.
+    const r2 = P.editFamilyParameter(elements[0], "thickness", 0.2);
+    if (r2.applied !== "instance") throw new Error(`expected instance application, got ${r2.applied}`);
+    if (elements[0].familyOverrides !== undefined) throw new Error("the record must clear when the value matches the type again");
+    // The explicit override API records a type-scope deviation too.
+    const r3 = P.overrideInstanceParameter(elements[0], "height", 7);
+    if (r3.applied !== "instance") throw new Error(`expected instance application, got ${r3.applied}`);
+    deep(elements[0].familyOverrides, ["height"], "the type-scope override is recorded");
+    // And it refuses an unknown parameter instead of writing it.
+    const r4 = P.overrideInstanceParameter(elements[0], "no-such-param", 1);
+    if (r4.applied !== "none") throw new Error("unknown parameter must not apply");
+    if (!r4.reason) throw new Error("unknown parameter must explain itself");
+  } finally {
+    teardown();
+  }
+});
+
+// ── M7. A type swap records the overrides it re-applies ──
+t("M7 swap records re-applied overrides; manual sync after the swap preserves them", () => {
+  const family = makeFamily();
+  const elements = [
+    { id: "e1", familyId: "fam-test", familyTypeId: "t1", params: { thickness: 0.3, height: 3, width: 2, depth: 1 } },
+    { id: "e2", familyId: "fam-test", familyTypeId: "t1", params: { thickness: 0.2, height: 3, width: 2, depth: 1 } },
+  ];
+  const { manualSync, teardown } = installDoubles(family, elements);
+  try {
+    // e1 carries TWO genuine overrides: an instance-scope thickness
+    // override, and a RECORDED type-scope height override (via the
+    // explicit override API). Both must survive the swap onto t2.
+    const ov = P.overrideInstanceParameter(elements[0], "height", 9);
+    if (ov.applied !== "instance") throw new Error(`expected the override to apply, got ${ov.applied}`);
+    const swapped = P.swapFamilyType(elements[0], "t2");
+    if (!swapped.swapped) throw new Error("expected the swap to happen");
+    if (elements[0].familyTypeId !== "t2") throw new Error("expected e1 on t2 after the swap");
+    deep(elements[0].familyOverrides, ["height", "thickness"], "the swap records the overrides it re-applied");
+    // The swap re-resolved e1 from t2 (width 4, depth 2) with both
+    // overrides on top.
+    near(elements[0].params.height, 9, "e1 keeps its height override across the swap");
+    near(elements[0].params.thickness, 0.3, "e1 keeps its thickness override across the swap");
+    near(elements[0].params.width, 4, "e1 takes t2's width after the swap");
+    // Out-of-band change to t2 (both keys move), then a manual sync:
+    // both recorded overrides must survive. Without the record the
+    // height deviation would read as a stale value from t2 and be
+    // wiped to 6.
+    family.types[1].values.height = 6;
+    family.types[1].values.thickness = 0.5;
+    const n = manualSync("fam-test", "t2");
+    // The sync changes NOTHING: both recorded overrides survive and
+    // every other key already matches t2 — which is exactly the point.
+    // (If either override had been wiped, n would be 1.)
+    if (n !== 0) throw new Error(`expected the sync to change nothing, got ${n}`);
+    near(elements[0].params.height, 9, "e1 keeps its height override after the post-swap manual sync");
+    near(elements[0].params.thickness, 0.3, "e1 keeps its thickness override after the post-swap manual sync");
   } finally {
     teardown();
   }
