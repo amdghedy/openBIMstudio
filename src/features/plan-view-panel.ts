@@ -5561,6 +5561,8 @@ function applyPlanDockLayout(): void {
     { width: window.innerWidth, height: window.innerHeight },
     ribbonH,
     PLAN_DOCK_DEFAULT_WIDTH_PX,
+    undefined,
+    document.documentElement.dir === "rtl" ? "rtl" : "ltr",
   );
   const o = g.overlay;
   overlay.style.top = o.top == null ? "" : `${o.top}px`;
@@ -5572,8 +5574,8 @@ function applyPlanDockLayout(): void {
   overlay.dataset.planDockMode = planDockMode;
   const host = viewportHost();
   if (host) {
-    host.style.marginInlineEnd = g.viewportMargin.right
-      ? `${g.viewportMargin.right}px`
+    host.style.marginInlineEnd = g.viewportMargin.inlineEnd
+      ? `${g.viewportMargin.inlineEnd}px`
       : "";
     host.style.marginBottom = g.viewportMargin.bottom
       ? `${g.viewportMargin.bottom}px`
@@ -5581,8 +5583,9 @@ function applyPlanDockLayout(): void {
     // Bottom reservation needs an explicit height as well: the host carries
     // height:100% (src/core/setup.ts), which defeats a bottom margin on the
     // flex cross axis — without this the 3D canvas stays full-height under
-    // the docked plan instead of sharing the screen. (Right reservation
-    // works by margin alone: the host is flex:1 with no explicit width.)
+    // the docked plan instead of sharing the screen. (Inline-end
+    // reservation works by margin alone: the host is flex:1 with no
+    // explicit width.)
     // Measure from the host's real top: a percentage height resolves
     // against the middle workspace row, which stops at the 24 px status
     // bar, while the bottom-docked overlay runs to the viewport bottom —

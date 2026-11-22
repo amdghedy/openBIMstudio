@@ -85,7 +85,7 @@ const { PlanLiveSync } = require(path.join(out, "plan-live-sync.js"));
   t("modal: full-width overlay, zero viewport margin", () => {
     const g = dock.computePlanDockLayout("modal", { width: 1600, height: 900 }, 88);
     assert.deepStrictEqual(g.overlay, { left: 0, right: 0, top: 88, bottom: 0, width: null, height: null });
-    assert.deepStrictEqual(g.viewportMargin, { right: 0, bottom: 0 });
+    assert.deepStrictEqual(g.viewportMargin, { inlineEnd: 0, bottom: 0 });
     assert.strictEqual(g.dockSizePx, 0);
   });
   t("docked-right: panel on the right edge, 3D keeps the same right margin", () => {
@@ -95,19 +95,30 @@ const { PlanLiveSync } = require(path.join(out, "plan-live-sync.js"));
     assert.strictEqual(g.overlay.left, null);
     assert.strictEqual(g.overlay.top, 88);
     assert.strictEqual(g.overlay.bottom, 0);
-    assert.deepStrictEqual(g.viewportMargin, { right: 560, bottom: 0 });
+    assert.deepStrictEqual(g.viewportMargin, { inlineEnd: 560, bottom: 0 });
     assert.strictEqual(g.dockSizePx, 560);
   });
   t("docked-right: width clamps to half the viewport on narrow screens", () => {
     const g = dock.computePlanDockLayout("docked-right", { width: 800, height: 900 }, 88);
     assert.strictEqual(g.overlay.width, 400);
-    assert.strictEqual(g.viewportMargin.right, 400);
+    assert.strictEqual(g.viewportMargin.inlineEnd, 400);
     const wide = dock.computePlanDockLayout("docked-right", { width: 3000, height: 900 }, 88, 2000);
     assert.strictEqual(wide.overlay.width, 1500); // 50% cap, not the 2000 requested
   });
   t("docked-right: width never drops below the usable minimum", () => {
     const g = dock.computePlanDockLayout("docked-right", { width: 1600, height: 900 }, 88, 100);
     assert.strictEqual(g.overlay.width, 320);
+  });
+  t("docked-right in RTL: panel mirrors to the physical left, margin stays inline-end", () => {
+    const g = dock.computePlanDockLayout("docked-right", { width: 1600, height: 900 }, 88, 560, undefined, "rtl");
+    assert.strictEqual(g.overlay.width, 560);
+    assert.strictEqual(g.overlay.left, 0);
+    assert.strictEqual(g.overlay.right, null);
+    assert.deepStrictEqual(g.viewportMargin, { inlineEnd: 560, bottom: 0 });
+    // LTR default is unchanged: panel on the physical right.
+    const ltr = dock.computePlanDockLayout("docked-right", { width: 1600, height: 900 }, 88);
+    assert.strictEqual(ltr.overlay.right, 0);
+    assert.strictEqual(ltr.overlay.left, null);
   });
   t("docked-bottom: panel on the bottom edge, 3D keeps the same bottom margin", () => {
     const g = dock.computePlanDockLayout("docked-bottom", { width: 1600, height: 900 }, 88);
@@ -116,7 +127,7 @@ const { PlanLiveSync } = require(path.join(out, "plan-live-sync.js"));
     assert.strictEqual(g.overlay.right, 0);
     assert.strictEqual(g.overlay.bottom, 0);
     assert.strictEqual(g.overlay.top, null);
-    assert.deepStrictEqual(g.viewportMargin, { right: 0, bottom: 405 });
+    assert.deepStrictEqual(g.viewportMargin, { inlineEnd: 0, bottom: 405 });
     assert.strictEqual(g.dockSizePx, 405);
   });
   t("docked-bottom: height clamps to 60% of the viewport", () => {

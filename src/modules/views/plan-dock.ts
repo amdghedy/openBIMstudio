@@ -135,8 +135,14 @@ export interface PlanDockGeometry {
     width: number | null;
     height: number | null;
   };
-  /** Margins the 3D viewport host (`#viewport`) must reserve, in pixels. */
-  viewportMargin: { right: number; bottom: number };
+  /**
+   * Margins the 3D viewport host (`#viewport`) must reserve, in pixels.
+   * `inlineEnd` is the reservation for the docked panel, which sits at the
+   * inline-end side (physical right in LTR, physical left in RTL) — the
+   * panel mirrors with the document direction, so the margin is logical,
+   * never a physical one.
+   */
+  viewportMargin: { inlineEnd: number; bottom: number };
   /** Effective panel width (docked-right) or height (docked-bottom), else 0. */
   dockSizePx: number;
 }
@@ -147,13 +153,20 @@ export function computePlanDockLayout(
   ribbonHeightPx: number,
   dockWidthPx: number = PLAN_DOCK_DEFAULT_WIDTH_PX,
   dockHeightPx?: number,
+  direction: "ltr" | "rtl" = "ltr",
 ): PlanDockGeometry {
   const top = Math.max(28, Math.round(ribbonHeightPx));
   if (mode === "docked-right") {
     const width = clampPlanDockWidth(dockWidthPx, viewport.width);
+    // The panel docks at the inline-end side: physical right in LTR,
+    // physical left in RTL — the viewport reservation follows it, so the
+    // margin is always `inlineEnd` on the same side as the overlay.
+    const atInlineEnd = direction === "rtl"
+      ? { left: 0, right: null }
+      : { left: null, right: 0 };
     return {
-      overlay: { left: null, right: 0, top, bottom: 0, width, height: null },
-      viewportMargin: { right: width, bottom: 0 },
+      overlay: { ...atInlineEnd, top, bottom: 0, width, height: null },
+      viewportMargin: { inlineEnd: width, bottom: 0 },
       dockSizePx: width,
     };
   }
@@ -164,13 +177,13 @@ export function computePlanDockLayout(
     );
     return {
       overlay: { left: 0, right: 0, top: null, bottom: 0, width: null, height },
-      viewportMargin: { right: 0, bottom: height },
+      viewportMargin: { inlineEnd: 0, bottom: height },
       dockSizePx: height,
     };
   }
   return {
     overlay: { left: 0, right: 0, top, bottom: 0, width: null, height: null },
-    viewportMargin: { right: 0, bottom: 0 },
+    viewportMargin: { inlineEnd: 0, bottom: 0 },
     dockSizePx: 0,
   };
 }
