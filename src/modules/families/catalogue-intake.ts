@@ -155,12 +155,25 @@ export function buildCatalogueFamilyDefinition(
   }));
   const uniqueTypes = new Set(types.map((t) => t.name.toLowerCase()));
   if (uniqueTypes.size !== types.length) throw new Error("Duplicate model names detected. Resolve duplicate catalogue types before creating the family.");
+  const geometryProfiles = rows.map((row) => {
+    const entry = Object.entries(row).find(([key]) => ["geometryprofile", "productgeometry", "geometrykind"].includes(normalizedHeader(key)));
+    const raw = String(entry?.[1] ?? "box").trim().toLowerCase();
+    if (["box", "rectangular", "rectangular-prism"].includes(raw)) return "box";
+    if (["cylinder", "cylindrical", "round"].includes(raw)) return "cylinder";
+    throw new Error("Unsupported catalogue geometry profile: " + raw + ". Use box or cylinder.");
+  });
+  if (geometryProfiles.some((profile) => profile !== geometryProfiles[0])) {
+    throw new Error("All product types in one family must use the same explicit geometry profile.");
+  }
+  const geometry: FamilyDefinition["geometry"] = geometryProfiles[0] === "cylinder"
+    ? { kind: "cylinder", r: { expr: "Width / 2" }, h: { ref: "Height" } }
+    : { kind: "box", w: { ref: "Width" }, d: { ref: "Depth" }, h: { ref: "Height" } };
   return {
     name,
     category: options.category ?? "equipment",
     ifcEntity: options.ifcEntity ?? "IfcUnitaryEquipment",
     parameters,
-    geometry: { kind: "box", w: { ref: "Width" }, d: { ref: "Depth" }, h: { ref: "Height" } },
+    geometry,
     connectorDefs: buildCatalogueConnectorDefinitions(rows, unit),
     types,
     group: first.manufacturer ? `Manufacturer: ${first.manufacturer}` : "Catalogue imports",
