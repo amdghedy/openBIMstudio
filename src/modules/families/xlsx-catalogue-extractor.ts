@@ -26,12 +26,12 @@ function columnIndex(reference: string): number {
   return Math.max(0, result - 1);
 }
 function sharedStrings(xml: string): string[] {
-  return [...xml.matchAll(/<si(?:\\s[^>]*)?>([\\s\\S]*?)<\\/si>/g)]
-    .map((match) => [...match[1].matchAll(/<t(?:\\s[^>]*)?>([\\s\\S]*?)<\\/t>/g)].map((part) => xmlText(part[1])).join(""));
+  return [...xml.matchAll(/<si(?:\s[^>]*)?>([\s\S]*?)<\/si>/g)]
+    .map((match) => [...match[1].matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map((part) => xmlText(part[1])).join(""));
 }
 function cellValue(cell: string, strings: string[]): string {
-  const type = cell.match(/\\bt="([^"]+)"/)?.[1];
-  if (type === "inlineStr") return [...cell.matchAll(/<t(?:\\s[^>]*)?>([\\s\\S]*?)<\\/t>/g)].map((m) => xmlText(m[1])).join("");
+  const type = cell.match(/\bt="([^"]+)"/)?.[1];
+  if (type === "inlineStr") return [...cell.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map((m) => xmlText(m[1])).join("");
   const value = tagValue(cell, "v");
   if (type === "s") return strings[Number(value)] ?? "";
   if (type === "b") return value === "1" ? "TRUE" : "FALSE";
@@ -55,14 +55,14 @@ async function openWorkbook(file: File | Blob) {
   if (!workbookFile || !relsFile) throw new Error("This file is not a valid Excel XLSX workbook.");
   const workbook = await workbookFile.async("string");
   const rels = await relsFile.async("string");
-  const relationships = [...rels.matchAll(/<Relationship\\b([^>]*)\\/?>/g)].map((match) => {
+  const relationships = [...rels.matchAll(/<Relationship\b([^>]*)\/?>/g)].map((match) => {
     const attrs = match[1];
-    return { id: attrs.match(/\\bId="([^"]+)"/)?.[1] ?? "", target: attrs.match(/\\bTarget="([^"]+)"/)?.[1] ?? "", mode: attrs.match(/\\bTargetMode="([^"]+)"/)?.[1] ?? "" };
+    return { id: attrs.match(/\bId="([^"]+)"/)?.[1] ?? "", target: attrs.match(/\bTarget="([^"]+)"/)?.[1] ?? "", mode: attrs.match(/\bTargetMode="([^"]+)"/)?.[1] ?? "" };
   });
-  const sheets: SheetRef[] = [...workbook.matchAll(/<sheet\\b([^>]*)\\/?>/g)].map((match) => {
+  const sheets: SheetRef[] = [...workbook.matchAll(/<sheet\b([^>]*)\/?>/g)].map((match) => {
     const attrs = match[1];
-    const name = attrs.match(/\\bname="([^"]*)"/)?.[1] ?? "";
-    const relationshipId = attrs.match(/\\br:id="([^"]+)"/)?.[1] ?? "";
+    const name = attrs.match(/\bname="([^"]*)"/)?.[1] ?? "";
+    const relationshipId = attrs.match(/\br:id="([^"]+)"/)?.[1] ?? "";
     const relation = relationships.find((item) => item.id === relationshipId);
     if (!name || !relation || relation.mode.toLowerCase() === "external") return null;
     return { name, relationshipId, target: normalizeTarget(relation.target) };
@@ -95,12 +95,12 @@ export async function extractXlsxCatalogue(file: File | Blob, requestedSheetName
   const matrix: string[][] = [];
   const sourceRows: number[] = [];
   let cellCount = 0;
-  for (const rowMatch of worksheet.matchAll(/<row\\b([^>]*)>([\\s\\S]*?)<\\/row>/g)) {
-    const rowNumber = Number(rowMatch[1].match(/\\br="(\\d+)"/)?.[1] ?? matrix.length + 1);
+  for (const rowMatch of worksheet.matchAll(/<row\b([^>]*)>([\s\S]*?)<\/row>/g)) {
+    const rowNumber = Number(rowMatch[1].match(/\br="(\d+)"/)?.[1] ?? matrix.length + 1);
     const row: string[] = [];
-    for (const cellMatch of rowMatch[2].matchAll(/<c\\b([^>]*)>([\\s\\S]*?)<\\/c>/g)) {
+    for (const cellMatch of rowMatch[2].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)) {
       if (++cellCount > MAX_CELLS) throw new Error("XLSX exceeds the 250,000-cell processing limit.");
-      const reference = cellMatch[1].match(/\\br="([^"]+)"/)?.[1] ?? "";
+      const reference = cellMatch[1].match(/\br="([^"]+)"/)?.[1] ?? "";
       row[columnIndex(reference)] = cellValue(cellMatch[0], strings);
     }
     matrix.push(row);
@@ -125,7 +125,7 @@ export async function extractXlsxCatalogue(file: File | Blob, requestedSheetName
       const raw = String(cells[column] ?? "").trim();
       if (!raw) return;
       if (["width", "depth", "height", "airflow", "staticPressure", "power", "voltage"].includes(key)) {
-        const normalized = raw.replace(/,/g, "").replace(/\\s*(mm|cm|m|m³\\/h|m3\\/h|pa|kpa|kw|w|v|kv)\\s*$/i, "").trim();
+        const normalized = raw.replace(/,/g, "").replace(/\s*(mm|cm|m|m³\/h|m3\/h|pa|kpa|kw|w|v|kv)\s*$/i, "").trim();
         const numeric = Number(normalized);
         if (Number.isFinite(numeric) && numeric >= 0) (item as Record<string, string | number | undefined>)[key] = numeric;
         else warnings.push("Worksheet row " + sourceRows[index] + ": invalid numeric value in " + key + "; value omitted.");
