@@ -28,7 +28,9 @@ export interface CatalogueParseResult {
   errors: string[];
 }
 
-const HEADER_ALIASES: Record<string, keyof CatalogueRow> = {
+type CatalogueField = "model" | "manufacturer" | "productCode" | "width" | "depth" | "height" | "airflow" | "staticPressure" | "power" | "voltage";
+
+const HEADER_ALIASES: Record<string, CatalogueField> = {
   model: "model", modelnumber: "model", modelno: "model", type: "model", typename: "model",
   manufacturer: "manufacturer", brand: "manufacturer",
   productcode: "productCode", itemcode: "productCode", sku: "productCode",
