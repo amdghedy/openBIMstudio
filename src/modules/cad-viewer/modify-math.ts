@@ -63,6 +63,8 @@ function mapHatch(h: DxfHatch, f: (p: Pt) => Pt): DxfHatch {
 
 function translateEntCore(e: DxfEntity, dx: number, dy: number): DxfEntity {
   switch (e.type) {
+    case "INSERT":
+      return { ...e, position: translatePt(e.position, dx, dy), attributes: e.attributes?.map((a) => ({ ...a, position: translatePt(a.position, dx, dy) })) };
     case "LINE":
       return { ...e, start: translatePt(e.start, dx, dy), end: translatePt(e.end, dx, dy) };
     case "CIRCLE":
@@ -90,6 +92,13 @@ function translateEntCore(e: DxfEntity, dx: number, dy: number): DxfEntity {
 function rotateEntCore(e: DxfEntity, cx: number, cy: number, deg: number): DxfEntity {
   const rad = deg * DEG;
   switch (e.type) {
+    case "INSERT":
+      return {
+        ...e,
+        position: rotatePt(e.position, { x: cx, y: cy }, rad),
+        rotation: (e.rotation ?? 0) + deg,
+        attributes: e.attributes?.map((t) => ({ ...t, position: rotatePt(t.position, { x: cx, y: cy }, rad), rotation: (t.rotation ?? 0) + deg })),
+      };
     case "LINE":
       return {
         ...e,
@@ -138,6 +147,17 @@ function rotateEntCore(e: DxfEntity, cx: number, cy: number, deg: number): DxfEn
 /** Mirrors across the infinite line through a→b. Text stays readable (MIRRTEXT=0). */
 function mirrorEntCore(e: DxfEntity, a: Pt, b: Pt): DxfEntity {
   switch (e.type) {
+    case "INSERT": {
+      // M = R(2α)·F (F flips y): the new placement is R(2α − θ)·diag(sx, −sy).
+      const alpha = Math.atan2(b.y - a.y, b.x - a.x) / DEG;
+      return {
+        ...e,
+        position: mirrorPt(e.position, a, b),
+        rotation: 2 * alpha - (e.rotation ?? 0),
+        scale: { x: e.scale?.x ?? 1, y: -(e.scale?.y ?? 1), z: e.scale?.z },
+        attributes: e.attributes?.map((t) => ({ ...t, position: mirrorPt(t.position, a, b) })),
+      };
+    }
     case "LINE":
       return { ...e, start: mirrorPt(e.start, a, b), end: mirrorPt(e.end, a, b) };
     case "CIRCLE":
@@ -189,6 +209,17 @@ function mirrorEntCore(e: DxfEntity, a: Pt, b: Pt): DxfEntity {
 function scaleEntCore(e: DxfEntity, cx: number, cy: number, k: number): DxfEntity {
   if (!Number.isFinite(k) || k <= 0) return e;
   switch (e.type) {
+    case "INSERT": {
+      const c = { x: cx, y: cy };
+      return {
+        ...e,
+        position: scalePt(e.position, c, k),
+        scale: { x: (e.scale?.x ?? 1) * k, y: (e.scale?.y ?? 1) * k, z: (e.scale?.z ?? 1) * k },
+        ...(e.columnSpacing !== undefined ? { columnSpacing: e.columnSpacing * k } : {}),
+        ...(e.rowSpacing !== undefined ? { rowSpacing: e.rowSpacing * k } : {}),
+        attributes: e.attributes?.map((t) => ({ ...t, position: scalePt(t.position, c, k), height: t.height * k })),
+      };
+    }
     case "LINE":
       return { ...e, start: scalePt(e.start, { x: cx, y: cy }, k), end: scalePt(e.end, { x: cx, y: cy }, k) };
     case "CIRCLE":
@@ -218,6 +249,8 @@ function scaleEntCore(e: DxfEntity, cx: number, cy: number, k: number): DxfEntit
  */
 export function entityArrayAnchor(e: DxfEntity): Pt {
   switch (e.type) {
+    case "INSERT":
+      return { x: e.position.x, y: e.position.y };
     case "LINE":
       return { x: (e.start.x + e.end.x) / 2, y: (e.start.y + e.end.y) / 2 };
     case "CIRCLE":
@@ -1512,6 +1545,7 @@ export function stretchEnts(ents: DxfEntity[], win: { minX: number; minY: number
         return inside(e.center) ? translateEnt(e, dp.x, dp.y) : e;
       case "TEXT":
       case "POINT":
+      case "INSERT": // a block reference moves wholesale when its insertion point is inside
         return inside(e.position) ? translateEnt(e, dp.x, dp.y) : e;
       case "RAY":
       case "XLINE":

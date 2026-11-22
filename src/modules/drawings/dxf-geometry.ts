@@ -296,6 +296,12 @@ export function robustExtents(entities: DxfEntity[]): DxfDocument["extents"] | u
 export function flipEntityX(e: DxfEntity): DxfEntity {
   const fp = (p: DxfPoint): DxfPoint => ({ ...p, x: -p.x });
   switch (e.type) {
+    case "INSERT":
+      return {
+        ...e, position: fp(e.position), rotation: 180 - (e.rotation ?? 0),
+        scale: { x: e.scale?.x ?? 1, y: -(e.scale?.y ?? 1), z: e.scale?.z },
+        attributes: e.attributes?.map((a) => ({ ...a, position: fp(a.position) })),
+      };
     case "LINE": return { ...e, start: fp(e.start), end: fp(e.end) };
     case "POINT": return { ...e, position: fp(e.position) };
     case "CIRCLE": return { ...e, center: fp(e.center) };

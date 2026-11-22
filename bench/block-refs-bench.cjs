@@ -1,0 +1,31 @@
+/* Native INSERT vs legacy copy expansion on a large synthetic drawing.
+ * Usage: TSC_IGNORE_CONFIG=1 node bench/block-refs-bench.cjs [inserts=20000] [entitiesPerBlock=60] */
+const { execSync } = require("child_process");
+const fs = require("fs"), os = require("os"), path = require("path");
+const root = path.join(__dirname, "..");
+const out = fs.mkdtempSync(path.join(os.tmpdir(), "blkb-"));
+execSync(`npx tsc src/modules/drawings/dxf-reader.ts src/modules/drawings/dxf-writer.ts src/modules/drawings/block-refs.ts src/modules/cad-viewer/viewer-math.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --esModuleInterop${process.env.TSC_IGNORE_CONFIG ? " --ignoreConfig" : ""}`, { stdio: "pipe", cwd: root });
+const find = (d, n) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) { const r = find(p, n); if (r) return r; } else if (f.name === n) return p; } };
+const { parseDxf } = require(find(out, "dxf-reader.js")), { writeDxf } = require(find(out, "dxf-writer.js"));
+const B = require(find(out, "block-refs.js")), V = require(find(out, "viewer-math.js"));
+const N = Number(process.argv[2] || 20000), K = Number(process.argv[3] || 60);
+const D = (...a) => a.join("\n") + "\n";
+let body = ""; for (let i = 0; i < K; i++) body += i % 3 ? D(0, "LINE", 8, "0", 10, i, 20, 0, 11, i, 21, 5) : D(0, "CIRCLE", 8, "0", 10, i, 20, 2, 40, 1);
+let ents = ""; const side = Math.ceil(Math.sqrt(N));
+for (let i = 0; i < N; i++) ents += D(0, "INSERT", 8, "L", 2, "B", 10, (i % side) * 100, 20, Math.floor(i / side) * 100, 50, (i * 7) % 360);
+const txt = D(0, "SECTION", 2, "BLOCKS") + D(0, "BLOCK", 8, "0", 2, "B", 70, 0, 10, 0, 20, 0, 3, "B") + body + D(0, "ENDBLK", 8, "0", 0, "ENDSEC", 0, "SECTION", 2, "ENTITIES") + ents + D(0, "ENDSEC", 0, "EOF");
+const ms = (f) => { const t = process.hrtime.bigint(); const r = f(); return [r, Number(process.hrtime.bigint() - t) / 1e6]; };
+const mb = () => { global.gc && global.gc(); return process.memoryUsage().heapUsed / 1048576; };
+console.log(`drawing: ${N} INSERTs x ${K} entities = ${N * K} primitives, DXF ${(txt.length / 1048576).toFixed(1)} MB`);
+let m0 = mb(); const [leg, tLeg] = ms(() => parseDxf(txt)); const mLeg = mb() - m0;
+m0 = mb(); const [nat, tNat] = ms(() => parseDxf(txt, { nativeBlocks: true })); const mNat = mb() - m0;
+console.log(`read   legacy (copies): ${tLeg.toFixed(0)} ms, ${leg.entities.length} entities, ~${mLeg.toFixed(0)} MB heap`);
+console.log(`read   native:          ${tNat.toFixed(0)} ms, ${nat.entities.length} entities + ${Object.keys(nat.blocks).length} block(s), ~${mNat.toFixed(0)} MB heap`);
+const [, tBind] = ms(() => B.bindDocumentBlocks(nat));
+const [, tBB] = ms(() => { for (const e of nat.entities) V.entityBBox(e); });
+const [, tBB2] = ms(() => { for (const e of nat.entities) V.entityBBox(e); });
+const [idx, tIdx] = ms(() => V.buildIndex(nat.entities, { minX: -1000, minY: -1000, maxX: side * 100 + 1000, maxY: side * 100 + 1000 }));
+const [, tPick] = ms(() => { for (let i = 0; i < 200; i++) V.findSnap(idx, nat.entities, (i * 137) % (side * 100), (i * 59) % (side * 100), 30); });
+const [wt, tW] = ms(() => writeDxf(nat)); const [, tWl] = ms(() => writeDxf(leg));
+console.log(`bind ${tBind.toFixed(0)} ms | first bbox pass (resolve+cache) ${tBB.toFixed(0)} ms | cached bbox pass ${tBB2.toFixed(1)} ms | index build ${tIdx.toFixed(0)} ms | 200 snap queries ${tPick.toFixed(0)} ms`);
+console.log(`write  native: ${tW.toFixed(0)} ms, ${(wt.length / 1048576).toFixed(1)} MB | legacy (copies): ${tWl.toFixed(0)} ms`);

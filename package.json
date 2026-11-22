@@ -84,6 +84,7 @@
     "test:cad-ribbon-wiring": "node tests/cad-ribbon-wiring.test.cjs",
     "test:cad-2d-extras": "node tests/cad-2d-extras.test.cjs",
     "test:native-curves": "node tests/native-curves.test.cjs",
+    "test:cad-block-refs": "node tests/cad-block-refs.test.cjs",
     "test:native-twin-ifc-entities": "node tests/native-twin-ifc-entities.test.cjs",
     "test:perf-budget-gate": "node tests/perf-budget-gate.test.cjs",
     "test:file-import-boundaries": "node tests/file-import-boundaries.test.cjs",
