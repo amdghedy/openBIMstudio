@@ -452,6 +452,30 @@ visibility.content.append(
     }),
   ),
   row(
+    action("Similar Type", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-12").then((m) => m.selectSimilarType());
+    }),
+    action("Hide Category", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-12").then((m) => m.hideSelectedCategories());
+    }),
+  ),
+  row(
+    action("Level Report", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-12").then((m) => m.levelReport());
+    }),
+    action("Linked Models", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-12").then((m) => m.linkedModelsSummary());
+    }),
+  ),
+  row(
+    action("Select by Level", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-12").then((m) => m.selectByActiveLevel());
+    }),
+    action("Units Report", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-12").then((m) => m.unitsReport());
+    }),
+  ),
+  row(
     action("Recovery", () => {
       void import("../modules/bim-gaps/critical-workflow-pack-11").then((m) => m.openRecoveryUi());
     }),
