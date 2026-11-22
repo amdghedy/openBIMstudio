@@ -98,9 +98,19 @@ function parseTableRows(lines: PdfTextLine[], pageNumber: number): CatalogueRow[
   let header: PdfTextLine | null = null;
   let columns: Array<{ x: number; key: string }> = [];
   for (const line of lines) {
-    const recognized = line.tokens
-      .map((token) => ({ x: token.x, key: mapCatalogueHeader(token.text) }))
-      .filter((entry): entry is { x: number; key: string } => Boolean(entry.key));
+    const recognized: Array<{ x: number; key: string }> = [];
+    for (let index = 0; index < line.tokens.length; index++) {
+      const token = line.tokens[index];
+      const next = line.tokens[index + 1];
+      const combined = next ? mapCatalogueHeader(`${token.text} ${next.text}`) : undefined;
+      if (combined) {
+        recognized.push({ x: token.x, key: combined });
+        index++;
+        continue;
+      }
+      const key = mapCatalogueHeader(token.text);
+      if (key) recognized.push({ x: token.x, key });
+    }
     if (recognized.some((entry) => entry.key === "model") && recognized.length >= 2) {
       header = line;
       columns = recognized.sort((a, b) => a.x - b.x);
