@@ -152,6 +152,7 @@ export function buildCatalogueFamilyDefinition(
       Power: r.power ?? 0,
       Voltage: r.voltage ?? 0,
     },
+    connectorDefs: buildCatalogueConnectorDefinitions([r], unit),
   }));
   const uniqueTypes = new Set(types.map((t) => t.name.toLowerCase()));
   if (uniqueTypes.size !== types.length) throw new Error("Duplicate model names detected. Resolve duplicate catalogue types before creating the family.");
@@ -174,7 +175,6 @@ export function buildCatalogueFamilyDefinition(
     ifcEntity: options.ifcEntity ?? "IfcUnitaryEquipment",
     parameters,
     geometry,
-    connectorDefs: buildCatalogueConnectorDefinitions(rows, unit),
     types,
     group: first.manufacturer ? `Manufacturer: ${first.manufacturer}` : "Catalogue imports",
   };
