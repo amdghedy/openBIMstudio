@@ -119,13 +119,10 @@ test('modify tab completion: Measure + Filter + Select Previous, linked view-onl
   await expect(ctxTab()).toHaveText('Modify | Multi-Select', { timeout: 15000 });
 
   // ── 4. Placement tab also carries the Measure panel ─────────────────────
-  // NOTE: with a selection active, the app's #obs-options-bar (mounted on
-  // document.body when ctx.rightHost is unavailable at setup) sits at the
-  // top of the page and covers the ribbon tab row, so no tab is clickable
-  // until the selection is cleared. That overlap is pre-existing (untouched
-  // by this branch) — Esc first, as a user would.
-  await page.keyboard.press('Escape');
-  await expect.poll(selectedIds, { timeout: 15000 }).toEqual([]);
+  // The ribbon tabs stay clickable with a selection active: the options
+  // bar used to sit at the top of the page and cover the tab row (so this
+  // step had to Esc first), but it now lives inside #viewport below the
+  // ribbon — no Escape needed before switching tabs.
   await page.locator('button.obs-ribbon__tab[data-tab="architecture"]').click();
   await strip.getByRole('button', { name: 'Wall', exact: true }).click();
   await expect(ctxTab()).toHaveText('Modify | Place Wall', { timeout: 15000 });

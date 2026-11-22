@@ -52,6 +52,27 @@ const chk = (k: string, v: boolean, label: string): string =>
 const btn = (action: string, label: string): string =>
   `<button data-m="${action}" style="background:#1b212c;border:1px solid #2f3846;border-radius:3px;color:#cbd5e1;font:10px sans-serif;padding:2px 6px;cursor:pointer">${label}</button>`;
 
+/**
+ * Resolve the bar's parent: the viewport host when it exists, else the
+ * page body. setupOptionsBar runs before setupViewer creates the host,
+ * so the bar initially mounts on document.body — at top:0 of the PAGE,
+ * where it covers the ribbon tab row while a selection is active (the
+ * tabs underneath stop receiving clicks). Re-parent into the viewport
+ * (below the ribbon, where the bar belongs) as soon as the host exists.
+ */
+function resolveParent(): HTMLElement {
+  return ((ctx as Any).rightHost ?? document.getElementById("viewport") ?? document.body) as HTMLElement;
+}
+
+function ensureParent(): void {
+  if (!host) return;
+  const parent = resolveParent();
+  if (host.parentElement !== parent) {
+    if (getComputedStyle(parent).position === "static") parent.style.position = "relative";
+    parent.appendChild(host);
+  }
+}
+
 function hasSelection(): boolean {
   try {
     const authored = getSelectedIds?.() ?? [];
@@ -65,6 +86,7 @@ function hasSelection(): boolean {
 
 function render(): void {
   if (!host) return;
+  ensureParent();
   const tool = (getActiveTool() ?? "select") as string;
   lastTool = tool;
 
@@ -211,7 +233,7 @@ export function setupOptionsBar(): void {
     "position:absolute;left:0;right:0;top:0;z-index:60;display:none;align-items:center;gap:10px;" +
     "flex-wrap:wrap;padding:4px 10px;background:rgba(15,17,23,.92);border-bottom:1px solid #2a3140;" +
     "backdrop-filter:blur(6px);pointer-events:auto;";
-  const parent = ((ctx as Any).rightHost ?? document.getElementById("viewport") ?? document.body) as HTMLElement;
+  const parent = resolveParent();
   if (getComputedStyle(parent).position === "static") parent.style.position = "relative";
   parent.appendChild(host);
   unsub = onAuthoringChange(render);
