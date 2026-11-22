@@ -8,7 +8,7 @@
 import { ctx } from "../core/context";
 import { buildCatalogueFamilyDefinition, parseDelimitedCatalogue, validateCatalogueRows, type CatalogueRow } from "../modules/families/catalogue-intake";
 import { extractPdfCatalogue } from "../modules/families/pdf-catalogue-extractor";
-import { extractXlsxCatalogue } from "../modules/families/xlsx-catalogue-extractor";
+import { extractXlsxCatalogue, listXlsxWorksheets } from "../modules/families/xlsx-catalogue-extractor";
 import { z } from "zod";
 import { safeLoad } from "../core/safeLoad";
 
@@ -22,6 +22,7 @@ let panel: HTMLElement | null = null;
 let launch: HTMLButtonElement | null = null;
 let rows: CatalogueRow[] = [];
 let sourceName = "";
+let pendingXlsxFile: File | null = null;
 let styleInstalled = false;
 
 function familyService(): Any {
@@ -69,7 +70,7 @@ function renderRows(): void {
   const host = panel?.querySelector<HTMLElement>("[data-rows]");
   if (!host) return;
   if (!rows.length) { host.innerHTML = '<p class="cfg-muted">No product rows loaded yet. Import a manufacturer catalogue to begin.</p>'; return; }
-  const keys: (keyof CatalogueRow)[] = ["model","manufacturer","productCode","width","depth","height","airflow","staticPressure","power","voltage","sourcePage"];
+  const keys: (keyof CatalogueRow)[] = ["model","manufacturer","productCode","width","depth","height","airflow","staticPressure","power","voltage","sourceSheet","sourceRow","sourcePage"];
   host.innerHTML = `<div class="cfg-table-wrap"><table><thead><tr>${keys.map((k) => `<th>${escapeHtml(k)}</th>`).join("")}</tr></thead><tbody>${rows.map((r,i) => `<tr>${keys.map((k) => `<td>${escapeHtml(r[k] ?? "—")}</td>`).join("")}</tr>`).join("")}</tbody></table></div><p class="cfg-muted">${rows.length} product type(s) loaded from ${escapeHtml(sourceName)}. Review the source values before creating a family.</p>`;
 }
 function buildPanel(): void {
@@ -82,6 +83,7 @@ function buildPanel(): void {
     <header class="cfg-head"><span aria-hidden="true">▦</span><strong>BIM Family Generator</strong><span class="cfg-muted">Catalogue → Parametric BIM</span><button type="button" data-close aria-label="Close">✕</button></header>
     <div class="cfg-body">
       <div class="cfg-card"><strong>01 · Import catalogue</strong><p class="cfg-muted">Local XLSX, CSV, TSV, TXT, JSON and PDF text extraction. Scanned PDF pages can use your configured local Ollama vision model; no cloud OCR is used.</p><label>Catalogue file<input data-file type="file" accept=".xlsx,.csv,.tsv,.txt,.json,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/tab-separated-values,application/json,text/plain,application/pdf"></label><label style="display:flex;grid-template-columns:auto 1fr;align-items:center;gap:8px"><input data-ocr type="checkbox" style="width:auto"> Run local vision OCR on scanned PDF pages (requires a vision-capable Ollama model)</label></div>
+      <div class="cfg-card" data-xlsx-selection hidden><strong>Choose worksheet</strong><div class="cfg-grid"><label>Worksheet<select data-sheet></select></label><div style="display:flex;align-items:end"><button type="button" data-import-sheet class="primary">Import selected worksheet</button></div></div><p class="cfg-muted">Choose the worksheet containing the manufacturer product schedule.</p></div>
       <div class="cfg-card"><strong>02 · Family definition</strong><div class="cfg-grid">
         <label>Family name<input data-name value="Manufacturer Equipment"></label>
         <label>Manufacturer<input data-manufacturer placeholder="Manufacturer name"></label>
@@ -96,11 +98,36 @@ function buildPanel(): void {
   document.body.appendChild(root);
   panel = root;
   root.querySelector("[data-close]")?.addEventListener("click", closeCatalogueFamilyGenerator);
-  root.querySelector("[data-clear]")?.addEventListener("click", () => { rows = []; sourceName = ""; renderRows(); const qa = root.querySelector<HTMLElement>("[data-qa]"); if (qa) qa.textContent = "Import a catalogue to run completeness checks."; status("Catalogue cleared."); });
-  root.querySelector("[data-file]")?.addEventListener("change", (event) => { void readCatalogue((event.target as HTMLInputElement).files?.[0]); });
+  root.querySelector("[data-clear]")?.addEventListener("click", () => { rows = []; sourceName = ""; pendingXlsxFile = null; const chooser = root.querySelector<HTMLElement>("[data-xlsx-selection]"); if (chooser) chooser.hidden = true; renderRows(); const qa = root.querySelector<HTMLElement>("[data-qa]"); if (qa) qa.textContent = "Import a catalogue to run completeness checks."; status("Catalogue cleared."); });
+  root.querySelector("[data-file]")?.addEventListener("change", (event) => {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (file?.name.toLowerCase().endsWith(".xlsx")) void prepareXlsxWorkbook(file);
+    else { pendingXlsxFile = null; const chooser = root.querySelector<HTMLElement>("[data-xlsx-selection]"); if (chooser) chooser.hidden = true; void readCatalogue(file); }
+  });
+  root.querySelector("[data-import-sheet]")?.addEventListener("click", () => {
+    const sheetName = root.querySelector<HTMLSelectElement>("[data-sheet]")?.value;
+    if (pendingXlsxFile && sheetName) void readCatalogue(pendingXlsxFile, sheetName);
+  });
   root.querySelector("[data-create]")?.addEventListener("click", createFamily);
 }
-async function readCatalogue(file?: File): Promise<void> {
+async function prepareXlsxWorkbook(file: File): Promise<void> {
+  if (file.size > 40 * 1024 * 1024) { status("File exceeds the 40 MB intake limit.", "warn"); return; }
+  try {
+    pendingXlsxFile = file;
+    status("Reading workbook worksheet list…");
+    const names = await listXlsxWorksheets(file);
+    const chooser = panel?.querySelector<HTMLElement>("[data-xlsx-selection]");
+    const select = panel?.querySelector<HTMLSelectElement>("[data-sheet]");
+    if (!chooser || !select) return;
+    select.innerHTML = names.map((name) => "<option value=\"" + escapeHtml(name) + "\">" + escapeHtml(name) + "</option>").join("");
+    chooser.hidden = false;
+    status("Workbook ready: " + names.length + " worksheet(s) found. Select the product schedule to import.", "success");
+  } catch (error) {
+    pendingXlsxFile = null;
+    status(error instanceof Error ? error.message : "Could not inspect XLSX workbook.", "warn");
+  }
+}
+async function readCatalogue(file?: File, selectedSheet?: string): Promise<void> {
   if (!file) return;
   if (file.size > 40 * 1024 * 1024) { status("File exceeds the 40 MB intake limit.", "warn"); return; }
   const ext = file.name.split(".").pop()?.toLowerCase();
@@ -108,14 +135,14 @@ async function readCatalogue(file?: File): Promise<void> {
   try {
     let parsed: { rows: CatalogueRow[]; errors: string[] };
     if (ext === "xlsx") {
-      const result = await extractXlsxCatalogue(file);
+      const result = await extractXlsxCatalogue(file, selectedSheet);
       parsed = { rows: result.rows, errors: result.warnings };
-      sourceName = file.name;
+      sourceName = file.name + " · " + result.sheetName;
       rows = parsed.rows;
       renderRows();
       const issues = [...parsed.errors, ...validateCatalogueRows(rows)];
       const qa = panel?.querySelector<HTMLElement>("[data-qa]");
-      if (qa) qa.textContent = issues.length ? issues.join(" ") : "Imported " + rows.length + " product type(s) from worksheet " + result.sheetName + ". Verify source values and units before family creation."; 
+      if (qa) qa.textContent = issues.length ? issues.join(" ") : "Imported " + rows.length + " product type(s) from worksheet " + result.sheetName + ". Source row numbers are retained. Verify source values and units before family creation.";
       status("XLSX processed: " + rows.length + " product type(s) imported from " + result.sheetName + ".", rows.length ? "success" : "warn");
       return;
     }
