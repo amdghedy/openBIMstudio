@@ -18,7 +18,7 @@ The current experimental delivery adds a BIM Family Generator launcher and local
 - Creation of a native OpenBIMstudio family definition using the existing family service, parameter schema, geometry engine and project persistence.
 - Type parameters for dimensions, manufacturer, product code, airflow, static pressure, power and voltage.
 - Explicit parametric box or cylinder geometry profiles when the catalogue provides a supported Geometry Profile / Product Geometry value; cylinder diameter is driven by Width and height by Height.
-- Multiple explicitly numbered MEP ports (Connector 1 ..., Connector 2 ..., etc.) with validation, coordinate conversion and family-level persistence when every product type shares the same port layout.
+- Multiple explicitly numbered MEP ports with validation and coordinate conversion, stored per product FamilyType so variants can carry different port layouts.
 - Explicit catalogue MEP port mapping when the source provides port origin, axis, domain, shape, nominal size, flow direction and system classification; definitions are stored in the existing family connector schema and displayed in the catalogue review table.
 
 **Not implemented yet**
@@ -28,7 +28,7 @@ The current experimental delivery adds a BIM Family Generator launcher and local
 - DWG/DXF/STEP/SAT geometry extraction.
 - Catalogue drawing-to-solid reconstruction.
 - Manufacturer-specific solid reconstruction and inferred connector placement. Connector definitions are accepted only when explicit port coordinates and axes are supplied; no port location is guessed.
-- Per-type connector layouts are not yet represented by the existing family schema. All catalogue types in one family must share identical port definitions.
+- Automatic registration of family ports during every native placement and geometry-edit path is not yet wired; the new placement bridge must be called by the authoring host.
 - Revit API companion add-in or native RFA export.
 - External manufacturer catalogue APIs.
 
@@ -62,7 +62,7 @@ XLSX, CSV/TSV and PDF table readers recognize model/model number/type, manufactu
 
 ## Next implementation milestones
 
-1. XLSX importer with workbook/sheet/row provenance.
+1. XLSX parser hardening for unusual OOXML layouts, date/number formats and merged headers.
 2. Improve PDF layout reconstruction for rotated tables, merged headers, multi-column brochures and engineering unit inference.
 3. Parameter mapping UI with units, type/instance scope, GUID mapping and source confidence.
 4. Reuse the existing parametric feature tree for detailed product geometry templates.
