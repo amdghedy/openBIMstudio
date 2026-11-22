@@ -23,7 +23,7 @@ The current experimental delivery adds a BIM Family Generator launcher and local
 **Not implemented yet**
 - High-fidelity OCR of all catalogue layouts; the current local vision path is experimental and requires a vision-capable Ollama model.
 - OCR of pages containing selectable text but nonstandard or unrecognized table structures.
-- Multi-sheet selection, formulas recalculation, macro-enabled XLSM and legacy XLS workbook parsing.
+- Formula recalculation, macro-enabled XLSM and legacy XLS workbook parsing. XLSX imports visible worksheets only and reads cached formula results.
 - DWG/DXF/STEP/SAT geometry extraction.
 - Catalogue drawing-to-solid reconstruction.
 - Manufacturer-specific solid reconstruction and inferred connector placement. Connector definitions are accepted only when explicit port coordinates and axes are supplied; no port location is guessed.
