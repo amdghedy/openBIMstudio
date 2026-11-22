@@ -19,6 +19,35 @@ class HistoryManager {
   private listeners = new Set<() => void>();
   private isExecuting = false;
 
+  // Mutation notification (item 5): a separate bus from the UI `listeners`
+  // above. Every recorded model change — push, exec, undo, redo, a
+  // transaction commit — must reach the authoring listeners (the open
+  // plan's live sync above all), which push/exec never did: a 3D move/copy
+  // left the open plan stale until the next notifying change or a manual
+  // Regenerate. The notification is deferred to a microtask so it fires
+  // after the caller's synchronous mutation completes — some push sites
+  // record the command before applying the change (delete), so a
+  // synchronous fire would regenerate the plan against the pre-change
+  // model. Rapid bursts collapse into one notification per task.
+  private mutationListeners = new Set<() => void>();
+  private mutationPending = false;
+
+  onMutation(cb: () => void): () => void {
+    this.mutationListeners.add(cb);
+    return () => this.mutationListeners.delete(cb);
+  }
+
+  private emitMutation(): void {
+    if (this.mutationPending || this.mutationListeners.size === 0) return;
+    this.mutationPending = true;
+    queueMicrotask(() => {
+      this.mutationPending = false;
+      for (const cb of this.mutationListeners) {
+        try { cb(); } catch { /* */ }
+      }
+    });
+  }
+
   // Project transitions suspend new edits and wait for in-flight history work.
   private suspended = false;
   private activeOperations = 0;
@@ -172,6 +201,7 @@ class HistoryManager {
     }
 
     this.emit();
+    this.emitMutation();
     return true;
   }
 
@@ -312,6 +342,7 @@ class HistoryManager {
       window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: `Undo: ${cmd.label}`, kind: "info" } }));
     } catch { /* */ }
     this.emit();
+    this.emitMutation();
   }
 
   private async doRedo(): Promise<void> {
@@ -335,6 +366,7 @@ class HistoryManager {
       window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message: `Redo: ${cmd.label}`, kind: "info" } }));
     } catch { /* */ }
     this.emit();
+    this.emitMutation();
   }
 
   clear(): void {

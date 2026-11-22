@@ -243,6 +243,112 @@ async function t(name, fn) {
     resume();
   });
 
+  // ── onMutation (item 5): every recorded model change notifies ─────────
+  // The bus is microtask-deferred, so tests await a tick before asserting.
+  const tick = () => new Promise((resolve) => queueMicrotask(resolve));
+
+  await t("onMutation fires once per exec (after the mutation, not before)", async () => {
+    history.clear();
+    let v = 0;
+    let calls = 0;
+    const unsub = history.onMutation(() => { calls++; });
+    try {
+      let seenDuringApply = -1;
+      await history.exec({
+        label: "a",
+        apply: () => { v = 1; seenDuringApply = calls; },
+        revert: () => { v = 0; },
+      });
+      assert.strictEqual(v, 1);
+      assert.strictEqual(seenDuringApply, 0, "no notification while apply is running");
+      await tick();
+      assert.strictEqual(calls, 1);
+    } finally { unsub(); }
+  });
+
+  await t("onMutation fires for push, undo and redo", async () => {
+    history.clear();
+    let v = 0;
+    let calls = 0;
+    const unsub = history.onMutation(() => { calls++; });
+    try {
+      history.push({ label: "p", apply: () => { v = 1; }, revert: () => { v = 0; } });
+      await tick();
+      assert.strictEqual(calls, 1, "push notifies");
+      await history.undo();
+      await tick();
+      assert.strictEqual(calls, 2, "undo notifies");
+      await history.redo();
+      await tick();
+      assert.strictEqual(calls, 3, "redo notifies");
+    } finally { unsub(); }
+  });
+
+  await t("onMutation fires once per transaction commit, not per inner push", async () => {
+    history.clear();
+    let calls = 0;
+    const unsub = history.onMutation(() => { calls++; });
+    try {
+      await history.transaction("group", async () => {
+        history.push({ label: "x", apply: () => {}, revert: () => {} });
+        history.push({ label: "y", apply: () => {}, revert: () => {} });
+        await tick();
+        assert.strictEqual(calls, 0, "buffered inner pushes must not notify");
+      });
+      await tick();
+      assert.strictEqual(calls, 1, "commit notifies once");
+    } finally { unsub(); }
+  });
+
+  await t("onMutation does not fire for a refused push or a bare clear", async () => {
+    history.clear();
+    let calls = 0;
+    const unsub = history.onMutation(() => { calls++; });
+    try {
+      history.clear();
+      await tick();
+      assert.strictEqual(calls, 0, "clear is not a model mutation");
+      // A push refused mid-undo must not notify either: start an undo and
+      // push once its revert is actually in flight (undo() is chained, so
+      // the revert only starts on a later tick — wait for its signal).
+      let started;
+      const startedPromise = new Promise((resolve) => { started = resolve; });
+      let release;
+      const gate = new Promise((resolve) => { release = resolve; });
+      await history.exec({
+        label: "slow",
+        apply: () => {},
+        revert: async () => { started(); await gate; },
+      });
+      await tick();
+      calls = 0; // the exec above notified; reset before the undo half
+      const undo = history.undo();
+      await startedPromise;
+      const refused = history.push({ label: "too-early", apply: () => {}, revert: () => {} });
+      assert.strictEqual(refused, false, "push during undo is refused");
+      release();
+      await undo;
+      await tick();
+      assert.strictEqual(calls, 1, "only the undo itself notifies");
+    } finally { unsub(); }
+  });
+
+  await t("rapid pushes collapse into one notification per task", async () => {
+    history.clear();
+    let calls = 0;
+    const unsub = history.onMutation(() => { calls++; });
+    try {
+      history.push({ label: "a", apply: () => {}, revert: () => {} });
+      history.push({ label: "b", apply: () => {}, revert: () => {} });
+      history.push({ label: "c", apply: () => {}, revert: () => {} });
+      await tick();
+      assert.strictEqual(calls, 1, "three synchronous pushes notify once");
+      history.push({ label: "d", apply: () => {}, revert: () => {} });
+      await tick();
+      assert.strictEqual(calls, 2, "a later push notifies again");
+    } finally { unsub(); }
+  });
+
   console.log(`\n=== Result: ${passed} passed, ${failed} failed ===`);
   process.exit(failed ? 1 : 0);
 })();

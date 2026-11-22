@@ -337,6 +337,16 @@ export function onAuthoringChange(cb: () => void): () => void {
   return () => authoringListeners.delete(cb);
 }
 
+// History-mediated mutations (move/copy via history.exec, undo/redo,
+// transactions, and every history.push site) reach the authoring
+// listeners through the history mutation bus, so the open plan's live
+// sync — and every other onAuthoringChange subscriber — refreshes on its
+// own. The bus defers to a microtask, so the notification lands after
+// the caller's synchronous mutation completes. Call sites that already
+// notify explicitly (create, delete, …) now notify twice; every
+// subscriber coalesces or re-renders cheaply, so the duplicate is benign.
+history.onMutation(() => notifyAuthoringChange());
+
 /**
  * Central-worksharing edit guard (see src/modules/collaboration/edit-guard.ts).
  * While joined to a central room, elements borrowed by another user (or in a
@@ -4008,8 +4018,9 @@ async function createElement(
   });
   // G12 (b): element creation is a model change — notify so the open plan
   // (and every other onAuthoringChange subscriber) refreshes on its own.
-  // history.exec dispatches no obs-history and no authoring notification,
-  // so without this a wall added in 3D never reached the plan's live sync.
+  // The history mutation bus now notifies for every exec/push/undo/redo
+  // as well; this explicit call stays as belt-and-braces (the duplicate
+  // is coalesced by the subscribers).
   notifyAuthoringChange();
   return el;
 }
