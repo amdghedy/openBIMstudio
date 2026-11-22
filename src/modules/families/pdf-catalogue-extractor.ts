@@ -6,7 +6,6 @@
  * model for OCR. No PDF or rendered page is sent to a cloud provider.
  */
 import { assertFileAllowed } from "../../core/file-guard";
-import { loadProviderConfig } from "../../features/ai-providers";
 import { mapCatalogueHeader, type CatalogueRow } from "./catalogue-intake";
 
 export interface PdfCatalogueOptions {
@@ -194,6 +193,7 @@ function localOllamaBase(endpoint: string): string {
 }
 
 async function runLocalOllamaOcr(imageBase64: string, pageNumber: number): Promise<CatalogueRow[]> {
+  const { loadProviderConfig } = await import("../../features/ai-providers");
   const config = loadProviderConfig();
   if (config.kind !== "ollama") {
     throw new Error("Scanned PDF OCR requires Ollama selected in AI Settings and a vision-capable model such as LLaVA or Qwen2.5-VL. Cloud providers are deliberately not used.");
