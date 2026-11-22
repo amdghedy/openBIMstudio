@@ -94,9 +94,9 @@ function buildPanel(): void {
 }
 async function readCatalogue(file?: File): Promise<void> {
   if (!file) return;
-  if (file.size > 15 * 1024 * 1024) { status("File exceeds the 15 MB intake limit.", "warn"); return; }
+  if (file.size > 40 * 1024 * 1024) { status("File exceeds the 40 MB intake limit.", "warn"); return; }
   const ext = file.name.split(".").pop()?.toLowerCase();
-  if (!["csv","tsv","txt","json"].includes(ext ?? "")) { status("This first delivery supports CSV, TSV, TXT and JSON. PDF/DWG/STEP import adapters are planned, not silently simulated.", "warn"); return; }
+  if (!["csv","tsv","txt","json","pdf"].includes(ext ?? "")) { status("Supported catalogue formats are PDF, CSV, TSV, TXT and JSON. CAD/STEP extraction is not yet enabled.", "warn"); return; }
   try {
     let parsed: { rows: CatalogueRow[]; errors: string[] };
     if (ext === "pdf") {
