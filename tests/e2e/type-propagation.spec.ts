@@ -57,7 +57,21 @@ import { test, expect, type Page } from '@playwright/test';
 //     model is asserted after the type edit, whose sync calls rebuild().
 //   - the control column's live-scene box is unchanged by the edit.
 //
-// Run: npx playwright test tests/e2e/type-propagation.spec.ts --project=chromium
+// Run ONLY against this branch's own build on :3122 (see
+// playwright.family-hosting.config.ts at the repo root): the repo's
+// default config reuses any server already on :3000, and a sibling
+// worktree's preview server would make this spec silently test the
+// wrong build.
+//   npx vite build && npx vite preview --port 3122 --host 127.0.0.1 --strictPort
+// Marker check first (served page must be THIS build):
+//   curl -s http://127.0.0.1:3122/ | grep -o 'assets/index-[^"]*\.js'
+//   must equal the asset in dist/index.html
+// Then, one spec at a time (1.5-CPU VM — never run browser specs concurrently):
+//   npx playwright test --config playwright.family-hosting.config.ts tests/e2e/type-propagation.spec.ts --project=chromium
+// Audit re-run 2026-11-22 on main 7f07c3d9: 1 passed (1.7m), no drift —
+// the FU7 proof holds as written (the ribbon toast double-fire found
+// by the hosting-ribbon audit does not affect this spec: it asserts
+// toast presence with .some(), not an exact count).
 
 async function enterAuthoring(page: Page): Promise<void> {
   await page.goto('/');

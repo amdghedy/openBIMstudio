@@ -34,7 +34,23 @@ import { test, expect, type Page } from '@playwright/test';
 //     strip swaps to a contextual set and the v68 Move button disappears.
 //     The move itself (dialog fields + submit + command pipeline) is real UI.
 //
-// Run: npx playwright test tests/e2e/family-hosting-ribbon.spec.ts --project=chromium
+// Run ONLY against this branch's own build on :3122 (see
+// playwright.family-hosting.config.ts at the repo root): the repo's
+// default config reuses any server already on :3000, and a sibling
+// worktree's preview server would make this spec silently test the
+// wrong build.
+//   npx vite build && npx vite preview --port 3122 --host 127.0.0.1 --strictPort
+// Marker check first (served page must be THIS build):
+//   curl -s http://127.0.0.1:3122/ | grep -o 'assets/index-[^"]*\.js'
+//   must equal the asset in dist/index.html
+// Then, one spec at a time (1.5-CPU VM — never run browser specs concurrently):
+//   npx playwright test --config playwright.family-hosting.config.ts tests/e2e/family-hosting-ribbon.spec.ts --project=chromium
+// Audit re-run 2026-11-22 on main 7f07c3d9: 1 passed / 1 failed at first
+// — the face re-host test expected 2 "Hosted" toasts and got 4: every
+// notify()-originated toast crossed the obs-toast bus twice (the ribbon
+// bridge re-dispatched via toast(); regression from 9c2209ce). Fixed by
+// splitting renderToast out of toast() and having the bridge render
+// directly (src/shell/ribbon.ts); re-run 2 passed (2.4m).
 
 async function enterAuthoring(page: Page): Promise<void> {
   await page.goto('/');
