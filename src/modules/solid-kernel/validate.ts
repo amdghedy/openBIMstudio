@@ -12,7 +12,7 @@
 
 import type { IndexedMesh, ProfilePt } from "../adaptive";
 import { meshVolume } from "../adaptive";
-import { selfIntersects, signedArea, validateProfile } from "./forms";
+import { selfIntersects, selfIntersectsOpen, signedArea, validateProfile } from "./forms";
 import { buildEdges, COINCIDENT_TOL, type BRepSolid } from "./brep";
 
 export type Severity = "info" | "warning" | "error";
@@ -62,10 +62,11 @@ function diag(
 /** Validate a 2D profile (open / degenerate / self-intersecting). */
 export function validateProfileDiagnostics(profile: ProfilePt[], owner = "profile"): GeometryDiagnostic[] {
   const out: GeometryDiagnostic[] = [];
+  let closed = false;
   if (profile.length >= 2) {
     const a = profile[0];
     const b = profile[profile.length - 1];
-    const closed = Math.abs(a.u - b.u) <= COINCIDENT_TOL && Math.abs(a.v - b.v) <= COINCIDENT_TOL;
+    closed = Math.abs(a.u - b.u) <= COINCIDENT_TOL && Math.abs(a.v - b.v) <= COINCIDENT_TOL;
     if (!closed) {
       out.push(diag(
         "open-profile", "error",
@@ -75,7 +76,7 @@ export function validateProfileDiagnostics(profile: ProfilePt[], owner = "profil
       ));
     }
   }
-  if (out.length === 0) {
+  if (closed) {
     try {
       validateProfile(profile);
     } catch (err) {
@@ -88,6 +89,21 @@ export function validateProfileDiagnostics(profile: ProfilePt[], owner = "profil
         "Fix the profile geometry (remove crossings / duplicate points).",
       ));
     }
+  } else {
+    // Open profiles never reached validateProfile's self-intersection
+    // check (it throws open-profile first), so a crossing open profile
+    // used to pass validation with only the open-profile diagnostic.
+    // Check the open polyline directly — with the OPEN test, not the
+    // closed-ring one, whose imaginary closing segment would
+    // false-positive on near-touching endpoints.
+    if (selfIntersectsOpen(profile)) {
+      out.push(diag(
+        "self-intersection", "error",
+        `${owner} is self-intersecting`,
+        [owner],
+        "Fix the profile geometry (remove crossings / duplicate points).",
+      ));
+    }
   }
   return out;
 }
@@ -95,6 +111,13 @@ export function validateProfileDiagnostics(profile: ProfilePt[], owner = "profil
 /** Validate a closed indexed mesh (faces, edges, manifoldness, volume). */
 export function validateMeshDiagnostics(mesh: IndexedMesh, owner = "solid"): GeometryDiagnostic[] {
   const out: GeometryDiagnostic[] = [];
+  // False while any face references a missing vertex: meshVolume would
+  // throw on the undefined vertex, so the volume check below is skipped
+  // for such a mesh (the missing vertex is already reported as
+  // invalid-shell). Degenerate faces and zero-length edges do NOT clear
+  // it — they contribute zero to the divergence sum, so the volume
+  // stays computable alongside them.
+  let shellUsable = true;
   // Degenerate faces + zero-length edges.
   for (let i = 0; i < mesh.faces.length; i++) {
     const [a, b, c] = mesh.faces[i];
@@ -104,6 +127,7 @@ export function validateMeshDiagnostics(mesh: IndexedMesh, owner = "solid"): Geo
     }
     const va = mesh.vertices[a], vb = mesh.vertices[b], vc = mesh.vertices[c];
     if (!va || !vb || !vc) {
+      shellUsable = false;
       out.push(diag("invalid-shell", "error", `${owner} face ${i} references missing vertices`, [`${owner}:f${i}`], "Rebuild the mesh from its parametric definition."));
       continue;
     }
@@ -145,7 +169,13 @@ export function validateMeshDiagnostics(mesh: IndexedMesh, owner = "solid"): Geo
     }
   }
   // Volume sanity (divergence theorem): NaN or inverted volume.
-  if (out.length === 0) {
+  // Runs on EVERY validated mesh, not only when no other diagnostics
+  // exist: an inverted / zero / non-finite volume used to hide behind
+  // an earlier diagnostic (a flipped box with one degenerate face
+  // reported only the degenerate face). The check is skipped only when
+  // the shell is structurally unusable (a face references a missing
+  // vertex — see shellUsable above), where the volume is undefined.
+  if (shellUsable) {
     const v = meshVolume(mesh);
     if (!Number.isFinite(v)) {
       out.push(diag("invalid-boolean", "error", `${owner} volume is not a finite number`, [owner], "Recompute the solid from its parametric definition."));

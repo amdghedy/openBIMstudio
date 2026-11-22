@@ -96,6 +96,31 @@ export function selfIntersects(ring: ProfilePt[]): boolean {
   return false;
 }
 
+/**
+ * O(n²) self-intersection test for an OPEN polyline (no closing segment).
+ *
+ * `selfIntersects` is written for a closed ring: it wraps segment indices
+ * with `(i + 1) % n` and treats the first and last points as joined by a
+ * real segment. Applied to an open profile, that imaginary closing
+ * segment can cross a real segment — a false positive — and the first
+ * and last segments are wrongly treated as adjacent. An open profile
+ * therefore needs its own test over the n-1 real segments only, with
+ * adjacency meaning "shares an index" (j === i + 1) and no wrap-around.
+ * Shared endpoints never count: `segInt` reports only proper interior
+ * crossings (both parameters strictly inside (eps, 1-eps)), so a valid
+ * open profile whose endpoints merely near-touch is not flagged.
+ */
+export function selfIntersectsOpen(polyline: ProfilePt[]): boolean {
+  const n = polyline.length;
+  if (n < 4) return false; // fewer than 3 segments: no non-adjacent pair exists
+  for (let i = 0; i < n - 1; i++) {
+    for (let j = i + 2; j < n - 1; j++) {
+      if (segInt(polyline[i], polyline[i + 1], polyline[j], polyline[j + 1])) return true;
+    }
+  }
+  return false;
+}
+
 /** Shoelace signed area, positive for CCW rings. */
 export function signedArea(ring: ProfilePt[]): number {
   let a = 0;

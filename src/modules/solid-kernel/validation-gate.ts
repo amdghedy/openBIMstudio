@@ -70,9 +70,10 @@
  * Validation NEVER silently repairs (validate.ts policy): the gate
  * returns the WELDED mesh — welding is the specified pre-step, using
  * the PE-10 weld tolerance — and reports everything it finds. The
- * volume-finiteness check is the gate's own: validate.ts only runs its
- * volume check when there are no other diagnostics (K2 owns that hole;
- * this gate does not fix validate.ts).
+ * volume-finiteness diagnostic comes from validate.ts itself (K2: the
+ * volume check runs on every mesh); the gate only records the hard
+ * refusal for a non-finite volume and does not synthesise a second
+ * diagnostic with the same code.
  *
  * Pure module: no DOM, no three.js — safe to unit-test in Node.
  * (Import cycle note: this module imports `weldMesh` from
@@ -275,8 +276,8 @@ export function gateSolid(mesh: IndexedMesh, owner = "solid", opts: GateOptions 
   const welded = weldMesh(mesh, WELD_MESH_TOLERANCE);
   const diagnostics: GeometryDiagnostic[] = [...validateMeshDiagnostics(welded, owner)];
 
-  // Gate's own checks (validate.ts runs its volume check only when
-  // there are no other diagnostics — K2 owns that hole).
+  // Gate's own checks: validate.ts reports the volume diagnostics
+  // itself (K2), so the gate only derives hard refusal from them.
   let hardRefusal = false;
   let hasNonFiniteCoordinate = false;
   for (const v of welded.vertices) {
@@ -298,15 +299,11 @@ export function gateSolid(mesh: IndexedMesh, owner = "solid", opts: GateOptions 
   }
   const volume = meshVolume(welded);
   if (!Number.isFinite(volume)) {
+    // Non-finite volume is already reported by validateMeshDiagnostics
+    // above (K2: the volume check runs on every mesh) — the gate only
+    // records the hard refusal, it does not synthesise a second
+    // diagnostic with the same code.
     hardRefusal = true;
-    diagnostics.push(
-      gateDiagnostic(
-        "invalid-boolean",
-        `${owner} volume is not a finite number`,
-        owner,
-        "Recompute the solid from its parametric definition.",
-      ),
-    );
   }
   if (hasNonFiniteCoordinate) {
     hardRefusal = true;
