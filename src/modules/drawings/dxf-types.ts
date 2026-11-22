@@ -260,6 +260,9 @@ export interface DxfLayout {
   viewports: DxfViewport[];
 }
 
+/** An external reference declared by a drawing (DXF block flag 4 = xref, 8 = overlay; path in group 1). */
+export interface DxfXrefDecl { name: string; path: string; kind: "attach" | "overlay" }
+
 export type DxfUnits = "unitless" | "mm" | "cm" | "m" | "in" | "ft";
 
 /** A STYLE-table record (text style) as read from the file. */
@@ -309,6 +312,8 @@ export interface DxfDocument {
   entities: DxfEntity[];
   /** Drawing extents (model space), computed from the entities. */
   extents?: { min: DxfPoint; max: DxfPoint };
+  /** External references this drawing declares (XREF block records), nested ones included. */
+  xrefs?: DxfXrefDecl[];
   /** Drawing units as declared by the file ($INSUNITS). */
   units?: DxfUnits;
   sourceFormat?: "dxf" | "dwg" | "cad-engine" | "unknown";
