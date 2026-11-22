@@ -43,20 +43,24 @@ async function verifyOwnBuild(page: Page): Promise<void> {
   await expect(space).toHaveAttribute('data-planned', '1');
 }
 
+/** The "Generating plan…" overlay covers the whole canvas while the plan
+ * regenerates: a click that lands while it is up hits the overlay, not
+ * the SVG, and selects nothing. Wait until it is actually hidden. */
+async function waitPlanIdle(page: Page): Promise<void> {
+  await page.waitForFunction(() => {
+    const text = [...document.querySelectorAll('.obs-plan-overlay div')]
+      .find((el) => el.textContent === 'Generating plan…');
+    return !text || getComputedStyle(text.parentElement as Element).display === 'none';
+  }, null, { timeout: 60000 });
+}
+
 async function openPlan(page: Page): Promise<void> {
   const ribbon = page.locator('.obs-ribbon');
   await ribbon.getByRole('button', { name: 'View', exact: true }).click();
   await ribbon.getByRole('button', { name: 'Plan', exact: true }).click();
   await expect(page.locator('.obs-plan-overlay')).toBeVisible({ timeout: 15000 });
   await waitPlanRendered(page);
-  // The "Generating plan…" overlay covers the whole canvas while the plan
-  // regenerates: a click that lands while it is up hits the overlay, not
-  // the SVG, and selects nothing. Wait until it is actually hidden.
-  await page.waitForFunction(() => {
-    const text = [...document.querySelectorAll('.obs-plan-overlay div')]
-      .find((el) => el.textContent === 'Generating plan…');
-    return !text || getComputedStyle(text.parentElement as Element).display === 'none';
-  }, null, { timeout: 60000 });
+  await waitPlanIdle(page);
 }
 
 /** The plan sets the SVG viewBox when renderPlan runs — wait for it, so a
@@ -230,6 +234,13 @@ test('G7: Detail Line and Insulation render differently', async ({ page }) => {
   await clickWorld(page, -3, 1);
   await clickWorld(page, 3, 1);
   await page.keyboard.press('Escape');
+  // The placement lands asynchronously (dynamic import + plan regen):
+  // wait until the plan counts the detail line before arming Insulation.
+  // Without this the insulation clicks can land while the regen overlay
+  // is still up — they hit the overlay, place nothing, and the batting
+  // poll below then times out with 0.
+  await expect.poll(async () => planStats(page), { timeout: 30000 }).toMatch(/^1 authored/);
+  await waitPlanIdle(page);
 
   await ribbonButton(page, 'Annotate', 'Insulation', 'Modify | Place insulation · Enter finish path');
   await clickWorld(page, -3, -1);
