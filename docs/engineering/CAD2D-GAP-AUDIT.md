@@ -6,10 +6,12 @@ Every row cites the source that was inspected. Nothing here was checked against 
 
 ## 1. Architecture as found
 
-- **One drawing model**: `DxfDocument` / `DxfEntity` (`src/modules/drawings/dxf-types.ts`). The entity union has only
-  LINE, CIRCLE, ARC, LWPOLYLINE, TEXT (also carries MTEXT), POINT, RAY, XLINE. Hatches, fills, wipeouts and
-  dimensions are encoded as flags/metadata on those types, not as entities of their own.
-- **Two readers feed it**: `dxf-reader.ts` (DXF) and `acad-engine.ts` (DWG through the acadrust WASM engine), plus
+- **One drawing model**: `DxfDocument` / `DxfEntity` (`src/modules/drawings/dxf-types.ts`). The model now includes native
+  `INSERT` references and a `blocks` definition table for the standalone editor's ASCII-DXF workflow; the default parser path
+  remains flattened for existing consumers. Hatches, fills, wipeouts and dimensions are still encoded as geometry/metadata.
+- **Two readers feed it**: `dxf-reader.ts` can preserve block definitions/references when the CAD editor explicitly requests
+  `nativeBlocks`; DWG through the acadrust worker and the LibreDWG fallback still produce flattened geometry. No claim of
+  native DWG block preservation is made by this milestone.
   `dwg-convert.ts` for the LibreDWG fallback. All three *flatten* on read.
 - **One command table**: `CAD_COMMANDS` and `executeDrawingCommand` in `src/features/cad-viewer.ts` (13.5k lines).
   New work must extend it, not create a second engine.
@@ -19,7 +21,7 @@ Every row cites the source that was inspected. Nothing here was checked against 
 
 | Area | Finding | Evidence |
 |---|---|---|
-| BLOCK/INSERT | INSERT/MINSERT are expanded into ordinary copies when a file is read; the editor has no block-reference entity. INSERT from the library also places copies. Block structure, attributes and dynamic-block parameters are lost on save. | `dxf-reader.ts` case "INSERT"; header of `cad-blocks.ts` ("no block-reference entity") |
+| BLOCK/INSERT | ASCII-DXF editor open/save retains native references, nested definitions and ATTRIB/ATTDEF data; renderer, extents, selection, nearest-point and snap geometry resolve references lazily. DWG input is still flat; in-app BLOCK library insertion still creates editable copies; definition editing is not wired. | `dxf-reader.ts`, `block-refs.ts`, `viewer-math.ts`, `cad-viewer.ts`, `dxf-writer.ts` |
 | SPLINE / ELLIPSE | Were tessellated to polylines and the true definition discarded. **Fixed in M1** (see §4). | `dxf-reader.ts`, `acad-engine.ts` |
 | MLINE | Drawn as its centre path only. | `acad-extra-entities.ts` header |
 | TABLE | Grid and cell text only; merged cells and border styles dropped. | same |
@@ -39,7 +41,9 @@ milestone proves otherwise.
 | # | Milestone | Why this order | Status |
 |---|---|---|---|
 | M1 | Geometry fidelity: native SPLINE/ELLIPSE preserved through edit and save | Smallest change that stops silent data loss without touching the entity union | **Implemented (this PR)** |
-| M2 | Native block references: `INSERT` entity + `BlockTable` in `DxfDocument`, lazy expansion for render/pick/snap/bounds, EXPLODE, nested refs, ATTRIB/ATTDEF, lossless DXF read/write, migration of copy-based files | Foundation for XREF, counting, attributes and dynamic blocks | Planned |
+| M2a | Native block model, bounded resolver, native ASCII-DXF read/write, nested references and attributes | Foundation for references and XREF | **Implemented; engine tests in CI** |
+| M2b | Wire native references into the standalone editor's ASCII-DXF read, render, pick/snap, affine transforms and save paths | Makes native references usable rather than a parser-only data model | **Implemented in this branch; CI pending** |
+| M2c | Native DWG read, editor-authored BLOCK/INSERT/definition editor, EXPLODE/ATTEDIT semantics and desktop-CAD verification | Completes authoring and DWG parity without pretending unsupported paths are native | Planned |
 | M3 | XREF on top of M2 (attach/overlay/reload/unload/detach, path resolution, clipping, compare) | Needs references, not merged copies | Planned |
 | M4 | Persistent constraint graph + iterative solver (coincident, parallel, perpendicular, tangent, H/V, equal, fixed, symmetric, dimensional) | Independent; can start after M2 | Planned |
 | M5 | MLINE / REGION / TABLE entities with real storage and writer support | Needs the entity union extension designed in M2 | Planned |
@@ -65,3 +69,19 @@ milestone proves otherwise.
   splines display approximately although their weights are preserved in the file. Spline and ellipse editing
   (grip editing of control points) is not part of M1.
 - **Tests**: `tests/native-curves.test.cjs` (7 checks: read, write, affine carry, stale guard, malformed input).
+
+
+## M2b — native reference integration in the standalone editor
+
+This branch opts the Drawing Editor's `.dxf` open path into `parseDxf(..., { nativeBlocks: true })`.
+Other `readCadFile` callers retain the prior flattened default, and DWG opening remains on the existing worker path.
+The editor binds each INSERT to its document's block table before extents or the spatial index are built.
+
+The canvas paints resolved primitive children using their own layers, lineweights, linetypes and transparency while keeping
+the INSERT itself as the selected/undoable object. The shared math layer resolves bounds, distances, key snap points,
+nearest points and intersections. MOVE/ROTATE/MIRROR/SCALE preserve the weak binding when they return new INSERT objects.
+DXF save passes the live document (including its block table) to the native BLOCK/INSERT writer.
+
+**Not included in M2b:** native BLOCK authoring and definition editing in the editor, the browser block-library migration,
+DWG-native references (DWG worker still flattens), complete BYBLOCK inheritance, dynamic-block actions, and AutoCAD/BricsCAD
+desktop validation. These remain explicit gaps until their own tests and interop evidence exist.
