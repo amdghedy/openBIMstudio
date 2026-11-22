@@ -57,7 +57,9 @@ function throws(fn, frag) {
 
 // ── Compile the module slice ────────────────────────────────────────────────
 const root = path.resolve(__dirname, "..");
-const tmpOut = fs.mkdtempSync(path.join(os.tmpdir(), "obs-engine-ui-"));
+// inside the repo root so `three` resolves from the repo node_modules
+// (a /tmp outDir cannot see it — same pattern as parametric-type-swap)
+const tmpOut = fs.mkdtempSync(path.join(root, ".v69-engine-ui-test-"));
 fs.writeFileSync(path.join(tmpOut, "package.json"), '{"type": "commonjs"}');
 execSync(
   "npx tsc --rootDir src --outDir " + JSON.stringify(tmpOut) +

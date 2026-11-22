@@ -82,7 +82,9 @@ const NF = require(find("nested-families.js"));
 // ── Fixture families ────────────────────────────────────────────────────────
 const C = (n) => ({ const: n });
 const R = (name) => ({ ref: name });
-const P = (name, def) => ({ name, type: "number", default: def });
+// scope:"type" — the fixture types set these values (width/depth/height), and
+// parameter-scope enforcement (9fa2e6a) ignores type values on scopeless params.
+const P = (name, def) => ({ name, type: "number", default: def, scope: "type" });
 const box = (w, d, h) => ({ kind: "box", w, d, h });
 const translate = (x, y, z) => ({ translate: [C(x), C(y), C(z)] });
 

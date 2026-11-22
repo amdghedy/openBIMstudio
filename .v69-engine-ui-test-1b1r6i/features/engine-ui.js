@@ -1,0 +1,2331 @@
+"use strict";
+/**
+ * v69 Engine UI — wires every v67/v68 engine to user-facing buttons,
+ * dialogs and panels. This closes the "engine without a button" gap:
+ * before this module the constraint solver, structural FEM, MEP
+ * hydraulics, adaptive components, solid kernel, Modify engine, hosting,
+ * parameter engine, relationships and registry were only reachable from
+ * the developer console via window.__obs*.
+ *
+ * Structure:
+ *   1. Pure helpers (Node-testable): parsing, frame builder, summaries
+ *   2. Floating report card (result display)
+ *   3. Structural dialogs  — Analyze tab (v67 __obsStructural engine)
+ *   4. Hydraulics dialogs  — Analyze tab (v67 __obsMepPressure engine)
+ *   5. Adaptive dialogs    — Architecture tab (v67 __obsAdaptive engine)
+ *   6. Solid form dialogs  — Edit tab (v68 __obsSolids engine)
+ *   7. Modify dialogs      — Edit tab (v68 __obsModify engine on the
+ *                             live authored model via an ElementStore
+ *                             adapter)
+ *   8. Hosted opening      — Architecture tab (v68 __obsHosting engine)
+ *   9. Parameter manager   — Manage tab (v68 __obsParametric engine)
+ *  10. Model intelligence  — Manage tab (__obsRegistry + __obsRelationships
+ *                             + __obsMepConnectors + __obsSnapping)
+ *  11. setupEngineUi() boot
+ *
+ * Engine access: stateless engines are imported directly (pure modules);
+ * singleton-backed registries are read through the window.__obs* handles
+ * installed by v67/authoring-core so the UI always reflects the same state
+ * the console sees. The authoring model is reached exclusively through
+ * window.__obsAuthoring so this module never pulls three.js into the
+ * Node test slice.
+ */
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.documentParameters = void 0;
+exports.parsePointList = parsePointList;
+exports.parseProfile = parseProfile;
+exports.buildFrameModel = buildFrameModel;
+exports.frameSummary = frameSummary;
+exports.simpleBeamMu = simpleBeamMu;
+exports.simpleBeamVu = simpleBeamVu;
+exports.simpleBeamDeflection = simpleBeamDeflection;
+exports.parseDuctLines = parseDuctLines;
+exports.buildBranchNetwork = buildBranchNetwork;
+exports.pressureSummaryLine = pressureSummaryLine;
+exports.showReportCard = showReportCard;
+exports.openFrameSolverDialog = openFrameSolverDialog;
+exports.openAnalyzeBuildingDialog = openAnalyzeBuildingDialog;
+exports.openSteelCheckDialog = openSteelCheckDialog;
+exports.openRcBeamDialog = openRcBeamDialog;
+exports.openDuctPressureDialog = openDuctPressureDialog;
+exports.openPipePressureDialog = openPipePressureDialog;
+exports.openWorstPathDialog = openWorstPathDialog;
+exports.circleProfile = circleProfile;
+exports.rectProfile = rectProfile;
+exports.openAdaptiveSweepDialog = openAdaptiveSweepDialog;
+exports.openAdaptiveRepeatDialog = openAdaptiveRepeatDialog;
+exports.openAdaptiveEditDialog = openAdaptiveEditDialog;
+exports.getLastSolid = getLastSolid;
+exports.summarizeDiagnostics = summarizeDiagnostics;
+exports.openExtrudeDialog = openExtrudeDialog;
+exports.openRevolveDialog = openRevolveDialog;
+exports.openSolidSweepDialog = openSolidSweepDialog;
+exports.openBlendDialog = openBlendDialog;
+exports.openBooleanDialog = openBooleanDialog;
+exports.openVoidDialog = openVoidDialog;
+exports.boxOverlapVolume = boxOverlapVolume;
+exports.openGeneralBooleanDialog = openGeneralBooleanDialog;
+exports.openShellDialog = openShellDialog;
+exports.openLoftDialog = openLoftDialog;
+exports.openFuseDialog = openFuseDialog;
+exports.validateLastSolid = validateLastSolid;
+exports.authoredElementStore = authoredElementStore;
+exports.openModifyMoveDialog = openModifyMoveDialog;
+exports.openModifyRotateDialog = openModifyRotateDialog;
+exports.openModifyArrayDialog = openModifyArrayDialog;
+exports.openModifyMirrorDialog = openModifyMirrorDialog;
+exports.openHostedOpeningDialog = openHostedOpeningDialog;
+exports.openHostFamilyDialog = openHostFamilyDialog;
+exports.addProjectParameter = addProjectParameter;
+exports.openParameterManagerDialog = openParameterManagerDialog;
+exports.intelligenceReportHtml = intelligenceReportHtml;
+exports.openModelIntelligencePanel = openModelIntelligencePanel;
+exports.toSelectable = toSelectable;
+exports.selectionEngine = selectionEngine;
+exports.openGroup1MoveDialog = openGroup1MoveDialog;
+exports.group1Undo = group1Undo;
+exports.group1Redo = group1Redo;
+exports.openGroup1RotateDialog = openGroup1RotateDialog;
+exports.openGroup1MirrorDialog = openGroup1MirrorDialog;
+exports.openSelectionInspectorDialog = openSelectionInspectorDialog;
+exports.openReferencePickerDialog = openReferencePickerDialog;
+exports.setupEngineUi = setupEngineUi;
+const form_modal_1 = require("./form-modal");
+const notify_1 = require("../core/notify");
+const context_1 = require("../core/context");
+const fem_1 = require("../modules/analytical-model/fem");
+const analytical_model_1 = require("../modules/analytical-model/analytical-model");
+const combo_sweep_1 = require("../modules/analytical-model/combo-sweep");
+const checks_1 = require("../modules/analytical-model/checks");
+const sections_1 = require("../modules/analytical-model/sections");
+const pressure_1 = require("../modules/mep/pressure");
+const adaptive_1 = require("../modules/adaptive");
+const solid_kernel_1 = require("../modules/solid-kernel");
+const modify_1 = require("../modules/modify");
+const selection_1 = require("../modules/selection");
+const references_1 = require("../modules/references");
+const transaction_1 = require("../modules/transaction");
+const hosting_1 = require("../modules/hosting");
+const placement_1 = require("../modules/families/placement");
+const family_hosting_1 = require("../modules/families/family-hosting");
+const parameter_engine_1 = require("../modules/parameter-engine");
+/** Browser window handle — guarded so the compiled module also loads in
+ *  Node (the unit-test slice requires this file without a DOM). */
+const w = typeof window !== "undefined" ? window : {};
+/* ═════════════════════════════════════════════════════════════════════════
+   1. Pure helpers — no DOM, unit-tested in tests/v69-engine-ui.test.cjs
+   ═════════════════════════════════════════════════════════════════════════ */
+/** Parse "0,0; 6,0; 6,0.3" (2D) or "0,0,0\n6,0,2.5" into points.
+ *  Points are separated by ";" or newlines; coordinates by commas/spaces. */
+function parsePointList(s) {
+    const out = [];
+    const chunks = String(s || "").split(/[;\n]+/).map((c) => c.trim()).filter(Boolean);
+    for (const chunk of chunks) {
+        const parts = chunk.split(/[\s,]+/).map(Number);
+        if (parts.length < 2 || parts.length > 3 || parts.some((n) => !Number.isFinite(n))) {
+            throw new Error(`parsePointList: bad point "${chunk}"`);
+        }
+        out.push({ x: parts[0], y: parts[1] ?? 0, z: parts[2] ?? 0 });
+    }
+    return out;
+}
+/** Parse "0,0; 6,0; 6,0.3; 0,0.3" into a closed (u, v) profile polygon.
+ *  The ring is auto-closed (first point appended) when left open. */
+function parseProfile(s) {
+    const pts = parsePointList(s);
+    if (pts.length < 3)
+        throw new Error("parseProfile: a closed profile needs at least 3 points");
+    const ring = pts.map((p) => ({ u: p.x, v: p.y }));
+    const first = ring[0], last = ring[ring.length - 1];
+    if (Math.abs(first.u - last.u) > 1e-9 || Math.abs(first.v - last.v) > 1e-9)
+        ring.push({ ...first });
+    return ring;
+}
+const FEM_STEEL_E = 210e9; // Pa
+/** Build a single-storey portal frame FEM model from UI parameters. */
+function buildFrameModel(o) {
+    const bays = Math.max(1, Math.round(o.bays));
+    const section = (0, sections_1.findSection)(o.sectionId);
+    if (!section)
+        throw new Error(`buildFrameModel: unknown section '${o.sectionId}'`);
+    const nodes = [];
+    const members = [];
+    const col = (i) => `c${i}`;
+    const top = (i) => `t${i}`;
+    for (let i = 0; i <= bays; i++) {
+        nodes.push({ id: col(i), x: i * o.bayWidth, y: 0, ux: true, uy: true, rz: o.fixedBase !== false });
+        nodes.push({ id: top(i), x: i * o.bayWidth, y: o.height });
+    }
+    for (let i = 0; i <= bays; i++) {
+        members.push({ id: `col${i}`, nodeA: col(i), nodeB: top(i), E: FEM_STEEL_E, A: section.A, I: section.Ix });
+    }
+    for (let i = 0; i < bays; i++) {
+        members.push({
+            id: `beam${i}`, nodeA: top(i), nodeB: top(i + 1),
+            E: FEM_STEEL_E, A: section.A, I: section.Ix, truss: o.trussBeams === true,
+        });
+    }
+    const memberUdls = o.trussBeams === true
+        ? [] // truss members carry axial only — apply beam load as nodal loads
+        : members.filter((m) => m.id.startsWith("beam")).map((m) => ({ memberId: m.id, wy: -o.udlKnm * 1000 }));
+    if (o.trussBeams === true) {
+        // Pin-ended beams carry axial only — distribute each bay's UDL to its
+        // end nodes instead (wL/2 per node, doubled for interior nodes).
+        const perNode = (o.udlKnm * 1000 * o.bayWidth) / 2;
+        return { nodes, members, nodalLoads: topLoads(bays, perNode), memberUdls: [] };
+    }
+    return { nodes, members, memberUdls };
+}
+function topLoads(bays, perNode) {
+    const loads = [];
+    for (let i = 0; i <= bays; i++) {
+        const interior = i > 0 && i < bays;
+        loads.push({ nodeId: `t${i}`, fy: interior ? -2 * perNode : -perNode });
+    }
+    return loads;
+}
+/** Summarise a solved frame for display (pure). */
+function frameSummary(model, res) {
+    const byId = new Map(model.nodes.map((n) => [n.id, n]));
+    let totalLoad = 0;
+    for (const u of model.memberUdls ?? []) {
+        const m = model.members.find((mm) => mm.id === u.memberId);
+        const a = m ? byId.get(m.nodeA) : undefined;
+        const b = m ? byId.get(m.nodeB) : undefined;
+        const L = a && b ? Math.hypot(b.x - a.x, b.y - a.y) : 0;
+        totalLoad += Math.abs(u.wy ?? 0) * L; // N/m × m = N
+    }
+    for (const n of model.nodalLoads ?? [])
+        totalLoad += Math.abs(n.fy ?? 0);
+    let reactionSum = 0;
+    for (const r of res.reactions)
+        reactionSum += r.fy; // reactions are support forces (up positive)
+    let maxMoment = 0;
+    for (const f of res.memberForces.values()) {
+        maxMoment = Math.max(maxMoment, Math.abs(f.M1), Math.abs(f.M2));
+    }
+    let maxAxial = 0;
+    for (const f of res.memberForces.values())
+        maxAxial = Math.max(maxAxial, Math.abs(f.N1), Math.abs(f.N2));
+    const tol = Math.max(1e-6, totalLoad * 1e-4);
+    return {
+        totalLoadKkN: totalLoad / 1000,
+        reactionSumKkN: reactionSum / 1000,
+        equilibrium: Math.abs(totalLoad - reactionSum) <= tol, // ΣRy ≈ +total load
+        maxMomentKnm: maxMoment / 1000,
+        maxDeflectionMm: res.maxDeflection * 1000,
+        maxAxialKkN: maxAxial / 1000,
+        members: model.members.length,
+        nodes: model.nodes.length,
+    };
+}
+/** wL²/8 simply supported bending (N·m), w in N/m, L in m. */
+function simpleBeamMu(wNdm, L) {
+    return (wNdm * L * L) / 8;
+}
+/** wL/2 simply supported shear (N). */
+function simpleBeamVu(wNdm, L) {
+    return (wNdm * L) / 2;
+}
+/** 5wL⁴/(384EI) simply supported deflection (m). */
+function simpleBeamDeflection(wNdm, L, E, I) {
+    return (5 * wNdm * Math.pow(L, 4)) / (384 * E * I);
+}
+/** Parse "flow,length,diameter" lines into segment specs (pure). */
+function parseDuctLines(s) {
+    const out = [];
+    for (const line of String(s || "").split(/\n+/).map((l) => l.trim()).filter(Boolean)) {
+        const [flow, length, diameter] = line.split(",").map((v) => Number(v.trim()));
+        if (![flow, length, diameter].every((n) => Number.isFinite(n) && n > 0)) {
+            throw new Error(`parseDuctLines: bad line "${line}" (expected flow,length,diameter)`);
+        }
+        out.push({ flow, length, diameter });
+    }
+    if (!out.length)
+        throw new Error("parseDuctLines: at least one segment is required");
+    return out;
+}
+/**
+ * Build a two-branch distribution tree: source -> a1 -> a2 and
+ * source -> b1 -> b2, computing each edge's pressure drop with the real
+ * Darcy-Weisbach engine (pure, no DOM).
+ */
+function buildBranchNetwork(a, b) {
+    const edges = [];
+    const edgeDp = new Map();
+    let prev = "source";
+    a.forEach((seg, i) => {
+        const id = `A${i + 1}`;
+        edges.push({ id, from: prev, to: id, dp: 0 });
+        edgeDp.set(id, (0, pressure_1.ductPressureDrop)(seg).dpTotal);
+        prev = id;
+    });
+    edges.push({ id: "A_out", from: prev, to: "A_out", dp: 0 });
+    let prevB = "source";
+    b.forEach((seg, i) => {
+        const id = `B${i + 1}`;
+        edges.push({ id, from: prevB, to: id, dp: 0 });
+        edgeDp.set(id, (0, pressure_1.ductPressureDrop)(seg).dpTotal);
+        prevB = id;
+    });
+    edges.push({ id: "B_out", from: prevB, to: "B_out", dp: 0 });
+    const network = {
+        edges: edges.map((e) => ({ ...e, dp: edgeDp.get(e.id) ?? 0 })),
+        source: "source",
+    };
+    return { network, edgeDp };
+}
+/** One-line human summary of a pressure result (pure). rate = Pa/m. */
+function pressureSummaryLine(r, lengthM) {
+    const cls = (0, pressure_1.classifyFrictionRate)(r.dpFriction / Math.max(lengthM, 1e-6));
+    return `ΔP ${r.dpTotal.toFixed(1)} Pa · v ${r.velocity.toFixed(2)} m/s · Re ${r.reynolds.toFixed(0)} · f ${r.frictionFactor.toFixed(4)} · ${cls} friction`;
+}
+/* ═════════════════════════════════════════════════════════════════════════
+   2. Floating report card
+   ═════════════════════════════════════════════════════════════════════════ */
+function esc(s) {
+    return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+/** Show a dismissible floating report card (drag header, close button). */
+function showReportCard(title, rows, note = "") {
+    const el = document.createElement("div");
+    const body = rows
+        .map(([k, v]) => `<tr><td style="padding:3px 10px 3px 0;color:var(--text-secondary,#9aa3b5)">${esc(String(k))}</td>` +
+        `<td style="padding:3px 0;text-align:end;font-variant-numeric:tabular-nums">${esc(String(v))}</td></tr>`)
+        .join("");
+    el.style.cssText =
+        "position:fixed;top:120px;right:24px;width:330px;z-index:8600;" +
+            "background:var(--bg-floating,#1c1e28);border:1px solid var(--border-default,#2a2e3a);" +
+            "border-radius:10px;box-shadow:0 12px 36px rgba(0,0,0,.5);color:var(--text-primary,#e8eaf0);" +
+            "font:12px/1.5 system-ui;";
+    el.innerHTML =
+        `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;` +
+            `border-bottom:1px solid var(--border-subtle,#1e2029);background:var(--bg-elevated,#181a23);` +
+            `border-radius:10px 10px 0 0;user-select:none;cursor:grab">` +
+            `<b style="font-size:13px">${esc(title)}</b>` +
+            `<button data-close style="background:transparent;border:1px solid var(--border-default);` +
+            `color:var(--text-secondary);border-radius:5px;padding:1px 8px;cursor:pointer">×</button></div>` +
+            `<div style="padding:10px 12px"><table style="width:100%;border-collapse:collapse">${body}</table>` +
+            (note ? `<div style="margin-top:8px;color:var(--text-secondary,#9aa3b5);font-size:11px">${esc(note)}</div>` : "") +
+            `</div>`;
+    el.querySelector("[data-close]").addEventListener("click", () => el.remove());
+    const hdr = el.firstElementChild;
+    let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+    hdr.addEventListener("pointerdown", (e) => {
+        if (e.target.closest("button"))
+            return;
+        dragging = true;
+        sx = e.clientX;
+        sy = e.clientY;
+        const r = el.getBoundingClientRect();
+        ox = r.left;
+        oy = r.top;
+    });
+    window.addEventListener("pointermove", (e) => {
+        if (!dragging)
+            return;
+        el.style.left = `${ox + e.clientX - sx}px`;
+        el.style.top = `${oy + e.clientY - sy}px`;
+        el.style.right = "auto";
+    });
+    window.addEventListener("pointerup", () => { dragging = false; });
+    document.body.appendChild(el);
+    return el;
+}
+/* ═════════════════════════════════════════════════════════════════════════
+   3. Structural dialogs — Analyze tab (v67 structural FEM + code checks)
+   ═════════════════════════════════════════════════════════════════════════ */
+async function openFrameSolverDialog() {
+    const sectionOptions = sections_1.STEEL_SECTIONS.map((s) => [s.id, s.id]);
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Frame FEM Solver",
+        subtitle: "Solve a single-storey frame with the built-in Euler-Bernoulli FEM (2D, 3 DOF/node)",
+        fields: [
+            { kind: "number", key: "bays", label: "Bays", default: 3, min: 1, max: 12, step: 1 },
+            { kind: "number", key: "bayWidth", label: "Bay width", default: 6, unit: "m", step: 0.5, min: 1 },
+            { kind: "number", key: "height", label: "Storey height", default: 3.5, unit: "m", step: 0.1, min: 1 },
+            { kind: "number", key: "udl", label: "Beam load", default: 20, unit: "kN/m", step: 1, min: 0 },
+            { kind: "select", key: "section", label: "Section", default: "W14X22", options: sectionOptions },
+            { kind: "select", key: "base", label: "Column base", default: "fixed", options: [["fixed", "Fixed"], ["pinned", "Pinned"]] },
+            { kind: "checkbox", key: "truss", label: "Pin-ended beams (truss behaviour)", default: false },
+        ],
+        submitLabel: "Solve Frame",
+    });
+    if (!r)
+        return;
+    try {
+        const model = buildFrameModel({
+            bays: Number(r.bays), bayWidth: Number(r.bayWidth), height: Number(r.height),
+            udlKnm: Number(r.udl), sectionId: String(r.section),
+            trussBeams: r.truss === true, fixedBase: r.base !== "pinned",
+        });
+        const res = (0, fem_1.solveFrame)(model);
+        const s = frameSummary(model, res);
+        showReportCard("Frame FEM Results", [
+            ["Nodes / members", `${s.nodes} / ${s.members}`],
+            ["Total applied load", `${s.totalLoadKkN.toFixed(2)} kN`],
+            ["Σ vertical reactions", `${s.reactionSumKkN.toFixed(2)} kN`],
+            ["Equilibrium check", s.equilibrium ? "OK" : "CHECK INPUT"],
+            ["Max member moment", `${s.maxMomentKnm.toFixed(2)} kN·m`],
+            ["Max axial force", `${Number(s.maxAxialKkN).toFixed(2)} kN`],
+            ["Max deflection", `${s.maxDeflectionMm.toFixed(3)} mm`],
+        ], "Full displacement/force tables in the browser console.");
+        console.table([...res.memberForces].map(([id, f]) => ({
+            member: id, N1: f.N1.toFixed(0), V1: f.V1.toFixed(0), M1: f.M1.toFixed(1), M2: f.M2.toFixed(1),
+        })));
+        console.table(res.reactions.map((x) => ({ node: x.nodeId, fx: x.fx.toFixed(0), fy: x.fy.toFixed(0), mz: x.mz.toFixed(1) })));
+        (0, notify_1.notify)("success", `Frame solved: ${s.members} members, ΣRy = ${s.reactionSumKkN.toFixed(1)} kN`);
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Frame solve failed: ${e.message}`);
+    }
+}
+/**
+ * Analyze Building (3D): auto-generates the analytical model from the
+ * authored columns / beams / braces, applies dead / live / wind cases with
+ * self-weight, sweeps every LRFD combination and reports the governing
+ * envelope — the RVT-style structural workflow end to end.
+ */
+async function openAnalyzeBuildingDialog() {
+    const els = authoredList();
+    const struct = els.filter((e) => e.type === "column" || e.type === "beam" || e.type === "brace");
+    if (struct.length === 0) {
+        (0, notify_1.notify)("error", "No structural elements found — draw columns, beams or braces first.");
+        return;
+    }
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Analyze Building (3D)",
+        subtitle: `${struct.filter((e) => e.type === "column").length} columns · ${struct.filter((e) => e.type === "beam").length} beams · ${struct.filter((e) => e.type === "brace").length} braces → analytical model → LRFD combination sweep`,
+        fields: [
+            { kind: "number", key: "eGPa", label: "Young's modulus E", default: 30, unit: "GPa", step: 1, min: 1 },
+            { kind: "number", key: "density", label: "Density", default: 24, unit: "kN/m³", step: 0.5, min: 0.5 },
+            { kind: "select", key: "base", label: "Base fixity", default: "fixed", options: [["fixed", "Fixed"], ["pinned", "Pinned"]] },
+            { kind: "checkbox", key: "trussBraces", label: "Braces as pin-ended trusses", default: true },
+            { kind: "number", key: "weldTol", label: "Joint weld tolerance", default: 0.4, unit: "m", step: 0.05, min: 0.05 },
+            { kind: "number", key: "deadKnm", label: "Beam dead load", default: 5, unit: "kN/m", step: 0.5, min: 0 },
+            { kind: "number", key: "liveKnm", label: "Beam live load", default: 3, unit: "kN/m", step: 0.5, min: 0 },
+            { kind: "number", key: "windKnm", label: "Wind on columns (+X)", default: 0, unit: "kN/m", step: 0.5, min: 0 },
+            { kind: "checkbox", key: "selfWeight", label: "Include self-weight (dead ×1)", default: true },
+        ],
+        submitLabel: "Analyze Building",
+    });
+    if (!r)
+        return;
+    try {
+        const gen = (0, analytical_model_1.generateAnalyticalModel)(struct, {
+            E: Number(r.eGPa) * 1e9,
+            density: Number(r.density) * 1000,
+            baseFixity: r.base === "pinned" ? "pinned" : "fixed",
+            braceAsTruss: r.trussBraces === true,
+            weldTolerance: Number(r.weldTol),
+        });
+        if (gen.model.members.length === 0) {
+            (0, notify_1.notify)("error", `Analytical model is empty: ${gen.diagnostics.warnings[0] ?? "no valid members"}`);
+            return;
+        }
+        // Load cases (N, N/m) — self-weight rides on the dead case.
+        const cases = [
+            {
+                id: "lc-dead", name: "Dead", category: "dead", type: "line",
+                magnitude: Number(r.deadKnm) * 1000,
+                selfWeightMultiplier: r.selfWeight === true ? 1 : 0,
+            },
+            {
+                id: "lc-live", name: "Live", category: "live", type: "line",
+                magnitude: Number(r.liveKnm) * 1000, selfWeightMultiplier: 0,
+            },
+            {
+                id: "lc-wind", name: "Wind", category: "wind", type: "line",
+                magnitude: Number(r.windKnm) * 1000, selfWeightMultiplier: 0,
+                direction: { x: 1, y: 0, z: 0 },
+            },
+        ];
+        const combos = [
+            { id: "k1", name: "1.4D", cases: [{ caseId: "lc-dead", factor: 1.4 }] },
+            { id: "k2", name: "1.2D + 1.6L", cases: [{ caseId: "lc-dead", factor: 1.2 }, { caseId: "lc-live", factor: 1.6 }] },
+            { id: "k3", name: "1.2D + 1.0W + 0.5L", cases: [{ caseId: "lc-dead", factor: 1.2 }, { caseId: "lc-wind", factor: 1.0 }, { caseId: "lc-live", factor: 0.5 }] },
+        ];
+        const rep = (0, combo_sweep_1.sweepCombinations)(gen.model, cases, combos, { density: Number(r.density) * 1000 });
+        if (rep.results.length === 0) {
+            (0, notify_1.notify)("error", `Solve failed: ${rep.warnings[0] ?? "unstable structure"}`);
+            return;
+        }
+        // Governing results by role.
+        let maxColN = { value: 0, combo: "" };
+        let maxBeamM = { value: 0, combo: "" };
+        let maxDefl = { value: 0, combo: "" };
+        for (const [mId, env] of rep.envelope) {
+            const role = gen.memberRoles.get(mId)?.role ?? "other";
+            if (role === "column" && -env.NCompression.value > maxColN.value) {
+                maxColN = { value: -env.NCompression.value, combo: env.NCompression.combo };
+            }
+            if (role === "beam") {
+                if (Math.abs(env.MzMax.value) > Math.abs(maxBeamM.value)) {
+                    maxBeamM = { value: env.MzMax.value, combo: env.MzMax.combo };
+                }
+                if (env.deflMax.value > maxDefl.value)
+                    maxDefl = { value: env.deflMax.value, combo: env.deflMax.combo };
+            }
+        }
+        const eqOk = rep.equilibrium.every((e) => e.ok);
+        const d = gen.diagnostics;
+        showReportCard("Analyze Building — 3D Results", [
+            ["Analytical nodes / members", `${d.nodes} / ${gen.model.members.length}`],
+            ["Joint weld adjustments", `${d.weldedAdjustments} (max ${Math.round(d.maxWeldDz * 1000)} mm)`],
+            ["Combinations solved", `${rep.results.length} of ${combos.length}`],
+            ["Governing column compression", `${(maxColN.value / 1000).toFixed(1)} kN — ${maxColN.combo}`],
+            ["Governing beam moment", `${(maxBeamM.value / 1000).toFixed(1)} kN·m — ${maxBeamM.combo}`],
+            ["Max beam deflection", `${(maxDefl.value * 1000).toFixed(2)} mm — ${maxDefl.combo}`],
+            ["Equilibrium (ΣR = −ΣF)", eqOk ? "OK for all combinations" : "FAILED — check console"],
+            ["Warnings", d.warnings.length + rep.warnings.length],
+        ], d.warnings.slice(0, 4).concat(rep.warnings.slice(0, 4)).join("\n") || "All combinations solved.");
+        console.table([...rep.envelope.entries()].map(([id, env]) => ({
+            member: id,
+            role: gen.memberRoles.get(id)?.role ?? "?",
+            "N max (kN)": (env.NTension.value / 1000).toFixed(1),
+            "N min (kN)": (env.NCompression.value / 1000).toFixed(1),
+            "Mz max (kN·m)": (env.MzMax.value / 1000).toFixed(1),
+            "Mz min (kN·m)": (env.MzMin.value / 1000).toFixed(1),
+            "defl (mm)": (env.deflMax.value * 1000).toFixed(2),
+            governing: env.MzMax.combo || env.NCompression.combo,
+        })));
+        (0, notify_1.notify)("success", `Analyzed: ${d.nodes} nodes, ${gen.model.members.length} members, ${rep.results.length} combinations`);
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Analyze Building failed: ${e.message}`);
+    }
+}
+async function openSteelCheckDialog() {
+    const sectionOptions = sections_1.STEEL_SECTIONS.map((s) => [s.id, s.id]);
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Steel Beam Check (AISC-style)",
+        subtitle: "φMp bending, φVn shear and L/240 deflection for a simply supported span",
+        fields: [
+            { kind: "select", key: "section", label: "Section", default: "W14X22", options: sectionOptions },
+            { kind: "number", key: "span", label: "Span", default: 6, unit: "m", step: 0.25, min: 0.5 },
+            { kind: "number", key: "dead", label: "Dead load", default: 10, unit: "kN/m", step: 0.5, min: 0 },
+            { kind: "number", key: "live", label: "Live load", default: 12, unit: "kN/m", step: 0.5, min: 0 },
+            { kind: "number", key: "deflLimit", label: "Deflection limit", default: 240, unit: "L/", step: 10, min: 60 },
+        ],
+        submitLabel: "Check Section",
+    });
+    if (!r)
+        return;
+    try {
+        const section = (0, sections_1.findSection)(String(r.section));
+        if (!section)
+            throw new Error(`unknown section '${r.section}'`);
+        const span = Number(r.span);
+        const wu = (1.2 * Number(r.dead) + 1.6 * Number(r.live)) * 1000; // LRFD factored, N/m
+        const wl = (Number(r.dead) + Number(r.live)) * 1000; // service, N/m
+        const E = 200e9;
+        const Mu = simpleBeamMu(wu, span);
+        const Vu = simpleBeamVu(wu, span);
+        const defl = simpleBeamDeflection(wl, span, E, section.Ix);
+        const out = (0, checks_1.checkSteel)(section, { Mu, Vu, deflection: defl, span }, { deflSpanFraction: 1 / Number(r.deflLimit) });
+        showReportCard(`Steel Check — ${out.sectionId}`, [
+            ["Mu (wL²/8)", `${(Mu / 1000).toFixed(1)} kN·m`],
+            ["Vu (wL/2)", `${(Vu / 1000).toFixed(1)} kN`],
+            ["φMp", `${(out.phiMp / 1000).toFixed(1)} kN·m`],
+            ["φVn", `${(out.phiVn / 1000).toFixed(1)} kN`],
+            ["Bending util.", `${(out.flexUtil * 100).toFixed(0)} %`],
+            ["Shear util.", `${(out.shearUtil * 100).toFixed(0)} %`],
+            ["Deflection δ", `${(defl * 1000).toFixed(2)} mm (L/${Number(r.deflLimit)})`],
+            ["Deflection util.", `${(out.deflUtil * 100).toFixed(0)} %`],
+            ["RESULT", out.pass ? "PASS ✓" : "FAIL ✗"],
+        ], out.notes.join(" · "));
+        (0, notify_1.notify)(out.pass ? "success" : "warn", `${out.sectionId}: ${out.pass ? "PASS" : "FAIL"} (utilization ${(out.utilization * 100).toFixed(0)}%)`);
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Steel check failed: ${e.message}`);
+    }
+}
+async function openRcBeamDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "RC Beam Design Check (ACI-style)",
+        subtitle: "Sizes tension reinforcement (As) and stirrup spacing for a rectangular section",
+        fields: [
+            { kind: "number", key: "b", label: "Width b", default: 0.3, unit: "m", step: 0.05, min: 0.1 },
+            { kind: "number", key: "h", label: "Depth h", default: 0.6, unit: "m", step: 0.05, min: 0.2 },
+            { kind: "number", key: "d", label: "Effective depth d", default: 0.54, unit: "m", step: 0.01, min: 0.1 },
+            { kind: "number", key: "fc", label: "Concrete f'c", default: 30, unit: "MPa", step: 5, min: 15 },
+            { kind: "number", key: "fy", label: "Steel fy", default: 500, unit: "MPa", step: 25, min: 250 },
+            { kind: "number", key: "Mu", label: "Required Mu", default: 250, unit: "kN·m", step: 10, min: 0 },
+            { kind: "number", key: "Vu", label: "Required Vu", default: 180, unit: "kN", step: 10, min: 0 },
+        ],
+        submitLabel: "Design Check",
+    });
+    if (!r)
+        return;
+    try {
+        const out = (0, checks_1.checkRcBeam)({ b: Number(r.b), h: Number(r.h), d: Number(r.d), fc: Number(r.fc) * 1e6, fy: Number(r.fy) * 1e6 }, { Mu: Number(r.Mu) * 1000, Vu: Number(r.Vu) * 1000 });
+        showReportCard("RC Beam Results", [
+            ["Required As", `${(out.AsReq * 1e6).toFixed(0)} mm²`],
+            ["Stress-block depth a", `${(out.a * 1000).toFixed(1)} mm`],
+            ["φMn with AsReq", `${(out.phiMn / 1000).toFixed(1)} kN·m`],
+            ["φVc (concrete)", `${(out.phiVc / 1000).toFixed(1)} kN`],
+            ["Shear util. (φVc)", `${(out.shearUtil * 100).toFixed(0)} %`],
+            ["Stirrup spacing", out.stirrupSpacing ? `${(out.stirrupSpacing * 1000).toFixed(0)} mm` : "not required"],
+            ["RESULT", out.pass ? "PASS ✓" : "FAIL ✗"],
+        ], out.notes.join(" · "));
+        (0, notify_1.notify)(out.pass ? "success" : "warn", `RC beam: As = ${(out.AsReq * 1e6).toFixed(0)} mm²${out.stirrupSpacing ? `, stirrups @ ${(out.stirrupSpacing * 1000).toFixed(0)} mm` : ""}`);
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `RC check failed: ${e.message}`);
+    }
+}
+/* ═════════════════════════════════════════════════════════════════════════
+   4. Hydraulics dialogs — Analyze tab (v67 MEP pressure engine)
+   ═════════════════════════════════════════════════════════════════════════ */
+async function openDuctPressureDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Duct Pressure Drop (Darcy-Weisbach)",
+        subtitle: "Colebrook-White friction, hydraulic diameter for rectangular ducts, ASHRAE roughness",
+        fields: [
+            { kind: "select", key: "shape", label: "Shape", default: "round", options: [["round", "Round"], ["rect", "Rectangular"]] },
+            { kind: "number", key: "diameter", label: "Diameter", default: 0.4, unit: "m", step: 0.05, min: 0.05 },
+            { kind: "number", key: "width", label: "Width (rect)", default: 0.6, unit: "m", step: 0.05, min: 0.05 },
+            { kind: "number", key: "height", label: "Height (rect)", default: 0.3, unit: "m", step: 0.05, min: 0.05 },
+            { kind: "number", key: "length", label: "Length", default: 12, unit: "m", step: 0.5, min: 0.1 },
+            { kind: "number", key: "flow", label: "Air flow", default: 0.8, unit: "m³/s", step: 0.05, min: 0.01 },
+            { kind: "select", key: "material", label: "Material", default: "galvanized-steel",
+                options: [["galvanized-steel", "Galvanized steel"], ["stainless-steel", "Stainless steel"], ["aluminum", "Aluminium"], ["flex-duct", "Flex duct"], ["fiberglass-duct-board", "Duct board"], ["pvc", "PVC"]] },
+        ],
+        submitLabel: "Compute ΔP",
+    });
+    if (!r)
+        return;
+    try {
+        const seg = {
+            length: Number(r.length), flow: Number(r.flow),
+            ...(String(r.shape) === "round"
+                ? { diameter: Number(r.diameter) }
+                : { width: Number(r.width), height: Number(r.height) }),
+            material: String(r.material),
+        };
+        const res = (0, pressure_1.ductPressureDrop)(seg);
+        showReportCard("Duct Pressure Drop", [
+            ["Length", `${Number(r.length).toFixed(1)} m`],
+            ["Flow", `${Number(r.flow).toFixed(3)} m³/s`],
+            ["Friction ΔP", `${res.dpFriction.toFixed(1)} Pa`],
+            ["Fittings ΔP", `${res.dpFittings.toFixed(1)} Pa`],
+            ["Total ΔP", `${res.dpTotal.toFixed(1)} Pa`],
+            ["Velocity", `${res.velocity.toFixed(2)} m/s`],
+            ["Reynolds", res.reynolds.toFixed(0)],
+            ["Friction factor f", res.frictionFactor.toFixed(4)],
+            ["Rate class", (0, pressure_1.classifyFrictionRate)(res.dpFriction / Number(r.length))],
+        ], "Rate band: < 0.4 low · 0.4–1.0 ASHRAE recommended · > 1.0 high (Pa/m).");
+        (0, notify_1.notify)("info", pressureSummaryLine(res, Number(r.length)));
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Duct ΔP failed: ${e.message}`);
+    }
+}
+async function openPipePressureDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Pipe Pressure Drop (Darcy-Weisbach)",
+        subtitle: "Water at 20 °C by default; custom density/viscosity supported",
+        fields: [
+            { kind: "number", key: "diameter", label: "Inner diameter", default: 0.05, unit: "m", step: 0.005, min: 0.005 },
+            { kind: "number", key: "length", label: "Length", default: 25, unit: "m", step: 0.5, min: 0.1 },
+            { kind: "number", key: "flow", label: "Water flow", default: 0.6, unit: "L/s", step: 0.05, min: 0.01 },
+            { kind: "select", key: "material", label: "Material", default: "copper",
+                options: [["copper", "Copper"], ["steel", "Steel"], ["galvanized-steel", "Galvanized steel"], ["pvc", "PVC"], ["pex", "PEX"], ["hdpe", "HDPE"], ["concrete", "Concrete"]] },
+        ],
+        submitLabel: "Compute ΔP",
+    });
+    if (!r)
+        return;
+    try {
+        const seg = {
+            length: Number(r.length), flow: Number(r.flow) / 1000,
+            diameter: Number(r.diameter), material: String(r.material),
+        };
+        const res = (0, pressure_1.pipePressureDrop)(seg);
+        showReportCard("Pipe Pressure Drop", [
+            ["Length", `${Number(r.length).toFixed(1)} m`],
+            ["Flow", `${(Number(r.flow) / 1000).toFixed(4)} m³/s`],
+            ["Friction ΔP", `${res.dpFriction.toFixed(0)} Pa`],
+            ["Total ΔP", `${res.dpTotal.toFixed(0)} Pa`],
+            ["Head loss", `${(res.dpTotal / 9810).toFixed(3)} m`],
+            ["Velocity", `${res.velocity.toFixed(3)} m/s`],
+            ["Reynolds", res.reynolds.toFixed(0)],
+            ["Friction factor f", res.frictionFactor.toFixed(4)],
+        ], "Head loss uses ρg ≈ 9810 N/m³ for water at 20 °C.");
+        (0, notify_1.notify)("info", `Pipe ΔP ${res.dpTotal.toFixed(0)} Pa (${(res.dpTotal / 9810).toFixed(3)} m head)`);
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Pipe ΔP failed: ${e.message}`);
+    }
+}
+async function openWorstPathDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Critical Path (Worst-Branch Search)",
+        subtitle: "Two-branch tree from the AHU/fan — find the branch the fan must be sized for",
+        fields: [
+            { kind: "textarea", key: "branchA", label: "Branch A (supply-air, one segment per line: flow,length,diameter)",
+                default: "0.8,10,0.4\n0.5,8,0.3", placeholder: "flow(m³/s),length(m),diameter(m)" },
+            { kind: "textarea", key: "branchB", label: "Branch B (return-air, same format)",
+                default: "0.6,14,0.35\n0.4,6,0.25", placeholder: "flow(m³/s),length(m),diameter(m)" },
+        ],
+        submitLabel: "Find Critical Path",
+        width: 560,
+    });
+    if (!r)
+        return;
+    try {
+        const a = parseDuctLines(String(r.branchA));
+        const b = parseDuctLines(String(r.branchB));
+        const { network } = buildBranchNetwork(a, b);
+        const worst = (0, pressure_1.worstPath)(network);
+        const pathDp = worst.edgeIds.map((id) => network.edges.find((e) => e.id === id)?.dp ?? 0);
+        showReportCard("Worst Path Results", [
+            ["Critical path", worst.nodes.join(" → ")],
+            ["Branch edges", worst.edgeIds.join(", ")],
+            ["Total ΔP (fan duty)", `${worst.totalDp.toFixed(1)} Pa`],
+            ["Per-edge ΔP", pathDp.map((p) => p.toFixed(1)).join(" + ")],
+            ["Compare branch B", `${(network.edges.filter((e) => e.id.startsWith("B") && !e.id.includes("out")).reduce((s, e) => s + e.dp, 0)).toFixed(1)} Pa`],
+        ], "The fan/pump must overcome the highest-loss source→sink path.");
+        (0, notify_1.notify)("success", `Critical path ΔP ${worst.totalDp.toFixed(0)} Pa via ${worst.edgeIds.join(", ")}`);
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Worst path failed: ${e.message}`);
+    }
+}
+/* ═════════════════════════════════════════════════════════════════════════
+   5. Adaptive dialogs — Architecture tab (v67 adaptive components)
+   ═════════════════════════════════════════════════════════════════════════ */
+function ensureDefaultAdaptiveFamilies() {
+    if (!(0, adaptive_1.listFamilies)().length) {
+        (0, adaptive_1.registerFamily)({ id: "point-post", name: "Point-placed post 100×100", pointCount: 1, pointLength: 3, profile: [{ u: -0.05, v: -0.05 }, { u: 0.05, v: -0.05 }, { u: 0.05, v: 0.05 }, { u: -0.05, v: 0.05 }] });
+        (0, adaptive_1.registerFamily)({ id: "rect-post", name: "Rectangular post 100×100", pointCount: 2, profile: [{ u: -0.05, v: -0.05 }, { u: 0.05, v: -0.05 }, { u: 0.05, v: 0.05 }, { u: -0.05, v: 0.05 }] });
+        (0, adaptive_1.registerFamily)({ id: "round-mullion", name: "Round mullion Ø60", pointCount: 2, profile: circleProfile(0.03, 16) });
+        (0, adaptive_1.registerFamily)({ id: "fin-300", name: "Sunshade fin 300×40", pointCount: 2, profile: [{ u: -0.15, v: -0.02 }, { u: 0.15, v: -0.02 }, { u: 0.15, v: 0.02 }, { u: -0.15, v: 0.02 }] });
+    }
+}
+function circleProfile(radius, segments = 24) {
+    if (!Number.isFinite(radius) || radius <= 0)
+        throw new Error("circle radius must be positive");
+    const out = [];
+    for (let i = 0; i < segments; i++) {
+        const a = (i / segments) * Math.PI * 2;
+        out.push({ u: radius * Math.cos(a), v: radius * Math.sin(a) });
+    }
+    return out;
+}
+/** Closed rectangle profile (explicitly repeated first point). */
+function rectProfile(halfW, halfD) {
+    return [
+        { u: -halfW, v: -halfD }, { u: halfW, v: -halfD },
+        { u: halfW, v: halfD }, { u: -halfW, v: halfD }, { u: -halfW, v: -halfD },
+    ];
+}
+function nativeAdaptiveApi() {
+    return context_1.ctx.features.adaptiveComponents ?? {};
+}
+function profileForAdaptiveSweep(profile) {
+    const ring = profile.map((p) => ({ u: Number(p.u), v: Number(p.v) }));
+    if (ring.length > 3) {
+        const first = ring[0], last = ring[ring.length - 1];
+        if (Math.abs(first.u - last.u) < 1e-9 && Math.abs(first.v - last.v) < 1e-9)
+            ring.pop();
+    }
+    if (ring.length < 3)
+        throw new Error("adaptive profile requires at least three distinct points");
+    return ring;
+}
+function adaptivePathForPreview(points, pointLength) {
+    if (points.length !== 1)
+        return points;
+    return [points[0], { x: points[0].x, y: points[0].y + pointLength, z: points[0].z }];
+}
+/** Create an adaptive instance as a native AuthoredElement, not a viewport-only mesh. */
+async function openAdaptiveSweepDialog() {
+    ensureDefaultAdaptiveFamilies();
+    const families = (0, adaptive_1.listFamilies)();
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Place Native Adaptive Component",
+        subtitle: "Choose a profile, then pick its ordered placement points directly in the 3D viewport. Coordinate entry remains available as a fallback. Optional point constraints are saved with the instance.",
+        fields: [
+            { kind: "select", key: "placement", label: "Placement method", default: "viewport",
+                options: [["viewport", "Interactive 3D point picking"], ["coordinates", "Enter coordinates manually"]] },
+            { kind: "select", key: "profile", label: "Profile source", default: "family",
+                options: [["family", "From family"], ["rect", "Rectangle w×h"], ["circle", "Circle radius"]] },
+            { kind: "select", key: "family", label: "Adaptive profile family", default: families.find((family) => family.pointCount === 2)?.id ?? families[0]?.id ?? "rect-post",
+                options: families.map((f) => [f.id, f.name]) },
+            { kind: "number", key: "pointCount", label: "Placement point count (custom profiles)", default: 2, step: 1, min: 1, max: 8 },
+            { kind: "number", key: "rw", label: "Rect width", default: 0.1, unit: "m", step: 0.01, min: 0.001 },
+            { kind: "number", key: "rh", label: "Rect height", default: 0.1, unit: "m", step: 0.01, min: 0.001 },
+            { kind: "number", key: "cr", label: "Circle radius", default: 0.05, unit: "m", step: 0.005, min: 0.001 },
+            { kind: "number", key: "pointLength", label: "One-point extrusion length", default: 3, unit: "m", step: 0.1, min: 0.001 },
+            { kind: "textarea", key: "constraints", label: "Persistent point constraints (JSON; optional)", default: "[]",
+                placeholder: '[{"kind":"coincident","a":0,"b":1}]' },
+            { kind: "textarea", key: "path", label: "Manual coordinates (used only with coordinate placement)",
+                default: "0,0,0\n6,0,0", placeholder: "x,y,z per line (metres)" },
+            { kind: "text", key: "name", label: "Instance name", default: "Adaptive Component" },
+        ],
+        submitLabel: "Start Adaptive Placement",
+        width: 620,
+    });
+    if (!r)
+        return;
+    try {
+        let family;
+        let profile;
+        let familyId;
+        let familyName;
+        let pointLength = Number(r.pointLength);
+        let pointCount = Math.round(Number(r.pointCount));
+        if (r.profile === "family") {
+            family = (0, adaptive_1.listFamilies)().find((f) => f.id === String(r.family));
+            if (!family)
+                throw new Error("Unknown adaptive family '" + r.family + "'");
+            profile = family.profile;
+            familyId = family.id;
+            familyName = family.name;
+            pointCount = family.pointCount;
+            pointLength = family.pointLength ?? pointLength;
+        }
+        else {
+            if (!Number.isInteger(pointCount) || pointCount < 1 || pointCount > 8) {
+                throw new Error("Custom adaptive placement point count must be from 1 to 8");
+            }
+            if (!Number.isFinite(pointLength) || pointLength <= 0)
+                throw new Error("One-point extrusion length must be positive");
+            profile = r.profile === "circle"
+                ? circleProfile(Number(r.cr))
+                : rectProfile(Number(r.rw) / 2, Number(r.rh) / 2);
+            familyId = "custom-adaptive-" + Date.now().toString(36);
+            familyName = r.profile === "circle" ? "Custom circular adaptive profile" : "Custom rectangular adaptive profile";
+        }
+        profile = profileForAdaptiveSweep(profile);
+        let constraints = [];
+        try {
+            const parsed = JSON.parse(String(r.constraints || "[]"));
+            if (!Array.isArray(parsed))
+                throw new Error("Constraints must be a JSON array");
+            constraints = parsed;
+        }
+        catch (error) {
+            throw new Error("Persistent point constraints are invalid JSON: " + error.message);
+        }
+        const api = nativeAdaptiveApi();
+        if (typeof api.create !== "function")
+            throw new Error("Native adaptive authoring is not ready. Restart the project and try again.");
+        let points;
+        let element;
+        if (r.placement === "viewport") {
+            if (typeof api.beginPlacement !== "function")
+                throw new Error("Interactive adaptive point picking has not initialized. Reload the project and try again.");
+            const placed = await api.beginPlacement({
+                familyId, familyName, pointCount, profile,
+                ...(pointCount === 1 ? { pointLength } : {}),
+                ...(constraints.length ? { constraints } : {}),
+                name: String(r.name ?? "").trim() || familyName,
+            });
+            if (!placed)
+                return;
+            element = placed;
+            points = api.getDefinition(element.id)?.points ?? [];
+        }
+        else {
+            points = parsePointList(String(r.path));
+            if (points.length !== pointCount) {
+                throw new Error("This adaptive family requires exactly " + pointCount + " placement point(s); you supplied " + points.length);
+            }
+            const previewPath = adaptivePathForPreview(points, pointLength);
+            element = api.create({
+                familyId, familyName, points, profile,
+                ...(points.length === 1 ? { pointLength } : {}),
+                ...(constraints.length ? { constraints } : {}),
+                name: String(r.name ?? "").trim() || familyName,
+            });
+        }
+        const vol = Math.abs((0, adaptive_1.meshVolume)((0, adaptive_1.sweepProfile)(profile, adaptivePathForPreview(points, pointLength))));
+        showReportCard("Native Adaptive Component Created", [
+            ["Element", element.name],
+            ["Family", familyName],
+            ["Placement points", points.length],
+            ["Path length", (points.length === 1 ? pointLength : (0, adaptive_1.pathLength)(points)).toFixed(3) + " m"],
+            ["Profile area", (Math.abs((0, adaptive_1.profileArea)(profile)) * 1e4).toFixed(1) + " cm²"],
+            ["Mesh volume", (vol * 1e6).toFixed(1) + " L"],
+            ["Persistent constraints", constraints.length],
+            ["Storage", "Native project element · editable definition saved"],
+        ], "The project stores the ordered 3D points, cross-section and geometric constraints. Rebuilds regenerate the mesh from that saved definition.");
+        (0, notify_1.notify)("success", "Created native adaptive component: " + element.name);
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", "Adaptive component creation failed: " + e.message);
+    }
+}
+/** Repeat family instances along divided points; the full operation is one undo step. */
+async function openAdaptiveRepeatDialog() {
+    ensureDefaultAdaptiveFamilies();
+    const families = (0, adaptive_1.listFamilies)();
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Adaptive Divide & Repeat",
+        subtitle: "Divide a path and create native authored instances. Family placement-point count may be 1–8.",
+        fields: [
+            { kind: "select", key: "family", label: "Family", default: "round-mullion",
+                options: families.map((f) => [f.id, f.name]) },
+            { kind: "text", key: "start", label: "Path start", default: "0,0,0", placeholder: "x,y,z" },
+            { kind: "text", key: "end", label: "Path end", default: "6,0,2.5", placeholder: "x,y,z" },
+            { kind: "number", key: "bays", label: "Bays", default: 6, min: 1, max: 100, step: 1 },
+        ],
+        submitLabel: "Create Native Components",
+    });
+    if (!r)
+        return;
+    try {
+        const family = (0, adaptive_1.listFamilies)().find((f) => f.id === String(r.family));
+        if (!family)
+            throw new Error(`unknown adaptive family '${r.family}'`);
+        const s = parsePointList(String(r.start))[0];
+        const e = parsePointList(String(r.end))[0];
+        if (!s || !e)
+            throw new Error("start and end points are required");
+        const bays = Math.max(1, Math.round(Number(r.bays)));
+        const divisions = (0, adaptive_1.divideLine)(s, e, bays);
+        const instances = (0, adaptive_1.repeatAlongPath)(family.id, divisions);
+        if (!instances.length)
+            throw new Error(`The divided path does not contain enough points for family '${family.name}' (${family.pointCount} needed)`);
+        const api = nativeAdaptiveApi();
+        if (typeof api.createMany !== "function")
+            throw new Error("Native adaptive batch placement is not ready. Restart the project and try again.");
+        const inputs = instances.map((instance, i) => ({
+            familyId: family.id,
+            familyName: family.name,
+            points: instance.points,
+            profile: family.profile,
+            ...(instance.points.length === 1 && family.pointLength !== undefined ? { pointLength: family.pointLength } : {}),
+            name: `${family.name} ${i + 1}`,
+        }));
+        const created = await api.createMany(inputs);
+        showReportCard("Native Adaptive Divide & Repeat", [
+            ["Family", family.name],
+            ["Instances created", created.length],
+            ["Placement points / instance", family.pointCount],
+            ["Path length", `${(0, adaptive_1.pathLength)([s, e]).toFixed(3)} m`],
+            ["Bays", bays],
+            ["Bay spacing", `${((0, adaptive_1.pathLength)([s, e]) / bays).toFixed(3)} m`],
+            ["Undo", "One step removes the full repeated set"],
+        ], "Each instance stores its own editable profile and placement-point definition in the project.");
+        (0, notify_1.notify)("success", `Created ${created.length} native '${family.name}' component(s)`);
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Adaptive divide & repeat failed: ${e.message}`);
+    }
+}
+/** Edit the definition of one selected native adaptive component. */
+async function openAdaptiveEditDialog() {
+    const auth = w.__obsAuthoring;
+    const ids = typeof auth?.getSelectedIds === "function" ? auth.getSelectedIds().map(String) : [];
+    if (ids.length !== 1) {
+        (0, notify_1.notify)("warn", "Select exactly one native adaptive component before choosing Edit Adaptive.");
+        return;
+    }
+    const element = (auth?.getElements?.() ?? []).find((el) => el.id === ids[0]);
+    if (!element || element.type !== "adaptive-component") {
+        (0, notify_1.notify)("warn", "The selected element is not a native adaptive component.");
+        return;
+    }
+    const api = nativeAdaptiveApi();
+    const definition = api.getDefinition?.(element.id);
+    if (!definition) {
+        (0, notify_1.notify)("error", "This adaptive component has no editable definition. Its project data may be incomplete.");
+        return;
+    }
+    const pointsText = definition.points.map((p) => `${p.x},${p.y},${p.z}`).join("\n");
+    const profileText = definition.profile.map((p) => `${p.u},${p.v}`).join("\n");
+    const familyTypeChoices = api.listFamilyTypeChoices?.() ?? [];
+    const familyTypeOptions = [
+        ["", "No shared family type"],
+        ...familyTypeChoices.map((choice) => [choice.familyId + "::" + choice.typeId, choice.label]),
+    ];
+    const linkedTypeValue = definition.familyBinding
+        ? definition.familyBinding.familyId + "::" + definition.familyBinding.typeId
+        : "";
+    const r = await (0, form_modal_1.openFormModal)({
+        title: `Edit Adaptive Component · ${element.name}`,
+        subtitle: "Edit placement points, persistent geometric constraints and the profile. A shared family type link keeps the cross-section synchronized with the family catalog.",
+        fields: [
+            { kind: "textarea", key: "points", label: "Ordered placement points (x,y,z; 1–8 points)", default: pointsText },
+            { kind: "textarea", key: "profile", label: "Manual cross-section profile (u,v)", default: profileText },
+            { kind: "textarea", key: "constraints", label: "Persistent point constraints (JSON)", default: JSON.stringify(definition.constraints ?? [], null, 2) },
+            { kind: "select", key: "familyType", label: "Shared family type", default: linkedTypeValue, options: familyTypeOptions },
+            { kind: "number", key: "pointLength", label: "One-point extrusion length", default: definition.pointLength ?? 1, unit: "m", step: 0.1, min: 0.001 },
+            { kind: "text", key: "name", label: "Instance name", default: element.name },
+        ],
+        submitLabel: "Apply & Regenerate",
+        width: 640,
+    });
+    if (!r)
+        return;
+    try {
+        const points = parsePointList(String(r.points));
+        const profile = profileForAdaptiveSweep(parseProfile(String(r.profile)));
+        const constraints = JSON.parse(String(r.constraints || "[]"));
+        if (!Array.isArray(constraints))
+            throw new Error("Persistent constraints must be a JSON array");
+        if (points.length < 1 || points.length > 8)
+            throw new Error("Enter between 1 and 8 placement points");
+        if (points.length === 1 && (!Number.isFinite(Number(r.pointLength)) || Number(r.pointLength) <= 0)) {
+            throw new Error("One-point extrusion length must be positive");
+        }
+        let familyBinding = null;
+        const typeValue = String(r.familyType ?? "");
+        if (typeValue) {
+            const split = typeValue.split("::");
+            if (split.length !== 2 || !split[0] || !split[1])
+                throw new Error("The shared family type selection is invalid");
+            familyBinding = { familyId: split[0], typeId: split[1] };
+        }
+        const updated = api.update?.(element.id, {
+            points,
+            profile,
+            constraints,
+            familyBinding,
+            ...(points.length === 1 ? { pointLength: Number(r.pointLength) } : {}),
+            name: String(r.name ?? "").trim() || element.name,
+        });
+        if (!updated)
+            throw new Error("The selected adaptive component could not be updated");
+        (0, notify_1.notify)("success", `Updated and regenerated ${element.name}`);
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Adaptive component edit failed: ${e.message}`);
+    }
+}
+/* ═════════════════════════════════════════════════════════════════════════
+   6. Solid form dialogs — Edit tab (v68 solid kernel)
+   ═════════════════════════════════════════════════════════════════════════ */
+let lastSolid = null;
+/** The last solid created by the Solid Forms buttons (for Validate + tests). */
+function getLastSolid() { return lastSolid; }
+/** Summarise a GeometryDiagnostic[] into display booleans (pure). */
+function summarizeDiagnostics(diags) {
+    const errors = diags.filter((d) => d.severity === "error").length;
+    const warnings = diags.filter((d) => d.severity === "warning").length;
+    const edgeIssues = diags.filter((d) => d.code === "non-manifold-edge").length;
+    const degenerate = diags.filter((d) => d.code === "degenerate-face" || d.code === "zero-length-edge").length;
+    return {
+        errors, warnings, edgeIssues, degenerate,
+        watertight: edgeIssues === 0,
+        commitOk: errors === 0,
+    };
+}
+function recordSolid(mesh, label) {
+    lastSolid = mesh;
+    const diags = (0, solid_kernel_1.validateMeshDiagnostics)(mesh);
+    const s = summarizeDiagnostics(diags);
+    const vol = (0, adaptive_1.meshVolume)(mesh);
+    showReportCard(`Solid Created — ${label}`, [
+        ["Vertices", mesh.vertices.length],
+        ["Triangles", mesh.faces.length],
+        ["Volume", `${(vol * 1e6).toFixed(1)} L`],
+        ["Watertight", s.watertight ? "yes" : "NO"],
+        ["Errors / warnings", `${s.errors} / ${s.warnings}`],
+        ["Commit eligible", s.commitOk ? "yes" : "no"],
+    ], "Use Validate Last for the full diagnostic list with recovery actions.");
+    (0, notify_1.notify)("success", `${label}: vol ${(vol * 1e6).toFixed(1)} L, ${s.watertight ? "watertight" : "NOT watertight"}`);
+}
+async function openExtrudeDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Solid Form — Extrude",
+        subtitle: "Extrude a closed profile along +z (B-Rep validated, watertight)",
+        fields: [
+            { kind: "textarea", key: "profile", label: "Profile (x,y per point, CCW)", default: "0,0\n4,0\n4,0.2\n0,0.2" },
+            { kind: "number", key: "depth", label: "Depth", default: 3, unit: "m", step: 0.1, min: 0.01 },
+            { kind: "number", key: "startOffset", label: "Start offset", default: 0, unit: "m", step: 0.1 },
+        ],
+        submitLabel: "Create Extrusion",
+    });
+    if (!r)
+        return;
+    try {
+        const mesh = (0, solid_kernel_1.extrude)({ profile: parseProfile(String(r.profile)), depth: Number(r.depth), startOffset: Number(r.startOffset) });
+        recordSolid(mesh, "Extrusion");
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Extrude failed: ${e.message}`);
+    }
+}
+async function openRevolveDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Solid Form — Revolve",
+        subtitle: "Revolve an (r, z) profile about an axis — full 2π or partial angle",
+        fields: [
+            { kind: "textarea", key: "profile", label: "Profile (r,z per point, r ≥ 0)", default: "0,0\n1.5,0\n1.5,0.15\n0.6,0.5\n0,0.5" },
+            { kind: "text", key: "axisPoint", label: "Axis point", default: "0,0,0", placeholder: "x,y,z" },
+            { kind: "text", key: "axisDir", label: "Axis direction", default: "0,1,0", placeholder: "x,y,z" },
+            { kind: "number", key: "angle", label: "Angle", default: 360, unit: "°", step: 15, min: 5, max: 360 },
+            { kind: "number", key: "segments", label: "Segments", default: 32, min: 3, max: 128, step: 1 },
+        ],
+        submitLabel: "Create Revolution",
+    });
+    if (!r)
+        return;
+    try {
+        const ap = parsePointList(String(r.axisPoint))[0];
+        const ad = parsePointList(String(r.axisDir))[0];
+        if (!ap || !ad)
+            throw new Error("axis point and direction are required");
+        const mesh = (0, solid_kernel_1.revolve)({
+            profile: parseProfile(String(r.profile)),
+            axisPoint: ap, axisDir: ad,
+            angle: (Number(r.angle) * Math.PI) / 180,
+            segments: Math.round(Number(r.segments)),
+        });
+        recordSolid(mesh, "Revolution");
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Revolve failed: ${e.message}`);
+    }
+}
+async function openSolidSweepDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Solid Form — Sweep",
+        subtitle: "Sweep a profile along a 3D polyline with per-segment frames",
+        fields: [
+            { kind: "textarea", key: "profile", label: "Profile (x,y per point, CCW)", default: "-0.1,-0.1\n0.1,-0.1\n0.1,0.1\n-0.1,0.1" },
+            { kind: "textarea", key: "path", label: "Path (x,y,z per line)", default: "0,0,0\n8,0,0\n8,0,3" },
+        ],
+        submitLabel: "Create Sweep",
+        width: 560,
+    });
+    if (!r)
+        return;
+    try {
+        const path = parsePointList(String(r.path).split(/\n+/).join(";"));
+        if (path.length < 2)
+            throw new Error("path needs at least 2 points");
+        const mesh = (0, solid_kernel_1.sweep)({ profile: parseProfile(String(r.profile)), path });
+        recordSolid(mesh, "Sweep");
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Sweep failed: ${e.message}`);
+    }
+}
+async function openBlendDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Solid Form — Blend (Loft)",
+        subtitle: "Loft between two closed sections; correspondence by polar angle when omitted",
+        fields: [
+            { kind: "textarea", key: "start", label: "Start profile", default: "-1,-1\n1,-1\n1,1\n-1,1" },
+            { kind: "textarea", key: "end", label: "End profile", default: "-0.5,0\n0.5,0\n0,0.5\n0,-0.5" },
+            { kind: "number", key: "height", label: "Height", default: 3, unit: "m", step: 0.1, min: 0.01 },
+        ],
+        submitLabel: "Create Blend",
+        width: 560,
+    });
+    if (!r)
+        return;
+    try {
+        const mesh = (0, solid_kernel_1.blend)({
+            startProfile: parseProfile(String(r.start)),
+            endProfile: parseProfile(String(r.end)),
+            height: Number(r.height),
+        });
+        recordSolid(mesh, "Blend");
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Blend failed: ${e.message}`);
+    }
+}
+async function openBooleanDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Boolean — Subtract (A − B)",
+        subtitle: "Exact half-space composition with convex cutters; coplanar operands are refused by the kernel",
+        fields: [
+            { kind: "number", key: "aw", label: "A width", default: 4, unit: "m", step: 0.25, min: 0.1 },
+            { kind: "number", key: "ah", label: "A height", default: 3, unit: "m", step: 0.25, min: 0.1 },
+            { kind: "number", key: "ad", label: "A depth", default: 0.3, unit: "m", step: 0.05, min: 0.05 },
+            { kind: "number", key: "bw", label: "B width", default: 1.2, unit: "m", step: 0.1, min: 0.05 },
+            { kind: "number", key: "bh", label: "B height", default: 2.1, unit: "m", step: 0.1, min: 0.05 },
+            { kind: "number", key: "bx", label: "B centre X", default: 0.8, unit: "m", step: 0.1 },
+        ],
+        submitLabel: "Subtract",
+    });
+    if (!r)
+        return;
+    try {
+        const box = (w2, h2, d2) => (0, solid_kernel_1.extrude)({ profile: rectProfile(w2, d2), depth: h2 * 2, startOffset: -h2 });
+        const a = box(Number(r.aw) / 2, Number(r.ah) / 2, Number(r.ad) / 2);
+        const b = box(Number(r.bw) / 2, Number(r.bh) / 2, Number(r.ad));
+        // Shift B along X by re-extruding with offset profile — simple translate:
+        const translated = { vertices: b.vertices.map((v) => ({ ...v, x: v.x + Number(r.bx) })), faces: [...b.faces] };
+        const out = (0, solid_kernel_1.subtract)(a, translated);
+        const vBefore = (0, adaptive_1.meshVolume)(a), vAfter = (0, adaptive_1.meshVolume)(out);
+        recordSolid(out, "A − B");
+        showReportCard("Boolean Result", [
+            ["Volume A", `${(vBefore * 1e6).toFixed(1)} L`],
+            ["Volume A − B", `${(vAfter * 1e6).toFixed(1)} L`],
+            ["Removed", `${((vBefore - vAfter) * 1e6).toFixed(1)} L`],
+        ], "");
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Subtract failed: ${e.message} — the kernel refuses coplanar/wrong-operand inputs rather than returning wrong geometry.`);
+    }
+}
+async function openVoidDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Cut Openings (Voids)",
+        subtitle: "Sequential void cutting with rollback guarantee — box + cylinder cutters on a wall slab",
+        fields: [
+            { kind: "number", key: "wallW", label: "Wall width", default: 8, unit: "m", step: 0.5, min: 1 },
+            { kind: "number", key: "wallH", label: "Wall height", default: 3, unit: "m", step: 0.1, min: 1 },
+            { kind: "number", key: "wallT", label: "Wall thickness", default: 0.2, unit: "m", step: 0.05, min: 0.05 },
+            { kind: "number", key: "winW", label: "Window width", default: 1.5, unit: "m", step: 0.1, min: 0.1 },
+            { kind: "number", key: "winH", label: "Window height", default: 1.2, unit: "m", step: 0.1, min: 0.1 },
+            { kind: "number", key: "sill", label: "Sill height", default: 0.9, unit: "m", step: 0.1, min: 0 },
+            { kind: "checkbox", key: "duct", label: "Also cut a Ø0.3 m duct at (6, 2.4)", default: true },
+        ],
+        submitLabel: "Cut Voids",
+    });
+    if (!r)
+        return;
+    try {
+        const W = Number(r.wallW), H = Number(r.wallH), T = Number(r.wallT);
+        const wall = (0, solid_kernel_1.extrude)({ profile: rectProfile(W / 2, T / 2), depth: H });
+        const volBefore = (0, adaptive_1.meshVolume)(wall);
+        const voids = [
+            { kind: "box", center: { x: -2, y: 0, z: Number(r.sill) + Number(r.winH) / 2 }, size: { x: Number(r.winW), y: T * 3, z: Number(r.winH) } },
+        ];
+        if (r.duct === true) {
+            voids.push({ kind: "cylinder", center: { x: 6, y: 0, z: 2.4 }, radius: 0.15, height: T * 3, segments: 24 });
+        }
+        const out = (0, solid_kernel_1.cutVoids)(wall, voids);
+        recordSolid(out.solid, "Wall with openings");
+        showReportCard("Void Cutting Report", [
+            ["Volume before", `${(volBefore * 1e6).toFixed(1)} L`],
+            ["Volume after", `${((0, adaptive_1.meshVolume)(out.solid) * 1e6).toFixed(1)} L`],
+            ["Voids cut", String(out.records.length)],
+            ["Failures", String(out.failures.length)],
+            ["Rollback guarantee", "sequential — any failure leaves the previous state intact"],
+        ], "");
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Void cutting failed: ${e.message}`);
+    }
+}
+/* ── v70 deep-modeling dialogs: general booleans, shell, loft, fuse ────── */
+/** Axis-aligned box overlap volume (closed form for the UI report). */
+function boxOverlapVolume(a, b) {
+    const dx = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+    const dy = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+    const dz = Math.min(a.z1, b.z1) - Math.max(a.z0, b.z0);
+    return dx > 0 && dy > 0 && dz > 0 ? dx * dy * dz : 0;
+}
+async function openGeneralBooleanDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Boolean — General (any closed solids)",
+        subtitle: "v70 kernel: union / intersect / subtract with NON-CONVEX operands on both sides; coplanar faces resolved exactly",
+        fields: [
+            { kind: "select", key: "op", label: "Operation", default: "union", options: [["union", "Union (A ∪ B)"], ["intersect", "Intersect (A ∩ B)"], ["subtract", "Subtract (A − B)"]] },
+            { kind: "number", key: "aw", label: "A width (x)", default: 2, unit: "m", step: 0.25, min: 0.1 },
+            { kind: "number", key: "ad", label: "A depth (y)", default: 2, unit: "m", step: 0.25, min: 0.1 },
+            { kind: "number", key: "ah", label: "A height (z)", default: 1, unit: "m", step: 0.25, min: 0.1 },
+            { kind: "number", key: "leg", label: "B leg size (cube)", default: 1, unit: "m", step: 0.1, min: 0.1 },
+            { kind: "number", key: "legGap", label: "B leg2 diagonal offset", default: 0.5, unit: "m", step: 0.1, min: 0 },
+        ],
+        submitLabel: "Run Boolean",
+    });
+    if (!r)
+        return;
+    try {
+        const aw = Number(r.aw), ad = Number(r.ad), ah = Number(r.ah);
+        const s = Number(r.leg), off = Number(r.legGap);
+        const A = { x0: -aw / 2, y0: -ad / 2, z0: 0, x1: aw / 2, y1: ad / 2, z1: ah };
+        const leg1 = { x0: 0, y0: 0, z0: 0, x1: s, y1: s, z1: s };
+        const leg2 = { x0: off, y0: off, z0: 0, x1: off + s, y1: off + s, z1: s };
+        const meshOf = (bx) => (0, solid_kernel_1.generateVoid)({ kind: "box", center: { x: (bx.x0 + bx.x1) / 2, y: (bx.y0 + bx.y1) / 2, z: (bx.z0 + bx.z1) / 2 }, size: { x: bx.x1 - bx.x0, y: bx.y1 - bx.y0, z: bx.z1 - bx.z0 } });
+        const bMesh = (0, solid_kernel_1.fuseAll)([meshOf(leg1), meshOf(leg2)]); // NON-CONVEX L when the legs overlap
+        const op = String(r.op);
+        const out = (0, solid_kernel_1.generalBoolean)(op, meshOf(A), bMesh);
+        // Closed-form expectations (axis-aligned boxes): |B| = v1+v2−o12;
+        // |A∩B| = oA1 + oA2 − oA12 (legs overlap counted once).
+        const vA = (A.x1 - A.x0) * (A.y1 - A.y0) * (A.z1 - A.z0);
+        const o12 = boxOverlapVolume(leg1, leg2);
+        const vB = (s * s * s) * 2 - o12;
+        const oA1 = boxOverlapVolume(A, leg1);
+        const oA2 = boxOverlapVolume(A, leg2);
+        const oA12 = boxOverlapVolume({ x0: Math.max(A.x0, leg1.x0), y0: Math.max(A.y0, leg1.y0), z0: 0, x1: Math.min(A.x1, leg1.x1), y1: Math.min(A.y1, leg1.y1), z1: Math.min(A.z1, leg1.z1) }, leg2);
+        const iAB = oA1 + oA2 - oA12;
+        const expected = op === "union" ? vA + vB - iAB : op === "intersect" ? iAB : vA - iAB;
+        const vol = (0, adaptive_1.meshVolume)(out);
+        const diags = (0, solid_kernel_1.validateMeshDiagnostics)((0, solid_kernel_1.weldMesh)(out));
+        const sSum = summarizeDiagnostics(diags);
+        recordSolid(out, `Boolean ${op}`);
+        showReportCard(`General Boolean — ${op}`, [
+            ["Volume A (closed form)", `${(vA * 1e6).toFixed(1)} L`],
+            ["Volume B (L, closed form)", `${(vB * 1e6).toFixed(1)} L`],
+            ["Result (kernel)", `${(vol * 1e6).toFixed(1)} L`],
+            ["Result (closed form)", `${(expected * 1e6).toFixed(1)} L`],
+            ["Match", Math.abs(vol - expected) < 1e-6 ? "EXACT" : "check inputs"],
+            ["Watertight", sSum.watertight ? "yes" : "NO"],
+        ], "The kernel refuses nothing here — non-convex operands and coplanar faces are resolved exactly.");
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `General boolean failed: ${e.message}`);
+    }
+}
+async function openShellDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Shell / Hollow Extrusion",
+        subtitle: "Give a closed profile a wall thickness — miter inward offset, watertight cavity, exact V = depth·(A_out − A_in)",
+        fields: [
+            { kind: "textarea", key: "profile", label: "Profile (x,y per point, CCW)", default: "0,0\n2,0\n2,2\n0,2" },
+            { kind: "number", key: "depth", label: "Depth", default: 3, unit: "m", step: 0.1, min: 0.01 },
+            { kind: "number", key: "thickness", label: "Wall thickness", default: 0.25, unit: "m", step: 0.05, min: 0.01 },
+        ],
+        submitLabel: "Create Shell",
+    });
+    if (!r)
+        return;
+    try {
+        const profile = parseProfile(String(r.profile));
+        const depth = Number(r.depth);
+        const thickness = Number(r.thickness);
+        const mesh = (0, solid_kernel_1.hollowExtrusion)({ profile, depth, thickness });
+        const metrics = (0, solid_kernel_1.hollowMetrics)(profile, depth, thickness);
+        const vol = (0, adaptive_1.meshVolume)(mesh);
+        recordSolid(mesh, "Shell");
+        showReportCard("Shell Report", [
+            ["Outer area", `${metrics.outerArea.toFixed(3)} m²`],
+            ["Inner (cavity) area", `${metrics.innerArea.toFixed(3)} m²`],
+            ["Volume (kernel)", `${(vol * 1e6).toFixed(1)} L`],
+            ["Volume (closed form)", `${(metrics.expectedVolume * 1e6).toFixed(1)} L`],
+            ["Match", Math.abs(vol - metrics.expectedVolume) < 1e-9 ? "EXACT" : "check"],
+        ], "Cavity walls wind into the void; annular caps connect both rings without polygon-with-hole triangulation.");
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Shell failed: ${e.message} — reduce the thickness or simplify the profile`);
+    }
+}
+async function openLoftDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Loft Through Sections",
+        subtitle: "N-section ruled loft with polar-angle correspondence (2 sections == blend); explicit levels optional",
+        width: 560,
+        fields: [
+            { kind: "textarea", key: "s1", label: "Section 1 (bottom)", default: "-1,-1\n1,-1\n1,1\n-1,1" },
+            { kind: "textarea", key: "s2", label: "Section 2", default: "-0.5,0\n0.5,0\n0,0.5\n0,-0.5" },
+            { kind: "textarea", key: "s3", label: "Section 3 (optional — blank for 2-section loft)", default: "-0.75,-0.75\n0.75,-0.75\n0.75,0.75\n-0.75,0.75" },
+            { kind: "number", key: "height", label: "Height", default: 3, unit: "m", step: 0.1, min: 0.01 },
+            { kind: "text", key: "levels", label: "Levels (optional, z per section)", default: "", placeholder: "e.g. 0,1.2,3" },
+        ],
+        submitLabel: "Create Loft",
+    });
+    if (!r)
+        return;
+    try {
+        const sections = [parseProfile(String(r.s1)), parseProfile(String(r.s2))];
+        if (String(r.s3).trim().length > 0)
+            sections.push(parseProfile(String(r.s3)));
+        const levelsRaw = String(r.levels).trim();
+        let levels;
+        if (levelsRaw.length > 0) {
+            levels = levelsRaw.split(/[;,\s]+/).filter(Boolean).map(Number);
+            if (levels.some((v) => !Number.isFinite(v)))
+                throw new Error("levels must be numbers");
+            if (levels.length !== sections.length)
+                throw new Error(`levels needs ${sections.length} entries`);
+        }
+        const mesh = (0, solid_kernel_1.loftSections)({ sections, height: Number(r.height), levels });
+        recordSolid(mesh, "Loft");
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Loft failed: ${e.message}`);
+    }
+}
+async function openFuseDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Fuse Solids (n-ary Union)",
+        subtitle: "Join many solids into one with the general kernel — overlapping, touching or disjoint inputs",
+        fields: [
+            { kind: "number", key: "size", label: "Cube size", default: 1, unit: "m", step: 0.1, min: 0.1 },
+            { kind: "number", key: "o12", label: "Overlap 1↔2", default: 0.25, unit: "m", step: 0.05, min: 0 },
+            { kind: "number", key: "o23", label: "Overlap 2↔3", default: 0.25, unit: "m", step: 0.05, min: 0 },
+        ],
+        submitLabel: "Fuse",
+    });
+    if (!r)
+        return;
+    try {
+        const s = Number(r.size);
+        const o12 = Number(r.o12), o23 = Number(r.o23);
+        const cube = (x0) => ({ x0, y0: 0, z0: 0, x1: x0 + s, y1: s, z1: s });
+        const b1 = cube(0);
+        const b2 = cube(s - o12);
+        const b3 = cube(2 * s - o12 - o23);
+        const meshOf = (bx) => (0, solid_kernel_1.generateVoid)({ kind: "box", center: { x: (bx.x0 + bx.x1) / 2, y: (bx.y0 + bx.y1) / 2, z: (bx.z0 + bx.z1) / 2 }, size: { x: bx.x1 - bx.x0, y: bx.y1 - bx.y0, z: bx.z1 - bx.z0 } });
+        const f = (0, solid_kernel_1.fuseAll)([meshOf(b1), meshOf(b2), meshOf(b3)]);
+        const vol = (0, adaptive_1.meshVolume)(f);
+        const expected = 3 * s * s * s - (o12 * s * s + o23 * s * s);
+        recordSolid(f, "Fused solids");
+        showReportCard("Fuse Report", [
+            ["Solids fused", "3"],
+            ["Volume (kernel)", `${(vol * 1e6).toFixed(1)} L`],
+            ["Volume (closed form)", `${(expected * 1e6).toFixed(1)} L`],
+            ["Match", Math.abs(vol - expected) < 1e-6 ? "EXACT" : "check inputs"],
+        ], "fuseAll reduces pairwise with the general union — overlapping, glued and disjoint inputs all accepted.");
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Fuse failed: ${e.message}`);
+    }
+}
+function validateLastSolid() {
+    if (!lastSolid) {
+        (0, notify_1.notify)("warn", "No solid created yet — use a Solid Form button first");
+        return;
+    }
+    // Boolean/general-kernel outputs are polygon soups: weld first so the
+    // edge-use counts see the welded topology (forms outputs are unaffected).
+    const diags = (0, solid_kernel_1.validateMeshDiagnostics)((0, solid_kernel_1.weldMesh)(lastSolid));
+    const s = summarizeDiagnostics(diags);
+    showReportCard("Solid Diagnostics", [
+        ["Vertices", lastSolid.vertices.length],
+        ["Triangles", lastSolid.faces.length],
+        ["Volume", `${((0, adaptive_1.meshVolume)(lastSolid) * 1e6).toFixed(2)} L`],
+        ["Watertight", s.watertight ? "yes" : "NO"],
+        ["Edge issues", String(s.edgeIssues)],
+        ["Degenerate / zero-length", String(s.degenerate)],
+        ["Errors", String(s.errors)],
+        ["Commit eligible", s.commitOk ? "YES" : "NO"],
+    ], diags.slice(0, 4).map((d) => `• ${d.message} → ${d.recoveryAction}`).join("\n"));
+    (0, notify_1.notify)(s.commitOk ? "success" : "warn", `Solid: ${s.commitOk ? "commit eligible" : `${s.errors} error(s)`}`);
+}
+function authoredList() {
+    const auth = w.__obsAuthoring;
+    try {
+        return (auth?.getElements?.() ?? []);
+    }
+    catch {
+        return [];
+    }
+}
+/** Adapt the authored element array to the v68 Modify ElementStore. */
+function authoredElementStore() {
+    const auth = w.__obsAuthoring;
+    const els = authoredList();
+    const find = (id) => els.find((x) => x.id === id);
+    const toModify = (e) => {
+        const p = e.params ?? {};
+        const pos = p.start && p.end
+            ? [(p.start[0] + p.end[0]) / 2, (p.start[1] + p.end[1]) / 2]
+            : p.point ? [p.point[0], p.point[1]] : [0, 0];
+        const numeric = {};
+        if (typeof p.width === "number")
+            numeric.width = p.width;
+        if (typeof p.height === "number")
+            numeric.height = p.height;
+        return {
+            id: e.id,
+            categoryId: e.type,
+            pinned: false,
+            editable: true,
+            position: pos,
+            rotationZ: 0,
+            curve: p.start && p.end ? { start: [...p.start], end: [...p.end] } : undefined,
+            params: numeric,
+        };
+    };
+    const writeBack = (e, patch) => {
+        if (patch.position) {
+            if (e.params.start && e.params.end) {
+                const mid = [
+                    (e.params.start[0] + e.params.end[0]) / 2,
+                    (e.params.start[1] + e.params.end[1]) / 2,
+                ];
+                const dx = patch.position[0] - mid[0];
+                const dy = patch.position[1] - mid[1];
+                e.params.start = [e.params.start[0] + dx, e.params.start[1] + dy];
+                e.params.end = [e.params.end[0] + dx, e.params.end[1] + dy];
+            }
+            else if (e.params.point) {
+                e.params.point = [patch.position[0], patch.position[1]];
+            }
+        }
+        if (patch.curve) {
+            e.params.start = [...patch.curve.start];
+            e.params.end = [...patch.curve.end];
+        }
+    };
+    return {
+        get: (id) => { const e = find(id); return e ? toModify(e) : undefined; },
+        apply: (id, patch) => {
+            const e = find(id);
+            if (!e)
+                return false;
+            writeBack(e, patch);
+            try {
+                auth?.rebuildAuthored?.();
+            }
+            catch { /* ignore */ }
+            return true;
+        },
+        insert: (el) => {
+            const src = find(el.id);
+            // Preserve the tool's freshly allocated id when free (mirror copies,
+            // Group 1 spec §6.3); only collide-fallback to a derived id.
+            const newId = !src && !els.some((x) => x.id === el.id)
+                ? el.id
+                : `${el.id}-m${Math.random().toString(36).slice(2, 6)}`;
+            const clone = src
+                ? { ...src, id: newId, name: src.name ? `${src.name} (copy)` : undefined, params: { ...src.params } }
+                : {
+                    id: newId, type: el.categoryId, name: `${el.categoryId} (copy)`,
+                    params: el.curve
+                        ? { start: [...el.curve.start], end: [...el.curve.end], width: el.params?.width ?? 0.2 }
+                        : { point: [...el.position] },
+                };
+            // For duplicating commands the newElement patch carries the geometry.
+            if (el.curve) {
+                clone.params.start = [...el.curve.start];
+                clone.params.end = [...el.curve.end];
+            }
+            else if (el.position) {
+                clone.params.point = [...el.position];
+            }
+            els.push(clone);
+            try {
+                auth?.rebuildAuthored?.();
+            }
+            catch { /* ignore */ }
+        },
+        all: () => els.map(toModify),
+        remove: (id) => {
+            const i = els.findIndex((x) => x.id === id);
+            if (i < 0)
+                return false;
+            const viaAuth = auth?.removeElementById;
+            let ok = false;
+            try {
+                ok = typeof viaAuth === "function" ? viaAuth.call(auth, id) : false;
+            }
+            catch {
+                ok = false;
+            }
+            if (!ok)
+                els.splice(i, 1);
+            try {
+                auth?.rebuildAuthored?.();
+            }
+            catch { /* ignore */ }
+            return true;
+        },
+    };
+}
+function selectedAuthoredIds() {
+    try {
+        return (w.__obsAuthoring?.getSelectedIds?.() ?? []);
+    }
+    catch {
+        return [];
+    }
+}
+function modifyContext() {
+    const rel = w.__obsRelationships?.registry;
+    return {
+        store: authoredElementStore(),
+        ...(rel ? { relationships: rel } : {}),
+        allocateId: () => `m-${Math.random().toString(36).slice(2, 8)}`,
+    };
+}
+/** Run a v68 Modify command end-to-end: Begin → UpdatePreview → Validate → Commit. */
+function runModifyCommand(label, ids, make, input) {
+    if (!ids.length) {
+        (0, notify_1.notify)("warn", "Nothing selected — select elements in the viewport first");
+        return;
+    }
+    try {
+        const ctx = modifyContext();
+        const cmd = make(ctx);
+        cmd.Begin(ids);
+        cmd.UpdatePreview(input);
+        const v = cmd.Validate();
+        if (!v.ok) {
+            const msgs = v.diagnostics.filter((d) => d.severity === "error").map((d) => d.message).join("; ");
+            (0, notify_1.notify)("error", `${label} blocked: ${msgs}`);
+            return;
+        }
+        const c = cmd.Commit();
+        (0, notify_1.notify)("success", `${label}: ${c.applied} change(s) applied`);
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `${label} failed: ${e.message}`);
+    }
+}
+async function openModifyMoveDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Modify Engine — Move",
+        subtitle: "Moves the selected authored elements through the v68 command pipeline (preview → validate → commit)",
+        fields: [
+            { kind: "number", key: "dx", label: "Offset X", default: 1, unit: "m", step: 0.1 },
+            { kind: "number", key: "dz", label: "Offset Z", default: 0, unit: "m", step: 0.1 },
+        ],
+        submitLabel: "Move Selection",
+    });
+    if (!r)
+        return;
+    runModifyCommand("Move", selectedAuthoredIds(), (ctx) => new modify_1.MoveCommand(ctx), { type: "numeric-offset", dx: Number(r.dx), dy: Number(r.dz) });
+}
+async function openModifyRotateDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Modify Engine — Rotate",
+        subtitle: "Rodrigues rotation about a plan pivot, applied through the v68 command pipeline",
+        fields: [
+            { kind: "text", key: "pivot", label: "Pivot", default: "0,0", placeholder: "x,z" },
+            { kind: "number", key: "angle", label: "Angle", default: 90, unit: "°", step: 5 },
+        ],
+        submitLabel: "Rotate Selection",
+    });
+    if (!r)
+        return;
+    const p = parsePointList(String(r.pivot))[0];
+    if (!p) {
+        (0, notify_1.notify)("warn", "Invalid pivot");
+        return;
+    }
+    runModifyCommand("Rotate", selectedAuthoredIds(), (ctx) => new modify_1.RotateCommand(ctx), {
+        type: "rotation", pivot: [p.x, p.y], angle: (Number(r.angle) * Math.PI) / 180,
+    });
+}
+async function openModifyArrayDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Modify Engine — Linear Array",
+        subtitle: "Clones the selection n times at a fixed step (new authored elements are inserted)",
+        fields: [
+            { kind: "number", key: "count", label: "Count (total)", default: 4, min: 2, max: 50, step: 1 },
+            { kind: "number", key: "sx", label: "Step X", default: 3, unit: "m", step: 0.25 },
+            { kind: "number", key: "sz", label: "Step Z", default: 0, unit: "m", step: 0.25 },
+        ],
+        submitLabel: "Create Array",
+    });
+    if (!r)
+        return;
+    runModifyCommand("Linear Array", selectedAuthoredIds(), (ctx) => new modify_1.ArrayLinearCommand(ctx), {
+        type: "array-linear", count: Math.round(Number(r.count)), step: [Number(r.sx), Number(r.sz)],
+    });
+}
+async function openModifyMirrorDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Modify Engine — Mirror",
+        subtitle: "Mirror the selection about an axis; copy keeps the originals",
+        fields: [
+            { kind: "text", key: "point", label: "Axis point", default: "0,0", placeholder: "x,z" },
+            { kind: "text", key: "dir", label: "Axis direction", default: "1,0", placeholder: "dx,dz" },
+            { kind: "checkbox", key: "copy", label: "Keep originals (copy)", default: true },
+        ],
+        submitLabel: "Mirror Selection",
+    });
+    if (!r)
+        return;
+    const p = parsePointList(String(r.point))[0];
+    const d = parsePointList(String(r.dir))[0];
+    if (!p || !d) {
+        (0, notify_1.notify)("warn", "Invalid axis point/direction");
+        return;
+    }
+    runModifyCommand("Mirror", selectedAuthoredIds(), (ctx) => new modify_1.MirrorCommand(ctx), {
+        type: "mirror-axis", point: [p.x, p.y], dir: [d.x, d.y], copy: r.copy === true,
+    });
+}
+/* ═════════════════════════════════════════════════════════════════════════
+   8. Hosted opening — Architecture tab (v68 hosting engine)
+   ═════════════════════════════════════════════════════════════════════════ */
+async function openHostedOpeningDialog() {
+    const walls = authoredList().filter((e) => e.type === "wall" && e.params?.start && e.params?.end);
+    if (!walls.length) {
+        (0, notify_1.notify)("warn", "No authored walls to host an opening — draw a wall first");
+        return;
+    }
+    const selected = new Set(selectedAuthoredIds());
+    const host = walls.find((x) => selected.has(x.id)) ?? walls[0];
+    const p = host.params;
+    const L = Math.hypot((p.end[0] - p.start[0]), (p.end[1] - p.start[1]));
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Hosted Opening (v68 Hosting Engine)",
+        subtitle: `Host: ${host.name ?? host.id} (${L.toFixed(2)} m) — validated placement with overlap detection`,
+        fields: [
+            { kind: "select", key: "host", label: "Host wall", default: host.id,
+                options: walls.map((x) => [x.id, x.name ?? x.id]) },
+            { kind: "number", key: "s", label: "Centre along wall", default: +(L / 2).toFixed(2), unit: "m", step: 0.1, min: 0 },
+            { kind: "number", key: "width", label: "Opening width", default: 0.9, unit: "m", step: 0.05, min: 0.1 },
+            { kind: "number", key: "height", label: "Opening height", default: 2.1, unit: "m", step: 0.05, min: 0.1 },
+            { kind: "number", key: "sill", label: "Sill height", default: 0.9, unit: "m", step: 0.05, min: 0 },
+            { kind: "number", key: "wallH", label: "Wall height", default: +(host.params.height ?? 3), unit: "m", step: 0.1, min: 0.5 },
+        ],
+        submitLabel: "Place Opening",
+    });
+    if (!r)
+        return;
+    try {
+        const h = {
+            curve: { kind: "line", start: [...p.start], end: [...p.end] },
+            baseZ: 0,
+            height: Number(r.wallH),
+            version: 1,
+            layers: [{ name: "core", function: "structure", thickness: p.width ?? 0.2, material: "concrete" }],
+        };
+        const opening = {
+            id: `op-${Math.random().toString(36).slice(2, 8)}`,
+            s: Number(r.s), width: Number(r.width), height: Number(r.height),
+            sillHeight: Number(r.sill), layerOffset: 0,
+        };
+        const placement = (0, hosting_1.placeOpening)(h, opening);
+        showReportCard("Opening Placed", [
+            ["Host", String(r.host)],
+            ["Centre s", `${opening.s.toFixed(2)} m (host L = ${L.toFixed(2)} m)`],
+            ["Size", `${opening.width} × ${opening.height} m @ sill ${opening.sillHeight} m`],
+            ["World centre", `(${placement.center[0].toFixed(2)}, ${placement.center[1].toFixed(2)})`],
+            ["Elevation range", `${placement.zStart.toFixed(2)} – ${placement.zEnd.toFixed(2)} m`],
+        ], "Placement validated against host length and layer bounds by the hosting engine.");
+        (0, notify_1.notify)("success", `Opening placed on ${host.name ?? host.id}`);
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Opening failed: ${e.message}`);
+    }
+}
+/* ═════════════════════════════════════════════════════════════════════════
+   8b. Host family — Architecture tab (Slice 9 generic family hosting)
+   ═════════════════════════════════════════════════════════════════════════ */
+/**
+ * Host a family instance on a wall or a face through Slice 9's
+ * placement.ts wiring. The instance keeps its current position,
+ * projected onto the host — no numbers to type — and follows the host
+ * when it moves (authoring.ts re-derives hosted placements once per
+ * rebuild). A point that does not fit the host is reported, not
+ * silently placed: attachElementToHost throws and the error is shown.
+ */
+async function openHostFamilyDialog() {
+    const all = authoredList();
+    // Only point-based family instances can be hosted: the attachment is
+    // projected from the instance's current world point.
+    const instances = all.filter((e) => e.familyId && e.params?.point);
+    if (!instances.length) {
+        (0, notify_1.notify)("warn", "No placed family instances to host — place a family first (Parametric Families panel, Ctrl+Shift+F)");
+        return;
+    }
+    const walls = all.filter((e) => e.type === "wall" && e.params?.start && e.params?.end);
+    const slabs = all.filter((e) => e.type === "slab" && Array.isArray(e.params?.polygon) && e.params.polygon.length >= 3);
+    // One option per (host element, host kind): a wall can host on its line
+    // or on its face, a slab on its top face. Encoding the kind in the value
+    // keeps every listed combination valid — there is no way to pick a slab
+    // as a wall host or a wall as a slab host.
+    const hostOptions = [];
+    for (const wl of walls) {
+        hostOptions.push([`wall:${wl.id}`, `${wl.name ?? wl.id} — on wall`]);
+        hostOptions.push([`face:${wl.id}`, `${wl.name ?? wl.id} — on face`]);
+    }
+    for (const s of slabs)
+        hostOptions.push([`face:${s.id}`, `${s.name ?? s.id} — on top face`]);
+    if (!hostOptions.length) {
+        (0, notify_1.notify)("warn", "No host walls or floors — draw a wall first");
+        return;
+    }
+    const selected = new Set(selectedAuthoredIds());
+    const defaultInstance = instances.find((e) => selected.has(e.id)) ?? instances[0];
+    const selectedWall = walls.find((e) => selected.has(e.id));
+    const defaultHost = selectedWall ? `wall:${selectedWall.id}` : hostOptions[0][0];
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Host Family",
+        subtitle: "Attach a family instance to a wall or a face. The instance keeps its current position, projected onto the host, and follows the host when it moves.",
+        fields: [
+            { kind: "select", key: "instance", label: "Family instance", default: defaultInstance.id,
+                options: instances.map((e) => [e.id, `${e.name ?? e.id} (${e.type})`]) },
+            { kind: "select", key: "host", label: "Host", default: defaultHost, options: hostOptions },
+        ],
+        submitLabel: "Host Family",
+    });
+    if (!r)
+        return;
+    try {
+        const instance = instances.find((e) => e.id === String(r.instance));
+        if (!instance)
+            throw new Error("the selected instance is gone");
+        const rawHost = String(r.host ?? "");
+        const sepIdx = rawHost.indexOf(":");
+        const kind = rawHost.slice(0, sepIdx);
+        const hostId = rawHost.slice(sepIdx + 1);
+        if ((kind !== "wall" && kind !== "face") || !hostId)
+            throw new Error("the selected host is not valid");
+        const hostEl = all.find((e) => e.id === hostId);
+        if (!hostEl)
+            throw new Error("the selected host is gone");
+        const host = (0, family_hosting_1.hostGeometryFromElement)(hostEl, kind);
+        if (!host)
+            throw new Error(`${hostEl.name ?? hostEl.id} cannot host as a ${kind}`);
+        const pt = instance.params.point;
+        const world = [
+            pt[0],
+            pt[1],
+            typeof instance.params.elevation === "number" ? instance.params.elevation : 0,
+        ];
+        const placement = (0, placement_1.attachElementToHost)(instance, host, world);
+        try {
+            w.__obsAuthoring?.rebuildAuthored?.();
+        }
+        catch { /* ignore */ }
+        const a = instance.hostAttachment ?? {};
+        showReportCard("Family Hosted", [
+            ["Instance", instance.name ?? instance.id],
+            ["Host", `${hostEl.name ?? hostEl.id} (${kind})`],
+            ["Attachment", kind === "wall"
+                    ? `s = ${Number(a.s ?? 0).toFixed(2)} m · elevation ${Number(a.elevation ?? 0).toFixed(2)} m · offset ${Number(a.offset ?? 0).toFixed(2)} m`
+                    : `u = ${Number(a.u ?? 0).toFixed(2)} m · v = ${Number(a.v ?? 0).toFixed(2)} m · offset ${Number(a.offset ?? 0).toFixed(2)} m`],
+            ["World position", `(${placement.point[0].toFixed(2)}, ${placement.point[1].toFixed(2)}) @ ${placement.elevation.toFixed(2)} m`],
+            ["Facing", `${placement.rotation.toFixed(1)}°`],
+        ], "The instance now follows its host: move the host and the instance is re-derived from the host geometry.");
+        (0, notify_1.notify)("success", `Hosted ${instance.name ?? instance.id} on ${hostEl.name ?? hostEl.id}`);
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Hosting failed: ${e.message}`);
+    }
+}
+/* ═════════════════════════════════════════════════════════════════════════
+   9. Parameter manager — Manage tab (v68 parameter engine)
+   ═════════════════════════════════════════════════════════════════════════ */
+/** Document-level parameter engine singleton (shared with the console). */
+exports.documentParameters = new parameter_engine_1.ParameterEngine();
+/** Register a project parameter from dialog values (pure-ish, no DOM). */
+function addProjectParameter(v) {
+    const hasFormula = String(v.formula || "").trim().length > 0;
+    const num = Number(v.defaultValue);
+    const def = {
+        id: v.id.trim(),
+        name: v.name.trim() || v.id.trim(),
+        symbol: (v.symbol.trim() || v.id.trim()).replace(/\s+/g, "_"),
+        dataType: v.dataType,
+        scope: "global",
+        origin: "project",
+        ...(hasFormula ? { formula: v.formula.trim(), readOnly: true } : {}),
+        ...(v.defaultValue && !hasFormula
+            ? { defaultValue: v.dataType === "number" && Number.isFinite(num) ? num : v.defaultValue }
+            : {}),
+        ...(v.unit && v.unit !== "none" ? { unit: v.unit, displayUnit: v.unit } : {}),
+    };
+    exports.documentParameters.registerDefinition(def);
+    return def;
+}
+async function openParameterManagerDialog() {
+    const existing = exports.documentParameters.allDefinitions();
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Project Parameter Manager",
+        subtitle: existing.length
+            ? `${existing.length} parameter(s) defined — ${existing.map((d) => d.symbol).join(", ")}`
+            : "Add document-wide parameters; formulas are evaluated by the dependency graph",
+        fields: [
+            { kind: "text", key: "id", label: "Parameter id", default: "", placeholder: "e.g. project.floor-height" },
+            { kind: "text", key: "name", label: "Display name", default: "", placeholder: "e.g. Floor height" },
+            { kind: "text", key: "symbol", label: "Formula symbol", default: "", placeholder: "e.g. floorHeight (defaults to id)" },
+            { kind: "select", key: "dataType", label: "Data type", default: "number",
+                options: [["number", "Number"], ["length", "Length"], ["area", "Area"], ["volume", "Volume"], ["angle", "Angle"], ["integer", "Integer"], ["text", "Text"], ["boolean", "Yes/No"]] },
+            { kind: "select", key: "unit", label: "Unit", default: "m",
+                options: [["none", "—"], ["m", "m"], ["mm", "mm"], ["m2", "m²"], ["m3", "m³"], ["deg", "°"]] },
+            { kind: "text", key: "defaultValue", label: "Default value", default: "", placeholder: "e.g. 3.2" },
+            { kind: "text", key: "formula", label: "Formula (optional — makes it read-only)", default: "", placeholder: "e.g. floorHeight * 2" },
+        ],
+        submitLabel: existing.length ? "Add Parameter" : "Add First Parameter",
+        width: 560,
+    });
+    if (!r)
+        return;
+    try {
+        if (!String(r.id).trim())
+            throw new Error("parameter id is required");
+        const def = addProjectParameter({
+            id: String(r.id), name: String(r.name), symbol: String(r.symbol),
+            dataType: String(r.dataType), unit: String(r.unit),
+            defaultValue: String(r.defaultValue), formula: String(r.formula),
+        });
+        (0, notify_1.notify)("success", `Parameter '${def.symbol}' registered${def.formula ? ` (formula: ${def.formula})` : ""}`);
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Parameter rejected: ${e.message}`);
+    }
+}
+/* ═════════════════════════════════════════════════════════════════════════
+   10. Model intelligence panel — Manage tab
+       (registry + relationships + MEP connectors + snapping)
+   ═════════════════════════════════════════════════════════════════════════ */
+let intelligencePanel = null;
+function panelShell(title) {
+    const el = document.createElement("div");
+    el.style.cssText =
+        "position:fixed;top:100px;right:16px;width:360px;max-height:calc(100vh - 140px);" +
+            "overflow:auto;z-index:8500;background:var(--bg-floating,#1c1e28);" +
+            "border:1px solid var(--border-default,#2a2e3a);border-radius:10px;" +
+            "box-shadow:0 12px 36px rgba(0,0,0,.5);color:var(--text-primary,#e8eaf0);" +
+            "font:12px/1.4 system-ui;display:none;";
+    el.innerHTML =
+        `<div style="display:flex;align-items:center;justify-content:space-between;` +
+            `padding:10px 12px;border-bottom:1px solid var(--border-subtle,#1e2029);` +
+            `background:var(--bg-elevated,#181a23);cursor:grab;user-select:none;">` +
+            `<b style="font-size:13px">${esc(title)}</b>` +
+            `<button data-close style="background:transparent;border:1px solid var(--border-default);` +
+            `color:var(--text-secondary);border-radius:5px;padding:2px 8px;cursor:pointer">-</button></div>` +
+            `<div data-body style="padding:10px 12px"></div>`;
+    el.querySelector("[data-close]").addEventListener("click", () => {
+        el.style.display = "none";
+    });
+    const body = el.querySelector("[data-body]");
+    const hdr = el.firstElementChild;
+    let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+    hdr.addEventListener("pointerdown", (e) => {
+        if (e.target.closest("button"))
+            return;
+        dragging = true;
+        sx = e.clientX;
+        sy = e.clientY;
+        const r = el.getBoundingClientRect();
+        ox = r.left;
+        oy = r.top;
+        e.target.setPointerCapture?.(e.pointerId);
+    });
+    hdr.addEventListener("pointermove", (e) => {
+        if (!dragging)
+            return;
+        el.style.left = `${ox + e.clientX - sx}px`;
+        el.style.top = `${oy + e.clientY - sy}px`;
+        el.style.right = "auto";
+    });
+    hdr.addEventListener("pointerup", () => { dragging = false; });
+    document.body.appendChild(el);
+    return { el, body };
+}
+function section(html) {
+    return `<div style="margin-bottom:10px">${html}</div>`;
+}
+function h(heading) {
+    return `<div style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.06em;` +
+        `color:var(--text-secondary,#9aa3b5);margin-bottom:4px">${esc(heading)}</div>`;
+}
+/** Build the intelligence report HTML from live engine state (pure string). */
+function intelligenceReportHtml() {
+    const parts = [];
+    // Registry (object hierarchy + identity)
+    const reg = w.__obsRegistry?.registry;
+    if (reg) {
+        try {
+            const st = reg.stats();
+            parts.push(section(h("Object registry") +
+                `<div>Categories: <b>${st.categories}</b> · Families: <b>${st.families}</b> · ` +
+                `Types: <b>${st.types}</b> · Elements: <b>${st.elements}</b></div>` +
+                (reg.identity?.stats
+                    ? `<div style="color:var(--text-secondary,#9aa3b5)">Identity: ${reg.identity.stats().registered} unique ids registered, ${reg.identity.stats().freed} freed (never reused)</div>`
+                    : "")));
+        }
+        catch { /* ignore */ }
+    }
+    // Relationships
+    const rel = w.__obsRelationships?.registry;
+    if (rel) {
+        try {
+            const all = rel.queryRelationships({}) ?? [];
+            const byType = new Map();
+            let suspended = 0;
+            for (const rec of all) {
+                byType.set(rec.type, (byType.get(rec.type) ?? 0) + 1);
+                if (rec.state === "suspended")
+                    suspended++;
+            }
+            const rows = [...byType.entries()].map(([k, n]) => `${esc(k)}: <b>${n}</b>`).join(" · ") || "none";
+            parts.push(section(h("Relationships") +
+                `<div>${rows}</div><div style="color:var(--text-secondary,#9aa3b5)">Total ${all.length}, suspended ${suspended}</div>`));
+        }
+        catch { /* ignore */ }
+    }
+    // MEP connectors
+    const conn = w.__obsMepConnectors ?? w.__obsMep?.connectors;
+    if (conn) {
+        parts.push(section(h("MEP connectors") +
+            `<div>Connector intelligence ready — compatibility gating, fittings, topology validation.</div>` +
+            `<div style="color:var(--text-secondary,#9aa3b5)">No network placed yet: route MEP elements, then validate via the API.</div>`));
+    }
+    // Snapping
+    const snap = w.__obsSnapping;
+    if (snap?.settings) {
+        try {
+            const kinds = Object.entries(snap.settings).filter(([, v]) => v === true).map(([k]) => k);
+            parts.push(section(h("Snapping engine") +
+                `<div>Enabled snap kinds: ${kinds.length ? kinds.map(esc).join(", ") : "all defaults"}</div>`));
+        }
+        catch { /* ignore */ }
+    }
+    // Authoring
+    try {
+        const els = w.__obsAuthoring?.getElements?.() ?? [];
+        parts.push(section(h("Authored model") +
+            `<div>${els.length} element(s) — constraints, modify and hosted-opening tools operate on this model.</div>`));
+    }
+    catch { /* ignore */ }
+    return parts.join("") || `<div style="color:var(--text-secondary,#9aa3b5)">Engines booting… reopen in a moment.</div>`;
+}
+/** Toggle the Model Intelligence dockable panel. */
+function openModelIntelligencePanel() {
+    if (!intelligencePanel || !intelligencePanel.isConnected) {
+        intelligencePanel = panelShell("Model Intelligence").el;
+    }
+    const body = intelligencePanel.querySelector("[data-body]");
+    body.innerHTML = intelligenceReportHtml();
+    intelligencePanel.style.display = intelligencePanel.style.display === "block" ? "none" : "block";
+}
+/* ═════════════════════════════════════════════════════════════════════════
+   10b. Group 1 Modify tools (v71 spec §4–§6) — Move / Rotate / Mirror
+   full function catalogs with transaction undo/redo, hosted rigid
+   follow and relationship cloning, plus the Selection inspector and
+   Reference picker (spec §2–§3).
+   ═════════════════════════════════════════════════════════════════════════ */
+/** Canonical undo/redo surface shared by every Group 1 tool invocation.
+ *  Commits land on the application-wide history stack (features/history.ts),
+ *  so Group-1 Move/Rotate/Mirror participate in the same Ctrl+Z order as
+ *  every other document edit — there is no second stack over the model. */
+const group1Txn = (0, transaction_1.getTransactionService)();
+/** Persistent ReferenceService (command-scoped references live here). */
+const group1Refs = new references_1.ReferenceService();
+/** Map an authored element to the SelectionEngine's SelectableElement. */
+function toSelectable(e) {
+    const p = e.params ?? {};
+    const hasCurve = Array.isArray(p.start) && Array.isArray(p.end);
+    const el = {
+        id: e.id,
+        categoryId: String(e.type ?? "generic"),
+        pinned: false,
+        hidden: false,
+        editable: true,
+        curve: hasCurve
+            ? { start: [Number(p.start[0]), Number(p.start[1])], end: [Number(p.end[0]), Number(p.end[1])] }
+            : undefined,
+        point: !hasCurve && Array.isArray(p.point) ? [Number(p.point[0]), Number(p.point[1])] : undefined,
+        params: {},
+    };
+    if (hasCurve) {
+        el.aabb = {
+            min: [Math.min(Number(p.start[0]), Number(p.end[0])), Math.min(Number(p.start[1]), Number(p.end[1]))],
+            max: [Math.max(Number(p.start[0]), Number(p.end[0])), Math.max(Number(p.start[1]), Number(p.end[1]))],
+        };
+    }
+    if (typeof p.width === "number")
+        el.params.width = p.width;
+    if (typeof p.height === "number")
+        el.params.height = p.height;
+    return el;
+}
+/** Persistent selection engine over the live authored model. */
+let group1Selection = null;
+function selectionEngine() {
+    if (!group1Selection) {
+        group1Selection = new selection_1.SelectionEngine({
+            elements: () => authoredList().map((e) => toSelectable(e)),
+        });
+    }
+    return group1Selection;
+}
+function group1Context() {
+    const rel = w.__obsRelationships?.registry;
+    return {
+        store: authoredElementStore(),
+        ...(rel ? { relationships: rel } : {}),
+        allocateId: () => `g1-${Math.random().toString(36).slice(2, 8)}`,
+    };
+}
+async function openGroup1MoveDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Group 1 Tool — Move (v71 spec §4)",
+        subtitle: "Full Move catalog: numeric Δ with axis constraint, hosted elements rigidly follow, transaction undo/redo",
+        fields: [
+            { kind: "number", key: "dx", label: "Displacement X (Δx)", default: 2, unit: "m", step: 0.25 },
+            { kind: "number", key: "dy", label: "Displacement Y (Δy)", default: 0, unit: "m", step: 0.25 },
+            { kind: "select", key: "axis", label: "Axis constraint", default: "none", options: [["none", "Free (2-D)"], ["x", "Constrain to X"], ["y", "Constrain to Y"]] },
+        ],
+        submitLabel: "Move Selection",
+    });
+    if (!r)
+        return;
+    const ids = selectedAuthoredIds();
+    if (!ids.length) {
+        (0, notify_1.notify)("warn", "Nothing selected — select elements in the viewport first");
+        return;
+    }
+    try {
+        let dx = Number(r.dx), dy = Number(r.dy);
+        if (r.axis === "x")
+            dy = 0;
+        if (r.axis === "y")
+            dx = 0;
+        const tool = new modify_1.MoveTool(group1Context(), group1Txn);
+        tool.BeginMove(ids);
+        tool.SetNumericTranslation([dx, dy]);
+        const deps = tool.EvaluateMoveDependencies();
+        tool.GenerateMovePreview();
+        const v = tool.ValidateMove();
+        if (!v.ok) {
+            (0, notify_1.notify)("error", `Move blocked: ${v.diagnostics.filter((d) => d.severity === "error").map((d) => d.message).join("; ")}`);
+            return;
+        }
+        const res = tool.CommitMove();
+        showReportCard("Move Report (Group 1)", [
+            ["Displacement", `Δ = (${dx.toFixed(3)}, ${dy.toFixed(3)}) m`],
+            ["Elements moved", String(res.applied)],
+            ["Hosted followers", deps.hosted.length ? deps.hosted.join(", ") : "none"],
+            ["Connected (policy-reconciled)", deps.connected.length ? deps.connected.join(", ") : "none"],
+            ["Reconciliation", res.reconciliation.length ? res.reconciliation.join("; ") : "no actions"],
+            ["Undo", "available (transaction stack)"],
+        ], "P' = P + Δ — hosted elements rigidly follow (spec §4.3, D-16). Undo via the Group 1 Undo ribbon button.");
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Move failed: ${e.message}`);
+    }
+}
+/** Undo the last Group 1 transaction (Move/Rotate/Mirror are one unit each). */
+function group1Undo() {
+    return group1Txn.undo();
+}
+/** Redo the last undone Group 1 transaction. */
+function group1Redo() {
+    return group1Txn.redo();
+}
+async function openGroup1RotateDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Group 1 Tool — Rotate (v71 spec §5)",
+        subtitle: "Rodrigues plan rotation: pivot + angle with optional angular snap; hosted elements rotate about the SAME pivot",
+        fields: [
+            { kind: "text", key: "pivot", label: "Pivot (x,y)", default: "0,0", placeholder: "x,y" },
+            { kind: "number", key: "angle", label: "Angle", default: 90, unit: "°", step: 5 },
+            { kind: "select", key: "snap", label: "Angular snap", default: "off", options: [["off", "Off (exact)"], ["15", "15°"], ["30", "30°"], ["45", "45°"], ["90", "90°"]] },
+        ],
+        submitLabel: "Rotate Selection",
+    });
+    if (!r)
+        return;
+    const ids = selectedAuthoredIds();
+    if (!ids.length) {
+        (0, notify_1.notify)("warn", "Nothing selected — select elements in the viewport first");
+        return;
+    }
+    const p = parsePointList(String(r.pivot))[0];
+    if (!p) {
+        (0, notify_1.notify)("warn", "Invalid pivot");
+        return;
+    }
+    try {
+        const tool = new modify_1.RotateTool(group1Context(), group1Txn);
+        tool.BeginRotate(ids);
+        tool.AcquireRotationAxis();
+        tool.AcquireRotationPivot([p.x, p.y]);
+        const snapSel = String(r.snap);
+        const snapStep = snapSel === "off" ? undefined : (Number(snapSel) * Math.PI) / 180;
+        tool.ResolveRotationAngle({ angle: (Number(r.angle) * Math.PI) / 180 }, { snapStep });
+        tool.GenerateRotationPreview();
+        const v = tool.ValidateRotation();
+        const errors = v.diagnostics.filter((d) => d.severity === "error");
+        if (errors.length) {
+            (0, notify_1.notify)("error", `Rotate blocked: ${errors.map((d) => d.message).join("; ")}`);
+            return;
+        }
+        const res = tool.CommitRotation();
+        if (!res.ok) {
+            (0, notify_1.notify)("warn", `Rotate rejected: ${res.diagnostics.map((d) => d.message).join("; ")}`);
+            return;
+        }
+        showReportCard("Rotate Report (Group 1)", [
+            ["Pivot", `(${p.x}, ${p.y})`],
+            ["Angle", `${Number(r.angle)}°${snapStep ? " (snapped)" : ""}`],
+            ["Elements rotated", String(res.applied)],
+            ["Hosted co-rotated", tool.UpdateDependentOrientations().join(", ") || "none"],
+            ["Reconciliation", res.reconciliation.length ? res.reconciliation.join("; ") : "no actions"],
+        ], "p' = Q + R(θ)(p − Q); hosted elements share the pivot (spec §5.3).");
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Rotate failed: ${e.message}`);
+    }
+}
+async function openGroup1MirrorDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Group 1 Tool — Mirror (v71 spec §6)",
+        subtitle: "Reflection M = 2ddᵀ − I, θ' = 2φ − θ; copy mode clones relationships with mirrored geometry",
+        fields: [
+            { kind: "text", key: "point", label: "Mirror-line point (x,y)", default: "0,0", placeholder: "x,y" },
+            { kind: "text", key: "dir", label: "Mirror-line direction", default: "1,0", placeholder: "dx,dy" },
+            { kind: "checkbox", key: "copy", label: "Keep originals (copy mode)", default: true },
+        ],
+        submitLabel: "Mirror Selection",
+    });
+    if (!r)
+        return;
+    const ids = selectedAuthoredIds();
+    if (!ids.length) {
+        (0, notify_1.notify)("warn", "Nothing selected — select elements in the viewport first");
+        return;
+    }
+    const p = parsePointList(String(r.point))[0];
+    const d = parsePointList(String(r.dir))[0];
+    if (!p || !d) {
+        (0, notify_1.notify)("warn", "Invalid mirror-line point/direction");
+        return;
+    }
+    try {
+        const tool = new modify_1.MirrorTool(group1Context(), group1Txn);
+        tool.BeginMirror(ids, r.copy === true);
+        tool.AcquireMirrorPlane([p.x, p.y], [d.x, d.y]);
+        tool.GenerateMirrorPreview();
+        const v = tool.ValidateMirror();
+        const errors = v.diagnostics.filter((dg) => dg.severity === "error");
+        if (errors.length) {
+            (0, notify_1.notify)("error", `Mirror blocked: ${errors.map((dg) => dg.message).join("; ")}`);
+            return;
+        }
+        const res = tool.CommitMirror();
+        if (!res.ok) {
+            (0, notify_1.notify)("warn", `Mirror rejected: ${res.diagnostics.map((dg) => dg.message).join("; ")}`);
+            return;
+        }
+        const warns = res.diagnostics.filter((dg) => dg.severity === "warning").map((dg) => dg.message);
+        showReportCard("Mirror Report (Group 1)", [
+            ["Mode", r.copy === true ? "copy (originals preserved)" : "move (originals transformed)"],
+            ["Elements", String(res.applied)],
+            ["Created copies", res.createdIds.length ? res.createdIds.join(", ") : "—"],
+            ["Relationships cloned", String(res.clonedRelationships)],
+            ["Warnings", warns.length ? warns.join("; ") : "none"],
+        ], "Handed parameters flip; copies start unpinned (spec §6.2–§6.3).");
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Mirror failed: ${e.message}`);
+    }
+}
+async function openSelectionInspectorDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Selection Inspector (v71 spec §2)",
+        subtitle: "Hit-testing with deterministic priority (vertex > edge > connector > datum > body), window modes, filters, hosted expansion",
+        fields: [
+            { kind: "select", key: "mode", label: "Mode", default: "hit", options: [["hit", "Hit-test at point"], ["window-inside", "Window (fully inside)"], ["window-crossing", "Crossing (intersects)"], ["category", "Select by category"], ["expand", "Expand hosted of current selection"]] },
+            { kind: "text", key: "point", label: "Pick point (x,y)", default: "0,0", placeholder: "x,y" },
+            { kind: "number", key: "radius", label: "Pick radius", default: 0.05, unit: "m", step: 0.01, min: 0.001 },
+            { kind: "text", key: "corner", label: "Opposite corner (x,y) — window modes", default: "5,5", placeholder: "x,y" },
+            { kind: "text", key: "category", label: "Category — category mode", default: "wall", placeholder: "wall / column / ..." },
+        ],
+        submitLabel: "Run Selection",
+    });
+    if (!r)
+        return;
+    try {
+        const eng = selectionEngine();
+        const p = parsePointList(String(r.point))[0] ?? { x: 0, y: 0 };
+        const c = parsePointList(String(r.corner))[0] ?? { x: 5, y: 5 };
+        let result;
+        if (r.mode === "hit") {
+            const hit = eng.SelectSingle([p.x, p.y], Number(r.radius));
+            result = hit ? `${hit.elementId} (${hit.subKind}, prio ${hit.priority}, d=${hit.distance.toFixed(4)}m)` : "no hit";
+        }
+        else if (r.mode === "window-inside" || r.mode === "window-crossing") {
+            const picked = eng.SelectWindow([p.x, p.y], [c.x, c.y], r.mode === "window-inside" ? "inside" : "crossing");
+            result = picked.length ? picked.join(", ") : "none";
+        }
+        else if (r.mode === "category") {
+            const picked = eng.SelectByCategory([String(r.category).trim()]);
+            result = picked.length ? picked.join(", ") : "none";
+        }
+        else {
+            const out = [];
+            for (const id of eng.GetSelection())
+                out.push(...eng.ExpandHosted(id));
+            result = out.length ? out.join(", ") : "no hosted dependents";
+        }
+        const diags = eng.GetDiagnostics().slice(-6).map((dg) => `${dg.severity.toUpperCase()} ${dg.code}: ${dg.message}`);
+        showReportCard("Selection Report (Group 1)", [
+            ["Mode", String(r.mode)],
+            ["Selection", eng.GetSelection().join(", ") || "empty"],
+            ["Last result", result],
+            ["Diagnostics", diags.length ? diags.join("  |  ") : "none"],
+        ], "Pinned elements stay selectable for unpinning; edits reject them at command activation (spec §2.4).");
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Selection failed: ${e.message}`);
+    }
+}
+async function openReferencePickerDialog() {
+    const r = await (0, form_modal_1.openFormModal)({
+        title: "Reference Picker (v71 spec §3)",
+        subtitle: "Acquire a typed reference with a canonical orthonormal frame; command-scoped, never implicitly persistent",
+        fields: [
+            { kind: "select", key: "kind", label: "Reference kind", default: "edge", options: [["edge", "Edge"], ["vertex", "Vertex"], ["face", "Face"], ["host-surface", "Host surface"], ["centerline", "Centerline"], ["location-line", "Location line"], ["reference-plane", "Reference plane"], ["grid", "Grid"], ["level", "Level"], ["work-plane", "Work plane"], ["connector", "Connector"], ["analytical-axis", "Analytical axis"]] },
+            { kind: "text", key: "position", label: "Position (x,y,z)", default: "0,0,0", placeholder: "x,y,z" },
+            { kind: "text", key: "direction", label: "Direction / tangent (x,y,z)", default: "1,0,0", placeholder: "dx,dy,dz" },
+            { kind: "text", key: "normal", label: "Normal (face/plane kinds)", default: "0,0,1", placeholder: "nx,ny,nz" },
+            { kind: "number", key: "elevation", label: "Elevation (level kind)", default: 0, unit: "m", step: 0.5 },
+        ],
+        submitLabel: "Acquire Reference",
+    });
+    if (!r)
+        return;
+    try {
+        const v3 = (s) => {
+            const p = parsePointList(String(s))[0] ?? { x: 0, y: 0 };
+            return [p.x, p.y, p.z ?? 0];
+        };
+        const ref = group1Refs.Acquire({
+            kind: String(r.kind),
+            position: v3(String(r.position)),
+            direction: v3(String(r.direction)),
+            normal: v3(String(r.normal)),
+            elevation: Number(r.elevation),
+        });
+        const elig = ["move", "rotate", "mirror"].map((cmd) => {
+            const res = group1Refs.ValidateForCommand(ref, cmd);
+            return [cmd, res.ok ? "eligible" : "ineligible"];
+        });
+        showReportCard("Reference Report (Group 1)", [
+            ["Reference", `${ref.id} (${ref.kind})`],
+            ["Frame origin", ref.frame.origin.map((n) => n.toFixed(3)).join(", ")],
+            ["Frame x / z", `${ref.frame.xAxis.map((n) => n.toFixed(2)).join(",")}  /  ${ref.frame.zAxis.map((n) => n.toFixed(2)).join(",")}`],
+            ["Status", `${ref.status} (persistent: ${String(ref.persistent)})`],
+            ...elig.map(([cmd, s]) => [`Eligibility — ${cmd}`, s]),
+        ], "Acquired references are command inputs; persistence requires an explicit lock (e.g. Align-with-lock).");
+    }
+    catch (e) {
+        (0, notify_1.notify)("error", `Reference acquisition failed: ${e.message}`);
+    }
+}
+function setupEngineUi() {
+    void Promise.resolve().then(() => require("./adaptive-interaction")).then((module) => {
+        const adaptive = nativeAdaptiveApi();
+        if (typeof adaptive.create === "function")
+            module.setupAdaptiveInteraction(adaptive);
+    }).catch((error) => {
+        console.warn("[adaptive] viewport interaction failed to initialize", error);
+    });
+    w.__obsEngineUi = {
+        // structural
+        openFrameSolverDialog, openSteelCheckDialog, openRcBeamDialog,
+        // hydraulics
+        openDuctPressureDialog, openPipePressureDialog, openWorstPathDialog,
+        // adaptive
+        openAdaptiveSweepDialog, openAdaptiveRepeatDialog, openAdaptiveEditDialog,
+        // solids
+        openExtrudeDialog, openRevolveDialog, openSolidSweepDialog, openBlendDialog,
+        openBooleanDialog, openVoidDialog, validateLastSolid, getLastSolid,
+        // modify
+        openModifyMoveDialog, openModifyRotateDialog, openModifyArrayDialog, openModifyMirrorDialog,
+        // group 1 tools (v71 spec §4–§6)
+        openGroup1MoveDialog, openGroup1RotateDialog, openGroup1MirrorDialog,
+        openSelectionInspectorDialog, openReferencePickerDialog,
+        group1Undo, group1Redo, selectionEngine, toSelectable,
+        get group1Txn() { return group1Txn; },
+        get group1Refs() { return group1Refs; },
+        authoredElementStore,
+        // hosting
+        openHostedOpeningDialog,
+        // parameters
+        openParameterManagerDialog, documentParameters: exports.documentParameters, addProjectParameter,
+        // intelligence
+        openModelIntelligencePanel, intelligenceReportHtml,
+        // helpers
+        parsePointList, parseProfile, parseDuctLines, buildFrameModel, frameSummary,
+        buildBranchNetwork, pressureSummaryLine, summarizeDiagnostics,
+        simpleBeamMu, simpleBeamVu, simpleBeamDeflection, circleProfile,
+    };
+    console.log("[obs] v69 engine UI ready: Analyze (Frame FEM / Steel / RC / Duct / Pipe / Worst path), " +
+        "Architecture (Adaptive / Hosted Opening), Edit (Solid Forms / Modify engine), " +
+        "Manage (Parameters / Model Intelligence)");
+}

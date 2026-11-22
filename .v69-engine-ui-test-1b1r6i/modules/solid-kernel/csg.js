@@ -1,0 +1,478 @@
+"use strict";
+/**
+ * Boolean solid operations (Design spec MODULE 2.7/2.9).
+ *
+ * Algorithm: exact half-space clipping (Sutherland–Hodgman solid
+ * clipping) against the cutter's supporting planes — self-contained and
+ * provable, unlike BSP re-implementations whose clip semantics are easy
+ * to get subtly wrong. Validated by exact closed-form volume tests.
+ *
+ * A point is inside a convex solid iff it is behind every face plane.
+ * The primitive `splitAgainstConvex(M, planes)` partitions mesh M's
+ * surface into pieces INSIDE the convex volume and pieces OUTSIDE, in
+ * the original triangle planes (planar pieces stay planar).
+ *
+ * Compositions (level E, derived + exact-volume tested):
+ *   subtract(A, B)  = A-surface outside B  +  B-surface inside A, flipped
+ *                     (requires B convex; A may be any closed mesh)
+ *   union(A, B)     = A-surface outside B  +  B-surface outside A
+ *                     (requires A and B convex)
+ *   intersect(A, B) = A-surface inside B   +  B-surface inside A
+ *                     (requires A and B convex)
+ *
+ * Stated limits (spec §2 honesty; tracked in the deviation register):
+ *   - subtract requires a CONVEX cutter (boxes, cylinders — the void
+ *     shapes the platform generates). Cutting with a non-convex solid
+ *     throws rather than returning wrong geometry. Coplanar through-
+ *     openings (void face flush with a host face) are handled exactly.
+ *   - union/intersect require both operands convex AND non-coplanar:
+ *     coincident faces between operands throw a precise error instead of
+ *     producing a wrong-skinned solid (single-copy ownership of
+ *     coincident skins requires a 2D face-containment test that is NOT
+ *     implemented here — see the deviation register).
+ *   - Non-convex union/intersect need a full CSG kernel and are NOT
+ *     claimed here.
+ *
+ * Pure module: no DOM, no three.js — safe to unit-test in Node.
+ */
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.sub = sub;
+exports.dot = dot;
+exports.cross = cross;
+exports.planesOfConvex = planesOfConvex;
+exports.createTriangleBvh = createTriangleBvh;
+exports.pointInsideMeshWithBvh = pointInsideMeshWithBvh;
+exports.pointInsideMesh = pointInsideMesh;
+exports.createRobustInsideTester = createRobustInsideTester;
+exports.isInsideRobust = isInsideRobust;
+exports.splitAgainstConvex = splitAgainstConvex;
+exports.coplanarWithAny = coplanarWithAny;
+exports.booleanOp = booleanOp;
+exports.subtract = subtract;
+exports.union = union;
+exports.intersect = intersect;
+/** Classification epsilon (metres, spec 5.2 boolean tolerance). */
+const EPS = 1e-9;
+function sub(a, b) {
+    return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+}
+function dot(a, b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+function cross(a, b) {
+    return { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x };
+}
+/**
+ * Extract the unique supporting planes of a convex mesh (outward
+ * winding, as produced by the platform's form generators). Duplicate
+ * planes (tessellated cylinders share plane families) are merged.
+ */
+const PLANE_EPS = 1e-9;
+function samePlane(a, b) {
+    return Math.abs(a.normal.x - b.normal.x) < PLANE_EPS &&
+        Math.abs(a.normal.y - b.normal.y) < PLANE_EPS &&
+        Math.abs(a.normal.z - b.normal.z) < PLANE_EPS &&
+        Math.abs(a.w - b.w) < PLANE_EPS;
+}
+function planeCell(v) { return Math.floor(v / PLANE_EPS); }
+function planeKey(x, y, z, w) { return `${x},${y},${z},${w}`; }
+function hashablePlane(p) {
+    return [p.normal.x, p.normal.y, p.normal.z, p.w].every(v => Number.isFinite(v) && Number.isSafeInteger(planeCell(v)));
+}
+/**
+ * Extract unique oriented support planes using a tolerance-sized 4D hash.
+ * Neighbour-cell checks preserve the former component-wise tolerance and
+ * first-plane ownership. Unsafe coordinate/tolerance ratios use a linear
+ * comparison path to retain the legacy behavior.
+ */
+function planesOfConvex(mesh) {
+    const out = [];
+    const buckets = new Map();
+    const overflow = [];
+    for (const [ia, ib, ic] of mesh.faces) {
+        const a = mesh.vertices[ia], b = mesh.vertices[ib], c = mesh.vertices[ic];
+        const n = cross(sub(b, a), sub(c, a));
+        const l = Math.hypot(n.x, n.y, n.z);
+        if (l < 1e-12)
+            continue;
+        const candidate = { normal: { x: n.x / l, y: n.y / l, z: n.z / l }, w: 0 };
+        candidate.w = dot(candidate.normal, a);
+        let best = Number.POSITIVE_INFINITY;
+        if (hashablePlane(candidate)) {
+            const cx = planeCell(candidate.normal.x), cy = planeCell(candidate.normal.y), cz = planeCell(candidate.normal.z), cw = planeCell(candidate.w);
+            for (let dx = -1; dx <= 1; dx++)
+                for (let dy = -1; dy <= 1; dy++)
+                    for (let dz = -1; dz <= 1; dz++)
+                        for (let dw = -1; dw <= 1; dw++) {
+                            const list = buckets.get(planeKey(cx + dx, cy + dy, cz + dz, cw + dw));
+                            if (!list)
+                                continue;
+                            for (const i of list)
+                                if (i < best && samePlane(out[i], candidate))
+                                    best = i;
+                        }
+            for (const i of overflow)
+                if (i < best && samePlane(out[i], candidate))
+                    best = i;
+        }
+        else {
+            for (let i = 0; i < out.length; i++)
+                if (samePlane(out[i], candidate)) {
+                    best = i;
+                    break;
+                }
+        }
+        if (Number.isFinite(best))
+            continue;
+        const index = out.length;
+        out.push(candidate);
+        if (hashablePlane(candidate)) {
+            const key = planeKey(planeCell(candidate.normal.x), planeCell(candidate.normal.y), planeCell(candidate.normal.z), planeCell(candidate.w));
+            const list = buckets.get(key);
+            if (list)
+                list.push(index);
+            else
+                buckets.set(key, [index]);
+        }
+        else
+            overflow.push(index);
+    }
+    if (out.length < 4)
+        throw new Error("planesOfConvex: fewer than 4 supporting planes — mesh is not a closed convex solid");
+    return out;
+}
+const distTo = (p, pl) => dot(pl.normal, p) - pl.w;
+const BVH_LEAF_SIZE = 8;
+function triangleBounds(mesh, index) {
+    const [ia, ib, ic] = mesh.faces[index], a = mesh.vertices[ia], b = mesh.vertices[ib], c = mesh.vertices[ic];
+    return {
+        minX: Math.min(a.x, b.x, c.x), minY: Math.min(a.y, b.y, c.y), minZ: Math.min(a.z, b.z, c.z),
+        maxX: Math.max(a.x, b.x, c.x), maxY: Math.max(a.y, b.y, c.y), maxZ: Math.max(a.z, b.z, c.z),
+    };
+}
+function mergeBounds(items) {
+    return items.reduce((b, v) => ({
+        minX: Math.min(b.minX, v.minX), minY: Math.min(b.minY, v.minY), minZ: Math.min(b.minZ, v.minZ),
+        maxX: Math.max(b.maxX, v.maxX), maxY: Math.max(b.maxY, v.maxY), maxZ: Math.max(b.maxZ, v.maxZ),
+    }), { minX: Infinity, minY: Infinity, minZ: Infinity, maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity });
+}
+function buildBvhNode(indices, boundsByTriangle) {
+    const bounds = mergeBounds(indices.map(i => boundsByTriangle[i]));
+    if (indices.length <= BVH_LEAF_SIZE)
+        return { ...bounds, left: null, right: null, triangles: indices };
+    const sx = bounds.maxX - bounds.minX, sy = bounds.maxY - bounds.minY, sz = bounds.maxZ - bounds.minZ;
+    const axis = sx >= sy && sx >= sz ? "x" : sy >= sz ? "y" : "z";
+    const center = (i) => { const b = boundsByTriangle[i]; return axis === "x" ? (b.minX + b.maxX) / 2 : axis === "y" ? (b.minY + b.maxY) / 2 : (b.minZ + b.maxZ) / 2; };
+    indices.sort((a, b) => center(a) - center(b));
+    const mid = Math.floor(indices.length / 2);
+    return { ...bounds, left: buildBvhNode(indices.slice(0, mid), boundsByTriangle), right: buildBvhNode(indices.slice(mid), boundsByTriangle), triangles: null };
+}
+/** Build a reusable median-split triangle BVH for repeated ray/inside queries. */
+function createTriangleBvh(mesh) {
+    const triangleCount = mesh.faces.length;
+    if (!triangleCount)
+        return { mesh, root: null, triangleCount: 0 };
+    const bounds = mesh.faces.map((_, i) => triangleBounds(mesh, i));
+    return { mesh, root: buildBvhNode(Array.from({ length: triangleCount }, (_, i) => i), bounds), triangleCount };
+}
+function rayIntersectsBounds(node, origin, dir, eps) {
+    let near = eps, far = Number.POSITIVE_INFINITY;
+    for (const [o, d, min, max] of [[origin.x, dir.x, node.minX, node.maxX], [origin.y, dir.y, node.minY, node.maxY], [origin.z, dir.z, node.minZ, node.maxZ]]) {
+        if (Math.abs(d) < 1e-15) {
+            if (o < min - eps || o > max + eps)
+                return false;
+            continue;
+        }
+        let a = (min - eps - o) / d, b = (max + eps - o) / d;
+        if (a > b) {
+            const t = a;
+            a = b;
+            b = t;
+        }
+        near = Math.max(near, a);
+        far = Math.min(far, b);
+        if (far < near)
+            return false;
+    }
+    return far > eps;
+}
+function rayHitsTriangle(mesh, index, origin, dir, eps) {
+    const [ia, ib, ic] = mesh.faces[index], v0 = mesh.vertices[ia], v1 = mesh.vertices[ib], v2 = mesh.vertices[ic];
+    const e1 = sub(v1, v0), e2 = sub(v2, v0), pv = cross(dir, e2), det = dot(e1, pv);
+    if (Math.abs(det) < eps)
+        return false;
+    const inv = 1 / det, tv = sub(origin, v0), u = dot(tv, pv) * inv;
+    if (u < -eps || u > 1 + eps)
+        return false;
+    const qv = cross(tv, e1), v = dot(dir, qv) * inv;
+    if (v < -eps || u + v > 1 + eps)
+        return false;
+    return dot(e2, qv) * inv > eps;
+}
+/** Cast a ray through a previously built BVH; triangle predicate is unchanged. */
+function pointInsideMeshWithBvh(bvh, origin, dir) {
+    if (!bvh.root)
+        return false;
+    const eps = 1e-9;
+    let crossings = 0;
+    const stack = [bvh.root];
+    while (stack.length) {
+        const node = stack.pop();
+        if (!rayIntersectsBounds(node, origin, dir, eps))
+            continue;
+        if (node.triangles) {
+            for (const index of node.triangles)
+                if (rayHitsTriangle(bvh.mesh, index, origin, dir, eps))
+                    crossings++;
+        }
+        else {
+            if (node.left)
+                stack.push(node.left);
+            if (node.right)
+                stack.push(node.right);
+        }
+    }
+    return crossings % 2 === 1;
+}
+/** Compatibility helper: builds a temporary BVH for a single ray query. */
+function pointInsideMesh(mesh, origin, dir) {
+    return pointInsideMeshWithBvh(createTriangleBvh(mesh), origin, dir);
+}
+/**
+ * Robust point-in-solid: odd-even vote over 3 deterministic, mutually
+ * non-axis directions. A single ray can double-count when it passes
+ * through a shared triangle edge; with 3 directions that requires the
+ * point to be edge-aligned in all 3 families simultaneously (degenerate
+ * by construction for BIM geometry).
+ */
+/** Create a reusable robust inside-solid tester; build cost is paid once for many probes. */
+function createRobustInsideTester(mesh) {
+    const bvh = createTriangleBvh(mesh);
+    return (p) => {
+        const dirs = [[2, 3, 5], [-3, 5, 2], [5, -2, 3]];
+        let inside = 0;
+        for (const d0 of dirs) {
+            const l = Math.hypot(d0[0], d0[1], d0[2]);
+            const dir = { x: d0[0] / l, y: d0[1] / l, z: d0[2] / l };
+            if (pointInsideMeshWithBvh(bvh, p, dir))
+                inside++;
+        }
+        return inside >= 2;
+    };
+}
+/** Compatibility helper for one-off queries. Reuse createRobustInsideTester for batches. */
+function isInsideRobust(mesh, p) {
+    return createRobustInsideTester(mesh)(p);
+}
+/**
+ * Partition the surface of mesh M against convex planes. Each triangle
+ * is clipped successively by every plane; pieces beyond any plane are
+ * outside; pieces behind all planes are inside.
+ *
+ * Coplanar handling (mode):
+ *   "inside"   — pieces lying ON a cutter plane count as inside
+ *                (subtract: the void's boundary replaces the host skin,
+ *                including through-opening coplanar faces).
+ *   "boundary" — a piece ON a cutter plane with the SAME facing is
+ *                boundary skin (kept); OPPOSITE facing is an interior
+ *                partition (removed). Used by union/intersect, followed
+ *                by the caller's duplicate-skin dedupe.
+ */
+function splitAgainstConvex(mesh, planes, coplanarMode = "inside") {
+    const outside = [];
+    const inside = [];
+    const polyNormal = (poly) => {
+        // Newell normal of the planar polygon.
+        let nx = 0, ny = 0, nz = 0;
+        for (let i = 0; i < poly.length; i++) {
+            const p = poly[i];
+            const q = poly[(i + 1) % poly.length];
+            nx += (p.y - q.y) * (p.z + q.z);
+            ny += (p.z - q.z) * (p.x + q.x);
+            nz += (p.x - q.x) * (p.y + q.y);
+        }
+        const l = Math.hypot(nx, ny, nz) || 1;
+        return { x: nx / l, y: ny / l, z: nz / l };
+    };
+    const clip = (poly, i) => {
+        if (i === planes.length) {
+            inside.push(poly);
+            return;
+        }
+        const pl = planes[i];
+        let allBack = true;
+        let allFront = true;
+        let coplanar = true;
+        for (const p of poly) {
+            const d = distTo(p, pl);
+            if (d > EPS) {
+                allBack = false;
+                coplanar = false;
+            }
+            else if (d < -EPS) {
+                allFront = false;
+                coplanar = false;
+            }
+        }
+        if (coplanar && coplanarMode === "boundary") {
+            // Same facing → coincident boundary skin: NOT supported for
+            // union/intersect (single-copy ownership needs a 2D face
+            // containment test — documented limitation). Opposite facing is an
+            // interior partition (stacked solids) and is removed cleanly.
+            const facing = dot(polyNormal(poly), pl.normal);
+            if (facing > 0) {
+                throw new Error("booleanOp(union/intersect): operands have coincident (coplanar) faces; " +
+                    "offset one operand or use subtract");
+            }
+            inside.push(poly);
+            return;
+        }
+        if (allBack) {
+            clip(poly, i + 1);
+            return;
+        }
+        if (allFront) {
+            outside.push(poly);
+            return;
+        }
+        // Spanning: split.
+        const frontP = [];
+        const backP = [];
+        const n = poly.length;
+        for (let k = 0; k < n; k++) {
+            const p = poly[k];
+            const q = poly[(k + 1) % n];
+            const dp = distTo(p, pl);
+            const dq = distTo(q, pl);
+            if (dp >= -EPS)
+                frontP.push(p);
+            if (dp <= EPS)
+                backP.push(dp >= -EPS ? { ...p } : p);
+            if ((dp > EPS && dq < -EPS) || (dp < -EPS && dq > EPS)) {
+                const t = dp / (dp - dq);
+                const x = {
+                    x: p.x + (q.x - p.x) * t,
+                    y: p.y + (q.y - p.y) * t,
+                    z: p.z + (q.z - p.z) * t,
+                };
+                frontP.push(x);
+                backP.push(x);
+            }
+        }
+        if (backP.length >= 3)
+            clip(backP, i + 1);
+        if (frontP.length >= 3)
+            outside.push(frontP);
+    };
+    for (const [ia, ib, ic] of mesh.faces) {
+        const tri = [mesh.vertices[ia], mesh.vertices[ib], mesh.vertices[ic]];
+        clip(tri, 0);
+    }
+    return { outside, inside };
+}
+/** True when every vertex of `poly` lies on one of `planes` (within EPS). */
+function coplanarWithAny(poly, planes) {
+    for (const pl of planes) {
+        let on = true;
+        for (const p of poly) {
+            if (Math.abs(distTo(p, pl)) > 1e-6) {
+                on = false;
+                break;
+            }
+        }
+        if (on)
+            return true;
+    }
+    return false;
+}
+// ── Output assembly ──────────────────────────────────────────────────────
+function fanTriangles(polys, flip, vertices, faces) {
+    for (const poly of polys) {
+        const base = vertices.length;
+        for (const p of poly)
+            vertices.push(p);
+        for (let i = 1; i < poly.length - 1; i++) {
+            faces.push(flip ? [base, base + i + 1, base + i] : [base, base + i, base + i + 1]);
+        }
+    }
+}
+/**
+ * Boolean operation on closed meshes (see module doc for composition and
+ * convexity requirements). Throws on empty results — the caller decides
+ * whether "no overlap" is an error or an expected outcome (voids.ts).
+ */
+function booleanOp(op, a, b) {
+    const vertices = [];
+    const faces = [];
+    const planesB = planesOfConvex(b);
+    switch (op) {
+        case "subtract": {
+            // A may be ANY closed mesh (a wall with existing openings, for
+            // example): splitting against B's planes needs no convexity of A.
+            const splitA = splitAgainstConvex(a, planesB); // A outside/inside B
+            // B-surface inside A: per-triangle centroid ray-cast along the
+            // triangle's own normal (robust — the ray cannot graze the face).
+            fanTriangles(splitA.outside, false, vertices, faces);
+            for (const [ia, ib, ic] of b.faces) {
+                const v0 = b.vertices[ia], v1 = b.vertices[ib], v2 = b.vertices[ic];
+                const centroid = {
+                    x: (v0.x + v1.x + v2.x) / 3,
+                    y: (v0.y + v1.y + v2.y) / 3,
+                    z: (v0.z + v1.z + v2.z) / 3,
+                };
+                const n = cross(sub(v1, v0), sub(v2, v0));
+                const l = Math.hypot(n.x, n.y, n.z);
+                if (l < 1e-12)
+                    continue;
+                const ndir = { x: n.x / l, y: n.y / l, z: n.z / l };
+                // Probe just OUTSIDE the void face (in the host-material side):
+                //   buried face  → probe point sits in host material → wall kept
+                //   flush face   → probe point is outside the host → wall dropped
+                //   (through-opening at a coplanar host face — correct)
+                const probe = {
+                    x: centroid.x + ndir.x * 1e-6,
+                    y: centroid.y + ndir.y * 1e-6,
+                    z: centroid.z + ndir.z * 1e-6,
+                };
+                if (isInsideRobust(a, probe)) {
+                    const base = vertices.length;
+                    vertices.push(v0, v1, v2);
+                    faces.push([base, base + 2, base + 1]); // flip: cavity wall
+                }
+            }
+            break;
+        }
+        case "union": {
+            const planesA = planesOfConvex(a);
+            const splitA = splitAgainstConvex(a, planesB, "boundary");
+            const splitB = splitAgainstConvex(b, planesA, "boundary");
+            fanTriangles(splitA.outside, false, vertices, faces);
+            fanTriangles(splitB.outside, false, vertices, faces);
+            break;
+        }
+        case "intersect": {
+            const planesA = planesOfConvex(a);
+            const splitA = splitAgainstConvex(a, planesB, "boundary");
+            const splitB = splitAgainstConvex(b, planesA, "boundary");
+            fanTriangles(splitA.inside, false, vertices, faces);
+            fanTriangles(splitB.inside, false, vertices, faces);
+            break;
+        }
+    }
+    if (faces.length === 0) {
+        throw new Error(`booleanOp(${op}): result is empty`);
+    }
+    return { vertices, faces };
+}
+/** Convenience: a − b (spec 2.9 solid−void; b must be convex). */
+function subtract(a, b) {
+    return booleanOp("subtract", a, b);
+}
+/** Convenience: a ∪ b (both convex). */
+function union(a, b) {
+    return booleanOp("union", a, b);
+}
+/** Convenience: a ∩ b (both convex). */
+function intersect(a, b) {
+    return booleanOp("intersect", a, b);
+}

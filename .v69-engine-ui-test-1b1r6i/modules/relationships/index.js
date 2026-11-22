@@ -1,0 +1,361 @@
+"use strict";
+/**
+ * Persistent relationship registry (Design spec MODULE 2B.5–2B.6).
+ *
+ * A typed relationship model connecting elements through geometric
+ * references with explicit lifecycle: creation, validation, query,
+ * evaluation after geometry change, suspension, breaking, orphan cleanup
+ * and post-reload reconciliation.
+ *
+ * Core discipline (spec §3.4): physical contact, geometric joining and
+ * engineering connectivity are THREE different things and are modelled as
+ * different relationship types. A temporary snap is never persisted here
+ * — conversion requires an explicit call (snapping module).
+ *
+ * Reconnection policies (spec 2B.6, level E):
+ *   - "follow-source": the dependent tracks the source reference.
+ *   - "fixed-world": the dependent stays where it is in world coordinates.
+ *   - "local-reference": the dependent recomputes from its stored local
+ *     reference frame and offset relative to the source's new frame.
+ *   - "becomes-invalid": the relationship is flagged invalid and reported.
+ *
+ * Pure module: no DOM — safe to unit-test in Node.
+ */
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.RelationshipRegistry = void 0;
+exports.defaultPolicyFor = defaultPolicyFor;
+const object_hierarchy_1 = require("../object-hierarchy");
+const DEFAULT_PRIORITY = 100;
+/**
+ * Typed relationship registry. Mutation rules (spec 2B.5): records are
+ * immutable once created except for validity/suspension/reference-update
+ * fields; edits go through the dedicated methods so diagnostics stay
+ * truthful.
+ */
+class RelationshipRegistry {
+    records = new Map();
+    geometryVersions = new Map();
+    static clock = 0;
+    /** Set an element's current geometry version (call after any regen). */
+    setGeometryVersion(elementId, version) {
+        this.geometryVersions.set(elementId, version);
+    }
+    geometryVersion(elementId) {
+        return this.geometryVersions.get(elementId) ?? 0;
+    }
+    /**
+     * CreateRelationship. Validation (spec 2B.5): elements must differ,
+     * temporary snaps cannot be persisted as-is (they must be converted by
+     * the snapping module into a concrete type), and self-hosting is
+     * rejected.
+     */
+    createRelationship(args) {
+        if (args.source.elementId === args.target.elementId) {
+            throw new Error("CreateRelationship: source and target must be different elements");
+        }
+        if (args.type === "temporary-snap") {
+            throw new Error("CreateRelationship: temporary snaps are not persistent; convert them via ConvertSnapToPersistentRelationship first");
+        }
+        if (args.type === "host" && args.target.elementId === args.source.elementId) {
+            throw new Error("CreateRelationship: an element cannot host itself");
+        }
+        const rec = {
+            id: `rel-${++RelationshipRegistry.clock}-${(0, object_hierarchy_1.newUniqueId)().slice(0, 8)}`,
+            type: args.type,
+            source: args.source,
+            target: args.target,
+            localOffset: [
+                args.target.position[0] - args.source.position[0],
+                args.target.position[1] - args.source.position[1],
+                args.target.position[2] - args.source.position[2],
+            ],
+            relativeRotationZ: 0,
+            offset: args.offset ?? 0,
+            constraint: args.constraint,
+            connectionDirection: args.connectionDirection,
+            priority: args.priority ?? DEFAULT_PRIORITY,
+            origin: args.origin ?? "automatic",
+            valid: true,
+            geometryVersion: this.geometryVersion(args.source.elementId),
+            reconnection: args.reconnection ?? defaultPolicyFor(args.type),
+            deletionPolicy: args.deletionPolicy ?? "break",
+            suspended: false,
+            createdAt: ++RelationshipRegistry.clock,
+        };
+        this.records.set(rec.id, rec);
+        return rec;
+    }
+    /** ValidateRelationship: geometric + structural sanity at any time. */
+    validateRelationship(id) {
+        const rec = this.require(id);
+        const problems = [];
+        if (rec.source.elementId === rec.target.elementId) {
+            problems.push("source and target are the same element");
+        }
+        if (rec.suspended)
+            problems.push("relationship is suspended");
+        if (!rec.valid)
+            problems.push("relationship is flagged invalid");
+        if (rec.constraint?.kind === "locked-distance" && rec.constraint.value !== undefined && rec.constraint.value < 0) {
+            problems.push("locked distance must be non-negative");
+        }
+        return { valid: problems.length === 0, problems };
+    }
+    /** QueryRelationships with optional filters. */
+    queryRelationships(q = {}) {
+        const out = [];
+        for (const rec of this.records.values()) {
+            if (q.validOnly && !rec.valid)
+                continue;
+            if (!q.includeSuspended && rec.suspended)
+                continue;
+            if (q.type && rec.type !== q.type)
+                continue;
+            if (q.elementId && rec.source.elementId !== q.elementId && rec.target.elementId !== q.elementId)
+                continue;
+            out.push(rec);
+        }
+        return out.sort((a, b) => a.createdAt - b.createdAt);
+    }
+    /** GetRelatedElements (unique element ids related to `elementId`). */
+    getRelatedElements(elementId) {
+        const ids = new Set();
+        for (const rec of this.queryRelationships({ elementId })) {
+            if (rec.source.elementId === elementId)
+                ids.add(rec.target.elementId);
+            else
+                ids.add(rec.source.elementId);
+        }
+        return [...ids];
+    }
+    /** GetRelationshipDependents: records where `elementId` is the source. */
+    getRelationshipDependents(elementId) {
+        return this.queryRelationships({ elementId }).filter((r) => r.source.elementId === elementId);
+    }
+    /** UpdateRelationshipReference (e.g. after reference recovery). */
+    updateRelationshipReference(id, side, ref) {
+        const rec = this.require(id);
+        if (side === "source")
+            rec.source = ref;
+        else
+            rec.target = ref;
+        rec.localOffset = [
+            rec.target.position[0] - rec.source.position[0],
+            rec.target.position[1] - rec.source.position[1],
+            rec.target.position[2] - rec.source.position[2],
+        ];
+    }
+    /**
+     * EvaluateRelationshipAfterGeometryChange (spec 2B.5/2B.6). Applies the
+     * record's reconnection policy and returns per-record actions. The
+     * caller applies returned positions to elements (this registry never
+     * touches element geometry directly).
+     */
+    evaluateRelationshipAfterGeometryChange(change) {
+        const out = [];
+        const deps = this.getRelationshipDependents(change.elementId);
+        for (const rec of deps) {
+            out.push(...this.evalOne(rec, change.translation, change.rotationZ));
+        }
+        return out;
+    }
+    /**
+     * Evaluate dependents after a rigid-body plan rotation of the host about
+     * `pivot`. Each source reference is transformed individually so endpoint
+     * and face attachments follow correctly (not just the element origin).
+     */
+    evaluateAfterRigidMotion(change) {
+        const out = [];
+        const deps = this.getRelationshipDependents(change.elementId);
+        const extra = change.extraTranslation ?? [0, 0];
+        const c = Math.cos(change.angle);
+        const s = Math.sin(change.angle);
+        const [px, py] = change.pivot;
+        for (const rec of deps) {
+            if (rec.suspended) {
+                out.push({
+                    id: rec.id,
+                    elementId: rec.target.elementId,
+                    action: "suspended",
+                    note: "record suspended",
+                });
+                continue;
+            }
+            const [sx, sy, sz] = rec.source.position;
+            const dx = sx - px;
+            const dy = sy - py;
+            const nsx = px + dx * c - dy * s + extra[0];
+            const nsy = py + dx * s + dy * c + extra[1];
+            const translation = [nsx - sx, nsy - sy, 0];
+            // Apply policies with the per-reference translation + full angle.
+            out.push(...this.evalOne(rec, translation, change.angle));
+            // Keep the source reference in sync with the rigid motion.
+            rec.source = { ...rec.source, position: [nsx, nsy, sz] };
+        }
+        return out;
+    }
+    evalOne(rec, translation, rotationZ) {
+        if (rec.suspended) {
+            return [{
+                    id: rec.id,
+                    elementId: rec.target.elementId,
+                    action: "suspended",
+                    note: "record suspended",
+                }];
+        }
+        switch (rec.reconnection) {
+            case "follow-source": {
+                const c = Math.cos(rotationZ);
+                const s = Math.sin(rotationZ);
+                const ox = rec.target.position[0] - rec.source.position[0];
+                const oy = rec.target.position[1] - rec.source.position[1];
+                const base = [
+                    rec.source.position[0] + translation[0],
+                    rec.source.position[1] + translation[1],
+                    rec.source.position[2] + translation[2],
+                ];
+                const np = [
+                    base[0] + ox * c - oy * s,
+                    base[1] + ox * s + oy * c,
+                    base[2],
+                ];
+                rec.target = { ...rec.target, position: np };
+                return [{
+                        id: rec.id,
+                        elementId: rec.target.elementId,
+                        action: "moved-dependent",
+                        newPosition: np,
+                    }];
+            }
+            case "fixed-world":
+                rec.source = { ...rec.source, position: addRot(rec.source.position, translation) };
+                return [{
+                        id: rec.id,
+                        elementId: rec.target.elementId,
+                        action: "unchanged",
+                    }];
+            case "local-reference": {
+                const c = Math.cos(rotationZ);
+                const s = Math.sin(rotationZ);
+                const rx = rec.localOffset[0] * c - rec.localOffset[1] * s;
+                const ry = rec.localOffset[0] * s + rec.localOffset[1] * c;
+                const base = addRot(rec.source.position, translation);
+                const np = [
+                    base[0] + rx,
+                    base[1] + ry,
+                    base[2] + rec.localOffset[2],
+                ];
+                rec.target = { ...rec.target, position: np };
+                return [{
+                        id: rec.id,
+                        elementId: rec.target.elementId,
+                        action: "moved-dependent",
+                        newPosition: np,
+                    }];
+            }
+            case "becomes-invalid":
+                rec.valid = false;
+                return [{
+                        id: rec.id,
+                        elementId: rec.target.elementId,
+                        action: "flagged-invalid",
+                        note: "policy becomes-invalid",
+                    }];
+        }
+    }
+    /** SuspendRelationship: keep the record but stop enforcing it. */
+    suspendRelationship(id) {
+        const rec = this.require(id);
+        rec.suspended = true;
+        return true;
+    }
+    /** RestoreRelationship. */
+    restoreRelationship(id) {
+        const rec = this.require(id);
+        rec.suspended = false;
+        return true;
+    }
+    /** BreakRelationship: mark invalid (or remove when `remove` is true). */
+    breakRelationship(id, remove = false) {
+        const rec = this.require(id);
+        if (remove) {
+            this.records.delete(id);
+            return true;
+        }
+        rec.valid = false;
+        return true;
+    }
+    /** DeleteOrphanedRelationships: drop records whose elements are gone. */
+    deleteOrphanedRelationships(aliveElements) {
+        let removed = 0;
+        for (const [id, rec] of this.records) {
+            if (!aliveElements.has(rec.source.elementId) || !aliveElements.has(rec.target.elementId)) {
+                this.records.delete(id);
+                removed++;
+            }
+        }
+        return removed;
+    }
+    /**
+     * ReconcileRelationshipsAfterReload: revalidate every record against
+     * current geometry versions; records whose source version moved without
+     * evaluation are re-derived from local references (level E policy).
+     */
+    reconcileRelationshipsAfterReload(aliveElements) {
+        const removed = this.deleteOrphanedRelationships(aliveElements);
+        let invalidated = 0;
+        for (const rec of this.records.values()) {
+            const v = this.geometryVersion(rec.source.elementId);
+            if (rec.valid && v !== rec.geometryVersion) {
+                if (rec.reconnection === "becomes-invalid") {
+                    rec.valid = false;
+                    invalidated++;
+                }
+                else {
+                    rec.geometryVersion = v;
+                }
+            }
+        }
+        return { removed, invalidated };
+    }
+    get count() {
+        return this.records.size;
+    }
+    getRecord(id) {
+        return this.records.get(id) ?? null;
+    }
+    require(id) {
+        const rec = this.records.get(id);
+        if (!rec)
+            throw new Error(`relationship '${id}' not found`);
+        return rec;
+    }
+}
+exports.RelationshipRegistry = RelationshipRegistry;
+function addRot(p, t) {
+    return [p[0] + t[0], p[1] + t[1], p[2] + t[2]];
+}
+/** Default reconnection policy per relationship type (level E table). */
+function defaultPolicyFor(type) {
+    switch (type) {
+        case "host":
+        case "face-attachment":
+        case "rigid-attachment":
+        case "endpoint-constraint":
+        case "persistent-alignment":
+            return "follow-source";
+        case "wall-join":
+        case "structural-connection":
+            return "local-reference";
+        case "geometric-coincidence":
+        case "contact":
+            return "fixed-world";
+        case "clearance":
+            return "becomes-invalid";
+        case "mep-connection":
+            return "local-reference";
+        case "system-membership":
+            return "follow-source";
+    }
+    return "fixed-world";
+}

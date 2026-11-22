@@ -223,7 +223,7 @@ const { PlanLiveSync } = require(path.join(out, "plan-live-sync.js"));
     assert.ok(panel.includes("togglePlanDockMode"), "dock toggle from the model");
   });
   t("panel reserves viewport space for the docked plan (margin, not overlay)", () => {
-    assert.ok(panel.includes("marginRight"), "right margin for docked-right");
+    assert.ok(panel.includes("marginInlineEnd"), "inline-end margin for docked-right (logical, mirrors in RTL)");
     assert.ok(panel.includes("marginBottom"), "bottom margin for docked-bottom");
     // The viewport host carries height:100%, which defeats a bottom margin
     // on the flex cross axis — the panel must also shrink its height, and

@@ -205,13 +205,11 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     evidence: [
       "tests/parametric-closure.test.cjs",
       "tests/parametric-wiring.test.cjs",
-      "No dedicated formula-engine test file exists; formula and constraint behaviour is covered only through the closure and wiring suites",
+      "Dedicated formula-engine suite tests/formula-engine.test.cjs — 20 assertions: deterministic evaluation order (topo by dependency), = prefix, ternary/modulo/nested functions/units, scientific-notation literals (1e-7), safe-expr rejection, constraint solving order, and a dead-code gate keeping the retired enhanced engine deleted and unreferenced",
     ],
     limitations: [
-      "Parameter scope is declared but not enforced in resolution: resolveParametricValues applies type.values to every parameter regardless of scope, and the built-ins rely on this — the wall family's thickness is declared scope instance yet its types set it",
-      "The enhanced formula engine (formula-engine-enhanced.ts) is dead code on the live path: it is imported by no source file and the live path uses the base engine",
-      "Known data bugs in the built-ins on this base: the pipe family's formulas reference diameter, which the family does not define (its size parameter is thickness), so circumference and crossSectionArea always fail evaluation; the slab family's types set thickness, but the slab family defines no thickness parameter (it has height), so those type values are dead",
-      "The formula tokenizer only reads [0-9.] numbers, so scientific notation (1e-7) cannot parse and the formula fails",
+      "Parameter scope is enforced fail-soft (9fa2e6a): a type value that targets an instance-scope or undeclared parameter is IGNORED with a warning, never fatal — family files from user sources cannot break a build, but silent data loss in a bad type entry is possible until the warning is surfaced in UI",
+      "Formula errors inside one computed parameter mark that parameter failed and continue the batch; there is no per-family diagnostic report listing every failed formula across the seed library",
     ],
     affirmedIn: APP_VERSION,
   },

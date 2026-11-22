@@ -93,7 +93,10 @@ function makeFamily() {
       { name: "width", type: "length", scope: "type", default: 2, editable: true },
       { name: "height", type: "length", scope: "type", default: 3, editable: true },
       { name: "depth", type: "length", scope: "type", default: 1, editable: true },
-      { name: "thickness", type: "length", scope: "instance", default: 0.2, editable: true },
+      // scope:"type" — the fixture types set thickness (t1 0.2 / t2 0.4) and the
+// swap tests assert it follows the type; parameter-scope enforcement (9fa2e6a)
+// ignores type values on instance-scope parameters.
+      { name: "thickness", type: "length", scope: "type", default: 0.2, editable: true },
       { name: "elevation", type: "length", scope: "instance", default: 0, editable: true },
       { name: "area", type: "area", scope: "type", default: 0, editable: false, formula: "= width * depth" },
     ],

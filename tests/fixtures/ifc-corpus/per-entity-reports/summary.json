@@ -700,7 +700,7 @@
       "definitions": 0,
       "webIfc": {
         "opened": false,
-        "error": "web-ifc OpenModel did not return within 120 s in a fresh process; the same input aborted with WASM memory-access-out-of-bounds in the §12 run (see PER_ENTITY_IFC_REPORT.md §4.2). Recorded as not-opened, not as a pass."
+        "error": "Aborted(). Build with -sASSERTIONS for more info."
       }
     },
     {
@@ -723,7 +723,7 @@
       "definitions": 0,
       "webIfc": {
         "opened": false,
-        "error": "web-ifc OpenModel did not return within 120 s in a fresh process; the same input aborted with WASM memory-access-out-of-bounds in the §12 run (see PER_ENTITY_IFC_REPORT.md §4.2). Recorded as not-opened, not as a pass."
+        "error": "Aborted(). Build with -sASSERTIONS for more info."
       }
     },
     {
