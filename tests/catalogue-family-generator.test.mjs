@@ -10,6 +10,13 @@ assert.equal(mapCatalogueHeader("Supply Voltage (V)"), "voltage");
 const mapped = parseDelimitedCatalogue("Model,Overall Width (mm),Overall Depth (mm),Overall Height (mm),Air Flow Rate (m3/h)\\nAHU-01,1200,800,650,4200");
 assert.equal(mapped.rows[0].width, 1200);
 assert.equal(mapped.rows[0].airflow, 4200);
+const converted = parseDelimitedCatalogue("Model,Airflow (L/s),Static Pressure (kPa),Rated Power (W),Supply Voltage (kV)\\nUNIT-01,100,2.5,750,0.4");
+assert.equal(converted.rows[0].airflow, 360);
+assert.equal(converted.rows[0].staticPressure, 2500);
+assert.equal(converted.rows[0].power, 0.75);
+assert.equal(converted.rows[0].voltage, 400);
+const convertedM3s = parseDelimitedCatalogue("Model,Airflow (m3/s)\\nUNIT-02,1.2");
+assert.equal(convertedM3s.rows[0].airflow, 4320);
 
 const parsed = parseDelimitedCatalogue('Model,Manufacturer,Width,Depth,Height,Airflow\nFAN-300,Acme,300,300,450,1200\nFAN-500,Acme,500,500,650,2500');
 assert.equal(parsed.rows.length, 2);
