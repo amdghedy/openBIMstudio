@@ -29,6 +29,15 @@ jobs:
           node-version: 22
           cache: npm
 
+      # PE-12: verify the checked-in wasm matches the checked-in Rust source
+      # via the manifest attestation. Runs BEFORE the cargo build + copy
+      # steps below stage a fresh build (which overwrites the checked-in
+      # wasm, so a check after staging would compare fresh bytes against the
+      # checked-in manifest). Fails on Rust source drift without a rebuild +
+      # manifest regeneration.
+      - name: Verify CAD engine wasm matches Rust source (wasm staleness guard)
+        run: node scripts/check-cad-engine-wasm.mjs
+
       - name: Install Rust WebAssembly target
         uses: dtolnay/rust-toolchain@stable
         with:
