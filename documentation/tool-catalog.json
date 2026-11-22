@@ -181,6 +181,15 @@
       "verifiedScenarios": []
     },
     {
+      "id": "audit-open-standards",
+      "name": "Audit: run open-standards audit (IDS + clash → BCF)",
+      "discipline": "Audit",
+      "module": "src/modules/audit/open-audit.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "authoring.fragEditPanel",
       "name": "Open Native Twin panel",
       "discipline": "Authoring",
@@ -741,6 +750,15 @@
       "verifiedScenarios": []
     },
     {
+      "id": "history-model-timeline",
+      "name": "History: model timeline",
+      "discipline": "History",
+      "module": "src/modules/history/model-timeline.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "ifc.live_link.start",
       "name": "IFC: Live link - keep an IFC file in sync with my edits",
       "discipline": "IFC",
@@ -1200,10 +1218,28 @@
       "verifiedScenarios": []
     },
     {
+      "id": "publish-web-page",
+      "name": "Publish: export this model as a web page",
+      "discipline": "Publish",
+      "module": "src/modules/publish/publish-web.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "qa.summary",
       "name": "QA — Model Health & Integrity Diagnostic",
       "discipline": "Standards",
       "module": "src/features/model-qa-summary.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "review-create-link",
+      "name": "Review: copy a review link for this model",
+      "discipline": "Review",
+      "module": "src/modules/review/review-links.ts",
       "status": "unverified",
       "tests": [],
       "verifiedScenarios": []
