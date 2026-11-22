@@ -13,6 +13,8 @@
 
 import { ctx } from "../../core/context";
 import type { AuthoredElement } from "../projects/types";
+import type * as THREE from "three";
+import type { MepConnector } from "../mep/connectors";
 import type { FamilyService, FamilyParameter } from "./types";
 import { extractInstanceOverrides } from "./parametric-engine";
 
@@ -42,6 +44,22 @@ function familyService(): FamilyService | null {
  * Resolve placement parameters for a new element.
  * Returns null if the family system is not ready.
  */
+/**
+ * Derive the selected family type's MEP ports after its rendered instance
+ * exists. The family service transforms local definitions through the
+ * instance world matrix; callers can register the result with MepModelLifecycle.
+ */
+export function resolvePlacementConnectors(
+  ownerElementId: string,
+  familyId: string,
+  familyTypeId: string | null,
+  instanceObject: THREE.Object3D,
+): MepConnector[] | null {
+  const svc = familyService();
+  if (!svc?.buildConnectors) return null;
+  return svc.buildConnectors(ownerElementId, familyId, familyTypeId, instanceObject);
+}
+
 export function resolvePlacement(
   familyId: string,
   familyTypeId: string | null,
