@@ -1974,9 +1974,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   const inv = () => cmode === "invert";
   const fg = () => (bg === "white" || inv() ? 0x000000 : 0xffffff);
-  const visible = (e: DxfEntity) => !e.invisible && !hidden.has(e.layer) && !hiddenEntities.has(e) && (typeFilter.size === 0 || typeFilter.has(e.type));
+  const visible = (e: DxfEntity) => !e.invisible && !hidden.has(e.layer) && !hiddenEntities.has(e);
   const shown = (e: DxfEntity) =>
-    visible(e) && !(e.type === "TEXT" && !showText) && !(e.type === "LWPOLYLINE" && e.hatch && !showHatch);
+    visible(e) && (typeFilter.size === 0 || typeFilter.has(e.type)) &&
+    !(e.type === "TEXT" && !showText) && !(e.type === "LWPOLYLINE" && e.hatch && !showHatch);
   const layerOf = (n: string) => doc?.layers.find((l) => l.name === n);
 
   function colorOf(e: DxfEntity): string {
