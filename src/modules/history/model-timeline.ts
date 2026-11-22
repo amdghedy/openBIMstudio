@@ -71,10 +71,14 @@ export interface TimelineState {
 export async function getTimelineState(): Promise<TimelineState | null> {
   const cur = getCurrentProject();
   if (!cur) return null;
-  const [summaries, records] = await Promise.all([
+  const [listed, records] = await Promise.all([
     listProjectRecoverySnapshots(),
     listProjectJournalRecords(cur.id),
   ]);
+  // The recovery listing returns { snapshots, quarantined } since the
+  // checkpoint-quarantine change (rank 4): the timeline shows restorable
+  // snapshots only; quarantined checkpoints are never offered as versions.
+  const summaries = listed.snapshots;
   const docsById = new Map(records.map((r) => [r.id, r.doc as Any]));
   const versions = buildVersionRows(summaries, docsById);
   const live = { elements: liveElements(), models: ((cur.models ?? []) as unknown as Array<{ id: string; [key: string]: unknown }>) };
