@@ -1,5 +1,15 @@
 import assert from "node:assert/strict";
-import { parseDelimitedCatalogue, buildCatalogueFamilyDefinition, validateCatalogueRows } from "../src/modules/families/catalogue-intake.ts";
+import { parseDelimitedCatalogue, buildCatalogueFamilyDefinition, validateCatalogueRows, mapCatalogueHeader } from "../src/modules/families/catalogue-intake.ts";
+
+assert.equal(mapCatalogueHeader("Overall Width (mm)"), "width");
+assert.equal(mapCatalogueHeader("Air Flow Rate (m3/h)"), "airflow");
+assert.equal(mapCatalogueHeader("ESP (Pa)"), "staticPressure");
+assert.equal(mapCatalogueHeader("Rated Power (kW)"), "power");
+assert.equal(mapCatalogueHeader("Supply Voltage (V)"), "voltage");
+
+const mapped = parseDelimitedCatalogue("Model,Overall Width (mm),Overall Depth (mm),Overall Height (mm),Air Flow Rate (m3/h)\\nAHU-01,1200,800,650,4200");
+assert.equal(mapped.rows[0].width, 1200);
+assert.equal(mapped.rows[0].airflow, 4200);
 
 const parsed = parseDelimitedCatalogue('Model,Manufacturer,Width,Depth,Height,Airflow\nFAN-300,Acme,300,300,450,1200\nFAN-500,Acme,500,500,650,2500');
 assert.equal(parsed.rows.length, 2);
