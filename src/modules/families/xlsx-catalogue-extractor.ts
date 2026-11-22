@@ -25,8 +25,8 @@ function columnIndex(reference: string): number {
   return Math.max(0, result - 1);
 }
 function sharedStrings(xml: string): string[] {
-  return [...xml.matchAll(/<si(?:\s[^>]*)?>([\s\S]*?)</si>/g)]
-    .map((match) => [...match[1].matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)</t>/g)].map((part) => xmlText(part[1])).join(""));
+  return [...xml.matchAll(/<si(?:\s[^>]*)?>([\s\S]*?)<\/si>/g)]
+    .map((match) => [...match[1].matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map((part) => xmlText(part[1])).join(""));
 }
 function cellValue(cell: string, strings: string[]): string {
   const type = cell.match(/\bt="([^"]+)"/)?.[1];
@@ -70,9 +70,9 @@ export async function extractXlsxCatalogue(file: File | Blob): Promise<XlsxCatal
   const strings = stringsFile ? sharedStrings(await stringsFile.async("string")) : [];
   const matrix: string[][] = [];
   let cellCount = 0;
-  for (const rowMatch of worksheet.matchAll(/<row\b[^>]*>([\s\S]*?)</row>/g)) {
+  for (const rowMatch of worksheet.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) {
     const row: string[] = [];
-    for (const cellMatch of rowMatch[1].matchAll(/<c\b([^>]*)>([\s\S]*?)</c>/g)) {
+    for (const cellMatch of rowMatch[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)) {
       if (++cellCount > MAX_CELLS) throw new Error("XLSX exceeds the 250,000-cell processing limit.");
       const reference = cellMatch[1].match(/\br="([^"]+)"/)?.[1] ?? "";
       row[columnIndex(reference)] = cellValue(cellMatch[0], strings);
