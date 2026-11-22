@@ -10,6 +10,7 @@ import { assertFileAllowed, readHead } from "../../core/file-guard";
 import * as THREE from "three";
 import { ctx } from "../../core/context";
 import type { DxfDocument } from "../drawings/dxf-types";
+import { dxfCompleteness } from "../drawings/dxf-complete";
 import { parseDxf } from "../drawings/dxf-reader";
 import {
   buildGeometry, collectLayerSegments, computePlacement, DEFAULT_LINK_OPTIONS, snapSegments,
@@ -269,6 +270,11 @@ export async function readDwgThumbnail(file: File): Promise<DwgThumbSuccess> {
 export interface ReadCadOptions {
   /** Keep block references native (INSERT entities + `doc.blocks`) instead of expanding them (editor open path). */
   nativeBlocks?: boolean;
+  /**
+   * Refuse DXF files that are structurally incomplete instead of recovering what can be read. Used when merging
+   * into an existing drawing, where partial junk geometry must never be added.
+   */
+  requireComplete?: boolean;
 }
 
 export async function readCadFile(file: File, opts: ReadCadOptions = {}): Promise<{ doc: DxfDocument; summary: string; format: "dxf" | "dwg" }> {
@@ -283,7 +289,12 @@ export async function readCadFile(file: File, opts: ReadCadOptions = {}): Promis
   }
   if (e === "dxf") {
     assertFileAllowed("dxf", file.name, file.size, await readHead(file, 256));
-    const doc = parseDxf(await file.text(), { nativeBlocks: opts.nativeBlocks === true });
+    const text = await file.text();
+    if (opts.requireComplete) {
+      const c = dxfCompleteness(text);
+      if (!c.complete) throw new Error(`${c.reason}. Nothing was imported.`);
+    }
+    const doc = parseDxf(text, { nativeBlocks: opts.nativeBlocks === true });
     const skipped = doc.skipped
       ? Object.entries(doc.skipped).map(([k, v]) => `${v}×${k}`).join(", ") : "";
     const summary = `${doc.entities.length} drawable entities on ${doc.layers.length} layers` +

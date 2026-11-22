@@ -85,6 +85,7 @@
     "test:cad-ribbon-asi": "node tests/cad-ribbon-asi.test.cjs",
     "test:cad-ribbon-wiring": "node tests/cad-ribbon-wiring.test.cjs",
     "test:cad-2d-extras": "node tests/cad-2d-extras.test.cjs",
+    "test:dxf-complete": "node tests/dxf-complete.test.cjs",
     "test:native-curves": "node tests/native-curves.test.cjs",
     "test:cad-constraint-solver": "node tests/cad-constraint-solver.test.cjs",
     "test:cad-constraint-bridge": "node tests/cad-constraint-bridge.test.cjs",
