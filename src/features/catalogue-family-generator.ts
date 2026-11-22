@@ -8,6 +8,13 @@
 import { ctx } from "../core/context";
 import { buildCatalogueFamilyDefinition, parseDelimitedCatalogue, validateCatalogueRows, type CatalogueRow } from "../modules/families/catalogue-intake";
 import { extractPdfCatalogue } from "../modules/families/pdf-catalogue-extractor";
+import { z } from "zod";
+import { safeLoad } from "../core/safeLoad";
+
+const CatalogueJsonSchema = z.union([
+  z.array(z.record(z.string(), z.unknown())).max(10_000),
+  z.object({ products: z.array(z.record(z.string(), z.unknown())).max(10_000) }).passthrough(),
+]);
 
 type Any = Record<string, any>;
 let panel: HTMLElement | null = null;
@@ -119,9 +126,10 @@ async function readCatalogue(file?: File): Promise<void> {
     }
     const raw = await file.text();
     if (ext === "json") {
-      const value = JSON.parse(raw);
-      const items = Array.isArray(value) ? value : value.products;
-      if (!Array.isArray(items)) throw new Error("JSON must contain an array of product objects or a products array.");
+      const loaded = safeLoad("catalogue JSON", raw, CatalogueJsonSchema, 40 * 1024 * 1024,
+        { maxDepth: 32, maxNodes: 250_000 });
+      if (!loaded.ok) throw new Error(`Invalid catalogue JSON (${loaded.error.stage}): ${loaded.error.issues.join("; ")}`);
+      const items = Array.isArray(loaded.value) ? loaded.value : loaded.value.products;
       parsed = { rows: items.map((item: Any) => ({ ...item, model: String(item.model ?? item.modelNumber ?? item.type ?? "") })), errors: [] };
       if (parsed.rows.some((r) => !r.model.trim())) throw new Error("Every JSON product must have a model, modelNumber or type field.");
     } else {
