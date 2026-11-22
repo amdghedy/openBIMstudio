@@ -10,7 +10,7 @@ import { buildCatalogueFamilyDefinition, parseDelimitedCatalogue, validateCatalo
 import { extractPdfCatalogue } from "../modules/families/pdf-catalogue-extractor";
 
 type Any = Record<string, any>;
-let panel: HTMLDivElement | null = null;
+let panel: HTMLElement | null = null;
 let launch: HTMLButtonElement | null = null;
 let rows: CatalogueRow[] = [];
 let sourceName = "";
@@ -67,10 +67,10 @@ function renderRows(): void {
 function buildPanel(): void {
   if (panel) return;
   installStyle();
-  panel = document.createElement("section");
-  panel.id = "obs-catalogue-family";
-  panel.setAttribute("aria-label", "BIM Family Generator");
-  panel.innerHTML = `
+  const root = document.createElement("section");
+  root.id = "obs-catalogue-family";
+  root.setAttribute("aria-label", "BIM Family Generator");
+  root.innerHTML = `
     <header class="cfg-head"><span aria-hidden="true">▦</span><strong>BIM Family Generator</strong><span class="cfg-muted">Catalogue → Parametric BIM</span><button type="button" data-close aria-label="Close">✕</button></header>
     <div class="cfg-body">
       <div class="cfg-card"><strong>01 · Import catalogue</strong><p class="cfg-muted">Local CSV, TSV, TXT, JSON and PDF text extraction. Scanned PDF pages can use your configured local Ollama vision model; no cloud OCR is used.</p><label>Catalogue file<input data-file type="file" accept=".csv,.tsv,.txt,.json,.pdf,text/csv,text/tab-separated-values,application/json,text/plain,application/pdf"></label><label style="display:flex;grid-template-columns:auto 1fr;align-items:center;gap:8px"><input data-ocr type="checkbox" style="width:auto"> Run local vision OCR on scanned PDF pages (requires a vision-capable Ollama model)</label></div>
@@ -85,11 +85,12 @@ function buildPanel(): void {
       <div data-status role="status" aria-live="polite">Ready. Files are processed locally in this browser.</div>
       <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button type="button" data-clear>Clear</button><button type="button" class="primary" data-create>Create parametric family</button></div>
     </div>`;
-  document.body.appendChild(panel);
-  panel.querySelector("[data-close]")?.addEventListener("click", closeCatalogueFamilyGenerator);
-  panel.querySelector("[data-clear]")?.addEventListener("click", () => { rows = []; sourceName = ""; renderRows(); const qa = panel?.querySelector<HTMLElement>("[data-qa]"); if (qa) qa.textContent = "Import a catalogue to run completeness checks."; status("Catalogue cleared."); });
-  panel.querySelector("[data-file]")?.addEventListener("change", (event) => { void readCatalogue((event.target as HTMLInputElement).files?.[0]); });
-  panel.querySelector("[data-create]")?.addEventListener("click", createFamily);
+  document.body.appendChild(root);
+  panel = root;
+  root.querySelector("[data-close]")?.addEventListener("click", closeCatalogueFamilyGenerator);
+  root.querySelector("[data-clear]")?.addEventListener("click", () => { rows = []; sourceName = ""; renderRows(); const qa = root.querySelector<HTMLElement>("[data-qa]"); if (qa) qa.textContent = "Import a catalogue to run completeness checks."; status("Catalogue cleared."); });
+  root.querySelector("[data-file]")?.addEventListener("change", (event) => { void readCatalogue((event.target as HTMLInputElement).files?.[0]); });
+  root.querySelector("[data-create]")?.addEventListener("click", createFamily);
 }
 async function readCatalogue(file?: File): Promise<void> {
   if (!file) return;
