@@ -16,12 +16,13 @@
 import { assertFileAllowed, readHead } from "../../core/file-guard";
 import { lineweightFromDxf } from "./cad-styles";
 import { parseWithAcadEngine } from "./acad-engine";
-import type { DxfDimStyle, DxfDocument, DxfEntity, DxfHatch, DxfLayer, DxfLayout, DxfPoint, DxfTextStyle, DxfUnits, DxfViewport } from "./dxf-types";
+import type { DxfAttDef, DxfAttrib, DxfBlockDef, DxfDimStyle, DxfDocument, DxfEntity, DxfHatch, DxfLayer, DxfLayout, DxfPoint, DxfTextStyle, DxfUnits, DxfViewport } from "./dxf-types";
 import {
   arcPoints, computeExtents, ellipsePoints, evalBSpline, expandBulges,
   insUnitsToUnits, transformEntity, flipEntityX, isMirroredOcs, type InsertXform,
 } from "./dxf-geometry";
 import { attachNative } from "./native-curves";
+import { resolveInsert } from "./block-refs";
 
 /** IMAGEDEF handle -> file path, filled per parse (parsing is synchronous). */
 let imageDefs = new Map<string, string>();
@@ -387,7 +388,30 @@ function nativeDimension(d: Data, styles: Record<string, DxfDimStyle>): DxfEntit
   return null;
 }
 
-export function parseDxf(text: string): DxfDocument {
+/** Extents source for native references: resolved geometry, with a total budget so hostile files stay cheap. */
+function flattenForExtents(ents: DxfEntity[], table: Record<string, DxfBlockDef>): DxfEntity[] {
+  const out: DxfEntity[] = [];
+  let budget = 1_000_000;
+  for (const e of ents) {
+    if (e.type !== "INSERT") { out.push(e); continue; }
+    if (budget <= 0) { out.push({ type: "POINT", layer: e.layer, position: e.position } as DxfEntity); continue; }
+    const r = resolveInsert(table, e);
+    budget -= r.length;
+    if (r.length) for (const x of r) out.push(x); else out.push({ type: "POINT", layer: e.layer, position: e.position } as DxfEntity);
+  }
+  return out;
+}
+
+export interface ParseDxfOptions {
+  /**
+   * Keep block references as native INSERT entities plus a `blocks` table instead of expanding them into
+   * copied geometry (see block-refs.ts). Default false: every existing caller keeps the flat model.
+   */
+  nativeBlocks?: boolean;
+}
+
+export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocument {
+  const native = options.nativeBlocks === true;
   const pairs = tokenize(text);
 
   // 1. Split into records (every code 0 starts one).
@@ -542,7 +566,7 @@ export function parseDxf(text: string): DxfDocument {
   // 3. Convert (expanding blocks) into the flat entity list.
   const skipped: Record<string, number> = {};
   const skip = (t: string) => { skipped[t] = (skipped[t] ?? 0) + 1; };
-  const entities = expandRecs(modelRecs, blocks, 0, skip, null);
+  const entities = expandRecs(modelRecs, blocks, 0, skip, null, false, native);
 
   // 3b. Paper-space layouts: the active layout lives in ENTITIES (flag 67), the others in *Paper_Space blocks.
   const sheets: Array<{ recs: Rec[]; blockName?: string }> = [];
@@ -568,7 +592,7 @@ export function parseDxf(text: string): DxfDocument {
       }
       return false;
     });
-    const ents = expandRecs(rest, blocks, 0, skip, null, true);
+    const ents = expandRecs(rest, blocks, 0, skip, null, true, native);
     if (ents.length || vps.length) {
       const name = (sh.blockName ? layoutNameForBlock(sh.blockName) : undefined) ?? orderedNames[layouts.length] ?? `Layout ${layouts.length + 1}`;
       layouts.push({ name, entities: ents, viewports: vps });
@@ -582,10 +606,33 @@ export function parseDxf(text: string): DxfDocument {
     if (!known.has(e.layer)) { known.add(e.layer); layers.push({ name: e.layer, color: 7 }); }
   }
 
+  let blockTable: Record<string, DxfBlockDef> | undefined;
+  if (native) {
+    blockTable = {};
+    for (const [bn, b] of blocks) {
+      if (/^\*(model_space|paper_space)/i.test(bn)) continue;
+      const attdefs: DxfAttDef[] = [];
+      for (const r of b.recs) {
+        if (r.type !== "ATTDEF") continue;
+        const ad = new Data(r.pairs), flags = ad.n(70), aa = textAnchor(ad, 74);
+        attdefs.push({
+          tag: ad.s(2) ?? "", prompt: ad.s(3) ?? "", defaultValue: cleanText(ad.s(1) ?? ""), position: aa.position,
+          height: textHeight(ad, 40, 2.5), ...(ad.has(50) ? { rotation: ad.n(50) } : {}), ...(ad.s(8) ? { layer: ad.s(8)! } : {}),
+          ...(flags & 1 ? { invisible: true } : {}), ...(flags & 2 ? { constant: true } : {}),
+          ...(flags & 4 ? { verify: true } : {}), ...(flags & 8 ? { preset: true } : {}),
+        });
+      }
+      blockTable[bn] = { name: bn, base: b.base, entities: expandRecs(b.recs, blocks, 0, skip, null, true, true), attdefs };
+    }
+    for (const bd of Object.values(blockTable)) for (const e of bd.entities) if (!known.has(e.layer)) { known.add(e.layer); layers.push({ name: e.layer, color: 7 }); }
+  }
+  const extentSource = native && blockTable ? flattenForExtents(entities, blockTable) : entities;
+
   return {
     layers,
     entities,
-    extents: computeExtents(entities),
+    extents: computeExtents(extentSource),
+    ...(blockTable ? { blocks: blockTable } : {}),
     ...(savedView ? { savedView } : {}),
     units: units ?? "unitless",
     sourceFormat: "dxf",
@@ -606,6 +653,7 @@ function expandRecs(
   skip: (t: string) => void,
   insertLayer: string | null,
   allowPaper = false,
+  native = false,
 ): DxfEntity[] {
   const out: DxfEntity[] = [];
   const push = (e: DxfEntity) => {
@@ -619,7 +667,7 @@ function expandRecs(
     const c = common(d);
     if (insertLayer && c.layer === "0") c.layer = insertLayer; // layer 0 inside a block inherits
     const outStart = out.length;
-    const ocsFlip = OCS_TYPES.has(r.type) && isMirroredOcs(d.n(210), d.n(220), d.n(230, 1));
+    const ocsFlip = OCS_TYPES.has(r.type) && !(native && r.type === "INSERT") && isMirroredOcs(d.n(210), d.n(220), d.n(230, 1));
 
     switch (r.type) {
       case "LINE":
@@ -833,6 +881,39 @@ function expandRecs(
       case "INSERT": {
         const name = d.s(2) ?? "";
         const blk = blocks.get(name);
+        if (native) {
+          // Native reference: keep the INSERT, attach its ATTRIB records, never copy the block body.
+          if (!blk) skip("INSERT (missing block)");
+          const attributes: DxfAttrib[] = [];
+          let j = i + 1;
+          if (d.n(66) === 1) {
+            while (j < recs.length && recs[j].type === "ATTRIB") {
+              const ad = new Data(recs[j].pairs);
+              const aa = textAnchor(ad, 74);
+              attributes.push({
+                tag: ad.s(2) ?? "", value: cleanText(ad.s(1) ?? ""), position: aa.position,
+                height: textHeight(ad, 40, 2.5), ...(ad.has(50) ? { rotation: ad.n(50) } : {}),
+                ...(ad.s(8) ? { layer: ad.s(8)! } : {}), ...((ad.n(70) & 1) ? { invisible: true } : {}),
+              });
+              j++;
+            }
+            if (j < recs.length && recs[j].type === "SEQEND") j++;
+          }
+          i = j - 1;
+          let pos = d.pt(10, 20, 30);
+          let rotation = d.n(50);
+          let sy = d.n(42, 1);
+          if (isMirroredOcs(d.n(210), d.n(220), d.n(230, 1))) { pos = { ...pos, x: -pos.x }; rotation = 180 - rotation; sy = -sy; }
+          const cols = Math.max(1, Math.min(500, Math.round(d.n(70, 1)))), rws = Math.max(1, Math.min(500, Math.round(d.n(71, 1))));
+          push({
+            ...c, type: "INSERT", name, position: pos,
+            scale: { x: d.n(41, 1), y: sy, z: d.n(43, 1) },
+            ...(rotation ? { rotation } : {}),
+            ...(cols > 1 || rws > 1 ? { columns: cols, rows: rws, columnSpacing: d.n(44), rowSpacing: d.n(45) } : {}),
+            ...(attributes.length ? { attributes } : {}),
+          } as DxfEntity);
+          break;
+        }
         if (!blk || depth >= MAX_DEPTH) { skip(blk ? "INSERT (too deeply nested)" : "INSERT (missing block)"); break; }
         const inner = expandRecs(blk.recs, blocks, depth + 1, skip, c.layer);
         const cols = Math.max(1, Math.min(500, Math.round(d.n(70, 1))));
@@ -902,7 +983,7 @@ function expandRecs(
         break;
 
       case "ATTDEF":
-        break; // attribute definitions are placeholders; the inserted ATTRIBs carry the values
+        break; // attribute definitions are placeholders; the inserted ATTRIBs carry the values (native mode reads them into the block table)
       default:
         // Unknown entity types must not be dropped silently: count them so the
         // import summary and the Drawing Database Status dialog can tell the
