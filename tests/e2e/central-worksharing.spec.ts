@@ -269,6 +269,15 @@ test.describe('central worksharing (two users)', () => {
         { id: bobWallId },
       );
       expect(relRes.ok, 'Bob relinquishes: ' + JSON.stringify(relRes)).toBe(true);
+      // Alice sees the relinquish before editing: wait for her local borrow
+      // state to drain to zero, otherwise the edit can still be refused with
+      // "borrowed by Bob" — the propagation-timing race seen on the 1d726a3
+      // tree (first run failed exactly here; re-run passed unchanged).
+      await alice.waitForFunction(
+        () => Object.keys((window as any).__OBS_CTX__?.features?.centralSync?.getStatus?.().borrows ?? {}).length === 0,
+        null,
+        { timeout: 15000 },
+      );
       const editRes2 = await alice.evaluate(
         ({ id }) => (window as any).__OBS_CTX__.features.authoring.applyElementParamChange(id, 'height', 3.4),
         { id: wallId },
