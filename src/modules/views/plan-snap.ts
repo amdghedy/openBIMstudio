@@ -367,12 +367,30 @@ function pointsNearCursor(
   }
   return out;
 }
+/**
+ * Map an element reference-point kind to the plan snap kind it surfaces
+ * as (same mapping as the step-0 hit below). Used to filter the ranked
+ * candidate list when a snap override is armed (G14).
+ */
+function elementKindToPlanKind(kind: string): PlanSnapKind {
+  return kind === "start" || kind === "end" ? "endpoint"
+    : kind === "center" ? "center"
+    : kind === "edge-mid" ? "midpoint" : "corner";
+}
+
 export function findPlanSnap(
   elements: readonly AuthoredElement[],
   px: number,
   pz: number,
   tolerance: number,
   cycle = 0,
+  /**
+   * G14 snap override: when set, only candidates of this kind are
+   * considered — every other step is skipped and the call returns null
+   * when no candidate of that kind is within tolerance. Unset means
+   * the historical unfiltered behaviour (all kinds, priority order).
+   */
+  onlyKind?: PlanSnapKind,
 ): PlanSnapHit | null {
   // 0. Element reference points (start / end / corners / vertices / jambs / centres)
   //    for every element type - what dimensions anchor to.
@@ -387,11 +405,12 @@ export function findPlanSnap(
       return true; // polygon / point / hosted: cheap per-point test below
     });
     const pts = collectElementSnapPoints(near.length > 400 ? near.slice(0, 400) : near);
-    const cyc = cycleSnapPoint(rankElementSnapPoints(pts, px, pz, tolerance), cycle);
+    const ranked = rankElementSnapPoints(pts, px, pz, tolerance);
+    const filtered = onlyKind ? ranked.filter((p) => elementKindToPlanKind(p.kind) === onlyKind) : ranked;
+    const cyc = cycleSnapPoint(filtered, cycle);
     const hit = cyc?.item;
     if (hit && cyc) {
-      const kind: PlanSnapKind = hit.kind === "start" || hit.kind === "end" ? "endpoint"
-        : hit.kind === "center" ? "center" : hit.kind === "edge-mid" ? "midpoint" : "corner";
+      const kind: PlanSnapKind = elementKindToPlanKind(hit.kind);
       return {
         x: hit.x, z: hit.z, kind, label: hit.label, color: COLOR[kind],
         priority: PRIORITY[kind], distance: hit.distance, ref: hit.ref as PlanDimensionRef,
@@ -410,37 +429,46 @@ export function findPlanSnap(
   if (segs.length === 0 && nearPointEls.length === 0) return null;
 
   // 1. Endpoint - highest priority, short-circuits everything else.
-  const ep = findEndpoint(segs, px, pz, tolerance);
-  if (ep) return ep;
+  if (!onlyKind || onlyKind === "endpoint") {
+    const ep = findEndpoint(segs, px, pz, tolerance);
+    if (ep) return ep;
+  }
 
   // 2. Intersection - only over the (small) nearby set.
-  if (segs.length > 1) {
+  if ((!onlyKind || onlyKind === "intersection") && segs.length > 1) {
     const x = findIntersection(segsAsElements(segs), px, pz, tolerance);
     if (x) return x;
   }
 
   // 3. Corner - only over the (small) nearby set.
-  if (segs.length > 1) {
+  if ((!onlyKind || onlyKind === "corner") && segs.length > 1) {
     const c = findCorner(segsAsElements(segs), px, pz, tolerance);
     if (c) return c;
   }
 
   // 4. Midpoint
-  const mid = findMidpoint(segs, px, pz, tolerance);
-  if (mid) return mid;
+  if (!onlyKind || onlyKind === "midpoint") {
+    const mid = findMidpoint(segs, px, pz, tolerance);
+    if (mid) return mid;
+  }
 
   // 5. Center
-  if (nearPointEls.length) {
+  if ((!onlyKind || onlyKind === "center") && nearPointEls.length) {
     const cen = findCenter(nearPointEls, px, pz, tolerance);
     if (cen) return cen;
   }
 
   // 6. Face
-  const face = findFace(segs, px, pz, tolerance);
-  if (face) return face;
+  if (!onlyKind || onlyKind === "face") {
+    const face = findFace(segs, px, pz, tolerance);
+    if (face) return face;
+  }
 
   // 7. Nearest - fallback.
-  return findNearest(segs, px, pz, tolerance);
+  if (!onlyKind || onlyKind === "nearest") {
+    return findNearest(segs, px, pz, tolerance);
+  }
+  return null;
 }
 
 /**

@@ -26,7 +26,7 @@ const scripts = [
   "test:grip-axis-lock", "test:universal-3d-grips", "test:grips-engine",
   "test:project-file", "test:project-journal", "test:core-journal", "test:journal-replay", "test:checkpoint-quarantine", "test:project-persistence", "test:plan-tags", "test:filled-regions", "test:plan-poche", "test:section-elevation-doc", "test:section-authored-clip",
   "test:schedule-sheet", "test:schedule-totals", "test:schedule-classification", "test:dim-geometry", "test:auto-dim", "test:annotate-distinctions", "test:sheet-furniture", "test:documentation-2d", "test:view-templates", "test:revisions",
-  "test:section-plane", "test:snap-points", "test:plan-draw", "test:plan-temp-dims", "test:plan-dock-live-sync-g12", "test:view-lock",
+  "test:section-plane", "test:snap-points", "test:plan-draw", "test:plan-snap-override-g14", "test:plan-temp-dims", "test:plan-dock-live-sync-g12", "test:view-lock",
   "test:wheel-zoom", "test:section-box", "test:section-box-arrows", "test:cad-tables-fidelity",
   "test:cad-ui-wiring", "test:cad-ocs-absorb", "test:cad-native-annotation", "test:cad-tabs-compatibility",
   "test:v68-core", "test:v68-solids", "test:v68-interaction", "test:v68-acceptance",

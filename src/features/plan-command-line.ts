@@ -103,12 +103,19 @@ export function createPlanCommandLine(host: PlanCmdHost): PlanCommandLine {
     input.value = "";
     hideHint();
     hIdx = history.length;
-    if (!text) { host.run("REPEAT"); refresh(); return; }
+    if (!text) { host.run("REPEAT"); refresh(); input.blur(); return; }
     if (history[history.length - 1] !== text) { history.push(text); saveHistory(history); }
     hIdx = history.length;
-    if (host.isDrawing() && host.point(text)) { refresh(); return; }
+    if (host.isDrawing() && host.point(text)) { refresh(); input.blur(); return; }
     host.run(text);
     refresh();
+    // G14: return focus to the canvas once the command has run. The plan
+    // keydown handler ignores keys while this input has focus, and canvas
+    // mousedowns preventDefault (so clicking the canvas never blurs it) —
+    // without this, neither typed lengths nor two-letter snap overrides
+    // (SE/SM/…) can be entered after activating a tool from the command
+    // line. Typing a letter re-focuses the line via the panel handler.
+    input.blur();
   };
 
   input.addEventListener("input", () => { sel = 0; showHint(); });

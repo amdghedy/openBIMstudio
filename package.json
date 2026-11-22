@@ -70,6 +70,7 @@
     "test:annotate-distinctions": "node tests/annotate-distinctions.test.cjs",
     "test:dim-geometry": "node tests/plan-dim-geometry.test.cjs",
     "test:plan-tags": "node tests/plan-tags.test.cjs",
+    "test:plan-snap-override-g14": "node tests/plan-snap-override-g14.test.cjs",
     "test:critical-workflow-pack": "node tests/critical-workflow-pack.test.cjs",
     "test:project-auto-reopen": "node tests/project-auto-reopen.test.cjs",
     "test:qto-property-filters": "node tests/qto-property-filters.test.cjs",

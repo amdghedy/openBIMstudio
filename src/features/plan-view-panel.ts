@@ -71,6 +71,14 @@ import { toolState } from "../modules/views/tools";
 import { findPlanSnap as findPlanFeatureSnap, snapSvgMarkup, type PlanSnapHit } from "../modules/views/plan-snap";
 import { resolveDoubleClickAction } from "../modules/double-click/double-click-dispatch";
 import {
+  createPlanSnapOverride,
+  isOverrideFirstKey,
+  resolveOverrideKeys,
+  planSnapOverrideLabel,
+  PLAN_SNAP_OVERRIDE_ENTRIES,
+  type PlanSnapOverrideKind,
+} from "../modules/views/plan-snap-override";
+import {
   generatePlanView,
   listAvailableLevels,
 } from "../modules/drawings/plan-generator";
@@ -787,7 +795,14 @@ function resetSnapCycleIfMoved(p: { x: number; z: number }): void {
   }
 }
 
-function findDimensionBoundary(point: { x: number; z: number }) {
+/**
+ * Authored elements for the feature snapper (dim boundaries + G14
+ * override snaps): live authoring elements, the authored cache, or —
+ * for plan-only models — synthetic wall elements rebuilt from the plan
+ * segments. Extracted verbatim from findDimensionBoundary so both
+ * callers share one source (and one synth cache).
+ */
+function getPlanSnapElements(): any[] {
   const auth: any = (ctx.features as any).authoring;
   let els: any[] = [];
   try {
@@ -824,15 +839,41 @@ function findDimensionBoundary(point: { x: number; z: number }) {
   if (els.length) {
     authoredCache = els;
   }
+  return els;
+}
 
-  if (!els.length) return null;
-
+/** Feature-snap tolerance in world metres, as findDimensionBoundary computes it. */
+function planFeatureTolerance(): number {
   const view = currentPlan;
   const zoomW = view ? ((view.bounds.maxX - view.bounds.minX) + 6) / currentZoom : 20;
   const pixelWorldTol = zoomW / 800;
-  const featureTol = Math.max(0.15, pixelWorldTol * 14);
+  return Math.max(0.15, pixelWorldTol * 14);
+}
 
-  const hit = findPlanFeatureSnap(els, point.x, point.z, featureTol, planSnapCycle);
+/**
+ * G14 override snap for placement modes: the feature snapper restricted
+ * to the armed override kind. Null when no override is armed or when no
+ * candidate of that kind is within tolerance (Revit: with an override
+ * active, only that snap type is considered — anything else is no snap).
+ */
+function findPlanOverrideSnap(w: { x: number; z: number }): { x: number; z: number; kind: string; label?: string } | null {
+  const kind = planSnapOverride.active as PlanSnapOverrideKind | null;
+  if (!kind) return null;
+  const els = getPlanSnapElements();
+  if (!els.length) return null;
+  const hit = findPlanFeatureSnap(els, w.x, w.z, planFeatureTolerance(), 0, kind);
+  if (!hit) return null;
+  return { x: hit.x, z: hit.z, kind: hit.kind, label: hit.label };
+}
+
+function findDimensionBoundary(point: { x: number; z: number }) {
+  const els = getPlanSnapElements();
+
+  if (!els.length) return null;
+
+  const featureTol = planFeatureTolerance();
+
+  const hit = findPlanFeatureSnap(els, point.x, point.z, featureTol, planSnapCycle, planSnapOverride.active as PlanSnapOverrideKind | undefined);
   if (hit && hit.ref) {
     return {
       point: { x: hit.x, z: hit.z },
@@ -844,6 +885,9 @@ function findDimensionBoundary(point: { x: number; z: number }) {
       alt: hit.alt,
     };
   }
+  // G14: with an override armed, the untyped boundary fallback must NOT
+  // fire — it would snap to a point that is not of the override kind.
+  if (planSnapOverride.active) return null;
 
   let best: { point: { x: number; z: number }; ref: PlanDimensionRef; distance: number } | null = null;
   const tol = Math.max(0.18, 0.008 * Math.max(currentPlan?.bounds.maxX ?? 10, currentPlan?.bounds.maxZ ?? 10));
@@ -1341,6 +1385,27 @@ let __planCursorOverlay: HTMLDivElement | null = null;
 let __planCursorSvg: SVGSVGElement | null = null;
 let __lastSnapKind = "";
 let planSnap: { x: number; z: number; kind: string; label?: string; ref?: PlanDimensionRef } | null = null;
+/** G14 snap overrides: one-shot, armed by right-click menu or two-letter keys. */
+const planSnapOverride = createPlanSnapOverride();
+/** G14 two-letter override key buffer: first letter ("s") while a plan tool is active. */
+let planOverrideKeyFirst: string | null = null;
+let planOverrideKeyTimer: number | null = null;
+function clearPlanOverrideKeyBuffer(): void {
+  planOverrideKeyFirst = null;
+  if (planOverrideKeyTimer != null) {
+    window.clearTimeout(planOverrideKeyTimer);
+    planOverrideKeyTimer = null;
+  }
+}
+/** Modes in which a snap override can be armed (placement + dim tools). */
+function isPlanOverrideToolActive(): boolean {
+  return planMode === "linear" || planMode === "point" || planMode === "dim" ||
+    planMode === "tag" || planMode === "text" || planMode === "region";
+}
+function planOverrideFooterSuffix(): string {
+  const kind = planSnapOverride.active;
+  return kind ? `  · Snap override: ${planSnapOverrideLabel(kind)} (next pick only)` : "";
+}
 /** Placement options bar (BIM Modify | Place —). */
 let planWidth = 0.3;   // m — duct/wall thickness in plan
 let planHeight = 0.3;  // m — extrusion height
@@ -4344,6 +4409,34 @@ canvasWrap.addEventListener("contextmenu", (e) => {
   item("Finish chain  (Enter)", () => finishPlanChain(), planMode === "linear" && planChain.length > 0);
   item("Cancel  (Esc)", () => key("Escape"));
   item("Repeat last command  (Space)", () => key(" "));
+  // G14 snap overrides: one-shot, next pick only. Only the types the plan
+  // snapper can actually produce are listed (no perpendicular / tangent /
+  // quadrant / vertex — it has no producer for those).
+  const sep = document.createElement("div");
+  sep.style.cssText = "border-top:1px solid #e2e8f0;margin:3px 0";
+  m.appendChild(sep);
+  const head = document.createElement("div");
+  head.textContent = "Snap Overrides  (next pick only)";
+  head.style.cssText = "padding:6px 14px 2px;color:#64748b;font-weight:600";
+  m.appendChild(head);
+  for (const entry of PLAN_SNAP_OVERRIDE_ENTRIES) {
+    const armed = planSnapOverride.active === entry.kind;
+    item(`${armed ? "✓ " : ""}${entry.label}  (${entry.keys.toUpperCase()})`, () => {
+      planSnapOverride.arm(entry.kind);
+      footerStatus(`Snap override: ${entry.label} — next pick only · Esc cancels`);
+      updateSnapOverlay();
+    });
+  }
+  if (planSnapOverride.active) {
+    item("Clear override", () => {
+      planSnapOverride.clear();
+      footerStatus("Snap override cleared");
+      updateSnapOverlay();
+    });
+  }
+  item("Snap settings…", () => {
+    void import("./snapping").then((s) => s.toggleSnapSettings()).catch(() => {});
+  });
   document.body.appendChild(m);
   const close = (ev: Event) => { if (!m.contains(ev.target as Node)) { m.remove(); window.removeEventListener("pointerdown", close, true); } };
   window.addEventListener("pointerdown", close, true);
@@ -4351,6 +4444,8 @@ canvasWrap.addEventListener("contextmenu", (e) => {
 
 canvasWrap.addEventListener("mousedown", (e) => {
   if (e.button !== 0) return;
+  // G14: a click abandons any half-typed override key sequence.
+  clearPlanOverrideKeyBuffer();
 
   // Ribbon annotation tools (Annotate ▸ Section Line) drive the
   // modules/views/tools state machine. That machine used to receive clicks
@@ -4382,7 +4477,9 @@ canvasWrap.addEventListener("mousedown", (e) => {
   if (planMode === "linear" || planMode === "point" || planMode === "dim" || planMode === "tag" || planMode === "text" || planMode === "region") {
     let w = clientToWorld(e.clientX, e.clientY);
     if (!w) return;
-    let sn = findPlanSnap(w.x, w.z);
+    // G14: with an override armed, only that snap kind is considered
+    // (dim mode applies the same filter inside findDimensionBoundary).
+    let sn = planSnapOverride.active && planMode !== "dim" ? findPlanOverrideSnap(w) : findPlanSnap(w.x, w.z);
     if (planMode === "dim") {
       const dh = findDimensionBoundary(w);
       sn = dh ? { x: dh.point.x, z: dh.point.z, kind: "Boundary" } : null;
@@ -4391,6 +4488,9 @@ canvasWrap.addEventListener("mousedown", (e) => {
       w = { x: sn.x, z: sn.z };
     }
     planSnap = sn;
+    // G14 one-shot: a snap pick consumes the override (unsnapped clicks
+    // leave it armed — no snap happened, so the override is not spent).
+    if (sn) planSnapOverride.consumeAfterSnap();
     e.preventDefault();
     e.stopPropagation();
 
@@ -5082,14 +5182,15 @@ window.addEventListener("mousemove", (e) => {
           planCursor = w;
         }
       } else {
-        const sn = findPlanSnap(w.x, w.z);
+        // G14: with an override armed, only that snap kind is considered.
+        const sn = planSnapOverride.active ? findPlanOverrideSnap(w) : findPlanSnap(w.x, w.z);
         planSnap = sn;
         planCursor = sn ? { x: sn.x, z: sn.z } : w;
         if (planMode === "linear" && planDrawStart) {
           if (e.shiftKey) { planCursor = constrainOrtho(planDrawStart, planCursor); planSnap = null; }
           if (!planTypedLength) {
             const len = Math.hypot(planCursor.x - planDrawStart.x, planCursor.z - planDrawStart.z);
-            footerStatus(`${planLinearType}  length ${len.toFixed(3)} m  angle ${angleDeg(planDrawStart, planCursor).toFixed(1)}\u00b0${e.shiftKey ? "  (ortho)" : ""}`);
+            footerStatus(`${planLinearType}  length ${len.toFixed(3)} m  angle ${angleDeg(planDrawStart, planCursor).toFixed(1)}°${e.shiftKey ? "  (ortho)" : ""}${planOverrideFooterSuffix()}`);
           }
         }
       }
@@ -5629,6 +5730,10 @@ export function setPlanToolFromRibbon(tool: string) {
   }
   planDrawStart = null;
   planSnap = null;
+  // G14: switching tools disarms an armed snap override (one-shot, and
+  // the override belongs to the tool it was armed under).
+  planSnapOverride.clear();
+  clearPlanOverrideKeyBuffer();
   const linear = [
     "wall", "beam", "strip", "duct", "pipe", "cable-tray", "conduit", "mline",
     "brace", "truss", "insulation",
@@ -5909,6 +6014,9 @@ export function cancelAllPlan(): boolean {
   planSnap = null;
   // G3: Esc resets the Tab cycle (its pre-highlight is transient state).
   resetPlanTabCycle();
+  // G14: Esc disarms an armed snap override (and any half-typed key sequence).
+  planSnapOverride.clear();
+  clearPlanOverrideKeyBuffer();
   void import("./authoring").then((m) => m.clearLastPlanLinear?.()).catch(() => {});
 
   planMode = "select";
@@ -6337,11 +6445,64 @@ try {
     // documented escape-all contract ("with nothing active the key is NOT
     // consumed").
     if (e.key === "Escape") {
+      // G14: Esc abandons a half-typed override sequence and disarms an
+      // armed override (via cancelAllPlan below).
+      clearPlanOverrideKeyBuffer();
       if (cancelAllPlan()) {
         e.preventDefault();
         e.stopImmediatePropagation();
       }
       return;
+    }
+
+    // G14 snap overrides: two-letter keys while a plan placement/dim
+    // tool is active. This handler is registered before the global
+    // shortcut registry (main.ts: plan-view runs before
+    // shortcuts-install), so it sees the pair first and consumes it —
+    // the registry never sees the second key, which is what makes the
+    // context-dependent SC work: SC = snap-centre here, gizmo scale
+    // everywhere else (G8's binding, untouched). The first letter is
+    // consumed too, so the registry never buffers a stale "s" whose
+    // 800 ms timer would otherwise fire gizmo scale after the arm.
+    // A lone "s" (no second letter within 800 ms) opens the command
+    // line with "s", exactly as the unmodified handler would have.
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && /^[a-zA-Z]$/.test(e.key) && isPlanOverrideToolActive()) {
+      const k = e.key.toLowerCase();
+      if (planOverrideKeyFirst === null) {
+        if (isOverrideFirstKey(k)) {
+          planOverrideKeyFirst = k;
+          if (planOverrideKeyTimer != null) window.clearTimeout(planOverrideKeyTimer);
+          planOverrideKeyTimer = window.setTimeout(() => {
+            planOverrideKeyFirst = null;
+            planOverrideKeyTimer = null;
+            ensurePlanCommandLine().focus("s");
+          }, 800);
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return;
+        }
+      } else {
+        const first = planOverrideKeyFirst;
+        planOverrideKeyFirst = null;
+        if (planOverrideKeyTimer != null) { window.clearTimeout(planOverrideKeyTimer); planOverrideKeyTimer = null; }
+        const kind = resolveOverrideKeys(first, k, true);
+        if (kind) {
+          planSnapOverride.arm(kind);
+          footerStatus(`Snap override: ${planSnapOverrideLabel(kind)} — next pick only · Esc cancels`);
+          updateSnapOverlay();
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return;
+        }
+        // Not an override pair: open the command line with both letters,
+        // exactly as the unmodified handler would have opened it with
+        // the first (so "sl" still reaches the slab tool via the
+        // command-line shortcut fallback on Enter).
+        ensurePlanCommandLine().focus(first + k);
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+      }
     }
 
     // drawing-style command entry: a bare letter (or @) starts the command line.
