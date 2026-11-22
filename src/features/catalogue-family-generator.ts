@@ -8,6 +8,7 @@
 import { ctx } from "../core/context";
 import { buildCatalogueFamilyDefinition, parseDelimitedCatalogue, validateCatalogueRows, type CatalogueRow } from "../modules/families/catalogue-intake";
 import { extractPdfCatalogue } from "../modules/families/pdf-catalogue-extractor";
+import { extractXlsxCatalogue } from "../modules/families/xlsx-catalogue-extractor";
 import { z } from "zod";
 import { safeLoad } from "../core/safeLoad";
 
@@ -80,7 +81,7 @@ function buildPanel(): void {
   root.innerHTML = `
     <header class="cfg-head"><span aria-hidden="true">▦</span><strong>BIM Family Generator</strong><span class="cfg-muted">Catalogue → Parametric BIM</span><button type="button" data-close aria-label="Close">✕</button></header>
     <div class="cfg-body">
-      <div class="cfg-card"><strong>01 · Import catalogue</strong><p class="cfg-muted">Local CSV, TSV, TXT, JSON and PDF text extraction. Scanned PDF pages can use your configured local Ollama vision model; no cloud OCR is used.</p><label>Catalogue file<input data-file type="file" accept=".csv,.tsv,.txt,.json,.pdf,text/csv,text/tab-separated-values,application/json,text/plain,application/pdf"></label><label style="display:flex;grid-template-columns:auto 1fr;align-items:center;gap:8px"><input data-ocr type="checkbox" style="width:auto"> Run local vision OCR on scanned PDF pages (requires a vision-capable Ollama model)</label></div>
+      <div class="cfg-card"><strong>01 · Import catalogue</strong><p class="cfg-muted">Local XLSX, CSV, TSV, TXT, JSON and PDF text extraction. Scanned PDF pages can use your configured local Ollama vision model; no cloud OCR is used.</p><label>Catalogue file<input data-file type="file" accept=".xlsx,.csv,.tsv,.txt,.json,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/tab-separated-values,application/json,text/plain,application/pdf"></label><label style="display:flex;grid-template-columns:auto 1fr;align-items:center;gap:8px"><input data-ocr type="checkbox" style="width:auto"> Run local vision OCR on scanned PDF pages (requires a vision-capable Ollama model)</label></div>
       <div class="cfg-card"><strong>02 · Family definition</strong><div class="cfg-grid">
         <label>Family name<input data-name value="Manufacturer Equipment"></label>
         <label>Manufacturer<input data-manufacturer placeholder="Manufacturer name"></label>
@@ -103,9 +104,21 @@ async function readCatalogue(file?: File): Promise<void> {
   if (!file) return;
   if (file.size > 40 * 1024 * 1024) { status("File exceeds the 40 MB intake limit.", "warn"); return; }
   const ext = file.name.split(".").pop()?.toLowerCase();
-  if (!["csv","tsv","txt","json","pdf"].includes(ext ?? "")) { status("Supported catalogue formats are PDF, CSV, TSV, TXT and JSON. CAD/STEP extraction is not yet enabled.", "warn"); return; }
+  if (!["csv","tsv","txt","json","pdf","xlsx"].includes(ext ?? "")) { status("Supported catalogue formats are XLSX, PDF, CSV, TSV, TXT and JSON. CAD/STEP extraction is not yet enabled.", "warn"); return; }
   try {
     let parsed: { rows: CatalogueRow[]; errors: string[] };
+    if (ext === "xlsx") {
+      const result = await extractXlsxCatalogue(file);
+      parsed = { rows: result.rows, errors: result.warnings };
+      sourceName = file.name;
+      rows = parsed.rows;
+      renderRows();
+      const issues = [...parsed.errors, ...validateCatalogueRows(rows)];
+      const qa = panel?.querySelector<HTMLElement>("[data-qa]");
+      if (qa) qa.textContent = issues.length ? issues.join(" ") : "Imported " + rows.length + " product type(s) from worksheet " + result.sheetName + ". Verify source values and units before family creation."; 
+      status("XLSX processed: " + rows.length + " product type(s) imported from " + result.sheetName + ".", rows.length ? "success" : "warn");
+      return;
+    }
     if (ext === "pdf") {
       const useLocalVisionOcr = panel?.querySelector<HTMLInputElement>("[data-ocr]")?.checked ?? false;
       const result = await extractPdfCatalogue(file, {
