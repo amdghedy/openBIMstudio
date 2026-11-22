@@ -38,6 +38,7 @@ const HEADER_ALIASES: Record<string, CatalogueField> = {
   width: "width", w: "width", overallwidth: "width", overallw: "width", depth: "depth", d: "depth", overalldepth: "depth", length: "depth",
   height: "height", h: "height", overallheight: "height", overallh: "height",
   airflow: "airflow", airflowrate: "airflow", airvolume: "airflow", volumeflow: "airflow", volumeflowrate: "airflow", flow: "airflow",
+  airflowratels: "airflow", volumeflowratels: "airflow", flowratels: "airflow",
   staticpressure: "staticPressure", pressure: "staticPressure", externalstaticpressure: "staticPressure", esp: "staticPressure",
   power: "power", inputpower: "power", totalinputpower: "power", ratedpower: "power", kw: "power",
   voltage: "voltage", supplyvoltage: "voltage", ratedvoltage: "voltage", nominalvoltage: "voltage", volt: "voltage",
@@ -47,9 +48,22 @@ function normalizedHeader(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+function normalizePerformanceValue(value: number, header: string, field: CatalogueField): number {
+  const unit = normalizedHeader(header);
+  if (field === "airflow") {
+    const raw = header.toLowerCase().replace(/[^a-z0-9³]/g, "");
+    if (/(m3s|m³s)$/.test(raw)) return value * 3600;
+    if (/(lps|litrespersecond|literspersecond)$/.test(unit)) return value * 3.6;
+  }
+  if (field === "staticPressure" && /kpa$/.test(unit)) return value * 1000;
+  if (field === "power" && /(watt|watts|w)$/.test(unit) && !/kw$/.test(unit)) return value / 1000;
+  if (field === "voltage" && /kv$/.test(unit)) return value * 1000;
+  return value;
+}
+
 /** Resolve common manufacturer column headings to the canonical family field. */
 export function mapCatalogueHeader(value: string): CatalogueField | undefined {
-  const key = normalizedHeader(value).replace(/(millimeters|millimetres|mm|centimeters|centimetres|cm|meters|metres|m3h|m3hr|m³h|pa|kw|kv|volt|volts|v)$/i, "");
+  const key = normalizedHeader(value).replace(/(millimeters|millimetres|mm|centimeters|centimetres|cm|meters|metres|m3h|m3hr|m³h|m3s|m³s|litrespersecond|literspersecond|kpa|pa|kw|watts|watt|w|kv|volt|volts|v)$/i, "");
   return HEADER_ALIASES[normalizedHeader(value)] ?? HEADER_ALIASES[key];
 }
 
@@ -94,7 +108,7 @@ export function parseDelimitedCatalogue(source: string, delimiter?: string): Cat
       if (["width", "depth", "height", "airflow", "staticPressure", "power", "voltage"].includes(key)) {
         const n = Number(raw.replace(/,/g, ""));
         if (!Number.isFinite(n) || n < 0) { errors.push(`Row ${r + 1}: invalid numeric value for ${headers[c]}.`); continue; }
-        (item as Record<string, string | number | undefined>)[key] = n;
+        (item as Record<string, string | number | undefined>)[key] = normalizePerformanceValue(n, headers[c], key);
       } else (item as Record<string, string | number | undefined>)[key] = raw;
     }
     rows.push(item);
