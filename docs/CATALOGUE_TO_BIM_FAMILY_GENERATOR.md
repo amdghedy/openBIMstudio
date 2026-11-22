@@ -28,7 +28,7 @@ The current experimental delivery adds a BIM Family Generator launcher and local
 - DWG/DXF/STEP/SAT geometry extraction.
 - Catalogue drawing-to-solid reconstruction.
 - Manufacturer-specific solid reconstruction and inferred connector placement. Connector definitions are accepted only when explicit port coordinates and axes are supplied; no port location is guessed.
-- Automatic registration of family ports during every native placement and geometry-edit path is not yet wired; the new placement bridge must be called by the authoring host.
+- The shared authoring rebuild now registers type-specific family ports with the MEP lifecycle after placement and geometry/transform edits. Non-authoring integrations that create family instances outside this rebuild must call the placement bridge themselves.
 - Revit API companion add-in or native RFA export.
 - External manufacturer catalogue APIs.
 
@@ -53,7 +53,7 @@ XLSX, CSV/TSV and PDF table readers recognize model/model number/type, manufactu
 
 - Dimensions are converted to metres for the existing family geometry parameter contract.
 - The generated geometry supports explicit box and cylinder parametric primitives only. Cylinder profile treats Width as diameter and Height as axial length. These are generic primitives, not manufacturer-accurate solids.
-- Connector definitions are not inferred from airflow, dimensions or product imagery. Multiple explicitly numbered ports can be imported. Connector definitions are stored per FamilyType when imported from a catalogue, so product variants can carry different port counts and layouts; the existing family-level connector list remains the fallback for types without a type-specific list. The Family Browser connector editor can edit and preview the selected type's layout. The family service exposes `buildConnectors`, and `syncPlacementConnectors` transforms the selected type's local ports into world space and replaces that element's ports in `MepModelLifecycle`; the authoring host must call it after the instance has its final world transform and after relevant geometry/transform edits.
+- Connector definitions are not inferred from airflow, dimensions or product imagery. Multiple explicitly numbered ports can be imported. Connector definitions are stored per FamilyType when imported from a catalogue, so product variants can carry different port counts and layouts; the existing family-level connector list remains the fallback for types without a type-specific list. The Family Browser connector editor can edit and preview the selected type's layout. The family service exposes `buildConnectors`; the common authoring rebuild resolves the selected type's connector definitions (falling back to family defaults), transforms them through the rendered instance world matrix, and replaces that element's ports in `MepModelLifecycle`. External placement hosts must call `syncPlacementConnectors` after final placement and relevant edits.
 - Missing dimensions use a 1 m preview fallback only; QA explicitly flags the missing source values and users must correct them before relying on the geometry.
 - Text PDF parsing and page rendering run locally in the browser. Scanned page images are sent only to the user's configured local/private Ollama endpoint when OCR is explicitly enabled; no cloud OCR is used.
 - PDF OCR requires an image-capable Ollama model. A text-only or coding model may fail to return structured extraction data.
@@ -66,5 +66,5 @@ XLSX, CSV/TSV and PDF table readers recognize model/model number/type, manufactu
 2. Improve PDF layout reconstruction for rotated tables, merged headers, multi-column brochures and engineering unit inference.
 3. Parameter mapping UI with units, type/instance scope, GUID mapping and source confidence.
 4. Reuse the existing parametric feature tree for detailed product geometry templates.
-5. Wire `syncPlacementConnectors` into every native family placement and geometry-edit path, then add manufacturer drawing evidence and guided mapping.
+5. Extend connector lifecycle synchronization to external placement hosts and add manufacturer drawing evidence with guided parameter/port mapping.
 6. Revit 2020 adapter proof-of-concept, then version-specific adapters and reopen verification.
