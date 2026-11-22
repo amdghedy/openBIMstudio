@@ -201,7 +201,7 @@ function ensureReaderWorker(): Worker {
 }
 
 /** Read a DWG through the isolated reader worker; converts to a DxfDocument. */
-export async function readDwg(file: File): Promise<{ doc: DxfDocument; summary: string }> {
+export async function readDwg(file: File, opts: ReadCadOptions = {}): Promise<{ doc: DxfDocument; summary: string }> {
   assertFileAllowed("dwg", file.name, file.size, await readHead(file, 32));
   const bytes = await file.arrayBuffer();
   const id = ++nextParseId;
@@ -216,7 +216,7 @@ export async function readDwg(file: File): Promise<{ doc: DxfDocument; summary: 
       }, DWG_START_BACKSTOP_MS);
       pendingParses.set(id, { kind: "parse", resolve: resolve as (r: DwgParseSuccess | DwgThumbSuccess) => void, reject, timer, fileName: file.name });
       try {
-        worker.postMessage({ id, kind: "parse", bytes, fileName: file.name } satisfies import("./dwg-reader-protocol").DwgParseRequest, [bytes]);
+        worker.postMessage({ id, kind: "parse", bytes, fileName: file.name, ...(opts.nativeBlocks ? { nativeBlocks: true } : {}) } satisfies import("./dwg-reader-protocol").DwgParseRequest, [bytes]);
       } catch (e) {
         pendingParses.delete(id);
         clearTimeout(timer);
@@ -266,19 +266,24 @@ export async function readDwgThumbnail(file: File): Promise<DwgThumbSuccess> {
   return result;
 }
 
-export async function readCadFile(file: File): Promise<{ doc: DxfDocument; summary: string; format: "dxf" | "dwg" }> {
+export interface ReadCadOptions {
+  /** Keep block references native (INSERT entities + `doc.blocks`) instead of expanding them (editor open path). */
+  nativeBlocks?: boolean;
+}
+
+export async function readCadFile(file: File, opts: ReadCadOptions = {}): Promise<{ doc: DxfDocument; summary: string; format: "dxf" | "dwg" }> {
   const e = ext(file.name);
   // .bak and .sv$ are DWG drawing backup / autosave files — same DWG
   // container, so native CAD opens them directly ("recover from backup").
   const isDwg = e === "dwg" || e === "bak" || e === "sv$";
   if (isDwg) {
-    const r = await readDwg(file);
+    const r = await readDwg(file, opts);
     const suffix = e === "dwg" ? "" : ` — recovered from DWG ${e === "bak" ? "backup" : "autosave"} (.${e})`;
     return { ...r, summary: `${r.summary}${suffix}`, format: "dwg" };
   }
   if (e === "dxf") {
     assertFileAllowed("dxf", file.name, file.size, await readHead(file, 256));
-    const doc = parseDxf(await file.text());
+    const doc = parseDxf(await file.text(), { nativeBlocks: opts.nativeBlocks === true });
     const skipped = doc.skipped
       ? Object.entries(doc.skipped).map(([k, v]) => `${v}×${k}`).join(", ") : "";
     const summary = `${doc.entities.length} drawable entities on ${doc.layers.length} layers` +

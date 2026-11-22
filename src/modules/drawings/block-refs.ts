@@ -221,7 +221,7 @@ const insertSig = (i: DxfInsert): string =>
  * An unbound reference resolves to nothing (callers fall back to the insertion point).
  */
 export function resolvedOf(ins: DxfInsert): DxfEntity[] {
-  const table = boundTable.get(ins);
+  const table = blocksOf(ins);
   if (!table) return [];
   const rev = revisions.get(table) ?? 0;
   const sig = insertSig(ins);
@@ -232,6 +232,15 @@ export function resolvedOf(ins: DxfInsert): DxfEntity[] {
   return ents;
 }
 
+let activeTable: BlockTable | undefined;
+/**
+ * The block table of the drawing currently shown. A reference that was copied, moved or pasted is a new object
+ * that was never bound, so it falls back to this table instead of silently resolving to nothing.
+ */
+export function setActiveBlocks(blocks: BlockTable | undefined): void {
+  activeTable = blocks;
+}
+
 export function blocksOf(ins: DxfInsert): BlockTable | undefined {
-  return boundTable.get(ins);
+  return boundTable.get(ins) ?? activeTable;
 }

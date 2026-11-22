@@ -14,6 +14,8 @@
  * /cad-engine/, in Node tests callers can instantiate from a file path.
  */
 import type {
+  DxfAttDef,
+  DxfBlockDef,
   DxfDocument,
   DxfEntity,
   DxfHatch,
@@ -40,6 +42,7 @@ import { aciToRgb } from "./aci";
 import type { MlineStyle } from "./acad-extra-entities";
 import { convertHelix, convertMesh, convertPolyface, convertPolygonMesh, convertSolidWire } from "./acad-solid-entities";
 import { attachNative } from "./native-curves";
+import { bindDocumentBlocks } from "./block-refs";
 
 type Any = Record<string, any>;
 
@@ -374,6 +377,7 @@ export async function exportDxfToDwg(dxf: string): Promise<Uint8Array> {
 export async function parseWithAcadEngine(
   bytes: Uint8Array,
   fileName: string,
+  opts: { nativeBlocks?: boolean } = {},
 ): Promise<AcadParseResult | null> {
   const inst = await loadAcadEngine();
   if (!inst) return null;
@@ -397,7 +401,7 @@ export async function parseWithAcadEngine(
         stats: null,
       };
     }
-    const doc = mapDocument(json.document ?? {}, json.format === "dwg" ? "dwg" : "dxf");
+    const doc = mapDocument(json.document ?? {}, json.format === "dwg" ? "dwg" : "dxf", opts);
     const stats = (json.stats ?? null) as AcadStats | null;
     const entityCount = doc.entities.length;
     const ver = String(stats?.sourceVersion ?? json.document?.version ?? "");
@@ -518,6 +522,10 @@ interface Ctx {
   mlineStyles?: Map<string, MlineStyle>;
   /** ByBlock resolution for the INSERT being expanded (innermost last). */
   inherit?: BlockInherit;
+  /** Native block mode: INSERT stays a reference to a definition in `DxfDocument.blocks` instead of being expanded. */
+  native?: boolean;
+  /** Block names referenced by native INSERTs (drives which definitions are emitted). */
+  usedBlocks?: Set<string>;
 }
 
 /** Expand a block's entities with ByBlock colour / linetype / lineweight taken from the INSERT's own (resolved) properties. */
@@ -766,6 +774,26 @@ function convertInsert(
 ): DxfEntity[] {
   const name = String(e.block ?? "");
   const blk = cx.blocks.get(name);
+  if (cx.native && blk) {
+    cx.usedBlocks?.add(name);
+    const sx = Number(e.xScale ?? 1), sy = Number(e.yScale ?? 1);
+    const ref: DxfEntity = { ...c, type: "INSERT", name, position: pt(e.position) };
+    if (sx !== 1 || sy !== 1) ref.scale = { x: sx || 1, y: sy || 1, z: Number(e.zScale ?? 1) || 1 };
+    const rot = Number(e.rotation ?? 0) * DEG;
+    if (rot) ref.rotation = rot;
+    const cols = Math.max(1, Math.round(Number(e.colCount ?? 1))), rows = Math.max(1, Math.round(Number(e.rowCount ?? 1)));
+    if (cols > 1 || rows > 1) {
+      ref.columns = cols; ref.rows = rows;
+      ref.columnSpacing = Number(e.colSpacing ?? 0); ref.rowSpacing = Number(e.rowSpacing ?? 0);
+    }
+    const atts = ((e.attributes ?? []) as Any[]).map((a) => ({
+      tag: String(a.tag ?? ""), value: String(a.value ?? ""), position: pt(a.position),
+      height: Number(a.height ?? 2.5) || 2.5, rotation: Number(a.rotation ?? 0) * DEG,
+      ...(a.invisible ? { invisible: true } : {}),
+    }));
+    if (atts.length) ref.attributes = atts;
+    return [ref];
+  }
   if (!blk || depth >= 8) {
     cx.skip(blk ? "INSERT (too deeply nested)" : `INSERT (missing block ${name})`);
     return [];
@@ -937,11 +965,13 @@ function hatchOf(e: Any, cx: Ctx): DxfHatch | null {
 }
 
 /** Map the whole engine document onto the platform model. */
-export function mapDocument(raw: Any, format: "dwg" | "dxf"): DxfDocument {
+export function mapDocument(raw: Any, format: "dwg" | "dxf", opts: { nativeBlocks?: boolean } = {}): DxfDocument {
   const cx: Ctx = {
     byHandle: new Map(),
     blocks: new Map(),
     skip: () => {},
+    native: opts.nativeBlocks === true,
+    usedBlocks: new Set(),
   };
   cx.mlineStyles = new Map();
   for (const ms of (Array.isArray(raw.mlineStyles) ? raw.mlineStyles : []) as Any[]) {
@@ -1049,6 +1079,38 @@ export function mapDocument(raw: Any, format: "dwg" | "dxf"): DxfDocument {
     entities,
     sourceFormat: format === "dwg" ? "dwg" : "dxf",
   };
+  if (cx.native) {
+    // Definitions once, in the block table: every named block plus anonymous ones that a reference uses.
+    // (Done after layouts + model space so every referenced anonymous block is known.)
+    const blockTable: Record<string, DxfBlockDef> = {};
+    const emitted = new Set<string>();
+    const emit = (name: string): void => {
+      if (emitted.has(name)) return;
+      emitted.add(name);
+      const blk = cx.blocks.get(name);
+      if (!blk) return;
+      const attdefs: DxfAttDef[] = [];
+      const body: DxfEntity[] = [];
+      for (const ent of blk.entities) {
+        if (ent?.type === "ATTDEF") {
+          attdefs.push({
+            tag: String(ent.tag ?? ""), prompt: String(ent.prompt ?? ent.tag ?? ""), defaultValue: String(ent.value ?? ""),
+            position: pt(ent.position), height: Number(ent.height ?? 2.5) || 2.5, rotation: Number(ent.rotation ?? 0) * DEG,
+            ...(ent.layer ? { layer: String(ent.layer) } : {}), ...(ent.invisible ? { invisible: true } : {}), ...(ent.constant ? { constant: true } : {}),
+          });
+          continue;
+        }
+        const before = new Set(cx.usedBlocks);
+        for (const o of convertEntity(ent, cx, 1, null)) body.push(o);
+        for (const n of cx.usedBlocks ?? []) if (!before.has(n)) emit(n);
+      }
+      blockTable[name] = { name, base: blk.base, entities: body, attdefs };
+    };
+    for (const l of layouts) for (const e of l.entities) if (e.type === "INSERT") cx.usedBlocks?.add(e.name);
+    for (const name of cx.blocks.keys()) if (!name.startsWith("*")) emit(name);
+    for (const name of [...(cx.usedBlocks ?? [])]) emit(name);
+    if (Object.keys(blockTable).length) { doc.blocks = blockTable; bindDocumentBlocks(doc); }
+  }
 
   const linetypes: Record<string, number[]> = {};
   for (const lt of (raw.linetypes ?? []) as Any[]) {

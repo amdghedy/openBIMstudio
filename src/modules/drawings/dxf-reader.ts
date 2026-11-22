@@ -23,7 +23,7 @@ import {
   insUnitsToUnits, transformEntity, flipEntityX, isMirroredOcs, type InsertXform,
 } from "./dxf-geometry";
 import { attachNative } from "./native-curves";
-import { resolveInsert } from "./block-refs";
+import { bindDocumentBlocks, resolveInsert } from "./block-refs";
 
 /** IMAGEDEF handle -> file path, filled per parse (parsing is synchronous). */
 let imageDefs = new Map<string, string>();
@@ -645,10 +645,9 @@ export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocume
     dimStyleTable: Object.keys(dimStyleTable).length ? dimStyleTable : undefined,
     skipped: Object.keys(skipped).length ? skipped : undefined,
   };
-  // PE-20: the document model is schema-gated at the parse boundary. The
-  // reader coerces hostile numbers to finite defaults, so a failure here
-  // means the reader itself misbehaved — it must throw, never hand a
-  // malformed document to the scene.
+  // Native references resolve lazily through the document's own block table.
+  if (doc.blocks) bindDocumentBlocks(doc);
+  // PE-20: the document model is schema-gated at the parse boundary.
   assertValidDxfDocument(doc, "DXF document");
   return doc;
 }

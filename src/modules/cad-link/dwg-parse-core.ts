@@ -131,7 +131,7 @@ async function getReader(): Promise<{ lib: Any; FileType: Any }> {
  * linetypes and block relationships are preserved by the converter exactly as
  * before — only the execution context changed (worker instead of main thread).
  */
-export async function parseDwgBytes(buffer: ArrayBuffer, fileName: string): Promise<DwgParseResult> {
+export async function parseDwgBytes(buffer: ArrayBuffer, fileName: string, opts: { nativeBlocks?: boolean } = {}): Promise<DwgParseResult> {
   // Total worker-turn budget: wasm read + JS conversion must finish before the
   // main-thread parse timeout (DWG_PARSE_TIMEOUT_MS = 120s) terminates the worker.
   const t0 = Date.now();
@@ -149,7 +149,7 @@ export async function parseDwgBytes(buffer: ArrayBuffer, fileName: string): Prom
   // full entity coverage and returns structured read statistics.
   let engineWhy = "";
   try {
-    const acad = await parseWithAcadEngine(bytes, fileName);
+    const acad = await parseWithAcadEngine(bytes, fileName, { nativeBlocks: opts.nativeBlocks === true });
     if (acad && acad.entityCount > 0) {
       return {
         doc: acad.doc,
