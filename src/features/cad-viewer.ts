@@ -47,6 +47,7 @@ import { resolveDblClick } from "../shell/ribbon-collapse";
 import { sanitizeSessionUi, sessionUiSignature, hiddenEntityIndexes, sanitizeHiddenEntities, type SessionUi, type SessionHiddenEntities } from "../modules/cad-viewer/session-state";
 import * as M from "../modules/cad-viewer/viewer-math";
 import * as X from "../modules/cad-viewer/modify-math";
+import { bindDocumentBlocks, resolvedOf } from "../modules/drawings/block-refs";
 import * as AcadParity from "../modules/cad-viewer/acad-parity"
 import {
   centerMarkEntities,
@@ -1973,9 +1974,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   const inv = () => cmode === "invert";
   const fg = () => (bg === "white" || inv() ? 0x000000 : 0xffffff);
-  const visible = (e: DxfEntity) => !hidden.has(e.layer) && !hiddenEntities.has(e) && (typeFilter.size === 0 || typeFilter.has(e.type));
+  const visible = (e: DxfEntity) => !e.invisible && !hidden.has(e.layer) && !hiddenEntities.has(e);
   const shown = (e: DxfEntity) =>
-    visible(e) && !(e.type === "TEXT" && !showText) && !(e.type === "LWPOLYLINE" && e.hatch && !showHatch);
+    visible(e) && (typeFilter.size === 0 || typeFilter.has(e.type)) &&
+    !(e.type === "TEXT" && !showText) && !(e.type === "LWPOLYLINE" && e.hatch && !showHatch);
   const layerOf = (n: string) => doc?.layers.find((l) => l.name === n);
 
   function colorOf(e: DxfEntity): string {
@@ -2092,6 +2094,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const P = (x: number, y: number) => M.worldToScreen(v, x, y);
     c.beginPath();
     switch (e.type) {
+      case "INSERT": {
+        const children = resolvedOf(e);
+        if (children.length) {
+          // Draw as a single selectable object; active canvas style is used for selection/highlight overlays.
+          for (const child of children) drawEntity(c, child, v, flipY);
+        } else {
+          // Keep missing references discoverable rather than silently hiding them.
+          const p = P(e.position.x, e.position.y);
+          c.moveTo(p.x - 4, p.y); c.lineTo(p.x + 4, p.y);
+          c.moveTo(p.x, p.y - 4); c.lineTo(p.x, p.y + 4);
+          c.stroke();
+        }
+        break;
+      }
       case "LINE": {
         const a = P(e.start.x, e.start.y),
           b = P(e.end.x, e.end.y);
@@ -2349,7 +2365,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   ): void {
     const paintAt = (i: number): void => {
       const e = list[i];
-      if (!e || !shown(e) || (skipSel && sel.has(i))) return;
+      if (!e || (skipSel && sel.has(i))) return;
+      const blockChildren = e.type === "INSERT" ? resolvedOf(e) : null;
+      const showBlockChild = (child: DxfEntity): boolean =>
+        visible(child) &&
+        !(child.type === "TEXT" && !showText) &&
+        !(child.type === "LWPOLYLINE" && child.hatch && !showHatch) &&
+        (typeFilter.size === 0 || typeFilter.has("INSERT") || typeFilter.has(child.type));
+      const blockPassesFilter = blockChildren === null || typeFilter.size === 0 ||
+        typeFilter.has("INSERT") || blockChildren.some(showBlockChild);
+      if (blockChildren === null ? !shown(e) : (!visible(e) || !blockPassesFilter)) return;
       // The viewport query has already culled ordinary geometry. Construction
       // lines are deliberately included by queryIndexBox and clipped per view.
       if (ix && e.type !== "RAY" && e.type !== "XLINE") {
@@ -2357,18 +2382,32 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         if (!bb) return;
         if (
           e.type !== "POINT" &&
+          e.type !== "INSERT" &&
           (bb.maxX - bb.minX) * v.scale < 0.4 &&
           (bb.maxY - bb.minY) * v.scale < 0.4
         ) return;
       }
-      const col = colorOf(e);
-      c.strokeStyle = col;
-      c.fillStyle = col;
-      c.setLineDash(dashFor(e, v));
-      c.lineWidth = lwtOn && !(e.type === "LWPOLYLINE" && e.hatch) ? lineweightPxFor(e) : lwtOn ? lw : 1;
-      c.globalAlpha = alphaOf(e);
-      drawEntity(c, e, v);
-      c.globalAlpha = 1;
+      const paintStyled = (item: DxfEntity, inheritedAlpha = 1): void => {
+        c.strokeStyle = colorOf(item);
+        c.fillStyle = colorOf(item);
+        c.setLineDash(dashFor(item, v));
+        c.lineWidth = lwtOn && !(item.type === "LWPOLYLINE" && item.hatch) ? lineweightPxFor(item) : lwtOn ? lw : 1;
+        c.globalAlpha = alphaOf(item) * inheritedAlpha;
+        drawEntity(c, item, v);
+        c.globalAlpha = 1;
+      };
+      if (blockChildren?.length) {
+        const parentAlpha = alphaOf(e);
+        for (const child of blockChildren) {
+          if (!showBlockChild(child)) continue;
+          const childBox = M.entityBBox(child);
+          if (child.type !== "RAY" && child.type !== "XLINE" &&
+            (childBox.maxX < cull.minX || childBox.minX > cull.maxX || childBox.maxY < cull.minY || childBox.minY > cull.maxY)) continue;
+          paintStyled(child, parentAlpha);
+        }
+      } else {
+        paintStyled(e);
+      }
     };
     if (ix) {
       for (const i of M.queryIndexBox(ix, list, cull)) paintAt(i);
@@ -5539,8 +5578,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       1000,
     );
     try {
-      const r = await readCadFile(file);
+      const r = await readCadFile(file, { nativeBlocks: /\.dxf$/i.test(file.name) });
       doc = r.doc;
+      bindDocumentBlocks(doc);
       name = file.name;
       drawingClock = AcadParity.createClock();
       cadGroups.clear();
@@ -12468,6 +12508,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const sig = (e: DxfEntity): string => {
       const f = (v: number): string => v.toFixed(6);
       switch (e.type) {
+        case "INSERT":
+          return `I|${e.layer}|${e.name}|${f(e.position.x)},${f(e.position.y)}|${f(e.scale?.x ?? 1)},${f(e.scale?.y ?? 1)}|${f(e.rotation ?? 0)}`;
         case "LINE":
           return `L|${e.layer}|${f(e.start.x)},${f(e.start.y)}|${f(e.end.x)},${f(e.end.y)}`;
         case "CIRCLE":

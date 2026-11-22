@@ -48,9 +48,9 @@ npm run test:cad-dwg-export                      # LibreDWG cross-read of the DW
 | TEXT | **supported** | Height, rotation, alignment, width factor, oblique, mirroring, style |
 | MTEXT | **partial** | Text content, column width, line spacing, inline colour/bold/italic runs kept; exotic inline codes (columns, fields beyond the basics) are simplified to plain text |
 | ATTRIB | **supported** | Visible attributes become text; invisible ones are dropped |
-| ATTDEF | reported, not drawn | Placeholder definitions; the inserted ATTRIBs carry the values |
+| ATTDEF | **retained in native block definitions** | Constant attribute text is resolved for display where supported; editable prompts and the full attribute authoring workflow are not yet exposed in the editor. |
 | HATCH | **supported** | Solid and patterned fills with boundary loops; real pattern definitions read where present |
-| INSERT / MINSERT + nested BLOCKS | **supported** | Flattened to the drawing with full transforms (scale/rotation/mirror), nested blocks resolved; block *definitions* themselves are not kept as reusable blocks |
+| INSERT / MINSERT + nested BLOCKS | **native for the standalone ASCII-DXF editor path; compatibility readers still flatten** | The editor keeps the definition table and references, resolves nested geometry for display/pick/snap, and saves native BLOCK/INSERT records. The DWG reader remains flattened. |
 | DIMENSION | **partial** | Geometry is expanded from the entity's anonymous block (or computed natively when a third-party tool omitted it); measurement text and DIMSTYLE variables are read so dimensions can be restyled and re-measured natively. The DIMENSION entity itself is not re-exported as a native DIMENSION |
 | LEADER / MLEADER | **partial** | Leader polyline + arrowhead drawn; MLEADER content simplified |
 | IMAGE | **partial** | External raster is not embedded in the platform; the placement frame, diagonals and file name are drawn and the type is reported in `doc.skipped` |
@@ -77,7 +77,7 @@ npm run test:cad-dwg-export                      # LibreDWG cross-read of the DW
 | $INSUNITS, $LTSCALE, $EXTMIN/$EXTMAX | **supported** | Drawing units and precision of the written coordinates are exactly the document's values (no unit conversion is applied) |
 | First paper-space layout + viewports | **supported** | Written as paper-space entities (group 67) with viewport records |
 | Additional layouts | **partial** | Plain DXF save keeps the first sheet only (`layoutsNotSaved()` reports the count); the DWG conversion path (`allLayouts`) writes every sheet |
-| Blocks / INSERT | **not written** | Imported blocks stay flattened; the writer emits no BLOCK definitions for model content |
+| Blocks / INSERT | **written for native ASCII-DXF editor documents** | The writer emits BLOCK_RECORD/BLOCKS/INSERT plus attached attributes when `DxfDocument.blocks` is present; documents imported through legacy flat paths remain flattened. DWG conversion remains limited by its reader/writer engine path. |
 | DIMENSION entities | **not written** | Native dimensions export as their drawn geometry + text on their layer; they are not re-created as associative DIMENSION entities |
 | SPLINE / ELLIPSE as curves | **not written** | They exist in the document as polyline approximations only |
 | Entity types never imported (MLINE, TOLERANCE, …) | **not written** | Nothing that was not imported can be exported |
@@ -119,7 +119,7 @@ DWG import/export runs entirely locally; no file content leaves the machine.
 
 ## Known limits (summary)
 
-1. DXF/DWG export is a 2D subset: no block definitions, no native DIMENSION
+1. DXF/DWG export is a 2D subset: native BLOCK/INSERT on the ASCII-DXF editor path (DWG remains a subset), no native DIMENSION
    entities, no MTEXT records, no spline/ellipse curves on export.
 2. DWG export has never been opened in desktop CAD software; the independent
    evidence is the LibreDWG cross-read, and it covers the same 2D subset.
@@ -128,3 +128,14 @@ DWG import/export runs entirely locally; no file content leaves the machine.
    exactly which types and how many.
 5. DXF binary files are read through the acadrust engine path; the pure-TypeScript
    reader covers ASCII DXF.
+
+
+## Native BLOCK / INSERT behaviour in the standalone editor
+
+The standalone 2D Drawing Editor opts ASCII DXF files into the native block model: one definition is stored in
+`DxfDocument.blocks`, INSERT/MINSERT records remain references, and the DXF writer writes BLOCK_RECORD/BLOCKS/INSERT
+and attached attributes. Other `readCadFile` consumers still use the compatibility (flattened) parser default.
+
+This does **not** imply native DWG block preservation: DWG reader paths still flatten INSERTs today. The editor's
+browser-local BLOCK library also still places editable copies; native definition authoring/editing, complete BYBLOCK
+inheritance and dynamic-block behaviour are not yet wired. See `docs/engineering/CAD2D-GAP-AUDIT.md` for the milestone scope.
