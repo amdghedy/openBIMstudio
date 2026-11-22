@@ -39,7 +39,8 @@ milestone proves otherwise.
 | # | Milestone | Why this order | Status |
 |---|---|---|---|
 | M1 | Geometry fidelity: native SPLINE/ELLIPSE preserved through edit and save | Smallest change that stops silent data loss without touching the entity union | **Implemented (this PR)** |
-| M2 | Native block references: `INSERT` entity + `BlockTable` in `DxfDocument`, lazy expansion for render/pick/snap/bounds, EXPLODE, nested refs, ATTRIB/ATTDEF, lossless DXF read/write, migration of copy-based files | Foundation for XREF, counting, attributes and dynamic blocks | Planned |
+| M2a | Native block model: `INSERT` entity + `doc.blocks`, resolver with limits, bbox/pick/snap/index/transform support, ATTRIB/ATTDEF, DXF read (opt-in) and write, `flattenInserts` for legacy consumers | Foundation for XREF, counting, attributes and dynamic blocks | **Implemented (data model, DXF text path); not yet enabled in the editor** |
+| M2b | Editor integration: open drawings with native blocks, render, BLOCK/INSERT/EXPLODE/ATTEDIT commands, undo, DWG-engine reader | Needs M2a | Planned |
 | M3 | XREF on top of M2 (attach/overlay/reload/unload/detach, path resolution, clipping, compare) | Needs references, not merged copies | Planned |
 | M4 | Persistent constraint graph + iterative solver (coincident, parallel, perpendicular, tangent, H/V, equal, fixed, symmetric, dimensional) | Independent; can start after M2 | Planned |
 | M5 | MLINE / REGION / TABLE entities with real storage and writer support | Needs the entity union extension designed in M2 | Planned |
@@ -83,3 +84,40 @@ determinism, invalid input, a 60-link / 122-variable chain (≈65 ms, 6 iteratio
 DXF file — constraints live only in the model/JSON); arcs are modelled as centre+radius+end points but arc-angle
 consistency is not enforced; no ellipse/spline constraints; analytic Jacobians would be faster for very large sketches;
 no "drag while solving" API yet; solver not benchmarked beyond the chain above.
+## 5. M2a — native block references (data model and DXF path)
+
+**What exists**
+
+- `DxfInsert` entity and `DxfDocument.blocks` (`dxf-types.ts`). References name a definition; geometry is never copied.
+- `block-refs.ts`: `resolveInsert` (nested, MINSERT, attributes, constant ATTDEF, layer-0 inheritance), `explodeInsert`
+  (one level), `flattenInserts` (for consumers that only understand primitives), `unusedBlocks`, binding and a cache
+  (`bindDocumentBlocks`, `resolvedOf`, `touchBlocks`).
+- Hard limits: nesting 8, 250 000 resolved entities per call, MINSERT axes clamped to 500, cycles reported. Hostile
+  files cannot hang or exhaust memory.
+- Support in `entityBBox`, `distToEntity`, snap points (new `insertion` snap), `entitySignature`, spatial index,
+  translate / rotate / scale / mirror / stretch, OCS flip.
+- DXF reader (`parseDxf(text, { nativeBlocks: true })`) and writer (BLOCK_RECORD table, BLOCKS section, INSERT +
+  ATTRIB + SEQEND, ATTDEF). Reading with the default options is unchanged (flat copies, no `blocks`).
+- Because adding `INSERT` to the entity union makes TypeScript list every switch that must handle it, the compiler
+  checked the ten exhaustive switches in the CAD code; each now has an INSERT case.
+
+**Evidence**
+
+- `tests/cad-block-refs.test.cjs`: 21 checks, including equivalence with the legacy expanding reader across
+  rotation, non-uniform scale, mirror, nesting and MINSERT; cycles, depth and MINSERT bombs; hostile values; three
+  write/read cycles stable.
+- `bench/block-refs-bench.cjs` (20 000 references × 60 entities = 1.2 M primitives): read 584 ms / ~6 MB native vs
+  1122 ms / ~255 MB copied; write 30 ms vs 6005 ms.
+
+**Limits (not hidden)**
+
+- **The editor does not use it yet.** `openFile` still reads flat copies; M2b switches it on together with rendering,
+  BLOCK/INSERT/EXPLODE/ATTEDIT commands and undo. Until then no user-visible behaviour changed.
+- The DWG-engine reader (`acad-engine.ts`) and the LibreDWG path still expand blocks; native DWG blocks are M2b.
+- A nested reference under a non-uniform parent scale with a rotated child is approximated (the composite is not a
+  rotation × scale).
+- BYBLOCK colour/linetype are not modelled (inherited as BYLAYER, as before).
+- Dynamic-block parameters/actions are not interpreted; anonymous `*U` definitions are stored and resolve as ordinary
+  blocks.
+- `transformEntity` flattens spline/ellipse definitions inside block bodies to their tessellation.
+- Not validated against a desktop CAD application. An independent ezdxf check of written files runs in CI only.

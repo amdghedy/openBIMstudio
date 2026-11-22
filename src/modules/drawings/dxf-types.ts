@@ -179,7 +179,66 @@ export type DxfEntity =
   | (DxfEntityBase & {
       type: "POINT";
       position: DxfPoint;
-    });
+    })
+  | DxfInsert;
+
+/** Attribute definition inside a block (DXF ATTDEF). */
+export interface DxfAttDef {
+  tag: string;
+  prompt: string;
+  defaultValue: string;
+  position: DxfPoint;
+  height: number;
+  rotation?: number;
+  layer?: string;
+  /** DXF group 70 flags, kept individually. */
+  invisible?: boolean;
+  constant?: boolean;
+  verify?: boolean;
+  preset?: boolean;
+}
+
+/** Attribute value carried by one block reference (DXF ATTRIB). Position is in the host (insert's parent) space. */
+export interface DxfAttrib {
+  tag: string;
+  value: string;
+  position: DxfPoint;
+  height: number;
+  rotation?: number;
+  layer?: string;
+  invisible?: boolean;
+}
+
+/** Block definition: reusable geometry referenced by name from any number of INSERTs. */
+export interface DxfBlockDef {
+  name: string;
+  /** Block base point (BLOCK group 10): maps to the insertion point. */
+  base: DxfPoint;
+  /** Definition entities in block space. Nested block references stay INSERT entities (not copied). */
+  entities: DxfEntity[];
+  attdefs: DxfAttDef[];
+  description?: string;
+}
+
+/**
+ * Native block reference. Geometry is NOT copied: it is looked up by `name` in `DxfDocument.blocks` and
+ * resolved on demand (see block-refs.ts), so editing a block definition updates every reference.
+ */
+export type DxfInsert = DxfEntityBase & {
+  type: "INSERT";
+  name: string;
+  position: DxfPoint;
+  /** Per-axis scale; undefined = 1. Negative values mirror. */
+  scale?: { x: number; y: number; z?: number };
+  /** Rotation in degrees (counter-clockwise). */
+  rotation?: number;
+  /** MINSERT array (>1 means an array of references). */
+  columns?: number;
+  rows?: number;
+  columnSpacing?: number;
+  rowSpacing?: number;
+  attributes?: DxfAttrib[];
+};
 
 /** A paper-space viewport showing a window of model space. */
 export interface DxfViewport {
@@ -269,4 +328,9 @@ export interface DxfDocument {
   savedView?: { cx: number; cy: number; height: number; twist?: number };
   /** Entity types that were present but not drawn, with counts. */
   skipped?: Record<string, number>;
+  /**
+   * Block table (name -> definition). Present only when the document was read with native blocks, in
+   * which case block references are INSERT entities in `entities`/layouts instead of expanded copies.
+   */
+  blocks?: Record<string, DxfBlockDef>;
 }

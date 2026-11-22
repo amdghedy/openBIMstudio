@@ -12573,6 +12573,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const sig = (e: DxfEntity): string => {
       const f = (v: number): string => v.toFixed(6);
       switch (e.type) {
+        case "INSERT":
+          return `I|${e.layer}|${e.name}|${f(e.position.x)},${f(e.position.y)}|${f(e.scale?.x ?? 1)},${f(e.scale?.y ?? 1)}|${f(e.rotation ?? 0)}`;
         case "LINE":
           return `L|${e.layer}|${f(e.start.x)},${f(e.start.y)}|${f(e.end.x)},${f(e.end.y)}`;
         case "CIRCLE":
