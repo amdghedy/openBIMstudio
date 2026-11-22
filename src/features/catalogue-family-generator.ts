@@ -8,6 +8,7 @@
  */
 import { ctx } from "../core/context";
 import { buildCatalogueFamilyDefinition, parseDelimitedCatalogue, validateCatalogueRows, type CatalogueRow } from "../modules/families/catalogue-intake";
+import { extractPdfCatalogue } from "../modules/families/pdf-catalogue-extractor";
 
 type Any = Record<string, any>;
 let panel: HTMLDivElement | null = null;
@@ -61,7 +62,7 @@ function renderRows(): void {
   const host = panel?.querySelector<HTMLElement>("[data-rows]");
   if (!host) return;
   if (!rows.length) { host.innerHTML = '<p class="cfg-muted">No product rows loaded yet. Import a CSV/TSV catalogue to begin.</p>'; return; }
-  const keys: (keyof CatalogueRow)[] = ["model","manufacturer","productCode","width","depth","height","airflow","staticPressure","power","voltage"];
+  const keys: (keyof CatalogueRow)[] = ["model","manufacturer","productCode","width","depth","height","airflow","staticPressure","power","voltage","sourcePage"];
   host.innerHTML = `<div class="cfg-table-wrap"><table><thead><tr>${keys.map((k) => `<th>${escapeHtml(k)}</th>`).join("")}</tr></thead><tbody>${rows.map((r,i) => `<tr>${keys.map((k) => `<td>${escapeHtml(r[k] ?? "—")}</td>`).join("")}</tr>`).join("")}</tbody></table></div><p class="cfg-muted">${rows.length} product type(s) loaded from ${escapeHtml(sourceName)}. Review the source values before creating a family.</p>`;
 }
 function buildPanel(): void {
@@ -97,8 +98,25 @@ async function readCatalogue(file?: File): Promise<void> {
   const ext = file.name.split(".").pop()?.toLowerCase();
   if (!["csv","tsv","txt","json"].includes(ext ?? "")) { status("This first delivery supports CSV, TSV, TXT and JSON. PDF/DWG/STEP import adapters are planned, not silently simulated.", "warn"); return; }
   try {
-    const raw = await file.text();
     let parsed: { rows: CatalogueRow[]; errors: string[] };
+    if (ext === "pdf") {
+      const result = await extractPdfCatalogue(file, {
+        useLocalVisionOcr: panel?.querySelector<HTMLInputElement>("[data-ocr]")?.checked ?? false,
+        onProgress: (current, total, phase) => status(`${phase === "ocr" ? "Local OCR" : "Reading PDF"}: page ${current} of ${total}…`),
+      });
+      parsed = { rows: result.rows, errors: result.warnings };
+      if (result.scannedPages.length && !result.ocrPages.length) parsed.errors.push(`Scanned pages detected: ${result.scannedPages.join(", ")}. Enable local vision OCR to extract them.`);
+      if (result.pageCount > result.processedPages) parsed.errors.push(`Only the first ${result.processedPages} of ${result.pageCount} pages were processed.`);
+      sourceName = file.name;
+      rows = parsed.rows;
+      renderRows();
+      const issues = [...parsed.errors, ...validateCatalogueRows(rows)];
+      const qa = panel?.querySelector<HTMLElement>("[data-qa]");
+      if (qa) qa.textContent = issues.length ? issues.join(" ") : `Extracted ${rows.length} product type(s) from ${result.textPages.length} text page(s) and ${result.ocrPages.length} OCR page(s). Verify all source values and units.`;
+      status(`PDF processed: ${result.processedPages}/${result.pageCount} pages; ${rows.length} product type(s) extracted; ${result.scannedPages.length} scanned page(s).`, rows.length ? "success" : "warn");
+      return;
+    }
+    const raw = await file.text();
     if (ext === "json") {
       const value = JSON.parse(raw);
       const items = Array.isArray(value) ? value : value.products;
