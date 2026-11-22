@@ -69,7 +69,7 @@ function check(name, fn) {
       const r = backupBeforeWrite(f2);
       assert.strictEqual(r.error, null, `snapshot ${i} must succeed`);
       assert.ok(r.created, `snapshot ${i} must be created`);
-      assert.match(path.basename(r.target), /^rooms\.json\.\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.[0-9a-f]{8}\.bak$/);
+      assert.match(path.basename(r.target), /^rooms\.json\.\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.\d{6}\.[0-9a-f]{8}\.bak$/);
       targets.add(r.target);
     }
     assert.strictEqual(targets.size, 20, "20 rapid snapshots must all have distinct names (same-millisecond safe)");

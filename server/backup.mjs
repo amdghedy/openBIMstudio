@@ -40,9 +40,10 @@ export function readJsonWithRecovery(filePath, fallback) {
  * (`projects.json`, `rooms.json`) — issue #91.
  *
  * Contract:
- * - Names are timestamped AND collision-safe: an ISO stamp plus a random
- *   8-hex suffix, so two backups taken in the same millisecond never
- *   collide (`<base>.<stamp>.<uuid8>.bak`).
+ * - Names are timestamped AND collision-safe: an ISO stamp, a 6-digit
+ *   per-process sequence, plus a random 8-hex suffix, so two backups
+ *   taken in the same millisecond never collide and sort deterministically
+ *   (`<base>.<stamp>.<seq6>.<uuid8>.bak`).
  * - Retention is bounded: at most BACKUP_KEEP (5) backups per file, pruned
  *   whenever a new verified backup is taken.
  * - A backup only counts as recoverable after read-back verification: the
