@@ -5,7 +5,7 @@
 The current experimental delivery adds a BIM Family Generator launcher and local catalogue intake workflow integrated with the existing project-scoped family service.
 
 **Currently implemented**
-- XLSX (first worksheet), CSV, TSV, TXT-delimited and JSON product catalogue intake (40 MB per-file limit).
+- XLSX (selectable worksheet), CSV, TSV, TXT-delimited and JSON product catalogue intake (40 MB per-file limit).
 - PDF selectable-text extraction using the bundled PDF.js legacy build, with page-level provenance.
 - Table reconstruction from recognized model/manufacturer/dimension/performance column headings.
 - Image-only page detection and optional local OCR through the configured Ollama vision model (LLaVA, Qwen2.5-VL or another image-capable model); no cloud OCR path is used.
@@ -33,7 +33,7 @@ The UI must continue to label these as unavailable/planned until implemented and
 ## Workflow
 
 1. Open **BIM Family Generator** using the BFG launcher or Command Palette.
-2. Import an XLSX, PDF, CSV/TSV/TXT or JSON product catalogue. XLSX currently reads the first worksheet and cached cell values; formulas are not recalculated.
+2. Import an XLSX, PDF, CSV/TSV/TXT or JSON product catalogue. XLSX lets users select a worksheet and retains source sheet/row identifiers; cached cell values are read and formulas are not recalculated.
 3. For a scanned PDF, enable local vision OCR and select a vision-capable Ollama model in AI Settings. PDF page images are sent only to the configured local/private Ollama endpoint.
 5. Review extracted product rows, source-page numbers and QA warnings.
 6. Set the family name, category and source dimension unit.
@@ -43,7 +43,7 @@ The UI must continue to label these as unavailable/planned until implemented and
 
 ## Supported catalogue columns
 
-XLSX, CSV/TSV and PDF table readers recognize model/model number/type, manufacturer/brand, product code/SKU, width, depth/length, height, airflow/flow, static pressure/pressure, power and voltage. PDF table extraction relies on selectable text and recognizable column positions. OCR prompts the local vision model for the same canonical fields; unknown fields and source-page evidence remain attached to extracted rows where available.
+XLSX, CSV/TSV and PDF table readers recognize model/model number/type, manufacturer/brand, product code/SKU, overall width/depth/height, airflow rate, static pressure/ESP, rated power and supply voltage aliases. PDF table extraction relies on selectable text and recognizable column positions. OCR prompts the local vision model for the same canonical fields; unknown fields and source-page evidence remain attached to extracted rows where available.
 
 ## Engineering boundaries
 
