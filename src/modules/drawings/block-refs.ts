@@ -178,7 +178,7 @@ export function unusedBlocks(doc: DxfDocument): string[] {
   const stack: DxfEntity[] = [...doc.entities, ...(doc.layouts ?? []).flatMap((l) => l.entities)];
   while (stack.length) {
     const e = stack.pop()!;
-    if (e.type !== "INSERT") continue;
+    if (!e || e.type !== "INSERT") continue;
     const b = findBlock(blocks, e.name);
     if (!b || used.has(b.name)) continue;
     used.add(b.name);
@@ -202,7 +202,7 @@ export function bindInsert(ins: DxfInsert, blocks: BlockTable | undefined): void
 export function bindDocumentBlocks(doc: DxfDocument): void {
   const blocks = doc.blocks;
   if (!blocks) return;
-  const bind = (list: DxfEntity[]) => { for (const e of list) if (e.type === "INSERT") bindInsert(e, blocks); };
+  const bind = (list: DxfEntity[]) => { for (const e of list) if (e && e.type === "INSERT") bindInsert(e, blocks); };
   bind(doc.entities);
   for (const l of doc.layouts ?? []) bind(l.entities);
   for (const b of Object.values(blocks)) bind(b.entities);
