@@ -19,6 +19,9 @@ const bind = load.indexOf("bindDocumentBlocks(doc);");
 if (readerCall < 0 || docAssign < readerCall || bind < docAssign) throw new Error("ASCII DXF native read and document binding must happen before geometry indexing");
 if (!link.includes("nativeBlocks?: boolean") || !link.includes("parseDxf(await file.text(), options.nativeBlocks ? { nativeBlocks: true } : {})")) throw new Error("readCadFile nativeBlocks opt-in is missing");
 if (!viewer.includes('import { bindDocumentBlocks, resolvedOf } from "../modules/drawings/block-refs";')) throw new Error("CAD editor block resolver imports missing");
+if (!viewer.includes('const visible = (e: DxfEntity) => !e.invisible && !hidden.has(e.layer) && !hiddenEntities.has(e);') ||
+    !viewer.includes('visible(e) && (typeFilter.size === 0 || typeFilter.has(e.type))'))
+  throw new Error("Entity type filters must not hide an INSERT before filtering its resolved children");
 if (!viewer.includes('case "INSERT":') || !viewer.includes("const children = resolvedOf(e)")) throw new Error("Canvas drawEntity does not render a resolved INSERT");
 const p0=viewer.indexOf("function paintEntities("), paint=viewer.slice(p0,p0+7000);
 for (const s of ["const blockChildren = e.type === \"INSERT\" ? resolvedOf(e) : null","showBlockChild","paintStyled(child, parentAlpha)","M.entityBBox(child)"]) if (!paint.includes(s)) throw new Error("Block paint path missing: "+s);
