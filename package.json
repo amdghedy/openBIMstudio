@@ -90,6 +90,7 @@
     "test:file-import-hostile": "node tests/file-import-hostile.test.cjs",
     "test:step-preflight": "node tests/step-preflight.test.cjs",
     "test:import-timeout": "node tests/import-timeout.test.cjs",
+    "test:ifc-link-limits": "node tests/ifc-link-limits.test.cjs",
     "test:ifc-interop-report": "node tests/ifc-interop-report.test.cjs",
     "test:ifc-per-entity-report": "node tests/ifc-per-entity-report.test.cjs",
     "test:ifc-per-entity-roundtrip": "node tests/ifc-per-entity-roundtrip.test.cjs",

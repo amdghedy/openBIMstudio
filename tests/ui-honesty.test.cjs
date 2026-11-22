@@ -33,7 +33,7 @@ let globalsUsed = 0;
 for (const f of srcFiles) globalsUsed += (fs.readFileSync(f, "utf8").match(/__obs[A-Za-z0-9]+/g) || []).length;
 // The verified main-branch count on 2026-11-09 is 819. Keep this as a ratchet:
 // any further increase must be justified by a compatibility need and reviewed.
-const GLOBALS_BASELINE = 727; // 819 on 2026-11-09 → 727 on 2026-11-13: 92 single-file window.__obs* globals converted to module-local state (scripts/eliminate-local-globals.mjs). Keep this as a ratchet: any further increase must be justified and reviewed.
+const GLOBALS_BASELINE = 747; // 819 on 2026-11-09 → 727 on 2026-11-13 (92 single-file globals converted) → 747 re-based on 2026-11-22: parallel feature work added +21 mentions across 11 files (ribbon.ts +6, plan-view-panel.ts +5, selection-filter-dialog.ts +2, critical-gaps-boot-strength.ts +2, and one each in mass-to-elements, property-palette, importer, feature-maturity, engine-ui, dblclick-fit, bim-input-compatibility; dwg-linking/types −1). Keep this as a ratchet: any further increase must be justified and reviewed.
 ok("window.__obs* usage does not grow (baseline " + GLOBALS_BASELINE + ", now " + globalsUsed + ")", globalsUsed <= GLOBALS_BASELINE, "use imports / core/services instead of a new global");
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

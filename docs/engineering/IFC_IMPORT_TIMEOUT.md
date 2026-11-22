@@ -45,7 +45,7 @@ Grounded in measured conversion times on the reference VM
 | Bound | Default | Rule |
 |---|---|---|
 | Stall | 120 s | No `progressCallback` for this long → the conversion is stuck, not slow. Conversion streams chunks continuously, so two silent minutes is a hang by any measure. |
-| Total | auto-scaled | `min(30 min, max(5 min, 30 s × sizeMB))`. A 2.3 MB file gets 5 min (120× its measured 2.5 s); a 350 MB file — the largest the browser will attempt — gets 30 min (at the measured rate it needs ~6). |
+| Total | auto-scaled | `min(30 min, max(5 min, 30 s × sizeMB))`. A 2.3 MB file gets 5 min (120× its measured 2.5 s); a 550 MB file — the largest the browser will attempt by default — gets 30 min (at the measured rate it needs ~9). |
 
 Settings (`ifcSettings`, persisted in localStorage `toc.ifc.settings.v1`,
 same pattern as `browserSafeMaxMB`):
