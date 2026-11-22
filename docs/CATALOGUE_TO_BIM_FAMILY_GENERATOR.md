@@ -16,7 +16,8 @@ The current experimental delivery adds a BIM Family Generator launcher and local
 - Required-dimension completeness warnings.
 - Creation of a native OpenBIMstudio family definition using the existing family service, parameter schema, geometry engine and project persistence.
 - Type parameters for dimensions, manufacturer, product code, airflow, static pressure, power and voltage.
-- A dimension-driven box geometry template as a first authoring placeholder.
+- Explicit parametric box or cylinder geometry profiles when the catalogue provides a supported Geometry Profile / Product Geometry value; cylinder diameter is driven by Width and height by Height.
+- Multiple explicitly numbered MEP ports (Connector 1 ..., Connector 2 ..., etc.) with validation, coordinate conversion and family-level persistence when every product type shares the same port layout.
 - Explicit catalogue MEP port mapping when the source provides port origin, axis, domain, shape, nominal size, flow direction and system classification; definitions are stored in the existing family connector schema and displayed in the catalogue review table.
 
 **Not implemented yet**
@@ -26,6 +27,7 @@ The current experimental delivery adds a BIM Family Generator launcher and local
 - DWG/DXF/STEP/SAT geometry extraction.
 - Catalogue drawing-to-solid reconstruction.
 - Manufacturer-specific solid reconstruction and inferred connector placement. Connector definitions are accepted only when explicit port coordinates and axes are supplied; no port location is guessed.
+- Per-type connector layouts are not yet represented by the existing family schema. All catalogue types in one family must share identical port definitions.
 - Revit API companion add-in or native RFA export.
 - External manufacturer catalogue APIs.
 
@@ -44,13 +46,13 @@ The UI must continue to label these as unavailable/planned until implemented and
 
 ## Supported catalogue columns
 
-XLSX, CSV/TSV and PDF table readers recognize model/model number/type, manufacturer/brand, product code/SKU, overall width/depth/height, airflow rate, static pressure/ESP, rated power and supply voltage aliases. Explicit MEP connector columns can include Connector Name, Connector X/Y/Z, Direction X/Y/Z, Connector Domain, Connector Shape, Connector Diameter or Connector Width/Height, Flow Direction and System Classification. Port coordinates and nominal sizes use the selected dimension unit and are converted to metres; direction vectors are normalized. PDF table extraction relies on selectable text and recognizable column positions. OCR prompts the local vision model for the same canonical fields; unknown fields and source-page evidence remain attached to extracted rows where available.
+XLSX, CSV/TSV and PDF table readers recognize model/model number/type, manufacturer/brand, product code/SKU, overall width/depth/height, airflow rate, static pressure/ESP, rated power and supply voltage aliases. Geometry Profile / Product Geometry accepts explicit box or cylinder values. Explicit MEP connector columns can use unnumbered fields for one port or numbered groups such as Connector 1 Name, Connector 1 X/Y/Z, Connector 1 Direction X/Y/Z, Connector 1 Domain, Connector 1 Shape, Connector 1 Diameter or Connector 1 Width/Height, Flow Direction and System Classification; repeat for Connector 2, Connector 3, etc. Port coordinates and nominal sizes use the selected dimension unit and are converted to metres; direction vectors are normalized. PDF table extraction relies on selectable text and recognizable column positions. OCR prompts the local vision model for the same canonical fields; unknown fields and source-page evidence remain attached to extracted rows where available.
 
 ## Engineering boundaries
 
 - Dimensions are converted to metres for the existing family geometry parameter contract.
-- The generated geometry is a bounding-box template controlled by Width, Depth and Height. It is not a manufacturer-accurate solid.
-- Connector definitions are not inferred from airflow, dimensions or product imagery. The current family schema stores connectors at family level, so all product types in one imported family must have identical connector definitions. Multiple ports per product and type-specific connector layouts are not yet supported by this intake adapter; use the existing connector editor for richer port authoring.
+- The generated geometry supports explicit box and cylinder parametric primitives only. Cylinder profile treats Width as diameter and Height as axial length. These are generic primitives, not manufacturer-accurate solids.
+- Connector definitions are not inferred from airflow, dimensions or product imagery. Multiple explicitly numbered ports can be imported, but the current family schema stores connectors at family level, so all product types in one imported family must have identical connector definitions. Type-specific connector layouts are not yet supported; use the existing connector editor to refine the shared family layout.
 - Missing dimensions use a 1 m preview fallback only; QA explicitly flags the missing source values and users must correct them before relying on the geometry.
 - Text PDF parsing and page rendering run locally in the browser. Scanned page images are sent only to the user's configured local/private Ollama endpoint when OCR is explicitly enabled; no cloud OCR is used.
 - PDF OCR requires an image-capable Ollama model. A text-only or coding model may fail to return structured extraction data.
@@ -63,5 +65,5 @@ XLSX, CSV/TSV and PDF table readers recognize model/model number/type, manufactu
 2. Improve PDF layout reconstruction for rotated tables, merged headers, multi-column brochures and engineering unit inference.
 3. Parameter mapping UI with units, type/instance scope, GUID mapping and source confidence.
 4. Reuse the existing parametric feature tree for detailed product geometry templates.
-5. Extend catalogue connector intake to multiple named ports and type-specific connector layouts, then add an interactive placement editor with manufacturer drawing evidence.
+5. Extend the family schema and placement pipeline for type-specific connector layouts, then add manufacturer drawing evidence and a guided connector mapping editor.
 6. Revit 2020 adapter proof-of-concept, then version-specific adapters and reopen verification.
