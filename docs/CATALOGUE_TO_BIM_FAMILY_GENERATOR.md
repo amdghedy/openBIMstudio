@@ -2,10 +2,14 @@
 
 ## Current delivery status
 
-The first delivery adds a BIM Family Generator launcher and a local catalogue intake workflow integrated with the existing project-scoped family service.
+The current experimental delivery adds a BIM Family Generator launcher and local catalogue intake workflow integrated with the existing project-scoped family service.
 
 **Currently implemented**
-- CSV, TSV, TXT-delimited and JSON product catalogue intake (15 MB per-file limit).
+- CSV, TSV, TXT-delimited and JSON product catalogue intake (40 MB per-file limit).
+- PDF selectable-text extraction using the bundled PDF.js legacy build, with page-level provenance.
+- Table reconstruction from recognized model/manufacturer/dimension/performance column headings.
+- Image-only page detection and optional local OCR through the configured Ollama vision model (LLaVA, Qwen2.5-VL or another image-capable model); no cloud OCR path is used.
+- PDF page-count, file-size and extracted-text safety limits.
 - Quoted CSV fields and header aliases for common manufacturer catalogue columns.
 - Product rows and model variants review.
 - Explicit dimension unit selection (mm, cm, m) and conversion to metres for the current family geometry contract.
@@ -15,7 +19,8 @@ The first delivery adds a BIM Family Generator launcher and a local catalogue in
 - A dimension-driven box geometry template as a first authoring placeholder.
 
 **Not implemented yet**
-- PDF OCR, scanned drawing interpretation or AI extraction.
+- High-fidelity OCR of all catalogue layouts; the current local vision path is experimental and requires a vision-capable Ollama model.
+- OCR of pages containing selectable text but nonstandard or unrecognized table structures.
 - XLSX workbook parsing.
 - DWG/DXF/STEP/SAT geometry extraction.
 - Catalogue drawing-to-solid reconstruction.
@@ -28,7 +33,9 @@ The UI must continue to label these as unavailable/planned until implemented and
 ## Workflow
 
 1. Open **BIM Family Generator** using the BFG launcher or Command Palette.
-2. Import a CSV/TSV/TXT or JSON product catalogue.
+2. Import a PDF, CSV/TSV/TXT or JSON product catalogue.
+3. For a scanned PDF, enable local vision OCR and select a vision-capable Ollama model in AI Settings. PDF page images are sent only to the configured local/private Ollama endpoint.
+4. Review extracted product rows, source-page numbers and QA warnings.
 3. Review the extracted model rows and QA warnings.
 4. Set the family name, category and source dimension unit.
 5. Correct the source catalogue if required; missing dimensions are never invented.
@@ -37,14 +44,16 @@ The UI must continue to label these as unavailable/planned until implemented and
 
 ## Supported catalogue columns
 
-The CSV/TSV reader recognizes model/model number/type, manufacturer/brand, product code/SKU, width, depth/length, height, airflow/flow, static pressure/pressure, power and voltage. Unknown columns are ignored in this first slice and should remain in the original source file.
+CSV/TSV and PDF table readers recognize model/model number/type, manufacturer/brand, product code/SKU, width, depth/length, height, airflow/flow, static pressure/pressure, power and voltage. PDF table extraction relies on selectable text and recognizable column positions. OCR prompts the local vision model for the same canonical fields; unknown fields and source-page evidence remain attached to extracted rows where available.
 
 ## Engineering boundaries
 
 - Dimensions are converted to metres for the existing family geometry parameter contract.
 - The generated geometry is a bounding-box template controlled by Width, Depth and Height. It is not a manufacturer-accurate solid.
 - Missing dimensions use a 1 m preview fallback only; QA explicitly flags the missing source values and users must correct them before relying on the geometry.
-- The importer runs locally in the browser; no catalogue file is uploaded to a server by this feature.
+- Text PDF parsing and page rendering run locally in the browser. Scanned page images are sent only to the user's configured local/private Ollama endpoint when OCR is explicitly enabled; no cloud OCR is used.
+- PDF OCR requires an image-capable Ollama model. A text-only or coding model may fail to return structured extraction data.
+- OCR output is untrusted draft data. Source values, units, model identifiers and page evidence must be checked before family creation.
 - Native RFA generation requires a separate Windows Revit API adapter and a real Revit installation. Browser mesh export is not RFA export.
 
 ## Next implementation milestones
