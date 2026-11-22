@@ -379,7 +379,9 @@
     "test:mass-to-elements": "node tests/mass-to-elements.test.cjs",
     "test:family-migration": "node tests/family-migration.test.cjs",
     "test:modify-tab-completion": "node tests/modify-tab-completion.test.cjs",
-    "test:property-palette-type-selector": "node tests/property-palette-type-selector.test.cjs"
+    "test:property-palette-type-selector": "node tests/property-palette-type-selector.test.cjs",
+    "test:cad-block-refs": "node tests/cad-block-refs.test.cjs",
+    "test:cad-block-editor-integration": "node tests/cad-block-editor-integration.test.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",
