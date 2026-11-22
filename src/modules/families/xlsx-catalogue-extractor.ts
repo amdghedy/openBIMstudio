@@ -1,6 +1,6 @@
 /**
  * Local XLSX catalogue reader for the BIM Family Generator.
- * Reads the first visible worksheet from an OOXML workbook using the
+ * Reads the first worksheet from an OOXML workbook using the
  * repository's existing JSZip dependency. No upload or cloud conversion.
  */
 import JSZip from "jszip";
@@ -30,7 +30,7 @@ function sharedStrings(xml: string): string[] {
 }
 function cellValue(cell: string, strings: string[]): string {
   const type = cell.match(/\\bt="([^"]+)"/)?.[1];
-  if (type === "inlineStr") return [...cell.matchAll(/<t(?:\\s[^>]*)?>([\\s\\S]*?)</g)].map((m) => xmlText(m[1])).join("");
+  if (type === "inlineStr") return [...cell.matchAll(/<t(?:\\s[^>]*)?>([\\s\\S]*?)<\\/t>/g)].map((m) => xmlText(m[1])).join("");
   const value = tagValue(cell, "v");
   if (type === "s") return strings[Number(value)] ?? "";
   if (type === "b") return value === "1" ? "TRUE" : "FALSE";
