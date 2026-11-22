@@ -60,6 +60,393 @@
       }
     },
     {
+      "file": "extended/ifc2x3-classified.ifc",
+      "kind": "valid",
+      "schema": "IFC2X3",
+      "report": "extended/ifc2x3-classified.ifc.json",
+      "totalProducts": 6,
+      "totals": {
+        "preserved": 4,
+        "transformed": 2,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 66.7,
+        "degradedPct": 33.3,
+        "lostPct": 0
+      },
+      "definitions": 2,
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 22,
+        "globalIdsMatched": 6,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "extended/ifc2x3-mep-systems.ifc",
+      "kind": "valid",
+      "schema": "IFC2X3",
+      "report": "extended/ifc2x3-mep-systems.ifc.json",
+      "totalProducts": 11,
+      "totals": {
+        "preserved": 10,
+        "transformed": 1,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 90.9,
+        "degradedPct": 9.1,
+        "lostPct": 0
+      },
+      "definitions": 8,
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 47,
+        "globalIdsMatched": 11,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "extended/ifc2x3-multi-storey.ifc",
+      "kind": "valid",
+      "schema": "IFC2X3",
+      "report": "extended/ifc2x3-multi-storey.ifc.json",
+      "totalProducts": 19,
+      "totals": {
+        "preserved": 11,
+        "transformed": 8,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 57.9,
+        "degradedPct": 42.1,
+        "lostPct": 0
+      },
+      "definitions": 4,
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 78,
+        "globalIdsMatched": 19,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "extended/ifc2x3-single-room.ifc",
+      "kind": "valid",
+      "schema": "IFC2X3",
+      "report": "extended/ifc2x3-single-room.ifc.json",
+      "totalProducts": 9,
+      "totals": {
+        "preserved": 5,
+        "transformed": 4,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 55.6,
+        "degradedPct": 44.4,
+        "lostPct": 0
+      },
+      "definitions": 4,
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 37,
+        "globalIdsMatched": 9,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "extended/ifc2x3-structural-frame.ifc",
+      "kind": "valid",
+      "schema": "IFC2X3",
+      "report": "extended/ifc2x3-structural-frame.ifc.json",
+      "totalProducts": 13,
+      "totals": {
+        "preserved": 13,
+        "transformed": 0,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 100,
+        "degradedPct": 0,
+        "lostPct": 0
+      },
+      "definitions": 6,
+      "webIfc": {
+        "opened": false,
+        "error": "FromRawLineData[this.modelSchemaList[modelID]][rawLineData.type] is not a function"
+      }
+    },
+    {
+      "file": "extended/ifc4-envelope-roof-curtain.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "report": "extended/ifc4-envelope-roof-curtain.ifc.json",
+      "totalProducts": 7,
+      "totals": {
+        "preserved": 7,
+        "transformed": 0,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 100,
+        "degradedPct": 0,
+        "lostPct": 0
+      },
+      "definitions": 7,
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 29,
+        "globalIdsMatched": 7,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "extended/ifc4-mep-systems.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "report": "extended/ifc4-mep-systems.ifc.json",
+      "totalProducts": 11,
+      "totals": {
+        "preserved": 11,
+        "transformed": 0,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 100,
+        "degradedPct": 0,
+        "lostPct": 0
+      },
+      "definitions": 12,
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 55,
+        "globalIdsMatched": 11,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "extended/ifc4-multi-storey.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "report": "extended/ifc4-multi-storey.ifc.json",
+      "totalProducts": 19,
+      "totals": {
+        "preserved": 19,
+        "transformed": 0,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 100,
+        "degradedPct": 0,
+        "lostPct": 0
+      },
+      "definitions": 4,
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 78,
+        "globalIdsMatched": 19,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "extended/ifc4-openings-doors-windows.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "report": "extended/ifc4-openings-doors-windows.ifc.json",
+      "totalProducts": 11,
+      "totals": {
+        "preserved": 11,
+        "transformed": 0,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 100,
+        "degradedPct": 0,
+        "lostPct": 0
+      },
+      "definitions": 4,
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 33,
+        "globalIdsMatched": 11,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "extended/ifc4-single-room.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "report": "extended/ifc4-single-room.ifc.json",
+      "totalProducts": 9,
+      "totals": {
+        "preserved": 9,
+        "transformed": 0,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 100,
+        "degradedPct": 0,
+        "lostPct": 0
+      },
+      "definitions": 4,
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 37,
+        "globalIdsMatched": 9,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "extended/ifc4-spaces-rooms.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "report": "extended/ifc4-spaces-rooms.ifc.json",
+      "totalProducts": 8,
+      "totals": {
+        "preserved": 8,
+        "transformed": 0,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 100,
+        "degradedPct": 0,
+        "lostPct": 0
+      },
+      "definitions": 2,
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 30,
+        "globalIdsMatched": 8,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "extended/ifc4-stress-400-walls.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "report": "extended/ifc4-stress-400-walls.ifc.json",
+      "totalProducts": 405,
+      "totals": {
+        "preserved": 405,
+        "transformed": 0,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 100,
+        "degradedPct": 0,
+        "lostPct": 0
+      },
+      "definitions": 2,
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 2012,
+        "globalIdsMatched": 405,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "extended/ifc4-structural-frame.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "report": "extended/ifc4-structural-frame.ifc.json",
+      "totalProducts": 13,
+      "totals": {
+        "preserved": 13,
+        "transformed": 0,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 100,
+        "degradedPct": 0,
+        "lostPct": 0
+      },
+      "definitions": 6,
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 59,
+        "globalIdsMatched": 13,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "extended/ifc4-unicode-and-quotes.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "report": "extended/ifc4-unicode-and-quotes.ifc.json",
+      "totalProducts": 5,
+      "totals": {
+        "preserved": 5,
+        "transformed": 0,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 100,
+        "degradedPct": 0,
+        "lostPct": 0
+      },
+      "definitions": 2,
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 15,
+        "globalIdsMatched": 5,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
+      "file": "extended/ifc4-vertical-circulation.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "report": "extended/ifc4-vertical-circulation.ifc.json",
+      "totalProducts": 8,
+      "totals": {
+        "preserved": 8,
+        "transformed": 0,
+        "approximated": 0,
+        "unsupported": 0,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 100,
+        "degradedPct": 0,
+        "lostPct": 0
+      },
+      "definitions": 6,
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 30,
+        "globalIdsMatched": 8,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
       "file": "generated-2x3.ifc",
       "kind": "valid",
       "schema": "IFC2X3",
@@ -648,13 +1035,13 @@
     }
   ],
   "totals": {
-    "files": 26,
-    "reported": 24,
+    "files": 41,
+    "reported": 39,
     "unreported": 2,
-    "products": 1579,
-    "definitions": 707,
-    "preserved": 1510,
-    "transformed": 61,
+    "products": 2133,
+    "definitions": 780,
+    "preserved": 2049,
+    "transformed": 76,
     "approximated": 5,
     "unsupported": 0,
     "skipped": 1,

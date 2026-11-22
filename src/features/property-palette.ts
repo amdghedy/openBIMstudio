@@ -252,7 +252,7 @@ function ensureDockColumn(): boolean {
     col.id = "obs-pp-dock-left";
     col.style.cssText =
       "display:flex;flex-direction:column;flex:0 0 320px;height:100%;" +
-      "background:var(--bg-floating,#1c1e28);border-right:1px solid var(--border-default,#2a2e3a);" +
+      "background:var(--bg-floating,#1c1e28);border-inline-end:1px solid var(--border-default,#2a2e3a);" +
       "overflow:hidden";
     dockColumn = col;
   }

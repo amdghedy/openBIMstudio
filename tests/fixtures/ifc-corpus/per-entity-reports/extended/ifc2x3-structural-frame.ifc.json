@@ -1,0 +1,509 @@
+{
+  "schemaVersion": 1,
+  "kind": "import",
+  "generator": "src/modules/ifc-semantics/per-entity-report.ts (per-entity-report v1)",
+  "fileName": "extended/ifc2x3-structural-frame.ifc",
+  "schema": "IFC2X3",
+  "totalProducts": 13,
+  "totals": {
+    "preserved": 13,
+    "transformed": 0,
+    "approximated": 0,
+    "unsupported": 0,
+    "skipped": 0,
+    "failed": 0,
+    "preservedPct": 100,
+    "degradedPct": 0,
+    "lostPct": 0
+  },
+  "definitions": {
+    "total": 6,
+    "byType": [
+      {
+        "type": "IFCSURFACESTYLE",
+        "count": 3
+      },
+      {
+        "type": "IFCBEAMTYPE",
+        "count": 1
+      },
+      {
+        "type": "IFCCOLUMNTYPE",
+        "count": 1
+      },
+      {
+        "type": "IFCFOOTINGTYPE",
+        "count": 1
+      }
+    ]
+  },
+  "byType": [
+    {
+      "type": "IFCCOLUMN",
+      "total": 6,
+      "preserved": 6,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCBEAM",
+      "total": 2,
+      "preserved": 2,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCBUILDING",
+      "total": 1,
+      "preserved": 1,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCBUILDINGSTOREY",
+      "total": 1,
+      "preserved": 1,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCFOOTING",
+      "total": 1,
+      "preserved": 1,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCPROJECT",
+      "total": 1,
+      "preserved": 1,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCSITE",
+      "total": 1,
+      "preserved": 1,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    }
+  ],
+  "rows": [
+    {
+      "expressId": 14,
+      "globalId": "1p4ZfAl3SRy5LB_eAQRjiu",
+      "ifcType": "IFCPROJECT",
+      "name": "Frame IFC2X3",
+      "objectType": null,
+      "tag": null,
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "not-applicable",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [
+        "aggregates"
+      ],
+      "containedIn": null,
+      "notes": []
+    },
+    {
+      "expressId": 17,
+      "globalId": "1yAAQgkBjz$1g7Yg$U557v",
+      "ifcType": "IFCSITE",
+      "name": "Site",
+      "objectType": null,
+      "tag": null,
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "present",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [
+        "aggregates"
+      ],
+      "containedIn": null,
+      "notes": []
+    },
+    {
+      "expressId": 20,
+      "globalId": "3Hyg9iv8IySO22FyErz27U",
+      "ifcType": "IFCBUILDING",
+      "name": "Building",
+      "objectType": null,
+      "tag": null,
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "present",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [
+        "aggregates"
+      ],
+      "containedIn": null,
+      "notes": []
+    },
+    {
+      "expressId": 25,
+      "globalId": "23ZdLds5nqgkLzJPk_hqnM",
+      "ifcType": "IFCBUILDINGSTOREY",
+      "name": "Level 0",
+      "objectType": null,
+      "tag": null,
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "present",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [
+        "aggregates",
+        "containment"
+      ],
+      "containedIn": null,
+      "notes": []
+    },
+    {
+      "expressId": 37,
+      "globalId": "2nppXLtIO_DB92C$7UgpMG",
+      "ifcType": "IFCCOLUMN",
+      "name": "Col 00",
+      "objectType": "column",
+      "tag": "c00",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 25,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Level 0"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 60,
+      "globalId": "2WanCP_F1CHkWaYxAmHzJj",
+      "ifcType": "IFCCOLUMN",
+      "name": "Col 01",
+      "objectType": "column",
+      "tag": "c01",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 25,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Level 0"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 79,
+      "globalId": "10hsNF3cE10EMsv$ghUWCr",
+      "ifcType": "IFCCOLUMN",
+      "name": "Col 10",
+      "objectType": "column",
+      "tag": "c10",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 25,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Level 0"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 98,
+      "globalId": "3OkcKbprldfaimGEXSqS9h",
+      "ifcType": "IFCCOLUMN",
+      "name": "Col 11",
+      "objectType": "column",
+      "tag": "c11",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 25,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Level 0"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 117,
+      "globalId": "22mYPynv04Kea7yEBCLTBC",
+      "ifcType": "IFCCOLUMN",
+      "name": "Col 20",
+      "objectType": "column",
+      "tag": "c20",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 25,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Level 0"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 136,
+      "globalId": "0jY6INkr6H$B2hhOacSbZY",
+      "ifcType": "IFCCOLUMN",
+      "name": "Col 21",
+      "objectType": "column",
+      "tag": "c21",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 25,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Level 0"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 156,
+      "globalId": "0h1km1cm9xAFtTiP5DsIQu",
+      "ifcType": "IFCBEAM",
+      "name": "Beam 0",
+      "objectType": "beam",
+      "tag": "bm0",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 25,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Level 0"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 178,
+      "globalId": "3Is0OdR1kVr7spWVx3S1WD",
+      "ifcType": "IFCBEAM",
+      "name": "Beam 1",
+      "objectType": "beam",
+      "tag": "bm1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 25,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Level 0"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 196,
+      "globalId": "0yfopQqf8wx_kpOUO5XdVJ",
+      "ifcType": "IFCFOOTING",
+      "name": "Footing",
+      "objectType": "footing",
+      "tag": "ft1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 25,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Level 0"
+      },
+      "notes": []
+    }
+  ],
+  "warnings": [
+    "3 physical element(s) not contained in any spatial structure node"
+  ],
+  "warningCount": 1,
+  "scope": "STEP/semantic-model fidelity: what the independent STEP reader recovers from the file. Not a per-entity web-ifc FRAG-conversion claim — the live import is monolithic and exposes no per-entity callback."
+}

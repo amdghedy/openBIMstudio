@@ -130,7 +130,7 @@ function update() {
 
   left.innerHTML =
     (cycleStatus
-      ? `<span style="background:#f59e0b;color:#160909;padding:2px 6px;border-radius:4px;margin-right:8px;font-weight:700;display:inline-block">${esc(cycleStatus)}</span>`
+      ? `<span style="background:#f59e0b;color:#160909;padding:2px 6px;border-radius:4px;margin-inline-end:8px;font-weight:700;display:inline-block">${esc(cycleStatus)}</span>`
       : "") +
     elevHtml + toolHtml;
 

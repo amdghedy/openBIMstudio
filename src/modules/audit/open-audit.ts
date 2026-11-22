@@ -231,7 +231,7 @@ export function showAuditReport(report: OpenAuditReport): void {
     `<button data-json style="cursor:pointer">Download report (.json)</button>` +
     `</div>` +
     (report.findings.length
-      ? `<table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:4px;border-bottom:1px solid #2a2e3a">Severity</th><th style="text-align:left;padding:4px;border-bottom:1px solid #2a2e3a">Source</th><th style="text-align:left;padding:4px;border-bottom:1px solid #2a2e3a">Finding</th><th style="text-align:left;padding:4px;border-bottom:1px solid #2a2e3a">Detail</th></tr></thead><tbody>` +
+      ? `<table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:start;padding:4px;border-bottom:1px solid #2a2e3a">Severity</th><th style="text-align:start;padding:4px;border-bottom:1px solid #2a2e3a">Source</th><th style="text-align:start;padding:4px;border-bottom:1px solid #2a2e3a">Finding</th><th style="text-align:start;padding:4px;border-bottom:1px solid #2a2e3a">Detail</th></tr></thead><tbody>` +
         shown.map((f) =>
           `<tr><td style="padding:4px;color:${f.severity === "error" ? "#fca5a5" : "#fbbf24"}">${f.severity}</td><td style="padding:4px">${f.source}</td><td style="padding:4px">${escapeHtml(f.title)}</td><td style="padding:4px;opacity:.8">${escapeHtml(f.detail)}</td></tr>`).join("") +
         `</tbody></table>` +

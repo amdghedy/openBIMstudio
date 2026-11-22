@@ -12,6 +12,7 @@ import {
 import { getShareSession, onShareSessionChange } from "../modules/collaboration/share-session";
 import { makeDockable, type DockHandle } from "./dockable";
 import { uiAlert } from "../core/notify";
+import { fmtDateTime } from "../core/region";
 
 let panel: HTMLDivElement | null = null;
 let dock: DockHandle | null = null;
@@ -261,7 +262,7 @@ export function setupCollaborationPanel(): void {
         row.style.cssText = "display:flex;align-items:center;gap:6px;padding:4px;font-size:11px;color:#cbd5e1";
         const label = document.createElement("span");
         label.style.flex = "1";
-        label.textContent = `${s.role === "view" ? "View" : "Edit"} · room ${s.room} · expires ${new Date(s.expiresAt).toLocaleString()}`;
+        label.textContent = `${s.role === "view" ? "View" : "Edit"} · room ${s.room} · expires ${fmtDateTime(s.expiresAt)}`;
         const revokeBtn = document.createElement("button");
         revokeBtn.textContent = "Revoke";
         revokeBtn.style.cssText = "padding:3px 8px;background:transparent;color:#f87171;border:1px solid rgba(248,113,113,.4);border-radius:4px;cursor:pointer;font-size:11px";

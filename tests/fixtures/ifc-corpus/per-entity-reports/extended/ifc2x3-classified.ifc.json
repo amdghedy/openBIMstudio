@@ -1,0 +1,261 @@
+{
+  "schemaVersion": 1,
+  "kind": "import",
+  "generator": "src/modules/ifc-semantics/per-entity-report.ts (per-entity-report v1)",
+  "fileName": "extended/ifc2x3-classified.ifc",
+  "schema": "IFC2X3",
+  "totalProducts": 6,
+  "totals": {
+    "preserved": 4,
+    "transformed": 2,
+    "approximated": 0,
+    "unsupported": 0,
+    "skipped": 0,
+    "failed": 0,
+    "preservedPct": 66.7,
+    "degradedPct": 33.3,
+    "lostPct": 0
+  },
+  "definitions": {
+    "total": 2,
+    "byType": [
+      {
+        "type": "IFCSURFACESTYLE",
+        "count": 1
+      },
+      {
+        "type": "IFCWALLTYPE",
+        "count": 1
+      }
+    ]
+  },
+  "byType": [
+    {
+      "type": "IFCWALLSTANDARDCASE",
+      "total": 2,
+      "preserved": 0,
+      "transformed": 2,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 0,
+      "degradedPct": 100,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCBUILDING",
+      "total": 1,
+      "preserved": 1,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCBUILDINGSTOREY",
+      "total": 1,
+      "preserved": 1,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCPROJECT",
+      "total": 1,
+      "preserved": 1,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCSITE",
+      "total": 1,
+      "preserved": 1,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    }
+  ],
+  "rows": [
+    {
+      "expressId": 14,
+      "globalId": "1JV$af668S7s1njM8hR51K",
+      "ifcType": "IFCPROJECT",
+      "name": "Classified 2x3",
+      "objectType": null,
+      "tag": null,
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "not-applicable",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [
+        "aggregates"
+      ],
+      "containedIn": null,
+      "notes": []
+    },
+    {
+      "expressId": 17,
+      "globalId": "3vNhwzGcBIDncTZDkYeU1H",
+      "ifcType": "IFCSITE",
+      "name": "Site",
+      "objectType": null,
+      "tag": null,
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "present",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [
+        "aggregates"
+      ],
+      "containedIn": null,
+      "notes": []
+    },
+    {
+      "expressId": 20,
+      "globalId": "18_w2Sbhr9ln0r6GlES$0e",
+      "ifcType": "IFCBUILDING",
+      "name": "Building",
+      "objectType": null,
+      "tag": null,
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "present",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [
+        "aggregates"
+      ],
+      "containedIn": null,
+      "notes": []
+    },
+    {
+      "expressId": 25,
+      "globalId": "09w0P5Vt70CH5lHzrdze6f",
+      "ifcType": "IFCBUILDINGSTOREY",
+      "name": "Level 0",
+      "objectType": null,
+      "tag": null,
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "present",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [
+        "aggregates",
+        "containment"
+      ],
+      "containedIn": null,
+      "notes": []
+    },
+    {
+      "expressId": 38,
+      "globalId": "05_mBS2kkvz4umaNz182fN",
+      "ifcType": "IFCWALLSTANDARDCASE",
+      "name": "w1",
+      "objectType": "wall",
+      "tag": "w1",
+      "status": "transformed",
+      "reasonCodes": [
+        "TYPE_NORMALISED"
+      ],
+      "typeMapping": "normalised",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "classification",
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 25,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Level 0"
+      },
+      "notes": [
+        "IFCWALLSTANDARDCASE normalises to IFCWALL downstream"
+      ]
+    },
+    {
+      "expressId": 65,
+      "globalId": "0u0bTyYtfjoKU4aTRq$AjZ",
+      "ifcType": "IFCWALLSTANDARDCASE",
+      "name": "w2",
+      "objectType": "wall",
+      "tag": "w2",
+      "status": "transformed",
+      "reasonCodes": [
+        "TYPE_NORMALISED"
+      ],
+      "typeMapping": "normalised",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "classification",
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 25,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Level 0"
+      },
+      "notes": [
+        "IFCWALLSTANDARDCASE normalises to IFCWALL downstream"
+      ]
+    }
+  ],
+  "warnings": [
+    "1 physical element(s) not contained in any spatial structure node"
+  ],
+  "warningCount": 1,
+  "scope": "STEP/semantic-model fidelity: what the independent STEP reader recovers from the file. Not a per-entity web-ifc FRAG-conversion claim — the live import is monolithic and exposes no per-entity callback."
+}

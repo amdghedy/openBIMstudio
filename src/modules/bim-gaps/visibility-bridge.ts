@@ -25,6 +25,7 @@
  * overrides do.
  */
 import * as THREE from "three";
+import { ELEMENT_TYPE_TO_VG_CATEGORY } from "../view-templates/category-map";
 import { ctx } from "../../core/context";
 import { notify } from "../../core/notify";
 import { visibilityFilter } from "../visibility/visibility-filter";
@@ -170,7 +171,17 @@ const CATEGORY_TO_IFC: Record<string, RegExp[]> = {
 
 function categoryPatterns(cat: string): RegExp[] {
   if (/^ifc/i.test(cat)) return [new RegExp("^" + cat.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$", "i")];
-  return CATEGORY_TO_IFC[cat] ?? [];
+  const direct = CATEGORY_TO_IFC[cat];
+  if (direct) return direct;
+  // The visibility filter stores overrides under the canonical VG keys
+  // ("Walls", "Floors", … — toVgCategory). Every authored type that maps to
+  // this category contributes its IFC patterns, so a normalized override
+  // still hides the matching categories of linked models.
+  const merged: RegExp[] = [];
+  for (const [type, vg] of Object.entries(ELEMENT_TYPE_TO_VG_CATEGORY)) {
+    if (vg === cat) merged.push(...(CATEGORY_TO_IFC[type] ?? []));
+  }
+  return merged;
 }
 
 type IdMap = Record<string, Set<number>>;

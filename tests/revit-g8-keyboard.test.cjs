@@ -102,7 +102,7 @@ ok(/"TRUSS", \["TS"\]/.test(planCmds), "plan commands: TRUSS alias TS");
 ok(!/truss", "TR"/.test(palette) && !/truss: "TR"/.test(palette), "no TR left for Truss in the palette");
 
 // TR now means Trim/Extend, consistently.
-ok(/b\("move", "Trim\/Extend", cmd\("modify\.trimExtend"\), \{ kbd: "TR"/.test(ribbon), "ribbon: Trim/Extend button shows TR");
+ok(/b\("move", "Trim\/Extend", cmd\("modify\.trimExtend"\), dis\(button, \{ kbd: "TR"/.test(ribbon), "ribbon: Trim/Extend button shows TR");
 ok(/text: "Trim \/ Extend to Corner"[^}]*kbd: "TR"/.test(ctxMenu), "context menu: Trim/Extend still TR");
 ok(bic.includes("REVIT_G8_BINDINGS") && bic.includes("runG8Binding"), "bim-input-compatibility consumes the G8 table");
 ok(/for \(const binding of REVIT_G8_BINDINGS\)/.test(bic) && /keys: binding\.keys/.test(bic), "bim-input-compatibility registers the G8 table (TR included) via the loop");

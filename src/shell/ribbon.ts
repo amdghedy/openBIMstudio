@@ -3427,7 +3427,7 @@ function modifyTabItems(model: ModifyTabModel): HTMLElement[] {
     "align-h": (button) => mod(button, "align-x", "move", "Align H", { title: "Align the selected elements on X" }),
     "align-v": (button) => mod(button, "align-z", "move", "Align V", { title: "Align the selected elements on Z" }),
     "delete": (button) => mod(button, "delete", "delete"),
-    "trim-extend": (button) => b("move", "Trim/Extend", cmd("modify.trimExtend"), dis(button, { title: "Trim or extend two line elements to a corner" })),
+    "trim-extend": (button) => b("move", "Trim/Extend", cmd("modify.trimExtend"), dis(button, { kbd: "TR", title: "Trim or extend two line elements to a corner" })),
     "split-mid": (button) => mod(button, "split-mid", "move"),
     "flip": (button) => b("move", "Flip", safe(() => { const n = reverseSelected(); toast(n ? `Flipped ${n} element(s)` : "Select linear elements", n ? "success" : "warn"); }, "Flip"), dis(button, { title: "Reverse the drawing direction" })),
     "join-walls": (button) => mod(button, "join-walls", "wall", undefined, { title: "Join walls that meet at a corner" }),

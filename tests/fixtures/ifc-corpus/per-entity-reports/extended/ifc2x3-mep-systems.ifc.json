@@ -1,0 +1,445 @@
+{
+  "schemaVersion": 1,
+  "kind": "import",
+  "generator": "src/modules/ifc-semantics/per-entity-report.ts (per-entity-report v1)",
+  "fileName": "extended/ifc2x3-mep-systems.ifc",
+  "schema": "IFC2X3",
+  "totalProducts": 11,
+  "totals": {
+    "preserved": 10,
+    "transformed": 1,
+    "approximated": 0,
+    "unsupported": 0,
+    "skipped": 0,
+    "failed": 0,
+    "preservedPct": 90.9,
+    "degradedPct": 9.1,
+    "lostPct": 0
+  },
+  "definitions": {
+    "total": 8,
+    "byType": [
+      {
+        "type": "IFCSURFACESTYLE",
+        "count": 6
+      },
+      {
+        "type": "IFCBUILDINGELEMENTPROXYTYPE",
+        "count": 1
+      },
+      {
+        "type": "IFCWALLTYPE",
+        "count": 1
+      }
+    ]
+  },
+  "byType": [
+    {
+      "type": "IFCFLOWSEGMENT",
+      "total": 5,
+      "preserved": 5,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCBUILDING",
+      "total": 1,
+      "preserved": 1,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCBUILDINGELEMENTPROXY",
+      "total": 1,
+      "preserved": 1,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCBUILDINGSTOREY",
+      "total": 1,
+      "preserved": 1,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCPROJECT",
+      "total": 1,
+      "preserved": 1,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCSITE",
+      "total": 1,
+      "preserved": 1,
+      "transformed": 0,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 100,
+      "degradedPct": 0,
+      "lostPct": 0
+    },
+    {
+      "type": "IFCWALLSTANDARDCASE",
+      "total": 1,
+      "preserved": 0,
+      "transformed": 1,
+      "approximated": 0,
+      "unsupported": 0,
+      "skipped": 0,
+      "failed": 0,
+      "preservedPct": 0,
+      "degradedPct": 100,
+      "lostPct": 0
+    }
+  ],
+  "rows": [
+    {
+      "expressId": 14,
+      "globalId": "35NhxnE_U9JgqCV4vJjKln",
+      "ifcType": "IFCPROJECT",
+      "name": "MEP IFC2X3",
+      "objectType": null,
+      "tag": null,
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "not-applicable",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [
+        "aggregates"
+      ],
+      "containedIn": null,
+      "notes": []
+    },
+    {
+      "expressId": 17,
+      "globalId": "1RgS_u1UyB92fBFtjq3Vld",
+      "ifcType": "IFCSITE",
+      "name": "Site",
+      "objectType": null,
+      "tag": null,
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "present",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [
+        "aggregates"
+      ],
+      "containedIn": null,
+      "notes": []
+    },
+    {
+      "expressId": 20,
+      "globalId": "0h_2jThRNhkKJR9yF2bkSd",
+      "ifcType": "IFCBUILDING",
+      "name": "Building",
+      "objectType": null,
+      "tag": null,
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "present",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [
+        "aggregates"
+      ],
+      "containedIn": null,
+      "notes": []
+    },
+    {
+      "expressId": 25,
+      "globalId": "2l0Q_dW$oFI5lAvZDtDyRS",
+      "ifcType": "IFCBUILDINGSTOREY",
+      "name": "Level 0",
+      "objectType": null,
+      "tag": null,
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "not-applicable",
+      "placement": "present",
+      "propertySets": [],
+      "quantitySets": [],
+      "relationships": [
+        "aggregates",
+        "containment"
+      ],
+      "containedIn": null,
+      "notes": []
+    },
+    {
+      "expressId": 38,
+      "globalId": "3cKOimV8ZRx9S6H2KDtnJv",
+      "ifcType": "IFCWALLSTANDARDCASE",
+      "name": "w1",
+      "objectType": "wall",
+      "tag": "w1",
+      "status": "transformed",
+      "reasonCodes": [
+        "TYPE_NORMALISED"
+      ],
+      "typeMapping": "normalised",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 25,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Level 0"
+      },
+      "notes": [
+        "IFCWALLSTANDARDCASE normalises to IFCWALL downstream"
+      ]
+    },
+    {
+      "expressId": 64,
+      "globalId": "2iGke1D$23XBPDOxyj$mew",
+      "ifcType": "IFCFLOWSEGMENT",
+      "name": "d1",
+      "objectType": "duct",
+      "tag": "d1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 25,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Level 0"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 86,
+      "globalId": "0uOOAcYaVygzE$P8LXcHg8",
+      "ifcType": "IFCFLOWSEGMENT",
+      "name": "d2",
+      "objectType": "duct",
+      "tag": "d2",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 25,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Level 0"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 104,
+      "globalId": "0YPKpKvEOKb8su2rLBErCL",
+      "ifcType": "IFCFLOWSEGMENT",
+      "name": "p1",
+      "objectType": "pipe",
+      "tag": "p1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 25,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Level 0"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 126,
+      "globalId": "0mxQoKVol7QcpSgcqZ6i6J",
+      "ifcType": "IFCFLOWSEGMENT",
+      "name": "t1",
+      "objectType": "cable-tray",
+      "tag": "t1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 25,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Level 0"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 148,
+      "globalId": "0Kjj1omrpRTAhiRdXz1cL_",
+      "ifcType": "IFCFLOWSEGMENT",
+      "name": "c1",
+      "objectType": "conduit",
+      "tag": "c1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 25,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Level 0"
+      },
+      "notes": []
+    },
+    {
+      "expressId": 170,
+      "globalId": "1lw2CexfH3gaFbljB2cTvG",
+      "ifcType": "IFCBUILDINGELEMENTPROXY",
+      "name": "AHU",
+      "objectType": "equipment",
+      "tag": "e1",
+      "status": "preserved",
+      "reasonCodes": [],
+      "typeMapping": "typed",
+      "geometry": "present",
+      "placement": "present",
+      "propertySets": [
+        {
+          "name": "OpenBIMStudio",
+          "propertyCount": 2
+        }
+      ],
+      "quantitySets": [
+        "BaseQuantities"
+      ],
+      "relationships": [
+        "containment",
+        "properties"
+      ],
+      "containedIn": {
+        "id": 25,
+        "type": "IFCBUILDINGSTOREY",
+        "name": "Level 0"
+      },
+      "notes": []
+    }
+  ],
+  "warnings": [
+    "2 physical element(s) not contained in any spatial structure node"
+  ],
+  "warningCount": 1,
+  "scope": "STEP/semantic-model fidelity: what the independent STEP reader recovers from the file. Not a per-entity web-ifc FRAG-conversion claim — the live import is monolithic and exposes no per-entity callback."
+}

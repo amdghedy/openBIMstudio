@@ -5572,7 +5572,7 @@ function applyPlanDockLayout(): void {
   overlay.dataset.planDockMode = planDockMode;
   const host = viewportHost();
   if (host) {
-    host.style.marginRight = g.viewportMargin.right
+    host.style.marginInlineEnd = g.viewportMargin.right
       ? `${g.viewportMargin.right}px`
       : "";
     host.style.marginBottom = g.viewportMargin.bottom
@@ -5600,7 +5600,7 @@ function applyPlanDockLayout(): void {
 function clearDockViewportMargins(): void {
   const host = viewportHost();
   if (host) {
-    host.style.marginRight = "";
+    host.style.marginInlineEnd = "";
     host.style.marginBottom = "";
     host.style.height = "";
   }
