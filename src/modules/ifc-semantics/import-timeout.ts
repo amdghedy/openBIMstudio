@@ -133,6 +133,18 @@ export interface ImportTimeoutCallbacks {
  * stall timer; `clear()` disarms both. `onTimeout` fires at most once,
  * with the kind that fired first. Timers are real `setTimeout`s so the
  * behaviour under test is the behaviour in production.
+ *
+ * Single-thread limit: web-ifc runs its conversion on the main thread
+ * (forceSingleThread), so while it is converting no timer callback can
+ * run — the `setTimeout` total bound can only fire after the conversion
+ * has already returned, when `clear()` has disarmed it. The progress
+ * callback is the one heartbeat that runs DURING the conversion, so
+ * `poke()` also enforces the total bound synchronously on every call:
+ * that is what actually stops an over-long conversion on this path.
+ * (A conversion that emits no progress callback after the bound elapses
+ * still cannot be interrupted from the page — the same class as a
+ * synchronous WASM hang — and the stall bound can only fire between
+ * yields, never mid-block.)
  */
 export class ImportTimeout {
   private readonly bounds: ImportTimeoutBounds;
@@ -144,6 +156,7 @@ export class ImportTimeout {
   private totalTimer: ReturnType<typeof setTimeout> | null = null;
   private fired = false;
   private cleared = false;
+  private started = false;
 
   constructor(
     fileName: string,
@@ -165,6 +178,7 @@ export class ImportTimeout {
     this.startMs = this.now();
     this.fired = false;
     this.cleared = false;
+    this.started = true;
     this.clearTimers();
     if (this.bounds.totalMs > 0) {
       this.totalTimer = setTimeout(() => this.fire("total"), this.bounds.totalMs);
@@ -172,14 +186,26 @@ export class ImportTimeout {
     this.armStall();
   }
 
-  /** A progress callback arrived: the conversion is alive; re-arm the stall timer. */
+  /**
+   * A progress callback arrived: the conversion is alive; re-arm the stall
+   * timer — and enforce the total bound synchronously. On the single-thread
+   * conversion path no timer can fire mid-conversion (see the class note),
+   * so without this check an over-long conversion would complete despite
+   * the bound. `fire()` is idempotent, so a late timer firing changes
+   * nothing.
+   */
   poke(): void {
     if (this.fired || this.cleared) return;
+    if (this.started && this.bounds.totalMs > 0 && this.now() - this.startMs >= this.bounds.totalMs) {
+      this.fire("total");
+      return;
+    }
     this.armStall();
   }
 
   clear(): void {
     this.cleared = true;
+    this.started = false;
     this.clearTimers();
   }
 

@@ -15,7 +15,10 @@ test('the app boots without uncaught errors and draws a 3D canvas', async ({ pag
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
   await expect(page.locator('canvas').first()).toBeVisible({ timeout: 30000 });
-  await expect(page.locator('.obs-ribbon')).toBeVisible();
+  // Boot runs ~200 sequential steps and the ribbon mounts near the end
+  // (shell is step 377 in main.ts), so the ribbon can take well over the
+  // 5 s default after the canvas first appears under software GL.
+  await expect(page.locator('.obs-ribbon')).toBeVisible({ timeout: 30000 });
   expect(errors, errors.join('\n')).toEqual([]);
 });
 

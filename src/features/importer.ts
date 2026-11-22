@@ -1335,6 +1335,9 @@ async function runTask(t: ImportTask) {
           // from WASM later; its updates belong to no live task anymore.
           if (importTimedOut || cancelRequested) return;
           importTimeout?.poke();
+          // poke() can fire the total bound synchronously (single-thread
+          // conversion); stop touching the task once it has.
+          if (importTimedOut || cancelRequested) return;
           t.progress = normalizeProgress(progress);
           t.phase = describePhase(data);
           t.elapsedMs = performance.now() - t0;
@@ -1743,6 +1746,9 @@ export async function convertIfcToFragBytes(
     progressCallback: (progress: any, data?: any) => {
       if (importTimedOut || cancelRequested) return;
       importTimeout.poke();
+      // poke() can fire the total bound synchronously (single-thread
+      // conversion); stop touching the task once it has.
+      if (importTimedOut || cancelRequested) return;
       const pct = normalizeProgress(progress);
       onProgress(12 + Math.round(pct * 0.85), describePhase(data));
     },

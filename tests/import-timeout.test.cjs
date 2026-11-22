@@ -97,6 +97,56 @@ ta("watchdog: total fires even while progress keeps arriving", async () => {
   assert.strictEqual(got.kind, "total");
   w.clear();
 });
+
+/* ── Watchdog: synchronous total enforcement on poke() ─────────────── */
+/* The single-thread conversion runs on the main thread, so no timer can
+ * fire mid-conversion; poke() is the heartbeat that enforces the total
+ * bound. These tests use a fake clock and no sleeps at all, modelling a
+ * blocked event loop — a real-timer test cannot catch this, because its
+ * own event loop is free. */
+t("watchdog: poke() fires the total bound synchronously once it elapses (no timer involved)", () => {
+  let now = 0;
+  let got = null;
+  const w = new ImportTimeout("a.ifc", { stallMs: 0, totalMs: 3000 }, { onTimeout: (e) => { got = e; } }, () => now);
+  w.start();
+  now = 2999;
+  w.poke();
+  assert.strictEqual(got, null, "total fired before the bound elapsed");
+  now = 3000;
+  w.poke();
+  assert.ok(got, "total did not fire from poke() at the bound");
+  assert.strictEqual(got.kind, "total");
+  assert.strictEqual(got.limitMs, 3000);
+  assert.ok(w.timedOut);
+  w.clear();
+});
+t("watchdog: poke() before start() never fires the total bound", () => {
+  let got = null;
+  const w = new ImportTimeout("a.ifc", { stallMs: 0, totalMs: 3000 }, { onTimeout: (e) => { got = e; } }, () => 1_000_000);
+  w.poke();
+  assert.strictEqual(got, null, "poke before start fired");
+  w.clear();
+});
+t("watchdog: total fires from poke() at most once", () => {
+  let now = 0;
+  let n = 0;
+  const w = new ImportTimeout("a.ifc", { stallMs: 0, totalMs: 3000 }, { onTimeout: () => { n++; } }, () => now);
+  w.start();
+  now = 5000;
+  w.poke(); w.poke(); w.poke();
+  assert.strictEqual(n, 1, `onTimeout called ${n} times`);
+  w.clear();
+});
+t("watchdog: poke() with totalMs 0 never fires the total bound", () => {
+  let now = 0;
+  let got = null;
+  const w = new ImportTimeout("a.ifc", { stallMs: 0, totalMs: 0 }, { onTimeout: (e) => { got = e; } }, () => now);
+  w.start();
+  now = 999_999;
+  w.poke();
+  assert.strictEqual(got, null, "total fired with totalMs 0");
+  w.clear();
+});
 ta("watchdog: clear() prevents any firing", async () => {
   let got = null;
   const w = new ImportTimeout("a.ifc", { stallMs: 30, totalMs: 30 }, { onTimeout: (e) => { got = e; } });
