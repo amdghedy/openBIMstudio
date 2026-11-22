@@ -6,6 +6,7 @@ import { familyStore } from "./store";
 import { buildParametricGeometry, registerCustomBuilder } from "./parametric-geometry";
 import { evaluateParameters } from "./formula-engine";
 import { applyTypeValues } from "./parameter-scope";
+import { deriveFamilyInstanceConnectors } from "../mep/family-connectors";
 import type {
   CustomGeometryBuilder,
   FamilyDefinition,
@@ -95,6 +96,13 @@ export function createFamilyService(): FamilyService {
       obj.userData.familyTypeId = tid;
       obj.userData.familyParams = params;
       return obj;
+    },
+    buildConnectors: (ownerElementId, fid, tid, instanceObject) => {
+      const fam = familyStore.get(fid);
+      if (!fam) return [];
+      const type = tid ? fam.types.find((t) => t.id === tid) ?? null : null;
+      const definitions = type?.connectorDefs ?? fam.connectorDefs ?? [];
+      return deriveFamilyInstanceConnectors(ownerElementId, definitions, instanceObject);
     },
 
     registerCustomBuilder: (name, fn) => registerCustomBuilder(name, fn),
