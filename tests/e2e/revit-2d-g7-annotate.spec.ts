@@ -49,6 +49,14 @@ async function openPlan(page: Page): Promise<void> {
   await ribbon.getByRole('button', { name: 'Plan', exact: true }).click();
   await expect(page.locator('.obs-plan-overlay')).toBeVisible({ timeout: 15000 });
   await waitPlanRendered(page);
+  // The "Generating plan…" overlay covers the whole canvas while the plan
+  // regenerates: a click that lands while it is up hits the overlay, not
+  // the SVG, and selects nothing. Wait until it is actually hidden.
+  await page.waitForFunction(() => {
+    const text = [...document.querySelectorAll('.obs-plan-overlay div')]
+      .find((el) => el.textContent === 'Generating plan…');
+    return !text || getComputedStyle(text.parentElement as Element).display === 'none';
+  }, null, { timeout: 60000 });
 }
 
 /** The plan sets the SVG viewBox when renderPlan runs — wait for it, so a
@@ -80,17 +88,23 @@ async function ribbonButton(page: Page, tab: string, name: string, hint?: string
   }
 }
 
-/** Map a plan world point (x east, z north, metres) to page coordinates. */
+/**
+ * Map a plan world point (x east, z north, metres) to page coordinates,
+ * via the SVG's own screen transform (same approach as the green G14
+ * spec). The previous hand-rolled viewBox math was correct arithmetic
+ * but the test's wall endpoints fell outside the empty plan's initial
+ * viewBox, so the clicks landed on the command-line input instead of
+ * the canvas and no wall was ever placed.
+ */
 async function worldToScreen(page: Page, wx: number, wz: number): Promise<{ x: number; y: number }> {
-  return page.evaluate(({ wx, wz }) => {
-    const svg = document.querySelector('.obs-plan-overlay svg') as SVGSVGElement | null;
+  return page.evaluate(([x, z]) => {
+    const svg = document.querySelector('.obs-plan-overlay svg') as unknown as SVGSVGElement;
     if (!svg) throw new Error('plan svg not found');
-    const rect = svg.getBoundingClientRect();
-    const vb = (svg.getAttribute('viewBox') || '0 0 100 100').split(/\s+/).map(Number);
-    const [minX, minY, w, h] = vb;
-    // screen() flips Z so north points up: screen y = -z.
-    return { x: rect.x + ((wx - minX) / w) * rect.width, y: rect.y + ((-wz - minY) / h) * rect.height };
-  }, { wx, wz });
+    const pt = svg.createSVGPoint();
+    pt.x = x; pt.y = -z;
+    const sp = pt.matrixTransform(svg.getScreenCTM()!);
+    return { x: sp.x, y: sp.y };
+  }, [wx, wz]);
 }
 
 async function clickWorld(page: Page, wx: number, wz: number): Promise<void> {
@@ -108,27 +122,21 @@ async function planFooter(page: Page): Promise<string> {
 }
 
 /**
- * Draw one wall in plan via the plan command line (like the smoke spec).
- * The ribbon Wall button would also arm the 3D wall tool, whose Options
- * Bar then sits over the ribbon tabs and blocks the next tab click; the
- * command line arms the plan tool only. The input is clicked and filled
- * (not bare-letter typed) so the step does not depend on the key handler
- * winning a race with plan generation; Enter still runs the real command
- * parser. The wait afterwards polls the footer author count — counting
- * SVG lines is vacuous, the cursor overlay draws lines of its own.
+ * Draw one wall in plan via the authoring API (same setup pattern as the
+ * green G14 and plan-temp-dims specs). The previous version drove the
+ * plan command line ('wa' + two clicks), but its endpoints fell outside
+ * the empty plan's initial viewBox, so the clicks landed on the
+ * command-line input and no wall was ever placed. The wall is setup for
+ * the annotate assertions, not the thing under test; the plan live-sync
+ * picks the API-created wall up (the footer poll below proves it).
+ * The wait afterwards polls the footer author count — counting SVG lines
+ * is vacuous, the cursor overlay draws lines of its own.
  */
 async function drawWall(page: Page, x1: number, z1: number, x2: number, z2: number): Promise<void> {
   await waitPlanRendered(page);
-  const line = page.locator('#obs-plan-cmdline input');
-  await expect(line).toBeVisible({ timeout: 15000 });
-  await line.click();
-  await line.fill('wa');
-  await page.keyboard.press('Enter');
-  await expect(page.getByText('Place wall', { exact: false }).first()).toBeVisible({ timeout: 15000 });
-  await clickWorld(page, x1, z1);
-  await clickWorld(page, x2, z2);
-  // The wall lands after an async plan regeneration: wait until the footer
-  // counts it as an authored element before doing anything else with it.
+  await page.evaluate(async ({ x1, z1, x2, z2 }) => {
+    await (window as any).__obsAuthoring.createElementByType('wall', { start: [x1, z1], end: [x2, z2] });
+  }, { x1, z1, x2, z2 });
   await expect.poll(async () => planStats(page), { timeout: 20000 }).toMatch(/^[1-9]\d* authored/);
   await page.keyboard.press('Escape');
 }
@@ -192,11 +200,13 @@ test('G7: Continuous dimension chains two segments', async ({ page }) => {
   ), { timeout: 10000 }).toBe(true);
 
   // Three boundaries: left end, a face point, right end — then an
-  // empty-space click places the chain.
+  // empty-space click places the chain. (0, 2) is empty space inside the
+  // fitted plan view; (0, 4) maps above the SVG once the plan fits the
+  // wall, so the finishing click would miss the canvas entirely.
   await clickWorld(page, -4, 0);
   await clickWorld(page, 1, 0);
   await clickWorld(page, 4, 0);
-  await clickWorld(page, 0, 4);
+  await clickWorld(page, 0, 2);
 
   // Exactly two new dimension labels appear (two chained segments, not a
   // single aligned dimension), with different lengths.
