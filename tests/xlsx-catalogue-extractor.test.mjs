@@ -1,0 +1,20 @@
+import assert from "node:assert/strict";
+import JSZip from "jszip";
+import { extractXlsxCatalogue } from "../src/modules/families/xlsx-catalogue-extractor.ts";
+
+const zip = new JSZip();
+zip.file("xl/workbook.xml", '<workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Products" sheetId="1" r:id="rId1"/></sheets></workbook>');
+zip.file("xl/_rels/workbook.xml.rels", '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml" Type="worksheet"/></Relationships>');
+zip.file("xl/sharedStrings.xml", '<sst><si><t>Model</t></si><si><t>Manufacturer</t></si><si><t>Width (mm)</t></si><si><t>Depth</t></si><si><t>Height</t></si><si><t>FAN-300</t></si><si><t>Acme &amp; Co</t></si><si><t>FAN-500</t></si></sst>');
+zip.file("xl/worksheets/sheet1.xml", '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c><c r="C1" t="s"><v>2</v></c><c r="D1" t="s"><v>3</v></c><c r="E1" t="s"><v>4</v></c></row><row r="2"><c r="A2" t="s"><v>5</v></c><c r="B2" t="s"><v>6</v></c><c r="C2"><v>300</v></c><c r="D2"><v>300</v></c><c r="E2"><v>450</v></c></row><row r="3"><c r="A3" t="s"><v>7</v></c><c r="C3"><v>500</v></c><c r="D3"><v>500</v></c><c r="E3"><v>650</v></c></row></sheetData></worksheet>');
+const bytes = await zip.generateAsync({ type: "uint8array" });
+const file = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+const result = await extractXlsxCatalogue(file);
+assert.equal(result.sheetName, "Products");
+assert.equal(result.rows.length, 2);
+assert.equal(result.rows[0].model, "FAN-300");
+assert.equal(result.rows[0].manufacturer, "Acme & Co");
+assert.equal(result.rows[0].width, 300);
+assert.equal(result.rows[1].height, 650);
+assert.equal(result.rows[1].manufacturer, undefined);
+console.log("XLSX catalogue extraction tests passed");

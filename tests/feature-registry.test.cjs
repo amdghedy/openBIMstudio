@@ -50,7 +50,7 @@ t("unavailable entries must not reference source paths (no hidden stubs)", () =>
   const bad = entries.filter((e) => e.status === "unavailable" && e.source.length > 0).map((e) => e.id); assert.deepStrictEqual(bad, []);
 });
 t("required feature ids are pinned (no silent removal)", () => {
-  const required = ["authoring-tools", "modeling-panel", "modify-engine", "viewcube-navigation", "solid-kernel", "ifc-import-export", "dxf-import-export", "dwg-import", "dwg-export", "aps-conversion", "bcf-21", "ids-audit", "sheets-views-pdf", "schedules-cost", "clash-detection", "collaboration", "ai-assistant", "plugin-system", "encrypted-projects", "web-security", "pwa-offline", "parametric-engine", "family-type-instance-model", "family-type-propagation", "family-formula-engine", "family-nested-arrays", "family-geometry-kinds", "family-library", "family-type-catalogs-shared-params"];
+  const required = ["authoring-tools", "modeling-panel", "modify-engine", "viewcube-navigation", "solid-kernel", "ifc-import-export", "dxf-import-export", "dwg-import", "dwg-export", "aps-conversion", "bcf-21", "ids-audit", "sheets-views-pdf", "schedules-cost", "clash-detection", "collaboration", "ai-assistant", "plugin-system", "encrypted-projects", "web-security", "pwa-offline", "parametric-engine", "family-type-instance-model", "family-type-propagation", "family-formula-engine", "family-nested-arrays", "family-geometry-kinds", "family-library", "family-type-catalogs-shared-params", "catalogue-family-generator"];
   const ids = new Set(entries.map((e) => e.id)); assert.deepStrictEqual(required.filter((r) => !ids.has(r)), []);
 });
 t("dwg-export is registered as limited, backed by the real-engine round-trip test, with limits", () => {

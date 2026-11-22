@@ -325,6 +325,12 @@ async function runOnce(): Promise<void> {
     m.setupParametricFamilyPanel?.();
   });
 
+  // Catalogue-to-BIM Family Generator (local intake + existing family store)
+  await safe("catalogue-family-generator", async () => {
+    const m: Any = await import("./features/catalogue-family-generator");
+    m.setupCatalogueFamilyGenerator?.();
+  });
+
   // UI
   await safe("gap-panels", async () => {
     const m: Any = await import("./features/panels/gap-panels");
