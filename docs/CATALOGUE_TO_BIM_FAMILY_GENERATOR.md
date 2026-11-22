@@ -17,6 +17,7 @@ The current experimental delivery adds a BIM Family Generator launcher and local
 - Creation of a native OpenBIMstudio family definition using the existing family service, parameter schema, geometry engine and project persistence.
 - Type parameters for dimensions, manufacturer, product code, airflow, static pressure, power and voltage.
 - A dimension-driven box geometry template as a first authoring placeholder.
+- Explicit catalogue MEP port mapping when the source provides port origin, axis, domain, shape, nominal size, flow direction and system classification; definitions are stored in the existing family connector schema and displayed in the catalogue review table.
 
 **Not implemented yet**
 - High-fidelity OCR of all catalogue layouts; the current local vision path is experimental and requires a vision-capable Ollama model.
@@ -24,7 +25,7 @@ The current experimental delivery adds a BIM Family Generator launcher and local
 - Multi-sheet selection, formulas recalculation, macro-enabled XLSM and legacy XLS workbook parsing.
 - DWG/DXF/STEP/SAT geometry extraction.
 - Catalogue drawing-to-solid reconstruction.
-- Detailed product-specific geometry and connector auto-placement.
+- Manufacturer-specific solid reconstruction and inferred connector placement. Connector definitions are accepted only when explicit port coordinates and axes are supplied; no port location is guessed.
 - Revit API companion add-in or native RFA export.
 - External manufacturer catalogue APIs.
 
@@ -43,12 +44,13 @@ The UI must continue to label these as unavailable/planned until implemented and
 
 ## Supported catalogue columns
 
-XLSX, CSV/TSV and PDF table readers recognize model/model number/type, manufacturer/brand, product code/SKU, overall width/depth/height, airflow rate, static pressure/ESP, rated power and supply voltage aliases. PDF table extraction relies on selectable text and recognizable column positions. OCR prompts the local vision model for the same canonical fields; unknown fields and source-page evidence remain attached to extracted rows where available.
+XLSX, CSV/TSV and PDF table readers recognize model/model number/type, manufacturer/brand, product code/SKU, overall width/depth/height, airflow rate, static pressure/ESP, rated power and supply voltage aliases. Explicit MEP connector columns can include Connector Name, Connector X/Y/Z, Direction X/Y/Z, Connector Domain, Connector Shape, Connector Diameter or Connector Width/Height, Flow Direction and System Classification. Port coordinates and nominal sizes use the selected dimension unit and are converted to metres; direction vectors are normalized. PDF table extraction relies on selectable text and recognizable column positions. OCR prompts the local vision model for the same canonical fields; unknown fields and source-page evidence remain attached to extracted rows where available.
 
 ## Engineering boundaries
 
 - Dimensions are converted to metres for the existing family geometry parameter contract.
 - The generated geometry is a bounding-box template controlled by Width, Depth and Height. It is not a manufacturer-accurate solid.
+- Connector definitions are not inferred from airflow, dimensions or product imagery. The current family schema stores connectors at family level, so all product types in one imported family must have identical connector definitions. Multiple ports per product and type-specific connector layouts are not yet supported by this intake adapter; use the existing connector editor for richer port authoring.
 - Missing dimensions use a 1 m preview fallback only; QA explicitly flags the missing source values and users must correct them before relying on the geometry.
 - Text PDF parsing and page rendering run locally in the browser. Scanned page images are sent only to the user's configured local/private Ollama endpoint when OCR is explicitly enabled; no cloud OCR is used.
 - PDF OCR requires an image-capable Ollama model. A text-only or coding model may fail to return structured extraction data.
@@ -61,5 +63,5 @@ XLSX, CSV/TSV and PDF table readers recognize model/model number/type, manufactu
 2. Improve PDF layout reconstruction for rotated tables, merged headers, multi-column brochures and engineering unit inference.
 3. Parameter mapping UI with units, type/instance scope, GUID mapping and source confidence.
 4. Reuse the existing parametric feature tree for detailed product geometry templates.
-5. Connector mapping and placement editor, validated against existing MEP connector definitions.
+5. Extend catalogue connector intake to multiple named ports and type-specific connector layouts, then add an interactive placement editor with manufacturer drawing evidence.
 6. Revit 2020 adapter proof-of-concept, then version-specific adapters and reopen verification.
