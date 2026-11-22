@@ -381,6 +381,7 @@
     "test:modify-tab-completion": "node tests/modify-tab-completion.test.cjs",
     "test:property-palette-type-selector": "node tests/property-palette-type-selector.test.cjs",
     "test:catalogue-family-generator": "node --import tsx tests/catalogue-family-generator.test.mjs",
+    "test:catalogue-connector-mapping": "node tests/catalogue-connector-mapping.test.cjs",
     "test:pdf-catalogue-extractor": "node --import tsx tests/pdf-catalogue-extractor.test.mjs",
     "test:xlsx-catalogue-extractor": "node --import tsx tests/xlsx-catalogue-extractor.test.mjs"
   },
