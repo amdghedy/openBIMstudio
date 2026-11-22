@@ -57,11 +57,22 @@ function groupTextItems(items: any[]): PdfTextLine[] {
     const x = Number(item.transform[4]);
     const y = Number(item.transform[5]);
     if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-    tokens.push({
-      x, y, text: item.str.trim(),
-      width: Number.isFinite(item.width) ? Math.max(0, item.width) : 0,
-      height: Number.isFinite(item.height) ? Math.max(0, item.height) : 0,
-    });
+    const raw = item.str.trim();
+    const cells = raw.split(/\\s{2,}|\\t/).filter(Boolean);
+    if (cells.length > 1) {
+      let offset = 0;
+      for (const cell of cells) {
+        const relative = offset / Math.max(1, raw.length);
+        tokens.push({ x: x + (Number(item.width) || raw.length * 5) * relative, y, text: cell.trim(), width: cell.length * 5, height: Number(item.height) || 0 });
+        offset += cell.length + 2;
+      }
+    } else {
+      tokens.push({
+        x, y, text: raw,
+        width: Number.isFinite(item.width) ? Math.max(0, item.width) : 0,
+        height: Number.isFinite(item.height) ? Math.max(0, item.height) : 0,
+      });
+    }
   }
   tokens.sort((a, b) => b.y - a.y || a.x - b.x);
   const lines: PdfTextLine[] = [];
@@ -77,7 +88,7 @@ function groupTextItems(items: any[]): PdfTextLine[] {
   }
   for (const line of lines) {
     line.tokens.sort((a, b) => a.x - b.x);
-    line.text = line.tokens.map((item) => item.text).join(" ").replace(/\s+/g, " ").trim();
+    line.text = line.tokens.map((item) => item.text).join(" ").replace(/\\s+/g, " ").trim();
   }
   return lines.sort((a, b) => b.y - a.y);
 }
@@ -105,12 +116,16 @@ function parseTableRows(lines: PdfTextLine[], pageNumber: number): CatalogueRow[
   for (const line of lines) {
     if (line.y >= header.y - 1) continue;
     const cells = new Map<string, string[]>();
-    for (const token of line.tokens) {
-      const column = boundaries.find((candidate) => token.x >= candidate.left && token.x < candidate.right);
-      if (!column) continue;
-      const bucket = cells.get(column.key) ?? [];
-      bucket.push(token.text);
-      cells.set(column.key, bucket);
+    if (line.tokens.length === columns.length) {
+      line.tokens.forEach((token, index) => cells.set(columns[index].key, [token.text]));
+    } else {
+      for (const token of line.tokens) {
+        const column = boundaries.find((candidate) => token.x >= candidate.left && token.x < candidate.right);
+        if (!column) continue;
+        const bucket = cells.get(column.key) ?? [];
+        bucket.push(token.text);
+        cells.set(column.key, bucket);
+      }
     }
     const model = (cells.get("model") ?? []).join(" ").trim();
     if (!model || /^(model|type|model no\.?|model number)$/i.test(model)) continue;
