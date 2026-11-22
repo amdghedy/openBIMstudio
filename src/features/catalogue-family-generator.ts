@@ -1,10 +1,9 @@
 /**
  * BIM Family Generator — first delivery slice.
  *
- * Provides local catalogue intake (CSV/TSV/JSON), review, family creation
- * through the existing project-scoped family service, and a persistent UI
- * entry point. PDF OCR and CAD extraction are intentionally not advertised
- * as available until their adapters are implemented and tested.
+ * Provides local catalogue intake (CSV/TSV/JSON/PDF), optional local Ollama
+ * vision OCR for scanned PDF pages, review, and family creation through the
+ * existing project-scoped family service. CAD extraction remains unavailable.
  */
 import { ctx } from "../core/context";
 import { buildCatalogueFamilyDefinition, parseDelimitedCatalogue, validateCatalogueRows, type CatalogueRow } from "../modules/families/catalogue-intake";
@@ -100,12 +99,13 @@ async function readCatalogue(file?: File): Promise<void> {
   try {
     let parsed: { rows: CatalogueRow[]; errors: string[] };
     if (ext === "pdf") {
+      const useLocalVisionOcr = panel?.querySelector<HTMLInputElement>("[data-ocr]")?.checked ?? false;
       const result = await extractPdfCatalogue(file, {
-        useLocalVisionOcr: panel?.querySelector<HTMLInputElement>("[data-ocr]")?.checked ?? false,
+        useLocalVisionOcr,
         onProgress: (current, total, phase) => status(`${phase === "ocr" ? "Local OCR" : "Reading PDF"}: page ${current} of ${total}…`),
       });
       parsed = { rows: result.rows, errors: result.warnings };
-      if (result.scannedPages.length && !result.ocrPages.length) parsed.errors.push(`Scanned pages detected: ${result.scannedPages.join(", ")}. Enable local vision OCR to extract them.`);
+      if (result.scannedPages.length && !useLocalVisionOcr && !parsed.errors.some((issue) => issue.includes("Scanned/image-only pages"))) parsed.errors.push(`Scanned pages detected: ${result.scannedPages.join(", ")}. Enable local vision OCR to extract them.`);
       if (result.pageCount > result.processedPages) parsed.errors.push(`Only the first ${result.processedPages} of ${result.pageCount} pages were processed.`);
       sourceName = file.name;
       rows = parsed.rows;
