@@ -660,6 +660,24 @@
       "verifiedScenarios": []
     },
     {
+      "id": "family.creator",
+      "name": "Create or edit parametric family",
+      "discipline": "Architecture",
+      "module": "src/features/parametric-family-panel.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "family.sketch",
+      "name": "Create family from sketch",
+      "discipline": "Architecture",
+      "module": "src/features/parametric-family-panel.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "family.sketch-new",
       "name": "Family sketch: new family from an outline…",
       "discipline": "Families",
@@ -1123,6 +1141,15 @@
       "name": "Curtain Grid Editor\\u2026",
       "discipline": "Modeling",
       "module": "src/features/parametric-tools.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "parametric.familyPanel",
+      "name": "Parametric Families Panel",
+      "discipline": "Architecture",
+      "module": "src/features/parametric-family-panel.ts",
       "status": "unverified",
       "tests": [],
       "verifiedScenarios": []
