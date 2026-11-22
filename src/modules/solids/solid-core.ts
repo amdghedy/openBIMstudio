@@ -7,6 +7,7 @@
  * keep faces pointing outwards.
  */
 export const SOLID_EXTENSIONS = ["step", "stp", "iges", "igs", "brep", "brp", "3dm"] as const;
+import { gateImportedSolid } from "../solid-kernel/validation-gate";
 export type SolidKind = "step" | "iges" | "brep" | "3dm";
 
 export function solidKind(fileName: string): SolidKind | null {
@@ -82,7 +83,34 @@ export function occtToParts(res: OcctResult, scale = 1): { parts: SolidPart[]; w
     for (let i = 0; i < indices.length; i++) if (indices[i] >= maxIdx) { bad = true; break; }
     if (bad) { skipped++; continue; }
     const c = m.color && m.color.length >= 3 ? ([m.color[0], m.color[1], m.color[2]] as [number, number, number]) : null;
-    parts.push(toAppAxes({ name: m.name || `Shape ${parts.length + 1}`, color: c, positions, normals: nrm && nrm.length === pos.length ? Float32Array.from(nrm as ArrayLike<number>) : null, indices }));
+    const part = toAppAxes({ name: m.name || `Shape ${parts.length + 1}`, color: c, positions, normals: nrm && nrm.length === pos.length ? Float32Array.from(nrm as ArrayLike<number>) : null, indices });
+    // K1: every imported solid is gated (welded, then validated) before
+    // admission. A refused part is skipped, recorded in the quarantine
+    // registry, and named in warnings — never silently admitted. A
+    // quarantined part (junction-only contact class, volume exact) is
+    // admitted with its diagnostics recorded + warned about.
+    const gateVertices: Array<{ x: number; y: number; z: number }> = [];
+    for (let i = 0; i + 2 < part.positions.length; i += 3) {
+      gateVertices.push({ x: part.positions[i], y: part.positions[i + 1], z: part.positions[i + 2] });
+    }
+    const gateFaces: Array<[number, number, number]> = [];
+    for (let i = 0; i + 2 < part.indices.length; i += 3) {
+      gateFaces.push([part.indices[i], part.indices[i + 1], part.indices[i + 2]]);
+    }
+    const gate = gateImportedSolid({ vertices: gateVertices, faces: gateFaces }, part.name, "import:solid");
+    if (gate.verdict === "refused") {
+      skipped++;
+      warnings.push(
+        `Shape "${part.name}" failed geometry validation and was not admitted (${gate.errors.map((d) => d.code).join(", ")}).`,
+      );
+      continue;
+    }
+    if (gate.verdict === "quarantined") {
+      warnings.push(
+        `Shape "${part.name}" was admitted with a recorded validity warning (${gate.errors.map((d) => d.code).join(", ")}).`,
+      );
+    }
+    parts.push(part);
     triangles += Math.floor(indices.length / 3);
   }
   if (skipped) warnings.push(`${skipped} shape(s) had no usable triangles and were skipped.`);

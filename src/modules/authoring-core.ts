@@ -30,6 +30,10 @@ import {
   fuseAll, weldMesh, hollowExtrusion, hollowMetrics, offsetClosedRing,
   loftSections,
   validateMeshDiagnostics, validateProfileDiagnostics, commitEligible,
+  gateSolid, assertCommitEligible, gateImportedSolid,
+  threeGeometryToIndexedMesh, summarizeGateDiagnostics,
+  listQuarantinedSolids, isQuarantined, clearQuarantinedSolids,
+  ValidationGateError,
 } from "./solid-kernel";
 import {
   ModelingSession, DEFAULT_SNAP_SETTINGS,
@@ -107,6 +111,18 @@ export function setupAuthoringCore(): void {
     validate: validateMeshDiagnostics,
     validateProfile: validateProfileDiagnostics,
     commitEligible,
+    // K1 validation gate: validate (welded) on every Boolean result +
+    // authoring commit / import; refuse / quarantine on errors.
+    gateSolid,
+    assertCommitEligible,
+    gateImportedSolid,
+    threeGeometryToIndexedMesh,
+    summarizeGateDiagnostics,
+    listQuarantinedSolids,
+    isQuarantined,
+    clearQuarantinedSolids,
+    quarantinedSolids: listQuarantinedSolids,
+    ValidationGateError,
   };
   w.__obsSolids = solidsApi;
   features().solidKernel = solidsApi;

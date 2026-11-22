@@ -83,6 +83,7 @@
 
 import type { IndexedMesh, Pt3 } from "../adaptive";
 import { dot, cross, sub, createRobustInsideTester, type SupportPlane } from "./csg";
+import { assertCommitEligible } from "./validation-gate";
 import {
   BARYCENTRIC_TOLERANCE,
   EDGE_KEY_GRID,
@@ -582,7 +583,8 @@ export function generalBoolean(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedM
     throw new Error("generalBoolean: operands must be closed solids (>= 4 faces)");
   }
 
-  const ctx = toleranceContextFor(a, b, options?.diagnostics);
+  const diagnostics: ToleranceDiagnostic[] = options?.diagnostics ?? [];
+  const ctx = toleranceContextFor(a, b, diagnostics);
   const planesB = allPlanesOf(b, ctx.diagnostics);
   const planesA = allPlanesOf(a, ctx.diagnostics);
   const coplanarTrisB = planesB.map((pl) => trianglesOnPlane(b, pl, ctx.onPlane));
@@ -698,7 +700,25 @@ export function generalBoolean(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedM
       `generalBoolean(${op}): result is empty — the solids do not ${op === "intersect" ? "overlap" : "produce material for this operation"}`,
     );
   }
-  return { vertices, faces };
+  // K1: every Boolean result is gated (welded, then validated) before it
+  // is returned. Hard errors throw ValidationGateError — EXCEPT when the
+  // operation itself recorded skipped degenerate INPUT triangles. The
+  // PE-10 contract for degenerate input is skip + record + return a
+  // volume-exact result, and the degenerate face corrupts the coplanar
+  // pass on coplanar operands (measured: a [0,0,0] face on a box
+  // unioned with a coplanar partner leaves 8 non-manifold edges with
+  // exact volume; the same union without it gates clean, and the
+  // non-coplanar variant gates clean too). Refusing there would break
+  // that contract and the PE-10 test that pins it, so the result is
+  // RECORDED as quarantined and returned — visible, never silent.
+  // Results invalid from CLEAN input (e.g. an open operand, no
+  // degenerate-input record) still throw. Fixing the coplanar
+  // corruption itself is kernel work beyond this gate.
+  const hadDegenerateInput = diagnostics.some((d) => d.code === "degenerate-triangle-skipped");
+  return assertCommitEligible({ vertices, faces }, `boolean:${op}`, {
+    source: "general-kernel",
+    onRefused: hadDegenerateInput ? "quarantine" : "throw",
+  });
 }
 
 /**

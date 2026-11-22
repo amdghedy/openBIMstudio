@@ -36,6 +36,7 @@
  */
 
 import type { IndexedMesh, Pt3 } from "../adaptive";
+import { assertCommitEligible } from "./validation-gate";
 import {
   COPLANAR_CHECK_TOLERANCE,
   PLANE_MATCH_TOLERANCE,
@@ -464,7 +465,26 @@ export function booleanOp(op: BooleanOp, a: IndexedMesh, b: IndexedMesh): Indexe
   if (faces.length === 0) {
     throw new Error(`booleanOp(${op}): result is empty`);
   }
-  return { vertices, faces };
+  // K1: every Boolean result is gated (welded, then validated) before it
+  // is returned — with QUARANTINE, not refusal, on this kernel. Measured
+  // on the chain base (61cedf7, both hand-built boxes and the kernel's
+  // own generateVoid boxes): the convex splitter is seam-inconsistent
+  // whenever it actually splits — subtract interior / through /
+  // flush / side-protruding cutters give 12–26 non-manifold-edge
+  // diagnostics, union/intersect on overlapping non-coplanar operands
+  // 12–20 — while the volume stays exact in every case (the split host
+  // faces meet at T-junctions along the cutter planes; the general
+  // kernel's plane-arrangement pass has no such defect and gates clean
+  // on the same operands). Hard refusal here would stop all void
+  // cutting: cutVoids() calls subtract() per void and would record
+  // every cut as failed, keeping uncut solids. So refused convex
+  // results are RECORDED as quarantined (visible in the registry, with
+  // diagnostics) and returned — never silently whitelisted, never
+  // silently dropped. Path to hard refusal: fix splitAgainstConvex seam
+  // consistency, or route cutVoids through generalBoolean (clean on the
+  // same operands, measured) — both are kernel work beyond this gate.
+  // The disjoint-union case needs no splitting and gates `ok`.
+  return assertCommitEligible({ vertices, faces }, `boolean:${op}`, { source: "convex-kernel", onRefused: "quarantine" });
 }
 
 /** Convenience: a − b (spec 2.9 solid−void; b must be convex). */

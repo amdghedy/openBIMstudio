@@ -56,6 +56,10 @@ import { isViewOnly } from "../modules/collaboration/share-session";
 import { planMepStretch, planMepMove } from "../modules/mep/stretch";
 import { planLinearFollow, FOLLOW_LINEAR, magnetSameTypeEnd, joinedEnds } from "../modules/native-bim/linear-follow";
 import { generateWallSweep, generateRevealCutter } from "../modules/wall-sweeps/geometry";
+import {
+  gateSolid, recordQuarantinedSolid, clearQuarantinedSolid,
+  threeGeometryToIndexedMesh, summarizeGateDiagnostics,
+} from "../modules/solid-kernel/validation-gate";
 import type { WallSweepPlacement } from "../modules/wall-sweeps/types";
 import { isValidBoundary } from "../modules/views/boundary-edit";
 import { pointFootprintHandles, resizePointFootprint, type FootprintGrip } from "../modules/views/grip-geometry";
@@ -2707,6 +2711,15 @@ function rebuild() {
     const m = createMesh(el);
     if (m) group.add(m);
   }
+  // K1: record-only gate over the meshes rebuild() just built. This is
+  // what catches mesh states the pre-commit probe cannot see — a wall
+  // re-cut when a hosted door/window is placed, a host edit, an undo.
+  // Quarantine is the disposition here (the elements are already
+  // committed; refusal belongs to the pre-commit probe in createElement
+  // and the twin admission gate). A mesh that validates clean again
+  // clears its record. Never breaks the rebuild: any gate failure is
+  // logged and the scene stands as built.
+  gateRebuiltElementMeshes();
   syncHostedPositions();
   applySelection();
   refreshGrips();
@@ -2715,6 +2728,58 @@ function rebuild() {
   // opening cannot float off its host. No-op if the module is not loaded.
   (window as any).__obsSyncHostedPlacement?.();
   syncMepLifecycleFromAuthoredElements();
+}
+
+/** K1 record-only gate over the meshes rebuild() just built (see rebuild()). */
+function gateRebuiltElementMeshes(): void {
+  try {
+    const seen = new Set<string>();
+    for (const child of group.children) {
+      try {
+        child.updateMatrixWorld(true);
+      } catch { /* world matrices stay as built; local-frame validation still applies */ }
+      const meshes: THREE.Mesh[] = [];
+      child.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh); });
+      const elementId = ((child as THREE.Object3D).userData?.elementId as string | undefined)
+        ?? meshes.map((m) => (m.userData?.elementId as string | undefined)).find(Boolean);
+      if (!elementId || seen.has(elementId)) continue;
+      seen.add(elementId);
+      let worst: "ok" | "quarantined" | "refused" = "ok";
+      for (const m of meshes) {
+        const geo = m.geometry as THREE.BufferGeometry | undefined;
+        const posAttr = geo?.getAttribute?.("position") as THREE.BufferAttribute | undefined;
+        if (!posAttr) continue;
+        const idxAttr = (geo?.getIndex?.() as THREE.BufferAttribute | null)?.array as ArrayLike<number> | null;
+        const indexed = threeGeometryToIndexedMesh(
+          posAttr.array as ArrayLike<number>,
+          idxAttr ?? null,
+          (m.matrixWorld?.elements as unknown as ArrayLike<number> | undefined),
+        );
+        const verdict = gateSolid(indexed, `${elementId}`, { source: "authoring-rebuild", id: elementId });
+        if (verdict.verdict === "refused") {
+          // Refused verdicts are not auto-recorded by gateSolid (the
+          // element is already committed, so the record keeps it flagged
+          // in diagnostics instead of dropping the evidence).
+          worst = "refused";
+          recordQuarantinedSolid({
+            id: elementId,
+            owner: elementId,
+            source: "authoring-rebuild",
+            disposition: "quarantined",
+            admitted: true,
+            diagnostics: verdict.errors.map((d) => ({ code: d.code, message: d.message })),
+            volume: verdict.volume,
+          });
+        } else if (verdict.verdict === "quarantined" && worst === "ok") {
+          worst = "quarantined";
+        }
+      }
+      // A mesh that validates clean again clears its quarantine record.
+      if (worst === "ok") clearQuarantinedSolid(elementId);
+    }
+  } catch (err) {
+    console.warn("[authoring] validation-gate rebuild pass failed", err);
+  }
 }
 
 /** Synchronize native MEP geometry after the common authoring rebuild path. */
@@ -3787,6 +3852,70 @@ async function createElement(
     window.dispatchEvent(new CustomEvent("obs-toast", {
       detail: {
         message: `Cannot create ${el.name}. Correct the placement or dimensions first.\n${details}`,
+        kind: "error",
+      },
+    }));
+    return null;
+  }
+
+  // K1 validation gate: the mesh this element would commit must pass the
+  // kernel validity gate before the element enters the model. The probe
+  // mesh is built (then disposed) so the gate sees the final geometry,
+  // including three-csg opening/reveal cuts — K4 owns surfacing
+  // three-csg failures themselves; this gate covers their output.
+  // Calibration: only the unbuildable subset (empty mesh / non-finite
+  // geometry) refuses creation outright. Every other failure quarantines
+  // the element (recorded in the quarantine registry + warning toast)
+  // because the commit path legitimately produces non-solid meshes
+  // (imported native-twin tessellation, curtain-wall assemblies, hosted
+  // door/window parts) and no browser proof exists on this VM to
+  // allowlist solid-candidate builders — see validation-gate.ts.
+  try {
+    const probe = createMesh(el);
+    if (probe) {
+      try {
+        probe.updateMatrixWorld(true);
+        const probeMeshes: THREE.Mesh[] = [];
+        probe.traverse((o) => { if ((o as THREE.Mesh).isMesh) probeMeshes.push(o as THREE.Mesh); });
+        for (const pm of probeMeshes) {
+          const geo = pm.geometry as THREE.BufferGeometry | undefined;
+          const posAttr = geo?.getAttribute?.("position") as THREE.BufferAttribute | undefined;
+          if (!posAttr) continue;
+          const idxAttr = (geo?.getIndex?.() as THREE.BufferAttribute | null)?.array as ArrayLike<number> | null;
+          const indexed = threeGeometryToIndexedMesh(
+            posAttr.array as ArrayLike<number>,
+            idxAttr ?? null,
+            (pm.matrixWorld?.elements as unknown as ArrayLike<number> | undefined),
+          );
+          const verdict = gateSolid(indexed, `${el.type}:${el.id}`, { source: "authoring-commit", id: el.id });
+          if (verdict.verdict === "refused" && verdict.hardRefusal) {
+            window.dispatchEvent(new CustomEvent("obs-toast", {
+              detail: {
+                message: `Cannot create ${el.name}: the geometry failed validation (unbuildable).\n${summarizeGateDiagnostics(verdict.diagnostics)}`,
+                kind: "error",
+              },
+            }));
+            return null;
+          }
+          if (verdict.verdict !== "ok") {
+            window.dispatchEvent(new CustomEvent("obs-toast", {
+              detail: {
+                message: `${el.name}: geometry committed with a recorded validity warning (${verdict.errors.map((d) => d.code).join(", ")}). See diagnostics.`,
+                kind: "warning",
+              },
+            }));
+          }
+        }
+      } finally {
+        disposeObj(probe);
+      }
+    }
+  } catch (err) {
+    // Gate infrastructure failure (not a geometry verdict — those return
+    // above): fail closed rather than committing unvalidated geometry.
+    window.dispatchEvent(new CustomEvent("obs-toast", {
+      detail: {
+        message: `Cannot create ${el.name}: geometry validation failed (${err instanceof Error ? err.message : String(err)}).`,
         kind: "error",
       },
     }));
@@ -6222,6 +6351,31 @@ export function addNativeGeometryElement(input: {
     if (!Number.isFinite(n)) {
       throw new Error("Native twin transform contains non-finite values");
     }
+  }
+
+  // K1: gate the imported twin tessellation before admission. The twin
+  // is admitted with its diagnostics recorded (quarantine) — imported
+  // tessellation is routinely open / non-manifold, so hard refusal here
+  // would break IFC conversion flows that work today. Unbuildable
+  // geometry (empty / non-finite) already throws above.
+  const twinGate = gateSolid(
+    threeGeometryToIndexedMesh(positions, null),
+    `native-twin:${id}`,
+    { source: "import:native-twin", id },
+  );
+  if (twinGate.verdict === "refused") {
+    recordQuarantinedSolid({
+      id,
+      owner: `native-twin:${id}`,
+      source: "import:native-twin",
+      disposition: "quarantined",
+      admitted: true,
+      diagnostics: twinGate.errors.map((d) => ({ code: d.code, message: d.message })),
+      volume: twinGate.volume,
+    });
+  }
+  if (twinGate.verdict !== "ok") {
+    console.warn(`[authoring] native twin ${id} admitted with recorded validity diagnostics: ${summarizeGateDiagnostics(twinGate.diagnostics)}`);
   }
 
   // Recover parametric definition from exact source geometry (all disciplines).
