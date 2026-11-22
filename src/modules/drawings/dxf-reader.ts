@@ -17,7 +17,7 @@ import { assertFileAllowed, readHead } from "../../core/file-guard";
 import { assertValidDxfDocument } from "../../core/safeLoad";
 import { lineweightFromDxf } from "./cad-styles";
 import { parseWithAcadEngine } from "./acad-engine";
-import type { DxfAttDef, DxfAttrib, DxfBlockDef, DxfDimStyle, DxfDocument, DxfEntity, DxfHatch, DxfLayer, DxfLayout, DxfPoint, DxfTextStyle, DxfUnits, DxfViewport } from "./dxf-types";
+import type { DxfAttDef, DxfAttrib, DxfBlockDef, DxfDimStyle, DxfDocument, DxfEntity, DxfHatch, DxfLayer, DxfLayout, DxfPoint, DxfTextStyle, DxfUnits, DxfViewport, DxfXrefDecl } from "./dxf-types";
 import {
   arcPoints, computeExtents, ellipsePoints, evalBSpline, expandBulges,
   insUnitsToUnits, transformEntity, flipEntityX, isMirroredOcs, type InsertXform,
@@ -426,6 +426,7 @@ export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocume
   // 2. Sort records into header / layers / blocks / model space.
   const layers: DxfLayer[] = [];
   const blocks = new Map<string, Block>();
+  const xrefDecls: DxfXrefDecl[] = [];
   const modelRecs: Rec[] = [];
   const paperRecs: Rec[] = [];
   const linetypes: Record<string, number[]> = {};
@@ -534,6 +535,9 @@ export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocume
         const name = d.s(2) ?? "";
         curBlock = { name, base: d.pt(10, 20, 30), recs: [] };
         blocks.set(name, curBlock);
+        // XREF block record: flag 4 = external reference, 8 = overlay; path in group 1.
+        const flags = d.n(70), xp = d.s(1)?.trim();
+        if ((flags & 4) === 4 && xp) xrefDecls.push({ name, path: xp, kind: (flags & 8) === 8 ? "overlay" : "attach" });
       } else if (r.type === "ENDBLK") curBlock = null;
       else curBlock?.recs.push(r);
       continue;
@@ -634,6 +638,7 @@ export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocume
     entities,
     extents: computeExtents(extentSource),
     ...(blockTable ? { blocks: blockTable } : {}),
+    ...(xrefDecls.length ? { xrefs: xrefDecls } : {}),
     ...(savedView ? { savedView } : {}),
     units: units ?? "unitless",
     sourceFormat: "dxf",

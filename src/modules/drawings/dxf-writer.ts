@@ -531,9 +531,17 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
 
   // BLOCKS: native block definitions, then extra sheets (DWG conversion only)
   const extraSheets = opts.allLayouts ? (doc.layouts ?? []).slice(1) : [];
-  if (extraSheets.length || userBlocks.length) {
+  const xrefDecls = (doc.xrefs ?? []).filter((x) => !userBlocks.some((b) => b.name === x.name));
+  if (extraSheets.length || userBlocks.length || xrefDecls.length) {
     s += pair(0, "SECTION");
     s += pair(2, "BLOCKS");
+    // External references: an empty block flagged 4 (xref) / 12 (overlay) carrying the stored path (group 1).
+    for (const x of xrefDecls) {
+      s += pair(0, "BLOCK") + pair(5, nextHandle()) + pair(100, "AcDbEntity") + pair(8, "0");
+      s += pair(100, "AcDbBlockBegin") + pair(2, x.name) + pair(70, x.kind === "overlay" ? 12 : 4);
+      s += pair(10, 0) + pair(20, 0) + pair(30, 0) + pair(3, x.name) + pair(1, x.path);
+      s += pair(0, "ENDBLK") + pair(5, nextHandle()) + pair(100, "AcDbEntity") + pair(8, "0") + pair(100, "AcDbBlockEnd");
+    }
     for (const b of userBlocks) s += writeBlockDef(b, styles.nameFor, (opts.hatches ?? "hatch") === "hatch");
     legacyPrologue = true; // DWG-converter block contents use the legacy entity form (see above)
     extraSheets.forEach((sheet, i) => {

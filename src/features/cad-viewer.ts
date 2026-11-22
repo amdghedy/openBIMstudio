@@ -48,6 +48,7 @@ import { sanitizeSessionUi, sessionUiSignature, hiddenEntityIndexes, sanitizeHid
 import * as M from "../modules/cad-viewer/viewer-math";
 import { resolvedOf, bindDocumentBlocks, setActiveBlocks, touchBlocks, explodeInsert } from "../modules/drawings/block-refs";
 import * as BE from "../modules/drawings/block-edit";
+import { XrefStore, composeXrefs, compareXref, type ComposedXref } from "../modules/drawings/xref-engine";
 import * as X from "../modules/cad-viewer/modify-math";
 import * as AcadParity from "../modules/cad-viewer/acad-parity"
 import {
@@ -423,6 +424,13 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "TABLE", aliases: ["TB"], description: "Insert a drawing table (rows × columns grid)" },
   { name: "IMPORT", aliases: ["IMP"], description: "Merge a DWG / DXF file into the current drawing" },
   { name: "BLOCK", aliases: ["B", "BMAKE"], description: "Create a native block definition from the selected objects (base point, name); they become one reference" },
+  { name: "XATTACH", aliases: ["XA"], description: "Attach an external drawing as a separate reference (not merged into this drawing)" },
+  { name: "XOVERLAY", aliases: ["XO"], description: "Overlay an external drawing (not propagated to drawings that reference this one)" },
+  { name: "XSTATUS", aliases: ["XST"], description: "List native external references with status, path and nesting level" },
+  { name: "XRELOAD", aliases: ["XRL"], description: "Reload a reference from a file and report what changed" },
+  { name: "XUNLOAD", aliases: ["XUL"], description: "Unload a reference's geometry but keep its definition" },
+  { name: "XDETACHN", aliases: ["XDN"], description: "Detach a native reference and its nested references" },
+  { name: "XPATH", aliases: [], description: "XPATH <name> REL|ABS — store the reference path relative or absolute" },
   { name: "NATIVEBLOCKS", aliases: ["NBLK"], description: "ON/OFF: open DWG/DXF with block references kept native (experimental, applies to the next file opened)" },
   { name: "INSERT", aliases: ["I", "DDINSERT", "-INSERT"], description: "Insert a block from the library (scale, rotation) or a drawing file as a block" },
   { name: "WBLOCK", aliases: ["W"], description: "Write the selected objects (or a library block) to a DXF file" },
@@ -2153,6 +2161,78 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     return true;
   }
 
+  /* ── Native XREF engine (Phase 2): references live in a store, separate from `doc`. ── */
+  const xrefFiles = new Map<string, DxfDocument>();
+  const xrefStore = new XrefStore(".", (p) => xrefFiles.get(p.toLowerCase()) ?? null);
+  let xview: ComposedXref[] = [];
+  const refreshXrefs = (): void => {
+    xrefStore.hostPath = `/${name || "drawing.dxf"}`;
+    xview = doc ? composeXrefs(xrefStore, { units: doc.units }) : [];
+    if (doc) {
+      const decl = xrefStore.list().filter((r) => !r.parent).map((r) => ({ name: r.name, path: r.path, kind: r.kind }));
+      if (decl.length) doc.xrefs = decl; else delete doc.xrefs;
+    }
+    draw();
+  };
+  const pickFile = (accept: string): Promise<File | null> =>
+    new Promise((resolve) => {
+      const input = document.createElement("input");
+      input.type = "file"; input.accept = accept;
+      input.onchange = () => resolve(input.files?.[0] ?? null);
+      input.addEventListener("cancel", () => resolve(null));
+      input.click();
+    });
+  async function xrefCommand(sub: string, arg: string): Promise<void> {
+    if (!doc) { logCmd("XREF: open a drawing first."); return; }
+    const ref = arg ? xrefStore.byName(arg.split(/\s+/)[0]!) : undefined;
+    const need = (): boolean => { if (ref) return true; logCmd(`${sub}: name a reference (${xrefStore.list().map((r) => r.name).join(", ") || "none attached"}).`); return false; };
+    if (sub === "XATTACH" || sub === "XOVERLAY") {
+      const f = await pickFile(".dwg,.dxf");
+      if (!f) { logCmd(`${sub} cancelled.`); return; }
+      const r = await readCadFile(f, { nativeBlocks: true });
+      const stored = `/${f.name}`.replace(/\\/g, "/");
+      xrefFiles.set(stored.toLowerCase(), r.doc);
+      xrefStore.hostPath = `/${name || "drawing.dxf"}`;
+      const x = await xrefStore.attach(f.name, { kind: sub === "XOVERLAY" ? "overlay" : "attach" });
+      markDirty(); refreshXrefs();
+      logCmd(`${sub}: "${x.name}" ${x.status} · ${r.doc.entities.length} entities (kept separate from this drawing; display only — not snappable yet).`);
+      return;
+    }
+    if (sub === "XSTATUS") {
+      const rows = xrefStore.report();
+      if (!rows.length) { logCmd("XSTATUS: no native external references."); return; }
+      for (const x of rows) logCmd(`XSTATUS: ${"  ".repeat(x.nestedLevel)}${x.name} [${x.kind}] ${x.status.toUpperCase()} · ${x.entities} entities · ${x.path}${x.message ? " — " + x.message : ""}`);
+      return;
+    }
+    if (!need()) return;
+    const r = ref!;
+    if (sub === "XUNLOAD") { xrefStore.unload(r.id); refreshXrefs(); logCmd(`XUNLOAD: "${r.name}" unloaded (definition kept).`); return; }
+    if (sub === "XDETACHN") { const n = xrefStore.detach(r.id).length; markDirty(); refreshXrefs(); logCmd(`XDETACHN: removed ${n} reference(s).`); return; }
+    if (sub === "XPATH") {
+      const mode = (arg.split(/\s+/)[1] ?? "").toUpperCase();
+      if (mode !== "REL" && mode !== "ABS") { logCmd("XPATH: usage XPATH <name> REL|ABS."); return; }
+      xrefStore.convertPath(r.id, mode === "REL" ? "relative" : "absolute"); markDirty(); refreshXrefs();
+      logCmd(`XPATH: "${r.name}" now stored as ${r.path}.`);
+      return;
+    }
+    if (sub === "XRELOAD") {
+      // A browser cannot re-read a path on disk: pick the (possibly updated) file again.
+      const f = await pickFile(".dwg,.dxf");
+      if (!f) { logCmd("XRELOAD cancelled."); return; }
+      const before = xrefStore.docOf(r.id);
+      const nd = (await readCadFile(f, { nativeBlocks: true })).doc;
+      const key = `/${f.name}`.toLowerCase();
+      xrefFiles.set(key, nd);
+      await xrefStore.repath(r.id, f.name);
+      refreshXrefs();
+      if (before) {
+        const d = compareXref(before, nd);
+        logCmd(`XRELOAD: "${r.name}" ${r.status}. Changes: +${d.added} −${d.removed} =${d.unchanged}${d.layersAdded.length ? ` · new layers ${d.layersAdded.join(", ")}` : ""}${d.layersRemoved.length ? ` · removed layers ${d.layersRemoved.join(", ")}` : ""}.`);
+      } else logCmd(`XRELOAD: "${r.name}" ${r.status}.`);
+      return;
+    }
+  }
+
   const nativeBlocksOn = (): boolean => { try { return localStorage.getItem("obs.cad.nativeBlocks") === "1"; } catch { return false; } };
   /** >0 while drawing highlight / ghost overlays: block children then keep the caller's stroke style. */
   let inheritStyle = 0;
@@ -2834,6 +2914,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         c.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
         c.restore();
       }
+    }
+
+    // External references (XATTACH): derived read-only geometry, never part of the host drawing database.
+    if (xview.length) {
+      c.save();
+      c.setLineDash([]);
+      c.lineWidth = lw;
+      for (const x of xview) {
+        c.strokeStyle = "#8aa0b8";
+        c.fillStyle = "#8aa0b8";
+        c.globalAlpha = 0.85;
+        for (const e of x.entities) if (shown(e)) drawPlain(c, e, v);
+      }
+      c.restore();
     }
 
     // Selected entities highlight
@@ -5672,6 +5766,18 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       doc = r.doc;
       if (doc.blocks) bindDocumentBlocks(doc);
       name = file.name;
+      // References declared by the file are listed (missing until the user supplies the file with XRELOAD).
+      xrefStore.clear(); xrefFiles.clear(); xview = [];
+      if (doc.xrefs?.length) {
+        const decls = [...doc.xrefs];
+        void (async () => {
+          xrefStore.hostPath = `/${name}`;
+          for (const d of decls) await xrefStore.attach(d.path, { name: d.name, kind: d.kind });
+          refreshXrefs();
+          const miss = xrefStore.list().filter((r) => r.status === "missing").length;
+          if (miss) logCmd(`XREF: ${miss} of ${decls.length} reference(s) not found — run XSTATUS, then XRELOAD <name> to supply the file.`);
+        })();
+      }
       drawingClock = AcadParity.createClock();
       cadGroups.clear();
       xrefs.length = 0;
@@ -10420,6 +10526,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     if (cmd === "LAYERSTATE" || cmd === "LAS" || cmd === "LAYSTATE") {
       layerStateCommand(parts.slice(1));
+      return;
+    }
+    if (cmd === "XATTACH" || cmd === "XA" || cmd === "XOVERLAY" || cmd === "XO" || cmd === "XSTATUS" || cmd === "XST" || cmd === "XRELOAD" || cmd === "XRL" || cmd === "XUNLOAD" || cmd === "XUL" || cmd === "XDETACHN" || cmd === "XDN" || cmd === "XPATH") {
+      const full = ({ XA: "XATTACH", XO: "XOVERLAY", XST: "XSTATUS", XRL: "XRELOAD", XUL: "XUNLOAD", XDN: "XDETACHN" } as Record<string, string>)[cmd] ?? cmd;
+      void xrefCommand(full, parts.slice(1).join(" "));
       return;
     }
     if (cmd === "NATIVEBLOCKS" || cmd === "NBLK") {
