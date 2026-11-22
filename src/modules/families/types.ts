@@ -46,6 +46,8 @@ export interface FamilyType {
   name: string;
   /** Type-scope parameter overrides. */
   values: Record<string, any>;
+  /** Optional type-specific MEP ports; when absent, family-level ports are inherited. */
+  connectorDefs?: ConnectorDefinition[];
 }
 
 export type NumberRef =
