@@ -52,7 +52,7 @@ XLSX, CSV/TSV and PDF table readers recognize model/model number/type, manufactu
 
 - Dimensions are converted to metres for the existing family geometry parameter contract.
 - The generated geometry supports explicit box and cylinder parametric primitives only. Cylinder profile treats Width as diameter and Height as axial length. These are generic primitives, not manufacturer-accurate solids.
-- Connector definitions are not inferred from airflow, dimensions or product imagery. Multiple explicitly numbered ports can be imported, but the current family schema stores connectors at family level, so all product types in one imported family must have identical connector definitions. Type-specific connector layouts are not yet supported; use the existing connector editor to refine the shared family layout.
+- Connector definitions are not inferred from airflow, dimensions or product imagery. Multiple explicitly numbered ports can be imported. Connector definitions are stored per FamilyType when imported from a catalogue, so product variants can carry different port counts and layouts; the existing family-level connector list remains the fallback for types without a type-specific list. The Family Browser connector editor can edit and preview the selected type's layout.
 - Missing dimensions use a 1 m preview fallback only; QA explicitly flags the missing source values and users must correct them before relying on the geometry.
 - Text PDF parsing and page rendering run locally in the browser. Scanned page images are sent only to the user's configured local/private Ollama endpoint when OCR is explicitly enabled; no cloud OCR is used.
 - PDF OCR requires an image-capable Ollama model. A text-only or coding model may fail to return structured extraction data.
@@ -65,5 +65,5 @@ XLSX, CSV/TSV and PDF table readers recognize model/model number/type, manufactu
 2. Improve PDF layout reconstruction for rotated tables, merged headers, multi-column brochures and engineering unit inference.
 3. Parameter mapping UI with units, type/instance scope, GUID mapping and source confidence.
 4. Reuse the existing parametric feature tree for detailed product geometry templates.
-5. Extend the family schema and placement pipeline for type-specific connector layouts, then add manufacturer drawing evidence and a guided connector mapping editor.
+5. Wire type-specific connector definitions into placed-instance MEP connectivity and system validation; then add manufacturer drawing evidence and guided mapping.
 6. Revit 2020 adapter proof-of-concept, then version-specific adapters and reopen verification.
