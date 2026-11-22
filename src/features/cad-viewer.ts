@@ -1757,7 +1757,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   const snapBlocks = (): Record<string, DxfBlockDef> | null => (doc?.blocks ? { ...doc.blocks } : null);
   const restoreBlocks = (t: Record<string, DxfBlockDef> | null | undefined): void => {
     if (!doc || t === undefined) return;
-    if (t) { doc.blocks = { ...t }; bindDocumentBlocks(doc); touchBlocks(doc.blocks); setActiveBlocks(doc.blocks); }
+    if (t) { doc.blocks = { ...t }; touchBlocks(doc.blocks); setActiveBlocks(doc.blocks); }
     else delete doc.blocks;
   };
   const undoStack: UndoAction[] = [];
