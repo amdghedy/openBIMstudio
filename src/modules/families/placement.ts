@@ -60,6 +60,24 @@ export function resolvePlacementConnectors(
   return svc.buildConnectors(ownerElementId, familyId, familyTypeId, instanceObject);
 }
 
+/**
+ * Replace the placed element's MEP connector set in the active lifecycle.
+ * Call after the family instance has its final world transform and again
+ * after geometry/transform edits. Returns null when MEP lifecycle is not ready.
+ */
+export function syncPlacementConnectors(
+  ownerElementId: string,
+  familyId: string,
+  familyTypeId: string | null,
+  instanceObject: THREE.Object3D,
+): MepConnector[] | null {
+  const connectors = resolvePlacementConnectors(ownerElementId, familyId, familyTypeId, instanceObject);
+  const lifecycle = (ctx.features as any)?.mep?.lifecycle;
+  if (!connectors || !lifecycle || typeof lifecycle.onElementChanged !== "function") return null;
+  lifecycle.onElementChanged(ownerElementId, connectors);
+  return connectors;
+}
+
 export function resolvePlacement(
   familyId: string,
   familyTypeId: string | null,
