@@ -81,7 +81,7 @@ function elLevel(el: Any): string {
 /* 3 */ export function hideSelectedCategories(): number {
   const a = authoring();
   const ids: string[] = a?.getSelectedIds?.() ?? [];
-  if (!ids.size) {
+  if (!ids.length) {
     notify("warn", "Select an element whose category should be hidden");
     return 0;
   }
@@ -108,7 +108,7 @@ function elLevel(el: Any): string {
 /* 4 */ export function selectSimilarType(): number {
   const a = authoring();
   const ids: string[] = a?.getSelectedIds?.() ?? [];
-  if (!ids.size) {
+  if (!ids.length) {
     notify("warn", "Select one element first");
     return 0;
   }
@@ -129,7 +129,9 @@ function elLevel(el: Any): string {
   let level: Any = a?.getLevel?.();
   const levels = a?.getLevels?.() ?? [];
   if (level != null && typeof level === "object") level = level.name ?? level.id ?? level.elevation;
-  if ((level == null || level === "") && levels[0]) {
+  // typeof guard: level is typed Any, so a bare `level === ""` is a type
+  // error (TS2367) — the runtime check is unchanged (true only for "").
+  if ((level == null || (typeof level === "string" && level === "")) && levels[0]) {
     level = levels[0].name ?? levels[0].id ?? levels[0].elevation;
   }
   const key = String(level ?? "");
@@ -162,7 +164,6 @@ function elLevel(el: Any): string {
     })),
     byLevel: counts,
   };
-  (window as Any).__obsLevelReport = report;
   console.log("[level-report]", report);
   const top = Object.entries(counts).sort((x, y) => y[1] - x[1]).slice(0, 5)
     .map(([k, v]) => `${k}:${v}`).join(", ");
@@ -173,17 +174,21 @@ function elLevel(el: Any): string {
 /* 7 */ export function unitsReport(): Any {
   let report: Any = { system: "unknown" };
   try {
-    const u = (ctx as Any).units || (window as Any).__obsUnits;
+    // Units live on the locale service (ctx.features.units), not on a
+    // window global — the old fallback global never had a producer, so this
+    // always reported the "metric-ish" fallback. Config codes are the real unit
+    // identifiers (length "m"/"mm"/"ft", area "m2"/"ft2", volume "m3"/"ft3").
+    const svc = (ctx as Any).features?.units;
+    const cfg = svc?.getConfig?.();
     report = {
-      system: u?.system ?? u?.getSystem?.() ?? "metric-ish",
-      length: u?.lengthUnit ?? u?.length ?? "m",
-      area: u?.areaUnit ?? "m²",
-      volume: u?.volumeUnit ?? "m³",
+      system: svc?.getSystem?.() ?? "metric-ish",
+      length: cfg?.length ?? "m",
+      area: cfg?.area ?? "m²",
+      volume: cfg?.volume ?? "m³",
     };
   } catch {
     report = { system: "m (default)", length: "m" };
   }
-  (window as Any).__obsUnitsReport = report;
   console.log("[units]", report);
   notify("info", `Units: ${report.system} · length ${report.length}`);
   return report;
@@ -232,7 +237,6 @@ function elLevel(el: Any): string {
     }
   } catch { /* */ }
   const report = { count: items.length, items };
-  (window as Any).__obsLinkedSummary = report;
   console.log("[linked-models]", report);
   notify("info", items.length ? `Linked models: ${items.length} (see console)` : "No linked models in the scene");
   return report;
@@ -255,7 +259,8 @@ export function setupCriticalWorkflowPack12(): void {
     linkedModelsSummary,
     clearTempHiddenFlags,
   };
-  (window as Any).__obsWorkflowPack12 = api;
+  // The api is wired into ctx.features below — the internal surface. (A
+  // window stash of the same api used to live here; nothing read it.)
   (ctx.features as Any).workflowPack12 = api;
 
   const cmds: Array<[string, string, () => void]> = [

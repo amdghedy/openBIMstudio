@@ -660,6 +660,24 @@
       "verifiedScenarios": []
     },
     {
+      "id": "family.creator",
+      "name": "Family Creator",
+      "discipline": "Families",
+      "module": "src/features/parametric-family-panel.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "family.sketch",
+      "name": "Family from sketch",
+      "discipline": "Families",
+      "module": "src/features/parametric-family-panel.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "family.sketch-new",
       "name": "Family sketch: new family from an outline…",
       "discipline": "Families",

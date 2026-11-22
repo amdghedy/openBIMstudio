@@ -26,7 +26,12 @@ function elements(): Any[] {
 
 /* 1 */ export async function showIfcInteropReport(): Promise<void> {
   try {
-    const last = (window as Any).__obsLastIfcInteropReport;
+    // The importer attaches the inventory on load — read the latest report
+    // from its interopReports() accessor (ctx.features.importer). The old
+    // read of a window global had no producer anywhere in the repo, so
+    // this command could never show a report.
+    const reports = (ctx.features as Any)?.importer?.interopReports?.() ?? [];
+    const last = reports[reports.length - 1];
     if (last) {
       const { formatInteropReport } = await import("../ifc-semantics/interop-report");
       const lines = formatInteropReport(last);
@@ -66,7 +71,6 @@ function elements(): Any[] {
     byType,
     top: Object.entries(byType).sort((a, b) => b[1] - a[1]).slice(0, 12),
   };
-  (window as Any).__obsModelCensus = report;
   console.log("[model-census]", report);
   notify(
     "info",
@@ -149,7 +153,6 @@ function elements(): Any[] {
     openIssues: issues,
     score: Math.max(0, 100 - missingId * 5 - missingType * 2 - Math.min(40, noMesh)),
   };
-  (window as Any).__obsModelHealth = report;
   console.log("[model-health]", report);
   notify(
     report.score >= 80 ? "success" : "warn",
@@ -217,7 +220,6 @@ export function runMalformedProbesDemo(): void {
       byCat[cat] = (byCat[cat] || 0) + 1;
     }
     const report = { total: cmds.length, byCat };
-    (window as Any).__obsToolCatalogRuntime = report;
     console.log("[tool-catalog-runtime]", report);
     notify("info", `Commands registered: ${cmds.length} (console has by-category breakdown)`);
   } catch {
@@ -239,7 +241,6 @@ export function runMalformedProbesDemo(): void {
   }
   const ms = performance.now() - t0;
   const report = { selected: ids.length, withProps: props, ms: Math.round(ms * 100) / 100 };
-  (window as Any).__obsPerfSel = report;
   console.log("[perf-sel]", report);
   notify("info", `Selection probe: ${ids.length} elements in ${report.ms} ms`);
   return report.ms;
@@ -263,7 +264,6 @@ export function runMalformedProbesDemo(): void {
     "COBie2.4",
     "ISO19650",
   ];
-  (window as Any).__obsStandardsPacks = packs;
   console.log("[standards-packs]", packs);
   notify("info", `Standards packs: ${packs.join(" · ")}`);
   return packs;
@@ -283,7 +283,8 @@ export function setupCriticalWorkflowPack11(): void {
     openRecoveryUi,
     listStandardsPacks,
   };
-  (window as Any).__obsWorkflowPack11 = api;
+  // The api is wired into ctx.features below — the internal surface. (A
+  // window stash of the same api used to live here; nothing read it.)
   (ctx.features as Any).workflowPack11 = api;
 
   const cmds: Array<[string, string, () => void]> = [
