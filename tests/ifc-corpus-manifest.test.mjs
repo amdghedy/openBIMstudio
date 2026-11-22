@@ -212,17 +212,14 @@ for (const f of fixtures) {
       const errors = V.validateSemanticModel(model).filter((x) => x.severity === "error");
       assert.strictEqual(errors.length, 0, `${f.file}: ${JSON.stringify(errors.slice(0, 2))}`);
     });
-    if (!f.file.startsWith("extended/")) {
-      t(`valid: golden snapshot exists for ${f.file}`, () => {
-        const snap = path.join(CORPUS, "snapshots", f.file + ".json");
-        assert.ok(fs.existsSync(snap), `missing snapshot ${snap}`);
-        assert.strictEqual(JSON.parse(fs.readFileSync(snap, "utf8")).schema, f.schema);
-      });
-    } else {
-      t(`valid: extended/ has no golden snapshot yet (recorded limit) — ${f.file}`, () => {
-        assert.ok(!fs.existsSync(path.join(CORPUS, "snapshots", f.file + ".json")), `unexpected snapshot for ${f.file}`);
-      });
-    }
+    // extended/ snapshots now exist and are golden-gated like every other
+    // valid fixture (the old "recorded limit" branch was removed when the
+    // snapshots were checked in).
+    t(`valid: golden snapshot exists for ${f.file}`, () => {
+      const snap = path.join(CORPUS, "snapshots", f.file + ".json");
+      assert.ok(fs.existsSync(snap), `missing snapshot ${snap}`);
+      assert.strictEqual(JSON.parse(fs.readFileSync(snap, "utf8")).schema, f.schema);
+    });
   } else if (f.kind === "invalid" && f.expect.finding) {
     t(`invalid: ${f.file} yields ${f.expect.finding}`, () => {
       const codes = V.validateSemanticModel(M.buildSemanticModel(fs.readFileSync(p, "utf8"))).map((x) => x.code);
