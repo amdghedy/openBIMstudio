@@ -266,7 +266,12 @@ export async function readDwgThumbnail(file: File): Promise<DwgThumbSuccess> {
   return result;
 }
 
-export async function readCadFile(file: File): Promise<{ doc: DxfDocument; summary: string; format: "dxf" | "dwg" }> {
+export interface ReadCadFileOptions {
+  /** Preserve ASCII-DXF BLOCK/INSERT references for the standalone 2D editor. Other callers remain flat by default. */
+  nativeBlocks?: boolean;
+}
+
+export async function readCadFile(file: File, options: ReadCadFileOptions = {}): Promise<{ doc: DxfDocument; summary: string; format: "dxf" | "dwg" }> {
   const e = ext(file.name);
   // .bak and .sv$ are DWG drawing backup / autosave files — same DWG
   // container, so native CAD opens them directly ("recover from backup").
@@ -278,11 +283,14 @@ export async function readCadFile(file: File): Promise<{ doc: DxfDocument; summa
   }
   if (e === "dxf") {
     assertFileAllowed("dxf", file.name, file.size, await readHead(file, 256));
-    const doc = parseDxf(await file.text());
+    const doc = parseDxf(await file.text(), options.nativeBlocks ? { nativeBlocks: true } : {});
     const skipped = doc.skipped
       ? Object.entries(doc.skipped).map(([k, v]) => `${v}×${k}`).join(", ") : "";
+    const insertCount = doc.entities.filter((entity) => entity.type === "INSERT").length;
+    const blockCount = Object.keys(doc.blocks ?? {}).length;
+    const blockSummary = blockCount ? `; ${insertCount} native INSERT reference(s) across ${blockCount} block definition(s)` : "";
     const summary = `${doc.entities.length} drawable entities on ${doc.layers.length} layers` +
-      (skipped ? `; not drawn: ${skipped}` : "");
+      blockSummary + (skipped ? `; not drawn: ${skipped}` : "");
     return { doc, summary, format: "dxf" };
   }
   if (e === "xml") throw new Error("LandXML files import as survey points — use LANDXMLIN or drop the .xml onto a drawing");
