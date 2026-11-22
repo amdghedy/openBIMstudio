@@ -78,8 +78,9 @@ export function parseDelimitedCatalogue(source: string, delimiter?: string): Cat
     if (!item.model.trim()) { errors.push(`Row ${r + 1}: missing model identifier; row skipped.`); continue; }
     for (let c = 0; c < mapped.length; c++) {
       const key = mapped[c];
-      if (!key || key === "model") continue;
+      if (key === "model") continue;
       const raw = cells[c] ?? "";
+      if (!key) { if (raw) item[headers[c]] = raw; continue; }
       if (!raw) continue;
       if (["width", "depth", "height", "airflow", "staticPressure", "power", "voltage"].includes(key)) {
         const n = Number(raw.replace(/,/g, ""));
