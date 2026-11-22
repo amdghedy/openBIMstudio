@@ -57,14 +57,15 @@ async function openWorkbook(file: File | Blob) {
   const rels = await relsFile.async("string");
   const relationships = [...rels.matchAll(/<Relationship\b([^>]*)\/?>/g)].map((match) => {
     const attrs = match[1];
-    return { id: attrs.match(/\bId="([^"]+)"/)?.[1] ?? "", target: attrs.match(/\bTarget="([^"]+)"/)?.[1] ?? "", mode: attrs.match(/\bTargetMode="([^"]+)"/)?.[1] ?? "" };
+    return { id: attrs.match(/\bId="([^"]+)"/)?.[1] ?? "", target: attrs.match(/\bTarget="([^"]+)"/)?.[1] ?? "", mode: attrs.match(/\bTargetMode="([^"]+)"/)?.[1] ?? "", type: attrs.match(/\bType="([^"]+)"/)?.[1] ?? "" };
   });
   const sheets: SheetRef[] = [...workbook.matchAll(/<sheet\b([^>]*)\/?>/g)].map((match) => {
     const attrs = match[1];
     const name = attrs.match(/\bname="([^"]*)"/)?.[1] ?? "";
     const relationshipId = attrs.match(/\br:id="([^"]+)"/)?.[1] ?? "";
+    const state = attrs.match(/\bstate="([^"]+)"/)?.[1] ?? "visible";
     const relation = relationships.find((item) => item.id === relationshipId);
-    if (!name || !relation || relation.mode.toLowerCase() === "external") return null;
+    if (!name || state !== "visible" || !relation || relation.mode.toLowerCase() === "external" || !relation.type.endsWith("/worksheet")) return null;
     return { name, relationshipId, target: normalizeTarget(relation.target) };
   }).filter((item): item is SheetRef => Boolean(item));
   if (!sheets.length) throw new Error("The workbook contains no readable worksheets.");
