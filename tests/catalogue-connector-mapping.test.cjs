@@ -17,5 +17,22 @@ try {
  assert.throws(()=>buildCatalogueConnectorDefinitions([{...row,"Direction X":0,"Direction Y":0,"Direction Z":0}]),/non-zero/);
  assert.throws(()=>buildCatalogueConnectorDefinitions([{...row,"Connector X":undefined}]),/X\/Y\/Z origin/);
  assert.throws(()=>buildCatalogueConnectorDefinitions([row,{...row,model:"AHU-2","Connector X":600}]),/identical connector definitions/);
- console.log("Catalogue connector mapping: 5 assertions passed");
+ 
+ const multi={
+  model:"AHU-2",
+  "Connector 1 Name":"Supply","Connector 1 X":500,"Connector 1 Y":0,"Connector 1 Z":1200,
+  "Connector 1 Direction X":1,"Connector 1 Direction Y":0,"Connector 1 Direction Z":0,
+  "Connector 1 Domain":"duct","Connector 1 Shape":"rectangular","Connector 1 Width":400,"Connector 1 Height":250,
+  "Connector 1 Flow Direction":"out","Connector 1 System Classification":"supply-air",
+  "Connector 2 Name":"Return","Connector 2 X":-500,"Connector 2 Y":0,"Connector 2 Z":1200,
+  "Connector 2 Direction X":-1,"Connector 2 Direction Y":0,"Connector 2 Direction Z":0,
+  "Connector 2 Domain":"duct","Connector 2 Shape":"round","Connector 2 Diameter":315,
+  "Connector 2 Flow Direction":"in","Connector 2 System Classification":"return-air"
+ };
+ const multiPorts=buildCatalogueConnectorDefinitions([multi],"mm");
+ assert.equal(multiPorts.length,2); assert.equal(multiPorts[0].name,"Supply");
+ assert.equal(multiPorts[1].name,"Return"); assert.equal(multiPorts[1].size,0.315);
+ assert.throws(()=>buildCatalogueConnectorDefinitions([multi,{...multi,"Connector 2 X":-400}]),/same numbered connector definitions/);
+ assert.throws(()=>buildCatalogueConnectorDefinitions([{...multi,"Connector 2 Direction X":0,"Connector 2 Direction Y":0,"Connector 2 Direction Z":0}]),/connector 2 direction must be non-zero/);
+ console.log("Catalogue connector mapping: 9 assertions passed");
 } finally {fs.rmSync(out,{recursive:true,force:true});}
