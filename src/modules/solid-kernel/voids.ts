@@ -27,6 +27,12 @@
 import type { IndexedMesh, Pt3 } from "../adaptive";
 import { meshVolume } from "../adaptive";
 import { isInsideRobust, subtract } from "./csg";
+import {
+  AABB_OVERLAP_TOLERANCE,
+  COPLANAR_DIRECTION_TOLERANCE,
+  INTERVAL_OVERLAP_TOLERANCE,
+  TRIANGLE_PLANE_TOLERANCE,
+} from "./tolerance";
 
 // ── AABB tree (broad phase, spec 2.9) ───────────────────────────────────
 
@@ -61,7 +67,7 @@ export function meshAabb(mesh: IndexedMesh): Aabb {
   return out;
 }
 
-export function aabbOverlap(a: Aabb, b: Aabb, tol = 1e-12): boolean {
+export function aabbOverlap(a: Aabb, b: Aabb, tol = AABB_OVERLAP_TOLERANCE): boolean {
   return (
     a.minX <= b.maxX + tol && b.minX <= a.maxX + tol &&
     a.minY <= b.maxY + tol && b.minY <= a.maxY + tol &&
@@ -180,7 +186,7 @@ export function triTriIntersect(
 
   // Early reject: all of one triangle strictly on one side of the other's
   // plane (touching within EPS counts as contact, not rejection).
-  const EPS = 1e-12;
+  const EPS = TRIANGLE_PLANE_TOLERANCE;
   const dT2 = T2.map((i) => dist1(m2.vertices[i]));
   if (dT2.every((x) => x > EPS) || dT2.every((x) => x < -EPS)) return false;
   const dT1 = T1.map((i) => dist2(m1.vertices[i]));
@@ -189,7 +195,7 @@ export function triTriIntersect(
   // Interval overlap test on the intersection line.
   const D = { x: n1.y * n2.z - n1.z * n2.y, y: n1.z * n2.x - n1.x * n2.z, z: n1.x * n2.y - n1.y * n2.x };
   const dl = Math.hypot(D.x, D.y, D.z);
-  if (dl < 1e-15) {
+  if (dl < COPLANAR_DIRECTION_TOLERANCE) {
     // Coplanar: 2D projection + segment/point tests (conservative exact).
     return coplanarTrisIntersect(m1, T1, m2, T2, n1);
   }
@@ -221,7 +227,7 @@ export function triTriIntersect(
   const i1 = interval(m1, T1, dT1);
   const i2 = interval(m2, T2, dT2);
   if (!i1 || !i2) return false;
-  return i1[0] <= i2[1] + 1e-15 && i2[0] <= i1[1] + 1e-15;
+  return i1[0] <= i2[1] + INTERVAL_OVERLAP_TOLERANCE && i2[0] <= i1[1] + INTERVAL_OVERLAP_TOLERANCE;
 }
 
 function coplanarTrisIntersect(

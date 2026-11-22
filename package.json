@@ -263,6 +263,7 @@
     "test:v68-acceptance": "node tests/v68-acceptance.test.cjs",
     "test:v69": "node tests/v69-engine-ui.test.cjs",
     "test:v70": "node tests/v70-deep-modeling.test.cjs",
+    "test:tolerance-policy": "node tests/tolerance-policy.test.cjs",
     "verify:v70": "node scripts/verify-v70.mjs",
     "verify:v68": "node scripts/verify-v68.mjs",
     "test:v71": "node tests/v71-modify-group1.test.cjs",

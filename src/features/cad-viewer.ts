@@ -3373,8 +3373,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd("SOLID boolean: both must be closed polylines with extrude height (BOX/EXTRUDE).");
       return;
     }
-    const res = PolyBool.booleanSolid({ ring: pa, height: ha }, { ring: pb, height: hb }, op);
-    if (!res) { logCmd("SOLID boolean: empty result."); return; }
+    let res: PolyBool.SolidFootprint | null;
+    try {
+      res = PolyBool.booleanSolid({ ring: pa, height: ha }, { ring: pb, height: hb }, op);
+    } catch (e) {
+      // Degenerate input fails closed (tolerance policy §4) — report it
+      // instead of silently producing nothing.
+      logCmd(`SOLID boolean: ${(e as Error).message}`);
+      return;
+    }
+    if (!res) { logCmd("SOLID boolean: empty result (operands do not overlap)."); return; }
     const poly: DxfEntity = {
       type: "LWPOLYLINE",
       layer: currentLayer,
@@ -3401,9 +3409,17 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd(`${op.toUpperCase()}: both objects must be closed LWPOLYLINE regions.`);
       return;
     }
-    const result = PolyBool.booleanPoly(pa, pb, op);
+    let result: PolyBool.Pt[];
+    try {
+      result = PolyBool.booleanPoly(pa, pb, op);
+    } catch (e) {
+      // Degenerate input fails closed (tolerance policy §4) — report it
+      // instead of silently producing nothing.
+      logCmd(`${op.toUpperCase()}: ${(e as Error).message}`);
+      return;
+    }
     if (result.length < 3) {
-      logCmd(`${op.toUpperCase()}: empty result.`);
+      logCmd(`${op.toUpperCase()}: empty result (operands do not overlap).`);
       return;
     }
     const poly: DxfEntity = {

@@ -36,9 +36,16 @@
  */
 
 import type { IndexedMesh, Pt3 } from "../adaptive";
-
-/** Classification epsilon (metres, spec 5.2 boolean tolerance). */
-const EPS = 1e-9;
+import {
+  COPLANAR_CHECK_TOLERANCE,
+  PLANE_MATCH_TOLERANCE,
+  RAY_DETERMINANT_TOLERANCE,
+  TRIANGLE_CROSS_TOLERANCE,
+  classificationTolerance,
+  meshMagnitude,
+  probeTolerance,
+  rayEpsilon,
+} from "./tolerance";
 
 export function sub(a: Pt3, b: Pt3): Pt3 {
   return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
@@ -62,7 +69,7 @@ export interface SupportPlane {
  * winding, as produced by the platform's form generators). Duplicate
  * planes (tessellated cylinders share plane families) are merged.
  */
-const PLANE_EPS = 1e-9;
+const PLANE_EPS = PLANE_MATCH_TOLERANCE;
 function samePlane(a: SupportPlane,b: SupportPlane): boolean {
   return Math.abs(a.normal.x-b.normal.x)<PLANE_EPS &&
     Math.abs(a.normal.y-b.normal.y)<PLANE_EPS &&
@@ -89,7 +96,7 @@ export function planesOfConvex(mesh: IndexedMesh): SupportPlane[] {
     const a=mesh.vertices[ia],b=mesh.vertices[ib],c=mesh.vertices[ic];
     const n=cross(sub(b,a),sub(c,a));
     const l=Math.hypot(n.x,n.y,n.z);
-    if(l<1e-12) continue;
+    if(l<TRIANGLE_CROSS_TOLERANCE) continue;
     const candidate:SupportPlane={normal:{x:n.x/l,y:n.y/l,z:n.z/l},w:0};
     candidate.w=dot(candidate.normal,a);
     let best=Number.POSITIVE_INFINITY;
@@ -141,6 +148,8 @@ export interface TriangleBvh {
   readonly mesh:IndexedMesh;
   readonly root:TriangleBvhNode|null;
   readonly triangleCount:number;
+  /** Largest absolute vertex coordinate; the ray epsilon scales with it. */
+  readonly magnitude:number;
 }
 const BVH_LEAF_SIZE=8;
 
@@ -171,14 +180,15 @@ function buildBvhNode(indices:number[],boundsByTriangle:TriangleBounds[]):Triang
 /** Build a reusable median-split triangle BVH for repeated ray/inside queries. */
 export function createTriangleBvh(mesh:IndexedMesh):TriangleBvh {
   const triangleCount=mesh.faces.length;
-  if(!triangleCount) return {mesh,root:null,triangleCount:0};
+  const magnitude=meshMagnitude(mesh);
+  if(!triangleCount) return {mesh,root:null,triangleCount:0,magnitude};
   const bounds=mesh.faces.map((_,i)=>triangleBounds(mesh,i));
-  return {mesh,root:buildBvhNode(Array.from({length:triangleCount},(_,i)=>i),bounds),triangleCount};
+  return {mesh,root:buildBvhNode(Array.from({length:triangleCount},(_,i)=>i),bounds),triangleCount,magnitude};
 }
 function rayIntersectsBounds(node:TriangleBounds,origin:Pt3,dir:Pt3,eps:number):boolean {
   let near=eps,far=Number.POSITIVE_INFINITY;
   for(const [o,d,min,max] of [[origin.x,dir.x,node.minX,node.maxX],[origin.y,dir.y,node.minY,node.maxY],[origin.z,dir.z,node.minZ,node.maxZ]] as number[][]) {
-    if(Math.abs(d)<1e-15) {if(o<min-eps||o>max+eps)return false;continue;}
+    if(Math.abs(d)<RAY_DETERMINANT_TOLERANCE) {if(o<min-eps||o>max+eps)return false;continue;}
     let a=(min-eps-o)/d,b=(max+eps-o)/d;
     if(a>b){const t=a;a=b;b=t;}
     near=Math.max(near,a);far=Math.min(far,b);
@@ -200,7 +210,7 @@ function rayHitsTriangle(mesh:IndexedMesh,index:number,origin:Pt3,dir:Pt3,eps:nu
 /** Cast a ray through a previously built BVH; triangle predicate is unchanged. */
 export function pointInsideMeshWithBvh(bvh:TriangleBvh,origin:Pt3,dir:Pt3):boolean {
   if(!bvh.root)return false;
-  const eps=1e-9;
+  const eps=rayEpsilon(bvh.magnitude ?? 0);
   let crossings=0;
   const stack:TriangleBvhNode[]=[bvh.root];
   while(stack.length) {
@@ -275,6 +285,10 @@ export function splitAgainstConvex(
   planes: SupportPlane[],
   coplanarMode: "inside" | "boundary" = "inside",
 ): SplitResult {
+  // Scale-relative classification: the epsilon grows with the operand's
+  // coordinate magnitude so it stays above float64 spacing (policy §3).
+  // At ordinary BIM scales this is exactly CLASSIFICATION_TOLERANCE.
+  const EPS = classificationTolerance(meshMagnitude(mesh));
   const outside: Pt3[][] = [];
   const inside: Pt3[][] = [];
 
@@ -356,12 +370,12 @@ export function splitAgainstConvex(
   return { outside, inside };
 }
 
-/** True when every vertex of `poly` lies on one of `planes` (within EPS). */
+/** True when every vertex of `poly` lies on one of `planes` (within COPLANAR_CHECK_TOLERANCE). */
 export function coplanarWithAny(poly: Pt3[], planes: SupportPlane[]): boolean {
   for (const pl of planes) {
     let on = true;
     for (const p of poly) {
-      if (Math.abs(distTo(p, pl)) > 1e-6) { on = false; break; }
+      if (Math.abs(distTo(p, pl)) > COPLANAR_CHECK_TOLERANCE) { on = false; break; }
     }
     if (on) return true;
   }
@@ -390,6 +404,9 @@ export type BooleanOp = "subtract" | "union" | "intersect";
 export function booleanOp(op: BooleanOp, a: IndexedMesh, b: IndexedMesh): IndexedMesh {
   const vertices: Pt3[] = [];
   const faces: [number, number, number][] = [];
+  // Probe displacement scales with the host's coordinate magnitude so the
+  // probe point stays resolvably outside the void face (policy §3).
+  const probe = probeTolerance(meshMagnitude(a));
   const planesB = planesOfConvex(b);
   switch (op) {
     case "subtract": {
@@ -408,18 +425,18 @@ export function booleanOp(op: BooleanOp, a: IndexedMesh, b: IndexedMesh): Indexe
         };
         const n = cross(sub(v1, v0), sub(v2, v0));
         const l = Math.hypot(n.x, n.y, n.z);
-        if (l < 1e-12) continue;
+        if (l < TRIANGLE_CROSS_TOLERANCE) continue;
         const ndir = { x: n.x / l, y: n.y / l, z: n.z / l };
         // Probe just OUTSIDE the void face (in the host-material side):
         //   buried face  → probe point sits in host material → wall kept
         //   flush face   → probe point is outside the host → wall dropped
         //   (through-opening at a coplanar host face — correct)
-        const probe: Pt3 = {
-          x: centroid.x + ndir.x * 1e-6,
-          y: centroid.y + ndir.y * 1e-6,
-          z: centroid.z + ndir.z * 1e-6,
+        const probePt: Pt3 = {
+          x: centroid.x + ndir.x * probe,
+          y: centroid.y + ndir.y * probe,
+          z: centroid.z + ndir.z * probe,
         };
-        if (isInsideRobust(a, probe)) {
+        if (isInsideRobust(a, probePt)) {
           const base = vertices.length;
           vertices.push(v0, v1, v2);
           faces.push([base, base + 2, base + 1]); // flip: cavity wall

@@ -32,6 +32,11 @@
 import type { IndexedMesh, ProfilePt, Pt3 } from "../adaptive";
 import { validateProfile, signedArea, selfIntersects } from "./forms";
 import { COINCIDENT_TOL } from "./brep";
+import {
+  SHELL_PARALLEL_DENOMINATOR,
+  SHELL_PARALLEL_SINE,
+  SHELL_POINT_TOLERANCE,
+} from "./tolerance";
 
 export type ShellErrorCode =
   | "invalid-parameter"
@@ -68,7 +73,7 @@ function offsetEdgeLine(p: ProfilePt, q: ProfilePt, d: number, side: number): Li
 
 function lineIntersect(l1: Line2, l2: Line2): ProfilePt | null {
   const denom = l1.dx * l2.dy - l1.dy * l2.dx;
-  if (Math.abs(denom) < 1e-12) return null; // parallel — collinear neighbours are pre-dropped
+  if (Math.abs(denom) < SHELL_PARALLEL_DENOMINATOR) return null; // parallel — collinear neighbours are pre-dropped
   const t = ((l2.px - l1.px) * l2.dy - (l2.py - l1.py) * l2.dx) / denom;
   return { u: l1.px + l1.dx * t, v: l1.py + l1.dy * t };
 }
@@ -84,7 +89,7 @@ function dropCollinear(ring: ProfilePt[]): ProfilePt[] {
     const cross1 = (p.u - a.u) * (b.v - p.v) - (p.v - a.v) * (b.u - p.u);
     const lenA = Math.hypot(p.u - a.u, p.v - a.v);
     const lenB = Math.hypot(b.u - p.u, b.v - p.v);
-    if (lenA > COINCIDENT_TOL && lenB > COINCIDENT_TOL && Math.abs(cross1) / (lenA * lenB) < 1e-9) {
+    if (lenA > COINCIDENT_TOL && lenB > COINCIDENT_TOL && Math.abs(cross1) / (lenA * lenB) < SHELL_PARALLEL_SINE) {
       continue; // collinear — the miter is undefined, drop the vertex
     }
     out.push(p);
@@ -127,7 +132,7 @@ function offsetRingCCW(r: ProfilePt[], offset: number): ProfilePt[] {
   for (let i = 0; i < out.length; i++) {
     const p = out[i];
     const q = out[(i + 1) % out.length];
-    if (Math.hypot(q.u - p.u, q.v - p.v) < 1e-9) {
+    if (Math.hypot(q.u - p.u, q.v - p.v) < SHELL_POINT_TOLERANCE) {
       throw shellError("offset-collapses", `offset ${offset} collapses an edge — reduce it`);
     }
   }

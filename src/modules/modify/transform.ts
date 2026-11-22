@@ -16,6 +16,7 @@
  * Pure module: no DOM — safe to unit-test in Node.
  */
 
+import { ROTATION_AXIS_TOLERANCE } from "../solid-kernel/tolerance";
 import {
   ModifyCommandBase,
   type CommandInput, type ElementPatch, type ModifyContext, type PendingChange, type ModifyDiagnostic,
@@ -115,7 +116,7 @@ export function rotateAboutAxis(
   theta: number,
 ): [number, number, number] {
   const l = Math.hypot(axis[0], axis[1], axis[2]);
-  if (l < 1e-15) throw new Error("rotateAboutAxis: zero-length axis");
+  if (l < ROTATION_AXIS_TOLERANCE) throw new Error("rotateAboutAxis: zero-length axis");
   const u: [number, number, number] = [axis[0] / l, axis[1] / l, axis[2] / l];
   const c = Math.cos(theta);
   const s = Math.sin(theta);

@@ -24,6 +24,15 @@
 import type { IndexedMesh, ProfilePt, Pt3 } from "../adaptive";
 import { sweepProfile } from "../adaptive";
 import { COINCIDENT_TOL } from "./brep";
+import {
+  ANGLE_DEDUPE_TOLERANCE,
+  RADIAL_FRAME_TOLERANCE,
+  RESAMPLE_DENOMINATOR,
+  REVOLUTION_ANGLE_TOLERANCE,
+  REVOLUTION_AXIS_TOLERANCE,
+  SEGMENT_PARALLEL_DENOMINATOR,
+  SEGMENT_PARAMETER_TOLERANCE,
+} from "./tolerance";
 
 export interface FormError extends Error {
   code: "open-profile" | "degenerate-profile" | "self-intersection" | "invalid-parameter" | "axis-crosses-profile";
@@ -68,10 +77,10 @@ function segInt(p1: ProfilePt, p2: ProfilePt, p3: ProfilePt, p4: ProfilePt): boo
   const d1x = p2.u - p1.u, d1y = p2.v - p1.v;
   const d2x = p4.u - p3.u, d2y = p4.v - p3.v;
   const denom = d1x * d2y - d1y * d2x;
-  if (Math.abs(denom) < 1e-15) return false; // parallel
+  if (Math.abs(denom) < SEGMENT_PARALLEL_DENOMINATOR) return false; // parallel
   const t = ((p3.u - p1.u) * d2y - (p3.v - p1.v) * d2x) / denom;
   const s = ((p3.u - p1.u) * d1y - (p3.v - p1.v) * d1x) / denom;
-  const eps = 1e-12;
+  const eps = SEGMENT_PARAMETER_TOLERANCE;
   return t > eps && t < 1 - eps && s > eps && s < 1 - eps;
 }
 
@@ -163,17 +172,17 @@ export function revolve(params: RevolutionParams): IndexedMesh {
     }
   }
   const angle = params.angle ?? Math.PI * 2;
-  if (!(angle > 1e-9) || angle > Math.PI * 2 + 1e-9) {
+  if (!(angle > REVOLUTION_ANGLE_TOLERANCE) || angle > Math.PI * 2 + REVOLUTION_ANGLE_TOLERANCE) {
     throw formError("invalid-parameter", `angle must be in (0, 2π], got ${angle}`);
   }
   const segs = Math.max(3, params.segments ?? 32);
-  const closed = Math.abs(angle - Math.PI * 2) < 1e-9;
+  const closed = Math.abs(angle - Math.PI * 2) < REVOLUTION_ANGLE_TOLERANCE;
 
   // Build the axis frame: A along axisDir; R a radial unit vector ⊥ A;
   // S = A×R completes the rotation plane. Profile v maps along A, radius
   // rotates in the (R, S) plane.
   const alen = Math.hypot(params.axisDir.x, params.axisDir.y, params.axisDir.z);
-  if (alen < 1e-12) throw formError("invalid-parameter", "zero-length axis");
+  if (alen < REVOLUTION_AXIS_TOLERANCE) throw formError("invalid-parameter", "zero-length axis");
   const A: Pt3 = { x: params.axisDir.x / alen, y: params.axisDir.y / alen, z: params.axisDir.z / alen };
   const ref: Pt3 = Math.abs(A.z) < 0.99 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 };
   const cross = (a: Pt3, b: Pt3): Pt3 => ({
@@ -184,7 +193,7 @@ export function revolve(params: RevolutionParams): IndexedMesh {
   const dra = dot3(ref, A);
   const R0 = { x: ref.x - A.x * dra, y: ref.y - A.y * dra, z: ref.z - A.z * dra };
   const Rl = Math.hypot(R0.x, R0.y, R0.z);
-  if (Rl < 1e-12) throw formError("invalid-parameter", "cannot build a radial frame for this axis");
+  if (Rl < RADIAL_FRAME_TOLERANCE) throw formError("invalid-parameter", "cannot build a radial frame for this axis");
   const R: Pt3 = { x: R0.x / Rl, y: R0.y / Rl, z: R0.z / Rl };
   const S = cross(A, R); // unit (A ⊥ R ⇒ |A×R| = 1)
 
@@ -363,7 +372,7 @@ export function resampleByAngles(ring: ProfilePt[], c: ProfilePt, angles: number
     const p2 = pts[(k + 1) % pts.length].p;
     const denom =
       (p2.u - p1.u) * (p2.u - p1.u) + (p2.v - p1.v) * (p2.v - p1.v);
-    const t = denom > 1e-15
+    const t = denom > RESAMPLE_DENOMINATOR
       ? Math.max(0, Math.min(1, polarLerpT(p1, p2, c, target)))
       : 0;
     out.push({ u: p1.u + (p2.u - p1.u) * t, v: p1.v + (p2.v - p1.v) * t });
@@ -383,7 +392,7 @@ export function resampleByAngles(ring: ProfilePt[], c: ProfilePt, angles: number
 export function sharedSampleAngles(rings: ProfilePt[][], count: number): number[] {
   const angles: number[] = [];
   for (let i = 0; i < count; i++) angles.push(-Math.PI + (2 * Math.PI * i) / count);
-  const has = (a: number) => angles.some((x) => Math.abs(x - a) < 1e-9);
+  const has = (a: number) => angles.some((x) => Math.abs(x - a) < ANGLE_DEDUPE_TOLERANCE);
   for (const ring of rings) {
     const c = centroid(ring);
     for (const p of ring) {

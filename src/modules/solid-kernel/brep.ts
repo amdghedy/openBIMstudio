@@ -16,16 +16,29 @@
  *     diagnostics by validate.ts, never silently repaired.
  *   - Winding: outward faces are CCW seen from outside; `meshVolume`
  *     (divergence theorem) returns positive volume for outward solids.
- *   - Tolerance: coincident-vertex welding uses `COINCIDENT_TOL` (1e-9 m),
- *     per spec 5.2 which forbids exact float equality.
+ *   - Tolerance: coincident-vertex welding uses `COINCIDENT_TOL` (1e-9 m
+ *     at ordinary BIM scales, scale-relative per the unified tolerance
+ *     policy — see docs/engineering/TOLERANCE_POLICY.md and
+ *     ./tolerance.ts; the old "spec 5.2" citation pointed at a document
+ *     that did not exist).
  *
  * Pure module: no DOM, no three.js — safe to unit-test in Node.
  */
 
 import type { IndexedMesh, Pt3 } from "../adaptive";
+import {
+  COINCIDENT_TOLERANCE,
+  FACE_NORMAL_TOLERANCE,
+  coincidentTolerance,
+  meshMagnitude,
+} from "./tolerance";
 
-/** Geometric coincidence tolerance, metres (spec 5.2). */
-export const COINCIDENT_TOL = 1e-9;
+/**
+ * Geometric coincidence tolerance, metres (unified tolerance policy).
+ * Re-exported here so existing importers (`hosting`, `snapping`) keep
+ * working; new code should import COINCIDENT_TOLERANCE from ./tolerance.
+ */
+export const COINCIDENT_TOL = COINCIDENT_TOLERANCE;
 
 /** An outer loop: ordered vertex ids, CCW for outward faces. */
 export type Loop = number[];
@@ -131,8 +144,13 @@ function weldVerticesLinear(solid: BRepSolid, tol: number): BRepSolid {
  * canonical vertex semantics are preserved. Expected O(V + C); pathological
  * dense buckets can still degrade. Unsafe coordinate/tolerance ratios use
  * the conservative linear implementation.
+ *
+ * Default tolerance is scale-relative (tolerance.coincidentTolerance):
+ * the solid's coordinate magnitude sets the weld tolerance, so welding
+ * stays above float64 spacing at 1e9-scale coordinates. An explicitly
+ * passed `tol` is honoured exactly (callers that pin a tolerance keep it).
  */
-export function weldVertices(solid: BRepSolid, tol = COINCIDENT_TOL): BRepSolid {
+export function weldVertices(solid: BRepSolid, tol = coincidentTolerance(meshMagnitude(solid))): BRepSolid {
   if (!(tol > 0) || !Number.isFinite(tol)) return weldVerticesLinear(solid, tol);
 
   const map = new Map<number, number>();
@@ -203,7 +221,7 @@ export function faceNormal(vertices: Pt3[], loop: Loop): Pt3 {
     nz += (p.x - q.x) * (p.y + q.y);
   }
   const len = Math.hypot(nx, ny, nz);
-  if (len < 1e-15) return { x: 0, y: 0, z: 0 };
+  if (len < FACE_NORMAL_TOLERANCE) return { x: 0, y: 0, z: 0 };
   return { x: nx / len, y: ny / len, z: nz / len };
 }
 

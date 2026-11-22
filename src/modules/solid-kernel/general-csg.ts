@@ -66,8 +66,12 @@
  *
  * Documented limits (honesty register, docs/DEEP_MODELING_V70.md):
  *  - Tangential contact (edge/point touching without crossing) is
- *    resolved at classification tolerance (1e-6 m probe), not exactly.
- *  - Cells with area below 1e-12 m² are dropped as measure-zero noise.
+ *    resolved at classification tolerance (PROBE_TOLERANCE probe), not exactly.
+ *  - Cells with area below the sliver cutoff (SLIVER_AREA_TOLERANCE at
+ *    ordinary scales, scale-relative per the unified tolerance policy)
+ *    are dropped as measure-zero noise — and the drop is RECORDED as a
+ *    `sliver-cell-dropped` diagnostic (see generalBooleanDetailed),
+ *    never silently dropped (tolerance policy §4).
  *  - union(A,B) and union(B,A) produce the same shape; coplanar overlap
  *    skins are owned by A, so triangulations may differ.
  *  - The broad phase filters cut planes once per source triangle before
@@ -79,11 +83,61 @@
 
 import type { IndexedMesh, Pt3 } from "../adaptive";
 import { dot, cross, sub, createRobustInsideTester, type SupportPlane } from "./csg";
+import {
+  BARYCENTRIC_TOLERANCE,
+  EDGE_KEY_GRID,
+  EDGE_LENGTH_TOLERANCE,
+  EDGE_NORMAL_TOLERANCE,
+  PLANE_MATCH_TOLERANCE,
+  TRIANGLE_CROSS_TOLERANCE,
+  WELD_MESH_TOLERANCE,
+  meshMagnitude,
+  onPlaneTolerance,
+  probeTolerance,
+  recordDiagnostic,
+  sliverAreaTolerance,
+  splitTolerance,
+  type ToleranceDiagnostic,
+} from "./tolerance";
 
-const SPLIT_EPS = 1e-9; // half-space side tolerance during splitting
-const ON_PLANE_EPS = 1e-8; // vertex-on-plane tolerance for coplanar tagging/edges
-const PROBE_EPS = 1e-6; // probe displacement (matches v68 subtract convention)
-const SLIVER_AREA2 = 1e-12; // m² — cells below this are noise
+// Tolerances for this module come from the unified policy (./tolerance).
+// The per-operation working values live in a ToleranceContext built once
+// per generalBoolean call from the operands' coordinate magnitude, so
+// they stay above float64 spacing at 1e9-scale coordinates (policy §3).
+interface ToleranceContext {
+  split: number;
+  onPlane: number;
+  probe: number;
+  sliverArea2: number;
+  planeMatch: number;
+  triCross: number;
+  edgeKey: number;
+  barycentric: number;
+  edgeLength: number;
+  edgeNormal: number;
+  diagnostics?: ToleranceDiagnostic[];
+}
+
+function toleranceContextFor(
+  a: IndexedMesh,
+  b: IndexedMesh,
+  diagnostics?: ToleranceDiagnostic[],
+): ToleranceContext {
+  const magnitude = Math.max(meshMagnitude(a), meshMagnitude(b));
+  return {
+    split: splitTolerance(magnitude),
+    onPlane: onPlaneTolerance(magnitude),
+    probe: probeTolerance(magnitude),
+    sliverArea2: sliverAreaTolerance(magnitude),
+    planeMatch: PLANE_MATCH_TOLERANCE,
+    triCross: TRIANGLE_CROSS_TOLERANCE,
+    edgeKey: EDGE_KEY_GRID,
+    barycentric: BARYCENTRIC_TOLERANCE,
+    edgeLength: EDGE_LENGTH_TOLERANCE,
+    edgeNormal: EDGE_NORMAL_TOLERANCE,
+    diagnostics,
+  };
+}
 
 export type GeneralBooleanOp = "union" | "intersect" | "subtract";
 
@@ -97,10 +151,10 @@ function scale(a: Pt3, k: number): Pt3 {
 }
 
 /** Unit normal of a triangle, or null when degenerate. */
-function triNormal(tri: Pt3[]): Pt3 | null {
+function triNormal(tri: Pt3[], tol: number = TRIANGLE_CROSS_TOLERANCE): Pt3 | null {
   const n = cross(sub(tri[1], tri[0]), sub(tri[2], tri[0]));
   const l = Math.hypot(n.x, n.y, n.z);
-  if (l < 1e-12) return null;
+  if (l < tol) return null;
   return { x: n.x / l, y: n.y / l, z: n.z / l };
 }
 
@@ -132,46 +186,45 @@ function centroidOf(poly: Pt3[]): Pt3 {
  * tessellated quad shares its plane). Unlike `planesOfConvex` this does
  * NOT merge co-family planes and does not require convexity.
  */
-const PLANE_MATCH_EPS = 1e-9;
 type PlaneBuckets = Map<string, number[]>;
 
-function planeMatches(a: SupportPlane, b: SupportPlane): boolean {
-  return Math.abs(a.normal.x-b.normal.x)<PLANE_MATCH_EPS &&
-    Math.abs(a.normal.y-b.normal.y)<PLANE_MATCH_EPS &&
-    Math.abs(a.normal.z-b.normal.z)<PLANE_MATCH_EPS &&
-    Math.abs(a.w-b.w)<PLANE_MATCH_EPS;
+function planeMatches(a: SupportPlane, b: SupportPlane, eps: number = PLANE_MATCH_TOLERANCE): boolean {
+  return Math.abs(a.normal.x-b.normal.x)<eps &&
+    Math.abs(a.normal.y-b.normal.y)<eps &&
+    Math.abs(a.normal.z-b.normal.z)<eps &&
+    Math.abs(a.w-b.w)<eps;
 }
 
-function planeCell(v: number): number { return Math.floor(v / PLANE_MATCH_EPS); }
+function planeCell(v: number, eps: number = PLANE_MATCH_TOLERANCE): number { return Math.floor(v / eps); }
 function planeBucketKey(x: number, y: number, z: number, w: number): string {
   return `${x},${y},${z},${w}`;
 }
-function planeIsHashable(p: SupportPlane): boolean {
+function planeIsHashable(p: SupportPlane, eps: number = PLANE_MATCH_TOLERANCE): boolean {
   return [p.normal.x,p.normal.y,p.normal.z,p.w].every((v) =>
-    Number.isFinite(v) && Number.isSafeInteger(planeCell(v)));
+    Number.isFinite(v) && Number.isSafeInteger(planeCell(v, eps)));
 }
-function addPlaneBucket(buckets: PlaneBuckets, p: SupportPlane, index: number): void {
-  if (!planeIsHashable(p)) return;
-  const key=planeBucketKey(planeCell(p.normal.x),planeCell(p.normal.y),planeCell(p.normal.z),planeCell(p.w));
+function addPlaneBucket(buckets: PlaneBuckets, p: SupportPlane, index: number, eps: number = PLANE_MATCH_TOLERANCE): void {
+  if (!planeIsHashable(p, eps)) return;
+  const key=planeBucketKey(planeCell(p.normal.x, eps),planeCell(p.normal.y, eps),planeCell(p.normal.z, eps),planeCell(p.w, eps));
   const list=buckets.get(key);
   if(list) list.push(index); else buckets.set(key,[index]);
 }
 
 /** Find the earliest plane matching the historical component-wise tolerance. */
-function findPlaneIndex(planes: SupportPlane[], p: SupportPlane, buckets?: PlaneBuckets, overflow: number[] = []): number {
-  if (!buckets || !planeIsHashable(p)) {
-    for(let i=0;i<planes.length;i++) if(planeMatches(planes[i],p)) return i;
+function findPlaneIndex(planes: SupportPlane[], p: SupportPlane, buckets?: PlaneBuckets, overflow: number[] = [], eps: number = PLANE_MATCH_TOLERANCE): number {
+  if (!buckets || !planeIsHashable(p, eps)) {
+    for(let i=0;i<planes.length;i++) if(planeMatches(planes[i],p,eps)) return i;
     return -1;
   }
-  const cx=planeCell(p.normal.x), cy=planeCell(p.normal.y), cz=planeCell(p.normal.z), cw=planeCell(p.w);
+  const cx=planeCell(p.normal.x, eps), cy=planeCell(p.normal.y, eps), cz=planeCell(p.normal.z, eps), cw=planeCell(p.w, eps);
   let best=Number.POSITIVE_INFINITY;
   for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++)
     for(let dz=-1;dz<=1;dz++) for(let dw=-1;dw<=1;dw++) {
       const list=buckets.get(planeBucketKey(cx+dx,cy+dy,cz+dz,cw+dw));
       if(!list) continue;
-      for(const i of list) if(i<best && planeMatches(planes[i],p)) best=i;
+      for(const i of list) if(i<best && planeMatches(planes[i],p,eps)) best=i;
     }
-  for(const i of overflow) if(i<best && planeMatches(planes[i],p)) best=i;
+  for(const i of overflow) if(i<best && planeMatches(planes[i],p,eps)) best=i;
   return Number.isFinite(best)?best:-1;
 }
 
@@ -180,13 +233,15 @@ function findPlaneIndex(planes: SupportPlane[], p: SupportPlane, buckets?: Plane
  * former linear scan over every previously discovered plane. Exact legacy
  * matching semantics and first-plane ownership are retained.
  */
-export function allPlanesOf(mesh: IndexedMesh): SupportPlane[] {
+export function allPlanesOf(mesh: IndexedMesh, diagnostics?: ToleranceDiagnostic[]): SupportPlane[] {
   const out: SupportPlane[]=[];
   const buckets: PlaneBuckets=new Map();
   const overflow: number[]=[];
   for(const [ia,ib,ic] of mesh.faces) {
     const n=triNormal([mesh.vertices[ia],mesh.vertices[ib],mesh.vertices[ic]]);
-    if(!n) continue;
+    // Degenerate input triangles are skipped — but recorded (policy §4),
+    // never silently dropped.
+    if(!n) { recordDiagnostic(diagnostics, "degenerate-triangle-skipped", "allPlanesOf: degenerate input triangle skipped"); continue; }
     const candidate={normal:n,w:dot(n,mesh.vertices[ia])};
     if(findPlaneIndex(out,candidate,buckets,overflow)>=0) continue;
     const index=out.length;
@@ -199,20 +254,20 @@ export function allPlanesOf(mesh: IndexedMesh): SupportPlane[] {
 
 const distTo = (p: Pt3, pl: SupportPlane): number => dot(pl.normal, p) - pl.w;
 
-/** Triangles of `mesh` lying entirely on `pl` (all vertices within ON_PLANE_EPS). */
-function trianglesOnPlane(mesh: IndexedMesh, pl: SupportPlane): Pt3[][] {
+/** Triangles of `mesh` lying entirely on `pl` (all vertices within the on-plane tolerance). */
+function trianglesOnPlane(mesh: IndexedMesh, pl: SupportPlane, onPlane: number): Pt3[][] {
   const tris: Pt3[][] = [];
   for (const [ia, ib, ic] of mesh.faces) {
     const v = [mesh.vertices[ia], mesh.vertices[ib], mesh.vertices[ic]];
-    if (v.every((p) => Math.abs(distTo(p, pl)) <= ON_PLANE_EPS)) tris.push(v);
+    if (v.every((p) => Math.abs(distTo(p, pl)) <= onPlane)) tris.push(v);
   }
   return tris;
 }
 
 /** Unique edges of `mesh` with both endpoints on `pl`, as point pairs. */
-function edgesOnPlane(mesh: IndexedMesh, pl: SupportPlane): Array<[Pt3, Pt3]> {
+function edgesOnPlane(mesh: IndexedMesh, pl: SupportPlane, onPlane: number, edgeKey: number): Array<[Pt3, Pt3]> {
   const key = (p: Pt3): string =>
-    [p.x, p.y, p.z].map((k) => Math.round(k / 1e-7)).join(",");
+    [p.x, p.y, p.z].map((k) => Math.round(k / edgeKey)).join(",");
   const seen = new Set<string>();
   const edges: Array<[Pt3, Pt3]> = [];
   for (const [ia, ib, ic] of mesh.faces) {
@@ -220,8 +275,8 @@ function edgesOnPlane(mesh: IndexedMesh, pl: SupportPlane): Array<[Pt3, Pt3]> {
     for (let i = 0; i < 3; i++) {
       const p = v[i];
       const q = v[(i + 1) % 3];
-      if (Math.abs(distTo(p, pl)) > ON_PLANE_EPS) continue;
-      if (Math.abs(distTo(q, pl)) > ON_PLANE_EPS) continue;
+      if (Math.abs(distTo(p, pl)) > onPlane) continue;
+      if (Math.abs(distTo(q, pl)) > onPlane) continue;
       const kp = key(p);
       const kq = key(q);
       const ek = kp < kq ? `${kp}|${kq}` : `${kq}|${kp}`;
@@ -241,15 +296,15 @@ interface PolySplit {
   onPlane: boolean;
 }
 
-/** Split a convex polygon by a plane. `onPlane` = every vertex within SPLIT_EPS. */
-function splitPoly(poly: Pt3[], pl: SupportPlane): PolySplit {
+/** Split a convex polygon by a plane. `onPlane` = every vertex within the split tolerance. */
+function splitPoly(poly: Pt3[], pl: SupportPlane, split: number): PolySplit {
   let allBack = true;
   let allFront = true;
   let onPlane = true;
   for (const p of poly) {
     const d = distTo(p, pl);
-    if (d > SPLIT_EPS) { allBack = false; onPlane = false; }
-    else if (d < -SPLIT_EPS) { allFront = false; onPlane = false; }
+    if (d > split) { allBack = false; onPlane = false; }
+    else if (d < -split) { allFront = false; onPlane = false; }
   }
   if (onPlane) return { front: null, back: null, onPlane: true };
   if (allBack) return { front: null, back: poly, onPlane: false };
@@ -263,9 +318,9 @@ function splitPoly(poly: Pt3[], pl: SupportPlane): PolySplit {
     const q = poly[(k + 1) % n];
     const dp = distTo(p, pl);
     const dq = distTo(q, pl);
-    if (dp >= -SPLIT_EPS) frontP.push(p);
-    if (dp <= SPLIT_EPS) backP.push(dp >= -SPLIT_EPS ? { ...p } : p);
-    if ((dp > SPLIT_EPS && dq < -SPLIT_EPS) || (dp < -SPLIT_EPS && dq > SPLIT_EPS)) {
+    if (dp >= -split) frontP.push(p);
+    if (dp <= split) backP.push(dp >= -split ? { ...p } : p);
+    if ((dp > split && dq < -split) || (dp < -split && dq > split)) {
       const t = dp / (dp - dq);
       const x: Pt3 = {
         x: p.x + (q.x - p.x) * t,
@@ -308,13 +363,13 @@ interface CutObj {
 }
 
 /** Face-plane + edge-perp cutting objects of one mesh, deduped. */
-function cutObjectsOf(mesh: IndexedMesh, planes: SupportPlane[], owner: "A" | "B"): CutObj[] {
+function cutObjectsOf(mesh: IndexedMesh, planes: SupportPlane[], owner: "A" | "B", ctx: ToleranceContext): CutObj[] {
   const objs: CutObj[] = [];
   const seen = new Set<string>();
   const planeBuckets: PlaneBuckets = new Map();
   const planeOverflow: number[] = [];
   planes.forEach((plane, index) => {
-    if (planeIsHashable(plane)) addPlaneBucket(planeBuckets, plane, index);
+    if (planeIsHashable(plane, ctx.planeMatch)) addPlaneBucket(planeBuckets, plane, index, ctx.planeMatch);
     else planeOverflow.push(index);
   });
   const push = (pl: SupportPlane, isFacePlane: boolean, planeIdx: number): void => {
@@ -327,20 +382,21 @@ function cutObjectsOf(mesh: IndexedMesh, planes: SupportPlane[], owner: "A" | "B
   };
   for (const [ia, ib, ic] of mesh.faces) {
     const tri = [mesh.vertices[ia], mesh.vertices[ib], mesh.vertices[ic]];
-    const nrm = triNormal(tri);
-    if (!nrm) continue;
+    const nrm = triNormal(tri, ctx.triCross);
+    // Degenerate input triangles are skipped — but recorded (policy §4).
+    if (!nrm) { recordDiagnostic(ctx.diagnostics, "degenerate-triangle-skipped", "cutObjectsOf: degenerate input triangle skipped"); continue; }
     const w = dot(nrm, tri[0]);
-    const planeIdx = findPlaneIndex(planes, { normal: nrm, w }, planeBuckets, planeOverflow);
+    const planeIdx = findPlaneIndex(planes, { normal: nrm, w }, planeBuckets, planeOverflow, ctx.planeMatch);
     push({ normal: nrm, w }, true, planeIdx);
     for (let i = 0; i < 3; i++) {
       const p = tri[i];
       const q = tri[(i + 1) % 3];
       const d = sub(q, p);
       const dl = Math.hypot(d.x, d.y, d.z);
-      if (dl < 1e-12) continue;
+      if (dl < ctx.edgeLength) continue;
       const n = cross(nrm, d);
       const l = Math.hypot(n.x, n.y, n.z);
-      if (l < 1e-12) continue;
+      if (l < ctx.edgeNormal) continue;
       push(
         { normal: { x: n.x / l, y: n.y / l, z: n.z / l }, w: dot(n, p) / l },
         false,
@@ -360,7 +416,7 @@ function cutObjectsOf(mesh: IndexedMesh, planes: SupportPlane[], owner: "A" | "B
  * mirrors splitPoly's first pass and preserves the original cut order.
  * CutObj planes are infinite, so no finite cutter AABB is assumed.
  */
-function cutCandidatesForTriangle(tri: Pt3[], cuts: CutObj[]): CutObj[] {
+function cutCandidatesForTriangle(tri: Pt3[], cuts: CutObj[], split: number): CutObj[] {
   const candidates: CutObj[] = [];
   for (const cut of cuts) {
     let allBack = true;
@@ -368,8 +424,8 @@ function cutCandidatesForTriangle(tri: Pt3[], cuts: CutObj[]): CutObj[] {
     let onPlane = true;
     for (const p of tri) {
       const d = distTo(p, cut.pl);
-      if (d > SPLIT_EPS) { allBack = false; onPlane = false; }
-      else if (d < -SPLIT_EPS) { allFront = false; onPlane = false; }
+      if (d > split) { allBack = false; onPlane = false; }
+      else if (d < -split) { allFront = false; onPlane = false; }
     }
     if (onPlane || (!allBack && !allFront)) candidates.push(cut);
   }
@@ -383,12 +439,12 @@ function cutCandidatesForTriangle(tri: Pt3[], cuts: CutObj[]): CutObj[] {
  * can affect any descendant fragment remains in the ordered cut list.
  * A fragment landing exactly on a FACE PLANE is tagged as before.
  */
-function splitFragment(tri: Pt3[], cuts: CutObj[], tagOwner: "A" | "B"): Frag[] {
+function splitFragment(tri: Pt3[], cuts: CutObj[], tagOwner: "A" | "B", ctx: ToleranceContext): Frag[] {
   let frags: Frag[] = [{ poly: tri, coplanar: null }];
   for (const cut of cuts) {
     const next: Frag[] = [];
     for (const f of frags) {
-      const s = splitPoly(f.poly, cut.pl);
+      const s = splitPoly(f.poly, cut.pl, ctx.split);
       if (s.onPlane) {
         const coplanar =
           f.coplanar !== null ? f.coplanar :
@@ -403,7 +459,16 @@ function splitFragment(tri: Pt3[], cuts: CutObj[], tagOwner: "A" | "B"): Frag[] 
     frags = next;
     if (frags.length === 0) break;
   }
-  return frags.filter((f) => polygonArea2(f.poly) > SLIVER_AREA2);
+  // Sliver cells are dropped — but RECORDED as a diagnostic (policy §4),
+  // never silently: the caller sees how many cells and how much area
+  // were discarded via generalBooleanDetailed.
+  const kept: Frag[] = [];
+  for (const f of frags) {
+    const area2 = polygonArea2(f.poly);
+    if (area2 > ctx.sliverArea2) kept.push(f);
+    else recordDiagnostic(ctx.diagnostics, "sliver-cell-dropped", "splitFragment: sub-tolerance cell dropped", 1, area2);
+  }
+  return kept;
 }
 
 /**
@@ -413,24 +478,31 @@ function splitFragment(tri: Pt3[], cuts: CutObj[], tagOwner: "A" | "B"): Frag[] 
  * P. This gives seam-consistent subdivision with the other mesh's
  * coplanar faces and with faces ending on P.
  */
-function splitCoplanarByEdges(poly: Pt3[], P: SupportPlane, edges: Array<[Pt3, Pt3]>): Pt3[][] {
+function splitCoplanarByEdges(poly: Pt3[], P: SupportPlane, edges: Array<[Pt3, Pt3]>, ctx: ToleranceContext): Pt3[][] {
   let cells: Pt3[][] = [poly];
   for (const [e1, e2] of edges) {
     const d = sub(e2, e1);
     const n = cross(P.normal, d);
     const l = Math.hypot(n.x, n.y, n.z);
-    if (l < 1e-12) continue;
+    if (l < ctx.edgeNormal) continue;
     const cut: SupportPlane = { normal: { x: n.x / l, y: n.y / l, z: n.z / l }, w: dot(n, e1) / l };
     const next: Pt3[][] = [];
     for (const c of cells) {
-      const s = splitPoly(c, cut);
+      const s = splitPoly(c, cut, ctx.split);
       if (s.onPlane) { next.push(c); continue; }
       if (s.front) next.push(s.front);
       if (s.back) next.push(s.back);
     }
     cells = next;
   }
-  return cells.filter((c) => polygonArea2(c) > SLIVER_AREA2);
+  // Sliver cells are dropped — but RECORDED as a diagnostic (policy §4).
+  const kept: Pt3[][] = [];
+  for (const c of cells) {
+    const area2 = polygonArea2(c);
+    if (area2 > ctx.sliverArea2) kept.push(c);
+    else recordDiagnostic(ctx.diagnostics, "sliver-cell-dropped", "splitCoplanarByEdges: sub-tolerance cell dropped", 1, area2);
+  }
+  return kept;
 }
 
 // ── coverage test (2D, boundary-inclusive) ───────────────────────────────
@@ -440,7 +512,7 @@ function splitCoplanarByEdges(poly: Pt3[], P: SupportPlane, edges: Array<[Pt3, P
  * Points on an edge/corner count as inside (needed for exactly shared
  * coplanar boundaries).
  */
-function pointInTriangle(p: Pt3, v0: Pt3, v1: Pt3, v2: Pt3): boolean {
+function pointInTriangle(p: Pt3, v0: Pt3, v1: Pt3, v2: Pt3, eps: number = BARYCENTRIC_TOLERANCE): boolean {
   const n = cross(sub(v1, v0), sub(v2, v0));
   const ax = Math.abs(n.x), ay = Math.abs(n.y), az = Math.abs(n.z);
   let proj: (q: Pt3) => [number, number];
@@ -454,8 +526,8 @@ function pointInTriangle(p: Pt3, v0: Pt3, v1: Pt3, v2: Pt3): boolean {
   const d1 = (px - x1) * (y0 - y1) - (x0 - x1) * (py - y1);
   const d2 = (px - x2) * (y1 - y2) - (x1 - x2) * (py - y2);
   const d3 = (px - x0) * (y2 - y0) - (x2 - x0) * (py - y0);
-  const neg = d1 < -1e-12 || d2 < -1e-12 || d3 < -1e-12;
-  const pos = d1 > 1e-12 || d2 > 1e-12 || d3 > 1e-12;
+  const neg = d1 < -eps || d2 < -eps || d3 < -eps;
+  const pos = d1 > eps || d2 > eps || d3 > eps;
   return !(neg && pos);
 }
 
@@ -468,10 +540,11 @@ function coveringTriangle(
   c: Pt3,
   tris: Pt3[][],
   cellNormal: Pt3,
+  ctx: ToleranceContext,
 ): { sameFacing: boolean } | null {
   for (const t of tris) {
-    if (!pointInTriangle(c, t[0], t[1], t[2])) continue;
-    const tn = triNormal(t);
+    if (!pointInTriangle(c, t[0], t[1], t[2], ctx.barycentric)) continue;
+    const tn = triNormal(t, ctx.triCross);
     const sameFacing = tn ? dot(tn, cellNormal) > 0 : true;
     return { sameFacing };
   }
@@ -480,27 +553,47 @@ function coveringTriangle(
 
 // ── main entry ───────────────────────────────────────────────────────────
 
+export interface GeneralBooleanOptions {
+  /**
+   * Optional collector for tolerance diagnostics (sliver-cell drops,
+   * degenerate input triangles). When omitted, diagnostics are still
+   * computed but discarded — use generalBooleanDetailed to receive them.
+   */
+  diagnostics?: ToleranceDiagnostic[];
+}
+
+export interface GeneralBooleanResult {
+  mesh: IndexedMesh;
+  /** Tolerance diagnostics recorded during the operation (policy §4). */
+  diagnostics: ToleranceDiagnostic[];
+}
+
 /**
  * General boolean operation on closed meshes — both operands may be
  * arbitrary (non-convex) watertight solids. Throws when the result
  * would be empty (the caller decides whether that is an error).
+ *
+ * Tolerances are scale-relative (ToleranceContext, built from the
+ * operands' coordinate magnitude) and sliver/degenerate drops are
+ * RECORDED as diagnostics, never silent — see generalBooleanDetailed.
  */
-export function generalBoolean(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedMesh): IndexedMesh {
+export function generalBoolean(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedMesh, options?: GeneralBooleanOptions): IndexedMesh {
   if (a.faces.length < 4 || b.faces.length < 4) {
     throw new Error("generalBoolean: operands must be closed solids (>= 4 faces)");
   }
 
-  const planesB = allPlanesOf(b);
-  const planesA = allPlanesOf(a);
-  const coplanarTrisB = planesB.map((pl) => trianglesOnPlane(b, pl));
-  const coplanarTrisA = planesA.map((pl) => trianglesOnPlane(a, pl));
-  const edgesB = planesB.map((pl) => edgesOnPlane(b, pl));
-  const edgesA = planesA.map((pl) => edgesOnPlane(a, pl));
+  const ctx = toleranceContextFor(a, b, options?.diagnostics);
+  const planesB = allPlanesOf(b, ctx.diagnostics);
+  const planesA = allPlanesOf(a, ctx.diagnostics);
+  const coplanarTrisB = planesB.map((pl) => trianglesOnPlane(b, pl, ctx.onPlane));
+  const coplanarTrisA = planesA.map((pl) => trianglesOnPlane(a, pl, ctx.onPlane));
+  const edgesB = planesB.map((pl) => edgesOnPlane(b, pl, ctx.onPlane, ctx.edgeKey));
+  const edgesA = planesA.map((pl) => edgesOnPlane(a, pl, ctx.onPlane, ctx.edgeKey));
 
   // GLOBAL cut set: face planes + edge-perpendicular planes of BOTH
   // meshes; every triangle of both meshes is split by every object so
   // the subdivision is seam-consistent (no T-junctions).
-  const allCuts = [...cutObjectsOf(a, planesA, "A"), ...cutObjectsOf(b, planesB, "B")];
+  const allCuts = [...cutObjectsOf(a, planesA, "A", ctx), ...cutObjectsOf(b, planesB, "B", ctx)];
 
   // Broad-phase AABBs for the inside probes.
   const bbA = meshAabb(a);
@@ -509,9 +602,9 @@ export function generalBoolean(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedM
   const testInsideA = createRobustInsideTester(a);
   const testInsideB = createRobustInsideTester(b);
   const insideB = (p: Pt3): boolean =>
-    inAabb(bbB, p) && testInsideB(p);
+    inAabb(bbB, p, ctx.probe) && testInsideB(p);
   const insideA = (p: Pt3): boolean =>
-    inAabb(bbA, p) && testInsideA(p);
+    inAabb(bbA, p, ctx.probe) && testInsideA(p);
 
   const vertices: Pt3[] = [];
   const faces: [number, number, number][] = [];
@@ -526,20 +619,21 @@ export function generalBoolean(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedM
   // ── A pass: fragments of A classified against B ──
   for (const [ia, ib, ic] of a.faces) {
     const tri = [a.vertices[ia], a.vertices[ib], a.vertices[ic]];
-    const nrm = triNormal(tri);
-    if (!nrm) continue;
-    const triangleCuts = cutCandidatesForTriangle(tri, allCuts);
-    for (const frag of splitFragment(tri, triangleCuts, "B")) {
+    const nrm = triNormal(tri, ctx.triCross);
+    // Degenerate input triangles are skipped — but recorded (policy §4).
+    if (!nrm) { recordDiagnostic(ctx.diagnostics, "degenerate-triangle-skipped", "generalBoolean A pass: degenerate input triangle skipped"); continue; }
+    const triangleCuts = cutCandidatesForTriangle(tri, allCuts, ctx.split);
+    for (const frag of splitFragment(tri, triangleCuts, "B", ctx)) {
       if (frag.coplanar !== null) {
         // Coplanar fragment: classify EACH in-plane cell. Cells are cut
         // by the other mesh's coplanar edges (including internal
         // triangulation diagonals), so a fragment can span both
         // covered and uncovered regions — the probe must run per cell.
-        const cells = splitCoplanarByEdges(frag.poly, planesB[frag.coplanar], edgesB[frag.coplanar]);
+        const cells = splitCoplanarByEdges(frag.poly, planesB[frag.coplanar], edgesB[frag.coplanar], ctx);
         for (const cell of cells) {
           const c = centroidOf(cell);
-          const u = add(c, scale(nrm, PROBE_EPS));
-          const l = add(c, scale(nrm, -PROBE_EPS));
+          const u = add(c, scale(nrm, ctx.probe));
+          const l = add(c, scale(nrm, -ctx.probe));
           const keepCell =
             op === "union" ? !insideB(u) :
             op === "intersect" ? insideB(l) :
@@ -548,8 +642,8 @@ export function generalBoolean(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedM
         }
       } else {
         const c = centroidOf(frag.poly);
-        const u = add(c, scale(nrm, PROBE_EPS)); // just outside A
-        const l = add(c, scale(nrm, -PROBE_EPS)); // just inside A
+        const u = add(c, scale(nrm, ctx.probe)); // just outside A
+        const l = add(c, scale(nrm, -ctx.probe)); // just inside A
         let keep: boolean;
         if (op === "union") keep = !insideB(u);
         else if (op === "intersect") keep = insideB(l);
@@ -562,32 +656,33 @@ export function generalBoolean(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedM
   // ── B pass: fragments of B classified against A ──
   for (const [ia, ib, ic] of b.faces) {
     const tri = [b.vertices[ia], b.vertices[ib], b.vertices[ic]];
-    const nrm = triNormal(tri);
-    if (!nrm) continue;
-    const triangleCuts = cutCandidatesForTriangle(tri, allCuts);
-    for (const frag of splitFragment(tri, triangleCuts, "A")) {
+    const nrm = triNormal(tri, ctx.triCross);
+    // Degenerate input triangles are skipped — but recorded (policy §4).
+    if (!nrm) { recordDiagnostic(ctx.diagnostics, "degenerate-triangle-skipped", "generalBoolean B pass: degenerate input triangle skipped"); continue; }
+    const triangleCuts = cutCandidatesForTriangle(tri, allCuts, ctx.split);
+    for (const frag of splitFragment(tri, triangleCuts, "A", ctx)) {
       if (frag.coplanar !== null) {
         if (op === "subtract") continue; // coplanar void skin: A's cells own the plane
         const P = planesA[frag.coplanar];
-        const cells = splitCoplanarByEdges(frag.poly, P, edgesA[frag.coplanar]);
+        const cells = splitCoplanarByEdges(frag.poly, P, edgesA[frag.coplanar], ctx);
         const covTris = coplanarTrisA[frag.coplanar];
         for (const cell of cells) {
           const c = centroidOf(cell);
           // Single-copy ownership: a cell covered by a SAME-facing A
           // triangle is emitted by the A pass — never by B.
-          const cov = coveringTriangle(c, covTris, nrm);
+          const cov = coveringTriangle(c, covTris, nrm, ctx);
           if (cov && cov.sameFacing) continue;
           // Every other cell is classified by probe (handles stacked
           // opposite-facing contact and non-convex step/through cases).
-          const u = add(c, scale(nrm, PROBE_EPS)); // just outside B
-          const l = add(c, scale(nrm, -PROBE_EPS)); // just inside B
+          const u = add(c, scale(nrm, ctx.probe)); // just outside B
+          const l = add(c, scale(nrm, -ctx.probe)); // just inside B
           const keepCell = op === "union" ? !insideA(u) : insideA(l); // intersect
           if (keepCell) emit(cell, false);
         }
       } else {
         const c = centroidOf(frag.poly);
-        const u = add(c, scale(nrm, PROBE_EPS)); // just outside B
-        const l = add(c, scale(nrm, -PROBE_EPS)); // just inside B
+        const u = add(c, scale(nrm, ctx.probe)); // just outside B
+        const l = add(c, scale(nrm, -ctx.probe)); // just inside B
         let keep: boolean;
         let flip = false;
         if (op === "union") keep = !insideA(u);
@@ -604,6 +699,18 @@ export function generalBoolean(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedM
     );
   }
   return { vertices, faces };
+}
+
+/**
+ * General boolean operation that also returns the tolerance diagnostics
+ * recorded during the operation (sliver-cell drops, degenerate input
+ * triangles). Callers that need fail-closed behaviour assert the
+ * returned diagnostics list is empty.
+ */
+export function generalBooleanDetailed(op: GeneralBooleanOp, a: IndexedMesh, b: IndexedMesh): GeneralBooleanResult {
+  const diagnostics: ToleranceDiagnostic[] = [];
+  const mesh = generalBoolean(op, a, b, { diagnostics });
+  return { mesh, diagnostics };
 }
 
 // ── convenience + n-ary fuse ─────────────────────────────────────────────
@@ -652,10 +759,10 @@ export function fuseAll(meshes: IndexedMesh[]): IndexedMesh {
  * Weld coincident vertices of a polygon-soup mesh (pairwise search,
  * same semantics as brep.weldVertices) and drop degenerate faces, so
  * the result can be counted by validateMeshDiagnostics with raw
- * indices. Default tolerance 1e-7 m — far below BIM feature scale,
- * far above split interpolation noise.
+ * indices. Default tolerance is WELD_MESH_TOLERANCE (1e-7 m) — far below
+ * BIM feature scale, far above split interpolation noise.
  */
-export function weldMesh(mesh: IndexedMesh, tol = 1e-7): IndexedMesh {
+export function weldMesh(mesh: IndexedMesh, tol = WELD_MESH_TOLERANCE): IndexedMesh {
   const map=new Map<number,number>();
   const accepted:Pt3[]=[];
   const buckets=new Map<string,number[]>();
@@ -732,10 +839,10 @@ function meshAabb(mesh: IndexedMesh): Aabb {
   return bb;
 }
 
-function inAabb(bb: Aabb, p: Pt3): boolean {
+function inAabb(bb: Aabb, p: Pt3, eps: number): boolean {
   return (
-    p.x >= bb.minX - PROBE_EPS && p.x <= bb.maxX + PROBE_EPS &&
-    p.y >= bb.minY - PROBE_EPS && p.y <= bb.maxY + PROBE_EPS &&
-    p.z >= bb.minZ - PROBE_EPS && p.z <= bb.maxZ + PROBE_EPS
+    p.x >= bb.minX - eps && p.x <= bb.maxX + eps &&
+    p.y >= bb.minY - eps && p.y <= bb.maxY + eps &&
+    p.z >= bb.minZ - eps && p.z <= bb.maxZ + eps
   );
 }

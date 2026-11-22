@@ -1,8 +1,50 @@
 /**
  * Lightweight 2D polygon boolean ops for REGION / UNION / SUBTRACT / INTERSECT.
  * Not ACIS — closed polylines only, axis-aligned-friendly clipping + winding rules.
+ *
+ * Degenerate-input policy (unified tolerance policy, PE-10 — see
+ * docs/engineering/TOLERANCE_POLICY.md §4): degenerate CALLER INPUT
+ * (fewer than 3 points, non-finite coordinates) fails closed with a typed
+ * DegenerateInputError, never a silent `[]` / `null`. A legitimately EMPTY
+ * RESULT (e.g. disjoint polygons under intersect) is still `[]` / `null`
+ * — it is a value, not a drop — and the `*Detailed` entry points report
+ * it as an `empty-result` diagnostic so callers can tell the two apart.
+ * `segIntersect` returning `null` for parallel / non-crossing segments
+ * is likewise a legitimate "no intersection" outcome, not a drop.
  */
+import {
+  DegenerateInputError,
+  POLY_CLIP_TOLERANCE,
+  POLY_PARAMETER_TOLERANCE,
+  POLY_POINT_GUARD,
+  POLY_SEGMENT_DENOMINATOR,
+  recordDiagnostic,
+  type ToleranceDiagnostic,
+} from "../solid-kernel/tolerance";
+
 export type Pt = { x: number; y: number };
+
+export interface PolyBooleanResult {
+  ring: Pt[];
+  /** Tolerance diagnostics recorded during the operation (policy §4). */
+  diagnostics: ToleranceDiagnostic[];
+}
+
+/**
+ * Fail closed on degenerate caller input: fewer than 3 points, or any
+ * non-finite coordinate. Throws DegenerateInputError (code
+ * "degenerate-input"); never coerces to an empty result.
+ */
+function assertValidPolygon(poly: Pt[], name: string): void {
+  if (!Array.isArray(poly) || poly.length < 3) {
+    throw new DegenerateInputError("too-few-points", `${name} needs at least 3 points, got ${Array.isArray(poly) ? poly.length : "non-array"}`);
+  }
+  for (const p of poly) {
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+      throw new DegenerateInputError("non-finite-coordinate", `${name} contains a non-finite coordinate`);
+    }
+  }
+}
 
 function cross(o: Pt, a: Pt, b: Pt): number {
   return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
@@ -13,7 +55,7 @@ function pointInPoly(p: Pt, poly: Pt[]): boolean {
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
     const ai = poly[i], aj = poly[j];
     if ((ai.y > p.y) !== (aj.y > p.y) &&
-      p.x < ((aj.x - ai.x) * (p.y - ai.y)) / (aj.y - ai.y + 1e-15) + ai.x) {
+      p.x < ((aj.x - ai.x) * (p.y - ai.y)) / (aj.y - ai.y + POLY_POINT_GUARD) + ai.x) {
       inside = !inside;
     }
   }
@@ -22,10 +64,10 @@ function pointInPoly(p: Pt, poly: Pt[]): boolean {
 
 function segIntersect(a: Pt, b: Pt, c: Pt, d: Pt): Pt | null {
   const den = (a.x - b.x) * (c.y - d.y) - (a.y - b.y) * (c.x - d.x);
-  if (Math.abs(den) < 1e-12) return null;
+  if (Math.abs(den) < POLY_SEGMENT_DENOMINATOR) return null;
   const t = ((a.x - c.x) * (c.y - d.y) - (a.y - c.y) * (c.x - d.x)) / den;
   const u = -((a.x - b.x) * (a.y - c.y) - (a.y - b.y) * (a.x - c.x)) / den;
-  if (t < -1e-9 || t > 1 + 1e-9 || u < -1e-9 || u > 1 + 1e-9) return null;
+  if (t < -POLY_PARAMETER_TOLERANCE || t > 1 + POLY_PARAMETER_TOLERANCE || u < -POLY_PARAMETER_TOLERANCE || u > 1 + POLY_PARAMETER_TOLERANCE) return null;
   return { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
 }
 
@@ -34,8 +76,8 @@ function clipEdge(subject: Pt[], a: Pt, b: Pt): Pt[] {
   const out: Pt[] = [];
   for (let i = 0; i < subject.length; i++) {
     const cur = subject[i], prev = subject[(i + subject.length - 1) % subject.length];
-    const curIn = cross(a, b, cur) >= -1e-9;
-    const prevIn = cross(a, b, prev) >= -1e-9;
+    const curIn = cross(a, b, cur) >= -POLY_CLIP_TOLERANCE;
+    const prevIn = cross(a, b, prev) >= -POLY_CLIP_TOLERANCE;
     if (curIn) {
       if (!prevIn) {
         const hit = segIntersect(prev, cur, a, b);
@@ -97,20 +139,42 @@ export function booleanPoly(
   b: Pt[],
   op: "union" | "intersect" | "subtract",
 ): Pt[] {
-  if (a.length < 3 || b.length < 3) return [];
+  return booleanPolyDetailed(a, b, op).ring;
+}
+
+/**
+ * Polygon boolean with diagnostics. Degenerate input throws
+ * DegenerateInputError; a legitimately empty result (disjoint operands)
+ * is returned as `ring: []` plus an `empty-result` diagnostic.
+ */
+export function booleanPolyDetailed(
+  a: Pt[],
+  b: Pt[],
+  op: "union" | "intersect" | "subtract",
+): PolyBooleanResult {
+  assertValidPolygon(a, "booleanPoly operand a");
+  assertValidPolygon(b, "booleanPoly operand b");
+  const diagnostics: ToleranceDiagnostic[] = [];
+  const done = (ring: Pt[]): PolyBooleanResult => {
+    if (ring.length < 3) {
+      recordDiagnostic(diagnostics, "empty-result", `booleanPoly(${op}): operands do not overlap — empty result is a legitimate outcome, not a failure`);
+    }
+    return { ring, diagnostics };
+  };
   // Prefer exact clip for intersect when clip is used as convex approx
   if (op === "intersect") {
     const c1 = clipPolygon(a, b);
-    if (c1.length >= 3) return c1;
+    if (c1.length >= 3) return done(c1);
     const c2 = clipPolygon(b, a);
-    if (c2.length >= 3) return c2;
+    if (c2.length >= 3) return done(c2);
+    return done([]);
   }
   if (op === "subtract") {
     // A minus B: keep points of A outside B + intersection boundary samples
     const keep = a.filter((p) => !pointInPoly(p, b));
     const samples = sampleGrid(a, b, 32).filter((p) => pointInPoly(p, a) && !pointInPoly(p, b));
     const cloud = [...keep, ...samples];
-    return convexHull(cloud);
+    return done(convexHull(cloud));
   }
   // union
   const cloud = [
@@ -118,7 +182,7 @@ export function booleanPoly(
     ...b.filter((p) => !pointInPoly(p, a)),
     ...sampleGrid(a, b, 28).filter((p) => pointInPoly(p, a) || pointInPoly(p, b)),
   ];
-  return convexHull(cloud);
+  return done(convexHull(cloud));
 }
 
 function convexHull(pts: Pt[]): Pt[] {
@@ -178,13 +242,39 @@ export function booleanSolid(
   b: SolidFootprint,
   op: "union" | "intersect" | "subtract",
 ): SolidFootprint | null {
-  const ring = booleanPoly(a.ring, b.ring, op);
-  if (ring.length < 3) return null;
+  return booleanSolidDetailed(a, b, op).solid;
+}
+
+export interface SolidBooleanResult {
+  solid: SolidFootprint | null;
+  /** Tolerance diagnostics recorded during the operation (policy §4). */
+  diagnostics: ToleranceDiagnostic[];
+}
+
+/**
+ * Solid-footprint boolean with diagnostics. Degenerate input throws
+ * DegenerateInputError (via booleanPolyDetailed, or for a non-positive
+ * height); a legitimately empty result is `solid: null` plus an
+ * `empty-result` diagnostic.
+ */
+export function booleanSolidDetailed(
+  a: SolidFootprint,
+  b: SolidFootprint,
+  op: "union" | "intersect" | "subtract",
+): SolidBooleanResult {
+  if (!Number.isFinite(a.height) || a.height <= 0) {
+    throw new DegenerateInputError("non-positive-size", `booleanSolid operand a needs a positive height, got ${a.height}`);
+  }
+  if (!Number.isFinite(b.height) || b.height <= 0) {
+    throw new DegenerateInputError("non-positive-size", `booleanSolid operand b needs a positive height, got ${b.height}`);
+  }
+  const { ring, diagnostics } = booleanPolyDetailed(a.ring, b.ring, op);
+  if (ring.length < 3) return { solid: null, diagnostics };
   let height = a.height;
   if (op === "union") height = Math.max(a.height, b.height);
   else if (op === "intersect") height = Math.min(a.height, b.height);
   else height = a.height;
-  return { ring, height, z0: a.z0 ?? 0 };
+  return { solid: { ring, height, z0: a.z0 ?? 0 }, diagnostics };
 }
 
 /** Simple box corners as ring. */

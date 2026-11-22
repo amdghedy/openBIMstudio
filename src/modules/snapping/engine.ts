@@ -16,8 +16,9 @@
  * and tie-breaking, and never persists a snap implicitly (temporary snap
  * ≠ persistent constraint — spec §3.4).
  *
- * Tolerances (spec 5.2): the screen-space snap tolerance is separate from
- * geometric tolerances and is NOT reused for boolean work.
+ * Tolerances (unified tolerance policy, docs/engineering/TOLERANCE_POLICY.md
+ * §5): the screen-space snap tolerance is a SEPARATE domain from geometric
+ * tolerances and is NOT reused for boolean work.
  *
  * Pure module: no DOM, no three.js — safe to unit-test in Node.
  */

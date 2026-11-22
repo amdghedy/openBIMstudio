@@ -8,9 +8,13 @@
  * All points are [x, z] tuples in world metres.
  */
 
+import { SNAP_GEOMETRIC_TOLERANCE, SNAP_PARAMETER_TOLERANCE } from "../solid-kernel/tolerance";
+
 export type XY = [number, number];
 
-const EPS = 1e-9;
+// Geometric epsilon (unified tolerance policy); null returns on degenerate
+// input are documented "no such point" outcomes, not silent drops.
+const EPS = SNAP_GEOMETRIC_TOLERANCE;
 
 /** Unit direction a→b; null for degenerate segments. */
 export function segDir(a: XY, b: XY): XY | null {
@@ -63,7 +67,7 @@ export function segmentIntersection(p1: XY, p2: XY, p3: XY, p4: XY): XY | null {
   if (Math.abs(denom) < EPS) return null; // parallel / collinear
   const t = ((p3[0] - p1[0]) * d2z - (p3[1] - p1[1]) * d2x) / denom;
   const u = ((p3[0] - p1[0]) * d1z - (p3[1] - p1[1]) * d1x) / denom;
-  if (t < -1e-9 || t > 1 + 1e-9 || u < -1e-9 || u > 1 + 1e-9) return null;
+  if (t < -SNAP_PARAMETER_TOLERANCE || t > 1 + SNAP_PARAMETER_TOLERANCE || u < -SNAP_PARAMETER_TOLERANCE || u > 1 + SNAP_PARAMETER_TOLERANCE) return null;
   return [p1[0] + d1x * t, p1[1] + d1z * t];
 }
 
