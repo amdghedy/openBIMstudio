@@ -322,9 +322,11 @@ function renderDetail(): void {
     "background:#0b0d12;border:1px solid var(--border-subtle,#1e2029);border-radius:6px;" +
     "padding:8px;margin-bottom:10px;display:flex;align-items:center;justify-content:center;min-height:160px";
   let builtPreviewObject: THREE.Object3D | null = null;
+  const selectedFamilyType = fam.types.find(type => type.id === selectedTypeId) ?? null;
+  const activeConnectorDefinitions = selectedFamilyType?.connectorDefs ?? fam.connectorDefs ?? [];
   const connectorPreviewState: FamilyConnectorPreviewState = {
     axis: "x",
-    definitions: (fam.connectorDefs ?? []).map(definition => ({
+    definitions: activeConnectorDefinitions.map(definition => ({
       ...definition,
       origin: [...definition.origin] as [number, number, number],
       direction: [...definition.direction] as [number, number, number],
@@ -411,7 +413,7 @@ function renderDetail(): void {
 
   // --- Family-local MEP connector definitions ------------------------------
   try {
-    detailPane.appendChild(buildMepConnectorsSection(fam, connectorPreviewState));
+    detailPane.appendChild(buildMepConnectorsSection(fam, connectorPreviewState, selectedTypeId));
   } catch (err) {
     console.warn("[family-browser] MEP connectors section failed", err);
   }
@@ -543,7 +545,7 @@ function connectorDraftDefinition(draft: ConnectorDraft): ConnectorDefinition {
   };
 }
 
-function buildMepConnectorsSection(fam: FamilyDefinition, previewState: FamilyConnectorPreviewState): HTMLElement {
+function buildMepConnectorsSection(fam: FamilyDefinition, previewState: FamilyConnectorPreviewState, typeId: string | null): HTMLElement {
   const wrap = document.createElement("div");
   wrap.style.cssText =
     "margin:12px 0 14px;padding:9px;border:1px solid var(--border-subtle,#1e2029);" +
@@ -555,7 +557,8 @@ function buildMepConnectorsSection(fam: FamilyDefinition, previewState: FamilyCo
   const hint = document.createElement("div");
   hint.textContent = fam.builtIn
     ? "Numbered markers show port origins; arrows show connection axes."
-    : "Drag a numbered port along the selected local axis. Set direction with yaw/pitch angles; the arrow updates live. Save connectors to persist changes.";
+    : "Editing " + (selectedType ? "type-specific ports for " + selectedType.name : "family default ports") +
+      ". Drag a numbered port along the selected local axis. Set direction with yaw/pitch angles; save to persist changes.";
   hint.style.cssText = "color:#94a3b8;font-size:10.5px;line-height:1.5;margin-bottom:8px";
   wrap.appendChild(hint);
 
@@ -567,7 +570,8 @@ function buildMepConnectorsSection(fam: FamilyDefinition, previewState: FamilyCo
   status.style.cssText = "font-size:10.5px;line-height:1.45;margin-top:7px;color:#fca5a5;white-space:pre-wrap";
   wrap.appendChild(status);
 
-  const existing = fam.connectorDefs ?? [];
+  const selectedType = fam.types.find(type => type.id === typeId) ?? null;
+  const existing = selectedType?.connectorDefs ?? fam.connectorDefs ?? [];
   if (fam.builtIn) {
     const locked = document.createElement("div");
     locked.textContent = "Built-in family definitions are read-only. Duplicate this family to add or edit connector ports.";
@@ -866,9 +870,9 @@ function buildMepConnectorsSection(fam: FamilyDefinition, previewState: FamilyCo
       status.textContent = errors.map(error => "• " + error).join("\n");
       return;
     }
-    const updated = s.update(fam.id, {
-      connectorDefs: cloneFamilyConnectorDefinitions(definitions),
-    });
+    const updated = selectedType
+      ? s.updateType(fam.id, selectedType.id, { connectorDefs: cloneFamilyConnectorDefinitions(definitions) })
+      : s.update(fam.id, { connectorDefs: cloneFamilyConnectorDefinitions(definitions) });
     if (!updated) {
       status.textContent = "The family connector definitions could not be saved.";
       return;
