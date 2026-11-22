@@ -74,7 +74,7 @@ function buildPanel(): void {
   panel.innerHTML = `
     <header class="cfg-head"><span aria-hidden="true">▦</span><strong>BIM Family Generator</strong><span class="cfg-muted">Catalogue → Parametric BIM</span><button type="button" data-close aria-label="Close">✕</button></header>
     <div class="cfg-body">
-      <div class="cfg-card"><strong>01 · Import catalogue</strong><p class="cfg-muted">Local CSV, TSV or JSON intake. PDF OCR and DWG/STEP extraction are not yet enabled in this first delivery.</p><label>Catalogue file<input data-file type="file" accept=".csv,.tsv,.txt,.json,text/csv,text/tab-separated-values,application/json,text/plain"></label></div>
+      <div class="cfg-card"><strong>01 · Import catalogue</strong><p class="cfg-muted">Local CSV, TSV, TXT, JSON and PDF text extraction. Scanned PDF pages can use your configured local Ollama vision model; no cloud OCR is used.</p><label>Catalogue file<input data-file type="file" accept=".csv,.tsv,.txt,.json,.pdf,text/csv,text/tab-separated-values,application/json,text/plain,application/pdf"></label><label style="display:flex;grid-template-columns:auto 1fr;align-items:center;gap:8px"><input data-ocr type="checkbox" style="width:auto"> Run local vision OCR on scanned PDF pages (requires a vision-capable Ollama model)</label></div>
       <div class="cfg-card"><strong>02 · Family definition</strong><div class="cfg-grid">
         <label>Family name<input data-name value="Manufacturer Equipment"></label>
         <label>Manufacturer<input data-manufacturer placeholder="Manufacturer name"></label>
