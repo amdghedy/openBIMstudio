@@ -20,7 +20,8 @@ function familyService(): Any {
   return (window as Any).__obsFamilyParametric ?? (window as Any).__obsFamily ?? (ctx.features as Any)?.family ?? {};
 }
 function escapeHtml(value: unknown): string {
-  return String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
+  const entities: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+  return String(value ?? "").replace(/[&<>"']/g, (c) => entities[c]);
 }
 function status(message: string, kind = "info"): void {
   const el = panel?.querySelector<HTMLElement>("[data-status]");
