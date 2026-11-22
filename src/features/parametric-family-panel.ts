@@ -376,6 +376,13 @@ export function openFamilyCreatorEngine(): void {
 }
 
 export function setupParametricFamilyPanel(): void {
+  window.addEventListener("obs:open-family-sketch", () => {
+    void import("./family-sketch-editor").then((m) => m.openFamilySketchEditor());
+  });
+  (window as Any).__obsOpenFamilySketch = () => {
+    void import("./family-sketch-editor").then((m) => m.openFamilySketchEditor());
+  };
+
   void import("./command-palette").then(({ registerCommand }) => {
     registerCommand({
       id: "family.creator",
