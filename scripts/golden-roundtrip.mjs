@@ -26,7 +26,9 @@ const SNAPSHOTS = CORPUS + '/snapshots';
  */
 import { readFileSync as readManifest } from 'fs';
 const MANIFEST = JSON.parse(readManifest(CORPUS + '/manifest.json', 'utf8'));
-const VALID_FILES = MANIFEST.fixtures.filter((f) => f.kind === 'valid').map((f) => f.file).sort();
+// the manifest schema (c9c2d75) names the array 'files' — the old 'fixtures'
+// key no longer exists, so this gate crashed with 'Cannot read fixtures of undefined'
+const VALID_FILES = MANIFEST.files.filter((f) => f.kind === 'valid').map((f) => f.file).sort();
 
 const TYPE_IDS = Object.entries(W)
   .filter(([k, v]) => typeof v === 'number' && /^IFC[A-Z0-9_]+$/.test(k));
