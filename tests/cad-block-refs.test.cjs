@@ -189,4 +189,14 @@ t("translated and rotated INSERT references retain their document binding for ex
   const rb = V.entityBBox(rotated);
   near(rb.minX, -5); near(rb.maxX, -5); near(rb.minY, 20); near(rb.maxY, 30);
 });
+
+t("principal-angle detection samples native block geometry for block-only drawings", () => {
+  const a = Math.PI / 6, dx = 10 * Math.cos(a), dy = 10 * Math.sin(a);
+  let body = "";
+  for (let i = 0; i < 8; i++) body += LINE(0, i * 4, dx, i * 4 + dy);
+  const d = parseDxf(file(BLOCK("ANGLED", 0, 0, body), INS("ANGLED", 0, 0)), NATIVE);
+  B.bindDocumentBlocks(d);
+  const angle = V.estimatePrincipalAngle(d.entities);
+  assert.ok(Math.abs(angle) > 20 && Math.abs(angle) < 40, `expected ~30° from resolved block lines, got ${angle}`);
+});
 console.log(`${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
