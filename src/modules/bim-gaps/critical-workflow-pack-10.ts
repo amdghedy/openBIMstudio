@@ -36,14 +36,17 @@ const ghosted = new Map<string, { opacity: number; transparent: boolean }>();
   const seed = elements().find((e) => e.id === ids[0]);
   if (!seed) return 0;
   const match = elements().filter((e) => e.type === seed.type).map((e) => e.id);
-  try {
-    a?.setSelectedIds?.(match) ?? a?.selectIds?.(match);
-  } catch {
-    try {
-      a?.clearSelection?.();
-      for (const id of match) a?.addToSelection?.(id);
-    } catch { /* */ }
+  // setSelectedIds is the authoring replace-selection primitive. The old
+  // call chain (setSelectedIds ?? selectIds, then a clearSelection /
+  // addToSelection fallback) named methods the engine never had, so the
+  // command reported success while selecting nothing — and, once the
+  // method exists, the ?? would have invoked a second setter for free,
+  // since the first returns void. Fail closed instead of lying.
+  if (typeof a?.setSelectedIds !== "function") {
+    notify("warn", "Select Similar is unavailable — the selection engine has no setSelectedIds");
+    return 0;
   }
+  a.setSelectedIds(match);
   notify("success", `Select similar “${seed.type}”: ${match.length}`);
   return match.length;
 }
@@ -53,12 +56,13 @@ const ghosted = new Map<string, { opacity: number; transparent: boolean }>();
   const cur = new Set<string>(a?.getSelectedIds?.() ?? []);
   const all = elements().map((e) => e.id);
   const next = all.filter((id) => !cur.has(id));
-  try {
-    a?.setSelectedIds?.(next);
-  } catch {
-    a?.clearSelection?.();
-    for (const id of next) a?.addToSelection?.(id);
+  // Same missing-method story as selectSimilar3d above: the old chain
+  // called setSelectedIds ?? selectIds, neither of which existed.
+  if (typeof a?.setSelectedIds !== "function") {
+    notify("warn", "Invert Selection is unavailable — the selection engine has no setSelectedIds");
+    return 0;
   }
+  a.setSelectedIds(next);
   notify("success", `Inverted selection → ${next.length}`);
   return next.length;
 }
@@ -312,8 +316,10 @@ function applyGhostToObject(obj: THREE.Object3D, key: string, opacity: number): 
 }
 
 /* 10 */ export async function clearSelection3d(): Promise<void> {
+  // clearSelection never existed on the authoring API either — clear via
+  // the replace-selection primitive (empty set), same as items 1–2 above.
   try {
-    authoring()?.clearSelection?.();
+    authoring()?.setSelectedIds?.([]);
   } catch { /* */ }
   try {
     const sel = (ctx.features as Any)?.selection;

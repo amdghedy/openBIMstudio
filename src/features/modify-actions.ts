@@ -9,6 +9,7 @@ import {
   setAuthoringTool,
   getActiveTool,
   getSelectedIds,
+  setSelectedAuthored,
   deleteSelectedElement,
   pinSelected,
   createSimilarFromSelection,
@@ -167,21 +168,24 @@ export function runModifyAction(id: ModifyActionId): void {
       (ctx.features as any).bimCompatibility?.matchProperties?.(ids[0]);
       toast("Match Properties — pick target", "info");
       break;
-    case "select-similar":
-      void (async () => {
-        try {
-          const sel = (window as Any).__obsSelection;
-          if (!sel?.selectSimilar || !ids[0]) {
-            toast("Select Similar works on an authored element - select one first.", "warn");
-            return;
-          }
-          await sel.selectSimilar("native", ids[0]);
-          toast("Select Similar", "success");
-        } catch {
-          toast("Select Similar failed", "warn");
-        }
-      })();
+    case "select-similar": {
+      // The registry defines this command for authored (NATIVE) elements:
+      // "Select authored elements similar to the selected source element."
+      // It used to call window.__obsSelection.selectSimilar — a method
+      // that object never had (it only exposes the SelectionEngine class),
+      // so it always warned and did nothing; and the fragment engine it
+      // named has no "native" model anyway. Route it to the authoring
+      // selection instead: every element of the seed's type.
+      const seed = ids[0] ? getElementById(ids[0]) : undefined;
+      if (!seed) {
+        toast("Select Similar works on an authored element - select one first.", "warn");
+        break;
+      }
+      const match = getElements().filter((e) => e.type === seed.type).map((e) => e.id);
+      setSelectedAuthored(match, "replace");
+      toast(`Select similar “${seed.type}”: ${match.length}`, "success");
       break;
+    }
     case "align-x": {
       const n = alignSelectedAxis("x");
       toast(n ? i18nT("counts.alignElements", { n, axis: "X" }) : "Select at least two authored elements.", n ? "success" : "warn");

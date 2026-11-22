@@ -8303,6 +8303,11 @@ export function setupAuthoring() {
     rebuildAuthored, transformElements,
     selectAllAuthored,
     setSelectedAuthored,
+    // Replace-selection primitive under the name the Modify commands
+    // call it by (Select Similar, Invert Selection, Array). It was
+    // missing, so those commands silently did nothing while reporting
+    // success; selectAllAuthored above is the same replace.
+    setSelectedIds: (ids: string[]) => setSelectedAuthored(ids, "replace"),
     getElementWorldBox,
     getAuthoredGroup,
 
