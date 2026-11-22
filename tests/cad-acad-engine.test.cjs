@@ -64,7 +64,7 @@ t("mapper: full JSON -> DxfDocument mapping surface", () => {
 
 t("wiring: DWG pipeline tries acadrust first, DXF file path too", () => {
   assert.ok(dwgCore.includes("parseWithAcadEngine"), "dwg-parse-core must call the acadrust engine");
-  const acadIdx = dwgCore.indexOf("parseWithAcadEngine(bytes, fileName)");
+  const acadIdx = dwgCore.indexOf("parseWithAcadEngine(bytes, fileName,");
   const libIdx = dwgCore.indexOf("await getReader()");
   assert.ok(acadIdx >= 0 && libIdx > acadIdx, "acadrust path must run before the libredwg reader");
   assert.ok(dxfReader.includes("parseWithAcadEngine"), "dxf-reader must call the acadrust engine");
