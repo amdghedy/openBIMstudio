@@ -13,6 +13,7 @@ The current experimental delivery adds a BIM Family Generator launcher and local
 - Quoted CSV fields and header aliases for common manufacturer catalogue columns.
 - Product rows and model variants review.
 - Explicit dimension unit selection (mm, cm, m) and conversion to metres for the current family geometry contract.
+- Header-unit normalization for airflow (m³/s and L/s to m³/h), static pressure (kPa to Pa), power (W to kW) and voltage (kV to V).
 - Required-dimension completeness warnings.
 - Creation of a native OpenBIMstudio family definition using the existing family service, parameter schema, geometry engine and project persistence.
 - Type parameters for dimensions, manufacturer, product code, airflow, static pressure, power and voltage.
@@ -46,7 +47,7 @@ The UI must continue to label these as unavailable/planned until implemented and
 
 ## Supported catalogue columns
 
-XLSX, CSV/TSV and PDF table readers recognize model/model number/type, manufacturer/brand, product code/SKU, overall width/depth/height, airflow rate, static pressure/ESP, rated power and supply voltage aliases. Geometry Profile / Product Geometry accepts explicit box or cylinder values. Explicit MEP connector columns can use unnumbered fields for one port or numbered groups such as Connector 1 Name, Connector 1 X/Y/Z, Connector 1 Direction X/Y/Z, Connector 1 Domain, Connector 1 Shape, Connector 1 Diameter or Connector 1 Width/Height, Flow Direction and System Classification; repeat for Connector 2, Connector 3, etc. Port coordinates and nominal sizes use the selected dimension unit and are converted to metres; direction vectors are normalized. PDF table extraction relies on selectable text and recognizable column positions. OCR prompts the local vision model for the same canonical fields; unknown fields and source-page evidence remain attached to extracted rows where available.
+XLSX, CSV/TSV and PDF table readers recognize model/model number/type, manufacturer/brand, product code/SKU, overall width/depth/height, airflow rate, static pressure/ESP, rated power and supply voltage aliases. Explicit unit suffixes are normalized for airflow (m³/s, L/s), pressure (kPa), power (W) and voltage (kV); dimension columns still use the selected family dimension unit. Geometry Profile / Product Geometry accepts explicit box or cylinder values. Explicit MEP connector columns can use unnumbered fields for one port or numbered groups such as Connector 1 Name, Connector 1 X/Y/Z, Connector 1 Direction X/Y/Z, Connector 1 Domain, Connector 1 Shape, Connector 1 Diameter or Connector 1 Width/Height, Flow Direction and System Classification; repeat for Connector 2, Connector 3, etc. Port coordinates and nominal sizes use the selected dimension unit and are converted to metres; direction vectors are normalized. PDF table extraction relies on selectable text and recognizable column positions. OCR prompts the local vision model for the same canonical fields; unknown fields and source-page evidence remain attached to extracted rows where available.
 
 ## Engineering boundaries
 
