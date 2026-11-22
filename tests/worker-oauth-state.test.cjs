@@ -49,7 +49,7 @@ const cb = (state, cookie) => new Request("https://app.example/api/auth/google/c
     assert.ok(/Max-Age=0/.test(A.clearOAuthStateCookie()) && /obs_oauth=;/.test(A.clearOAuthStateCookie()));
   });
   const realFetch = global.fetch;
-  const mockGoogle = (info) => { global.fetch = async (u) => String(u).includes("oauth2.googleapis.com") ? new Response(JSON.stringify({ access_token: "tok" })) : new Response(JSON.stringify(info)); };
+  const mockGoogle = (info) => { global.fetch = async (u) => new URL(String(u)).hostname === "oauth2.googleapis.com" ? new Response(JSON.stringify({ access_token: "tok" })) : new Response(JSON.stringify(info)); };
   await t("unverified Google email is rejected", async () => {
     for (const v of [false, "false", undefined, 0]) {
       mockGoogle({ email: "victim@example.com", email_verified: v, sub: "1" });
