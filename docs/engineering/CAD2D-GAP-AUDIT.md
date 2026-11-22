@@ -157,8 +157,10 @@ no "drag while solving" API yet; solver not benchmarked beyond the chain above.
 - BYBLOCK colour/linetype are still not inherited from the reference; dynamic blocks are not interpreted; nested
   references under non-uniform scale with rotated children are approximated; LibreDWG fallback still expands.
 - Grips for a reference move its insertion point only (no per-attribute grips).
-- The browser test (`tests/e2e/cad-native-blocks.spec.ts`) could not be run in the authoring sandbox (no
-  node_modules/browser); CI is the first execution.
+- Browser evidence: `tests/e2e/cad-native-blocks.spec.ts` (import → SELECTALL → BLOCK → EXPLODE → UNDO ×2 → REDO, with
+  a zero-page-error assertion) runs green in the standalone `cad-e2e` workflow (Chromium). Its first run found a real
+  bug (UNDO/REDO kept stale selection indices after an N→M replace → crash in showProps); fixed by clearing the selection.
+  Not browser-tested: INSERT with attributes/MINSERT dialogs, ATTEDIT, WBLOCK, `NATIVEBLOCKS ON` file open.
 
 **Benchmark (20 000 references × 60 entities, Node, this sandbox, single run — not p50/p95)**
 
