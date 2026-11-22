@@ -3880,7 +3880,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   const rebuildIndex = (): void => {
     setActiveBlocks(doc?.blocks);
     let b: M.BBox | null = null;
-    for (const e of ents) b = M.unionBBox(b, M.entityBBox(e));
+    for (let i = 0; i < ents.length; i++) {
+      const e = ents[i];
+      if (!e) throw new Error(`rebuildIndex: empty entity slot ${i} of ${ents.length}`);
+      let bb: M.BBox;
+      try { bb = M.entityBBox(e); } catch (err) { throw new Error(`rebuildIndex: ${e.type} #${i} of ${ents.length}: ${(err as Error).message}`); }
+      b = M.unionBBox(b, bb);
+    }
     bounds = b ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 };
     idx = M.buildIndex(ents, bounds);
   };
