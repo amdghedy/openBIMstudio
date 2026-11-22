@@ -27,7 +27,7 @@ import { validateFamilyConnectorDefinitions, cloneFamilyConnectorDefinitions } f
 import { buildFamilyConnectorPreviewLayout, projectedDeltaToLocalAxisDelta, type PreviewLocalAxis } from "../modules/families/connector-preview";
 import { connectorDirectionToYawPitch, yawPitchToConnectorDirection } from "../modules/families/connector-orientation";
 // openbim-families:formula-engine-ui
-import { evaluateParameters } from "../modules/families/formula-engine";
+import { evaluateParameters, toDeclaredUnits } from "../modules/families/formula-engine";
 import { captureManualSyncOverrides } from "../modules/families/placement";
 
 const PANEL_ID = "obs-family-browser";
@@ -377,7 +377,10 @@ function renderDetail(): void {
   let __fxComputed = new Set<string>();
   let __fxErrors = new Map<string, { parameter: string; message: string; formula: string }>();
   try {
-    const __fx = evaluateParameters(fam.parameters, resolved);
+    // `resolved` is already in SI (resolveParams returns SI values);
+    // evaluateParameters seeds are in declared units, so convert back
+    // first — otherwise a non-SI unit (e.g. mm) would convert twice.
+    const __fx = evaluateParameters(fam.parameters, toDeclaredUnits(resolved, fam.parameters));
     __fxComputed = __fx.computed;
     __fxErrors = new Map(__fx.errors.map((e) => [e.parameter, e]));
   } catch (err) {

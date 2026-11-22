@@ -43,7 +43,20 @@
 
 import { evaluateExpression, validateFormulaExpression } from "./safe-expr";
 import { FormulaParameterSchema, validateWithSchema } from "../../core/safeLoad";
+import {
+  analyseFormulaDimensions,
+  buildDimensionEnv,
+  checkTargetDimension,
+  DimensionError,
+  fromSIValue,
+  toSIValue,
+  type DimensionEnv,
+  type DimValue,
+} from "./formula-dimensions";
 import type { FamilyParameter } from "./types";
+
+export { DimensionError } from "./formula-dimensions";
+export { toDeclaredUnits } from "./formula-dimensions";
 
 export interface FormulaError {
   parameter: string;
@@ -329,7 +342,22 @@ export function evaluateParameters(
   }
 
   const { order, cycles, dependencies } = topoSort(validDeclarations);
-  const values: Record<string, any> = { ...seedValues };
+  // PE-01: dimensional analysis. Declared values are stored in the
+  // parameter's declared unit and converted to SI (metres / m^2 / m^3 /
+  // radians) before any arithmetic, so `mm + m` converts and evaluates
+  // correctly instead of adding raw numbers as if they shared a unit.
+  // Seed-only values (no declaration) pass through unconverted: their
+  // dimension is unknown, not silently dimensionless.
+  const dimEnv = buildDimensionEnv(validDeclarations, seedValues);
+  const values: Record<string, any> = {};
+  for (const p of validDeclarations) {
+    const info = dimEnv.declared.get(p.name);
+    if (p.name in seedValues) values[p.name] = toSIValue(seedValues[p.name], info);
+    else values[p.name] = toSIValue(p.default, info);
+  }
+  for (const [k, v] of Object.entries(seedValues)) {
+    if (!(k in values)) values[k] = v;
+  }
   const computed = new Set<string>();
   // Names an expression may reference: declared parameters, seed values
   // (a formula may legitimately read a seed-only value), builtins, and
@@ -342,10 +370,6 @@ export function evaluateParameters(
     "true",
     "false",
   ]);
-
-  for (const p of validDeclarations) {
-    if (!(p.name in values)) values[p.name] = p.default;
-  }
 
   const cycleSet = new Set(cycles);
   for (const c of cycles) {
@@ -360,7 +384,6 @@ export function evaluateParameters(
   for (const p of order) {
     if (!p.formula) continue;
     if (cycleSet.has(p.name)) continue;
-    computed.add(p.name);
 
     const body = normalizeBody(p.formula);
 
@@ -373,6 +396,47 @@ export function evaluateParameters(
       errors.push({
         parameter: p.name,
         message: (exprCheck.issues ?? []).join("; "),
+        formula: p.formula,
+      });
+      continue;
+    }
+
+    // PE-01: dimensional analysis, before any numeric evaluation. An
+    // ill-typed formula (length + area, round(length), a length where a
+    // dimensionless value is required, a result whose dimension does not
+    // match a dimensional target) is recorded as a named DimensionError
+    // and keeps its default — it is never evaluated to a silent wrong
+    // number. The check is static: a formula that passes it evaluates
+    // through the unchanged numeric path, so valid formulas keep their
+    // values exactly. A target whose own declared unit cannot be
+    // converted for its type is rejected the same way.
+    const ownUnitError = dimEnv.declared.get(p.name)?.unitError;
+    if (ownUnitError) {
+      errors.push({
+        parameter: p.name,
+        message: `DimensionError [unit-confusion]: ${ownUnitError}`,
+        formula: p.formula,
+      });
+      continue;
+    }
+    const dimCheck = analyseFormulaDimensions(body, dimEnv);
+    if (!dimCheck.ok) {
+      errors.push({
+        parameter: p.name,
+        message:
+          dimCheck.code === "syntax"
+            ? (dimCheck.message ?? "Invalid formula")
+            : `DimensionError [${dimCheck.code ?? "dimension-mismatch"}]: ${dimCheck.message ?? "Invalid formula"}`,
+        formula: p.formula,
+      });
+      continue;
+    }
+    // `ok` is true here (the failure branch continues), so `dimension` is set.
+    const targetError = checkTargetDimension(p, dimCheck.dimension as DimValue);
+    if (targetError) {
+      errors.push({
+        parameter: p.name,
+        message: `DimensionError [${targetError.code}]: ${targetError.message}`,
         formula: p.formula,
       });
       continue;
@@ -400,6 +464,10 @@ export function evaluateParameters(
           typeof raw === "boolean" && isNumericParamType(p.type)
             ? raw ? 1 : 0
             : raw;
+        // PE-01: only a formula that actually produced a value counts
+        // as computed; a rejected formula keeps its default and is not
+        // in the computed set.
+        computed.add(p.name);
         continue;
       }
 
@@ -413,12 +481,23 @@ export function evaluateParameters(
         continue;
       }
 
-      // Honour integer type + min/max after evaluation
+      // Honour integer type + min/max after evaluation. min/max are
+      // authored in the parameter's declared unit (like the default and
+      // the type values resolveParametricValues clamps before formulas),
+      // while `out` is SI — so clamp in declared-unit space and convert
+      // back. For SI-unit parameters this is the identity.
       let out: number = n;
       if (p.type === "integer") out = Math.round(out);
-      if (p.min != null && out < p.min) out = p.min;
-      if (p.max != null && out > p.max) out = p.max;
+      if (p.min != null || p.max != null) {
+        const info = dimEnv.declared.get(p.name);
+        const inDeclared = fromSIValue(out, info) as number;
+        let clamped = inDeclared;
+        if (p.min != null && clamped < p.min) clamped = p.min;
+        if (p.max != null && clamped > p.max) clamped = p.max;
+        out = clamped === inDeclared ? out : (toSIValue(clamped, info) as number);
+      }
       values[p.name] = out;
+      computed.add(p.name);
     } catch (err) {
       errors.push({
         parameter: p.name,
@@ -444,7 +523,11 @@ export function evaluateParameters(
  * resolveNumber() can fall back (warn + 0). Booleans are returned as 1/0,
  * matching the old engine.
  */
-export function evaluateFormula(expr: string, params: Record<string, any>): any {
+export function evaluateFormula(
+  expr: string,
+  params: Record<string, any>,
+  declarations?: FamilyParameter[],
+): any {
   const source = String(expr ?? "").trim();
   if (!source) return null;
   // PE-20: validate the expression (shape + identifier membership) before
@@ -458,6 +541,17 @@ export function evaluateFormula(expr: string, params: Record<string, any>): any 
     "false",
   ]);
   if (!validateFormulaExpression(body, allowedNames).ok) return null;
+  // PE-01: when the caller supplies declarations, the same dimensional
+  // gate as evaluateParameters applies — an ill-typed formula yields
+  // null instead of a silent wrong number. Without declarations the
+  // one-off path stays untyped (it cannot know a name's dimension);
+  // callers that have declarations should pass them. Geometry NumberRef
+  // expressions via parametric-geometry's resolveNumber() use the
+  // untyped path today — see the PE-01 limitations in the PR description.
+  if (declarations !== undefined) {
+    const env = buildDimensionEnv(declarations, params ?? {});
+    if (!analyseFormulaDimensions(body, env).ok) return null;
+  }
   try {
     const result = evaluateExpression(body, params, BUILTIN_FUNCTIONS);
     if (result === undefined || result === null) return null;
@@ -471,6 +565,42 @@ export function evaluateFormula(expr: string, params: Record<string, any>): any 
 
 export function hasFormulas(declarations: FamilyParameter[]): boolean {
   return declarations.some((p) => !!p.formula);
+}
+
+/**
+ * PE-01: statically check one formula against parameter declarations
+ * without evaluating it. Returns the inferred result dimension on
+ * success, or the named DimensionError that would reject the formula in
+ * evaluateParameters (a syntax problem is returned as a plain Error with
+ * the parser's message). `seedValues` names the seed-only values the
+ * formula may read; their dimension is unknown, not dimensionless.
+ * Flat result shape, like DimensionCheckResult (see there for why).
+ */
+export interface FormulaDimensionCheck {
+  ok: boolean;
+  dimension?: DimValue;
+  error?: Error;
+}
+
+export function checkFormulaDimensions(
+  formula: string,
+  declarations: FamilyParameter[],
+  seedValues: Record<string, any> = {},
+): FormulaDimensionCheck {
+  const env: DimensionEnv = buildDimensionEnv(declarations, seedValues);
+  const body = normalizeBody(String(formula ?? ""));
+  const check = analyseFormulaDimensions(body, env);
+  if (!check.ok) {
+    const error =
+      check.code === "syntax"
+        ? new Error(check.message ?? "Invalid formula")
+        : new DimensionError(
+            check.code ?? "dimension-mismatch",
+            check.message ?? "Invalid formula",
+          );
+    return { ok: false, error };
+  }
+  return { ok: true, dimension: check.dimension };
 }
 
 /** Return parameters that depend on `name` (directly or transitively). */

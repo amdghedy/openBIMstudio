@@ -199,10 +199,13 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     status: "limited",
     source: [
       "src/modules/families/formula-engine.ts",
+      "src/modules/families/formula-dimensions.ts",
       "src/modules/families/constraint-graph.ts",
       "src/modules/families/safe-expr.ts",
     ],
     evidence: [
+      "tests/formula-engine.test.cjs",
+      "tests/dimensional-analysis.test.cjs",
       "tests/parametric-closure.test.cjs",
       "tests/parametric-wiring.test.cjs",
       "Dedicated formula-engine suite tests/formula-engine.test.cjs — 20 assertions: deterministic evaluation order (topo by dependency), = prefix, ternary/modulo/nested functions/units, scientific-notation literals (1e-7), safe-expr rejection, constraint solving order, and a dead-code gate keeping the retired enhanced engine deleted and unreferenced",
@@ -210,6 +213,9 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     limitations: [
       "Parameter scope is enforced fail-soft (9fa2e6a): a type value that targets an instance-scope or undeclared parameter is IGNORED with a warning, never fatal — family files from user sources cannot break a build, but silent data loss in a bad type entry is possible until the warning is surfaced in UI",
       "Formula errors inside one computed parameter mark that parameter failed and continue the batch; there is no per-family diagnostic report listing every failed formula across the seed library",
+      "Dimensional analysis is enforced in evaluateParameters and in the typed evaluateFormula overload; the untyped one-off path (geometry NumberRef expressions via parametric-geometry's resolveNumber) still evaluates without dimensions, and a 'number'-typed target accepts any result dimension — the corpus declares section inertia (L^4) as number, so a number target cannot demand dimensionlessness",
+      "Bare numeric literals are polymorphic: 'Width - 0.08' reads 0.08 as metres in the formula's implicit SI context; a literal carries no unit of its own, so a mistyped literal is not caught",
+      "A dimensional parameter with no declared unit is read as SI (the repo's internal-storage convention), not rejected; only a unit string that names no unit of the parameter's type is rejected as unit-confusion",
     ],
     affirmedIn: APP_VERSION,
   },
