@@ -132,16 +132,28 @@ function parseTableRows(lines: PdfTextLine[], pageNumber: number): CatalogueRow[
 }
 
 export function parsePdfCatalogueLines(lines: string[], pageNumber = 1): CatalogueRow[] {
-  const tokens: PdfTextToken[] = [];
-  lines.forEach((line, rowIndex) => {
-    const parts = line.trim().split(/\s{2,}|\t/).filter(Boolean);
-    let x = 0;
-    for (const part of parts) {
-      tokens.push({ x, y: -rowIndex * 12, text: part, width: part.length * 6, height: 10 });
-      x += Math.max(24, part.length * 6 + 20);
-    }
-  });
-  return parseTableRows(groupTextItems(tokens.map((t) => ({ str: t.text, transform: [1, 0, 0, 1, t.x, t.y], width: t.width, height: t.height }))), pageNumber);
+  const matrix = lines.map((line) => line.trim().split(/\\s{2,}|\\t/).map((cell) => cell.trim()).filter(Boolean));
+  const headerIndex = matrix.findIndex((cells) => cells.some((cell) => mapCatalogueHeader(cell) === "model") &&
+    cells.filter((cell) => Boolean(mapCatalogueHeader(cell))).length >= 2);
+  if (headerIndex < 0) return [];
+  const headers = matrix[headerIndex].map((cell) => mapCatalogueHeader(cell));
+  const rows: CatalogueRow[] = [];
+  for (const cells of matrix.slice(headerIndex + 1)) {
+    const modelIndex = headers.indexOf("model");
+    const model = cells[modelIndex]?.trim();
+    if (!model) continue;
+    const row: CatalogueRow = { model, sourcePage: pageNumber };
+    headers.forEach((key, index) => {
+      if (!key || key === "model" || !cells[index]) return;
+      const value = cells[index].trim();
+      if (["width", "depth", "height", "airflow", "staticPressure", "power", "voltage"].includes(key)) {
+        const n = normalizedNumber(value);
+        if (n !== undefined) (row as Record<string, string | number | undefined>)[key] = n;
+      } else (row as Record<string, string | number | undefined>)[key] = value;
+    });
+    rows.push(row);
+  }
+  return rows;
 }
 
 function localOllamaBase(endpoint: string): string {
