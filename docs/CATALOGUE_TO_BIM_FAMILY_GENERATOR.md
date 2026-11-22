@@ -35,12 +35,11 @@ The UI must continue to label these as unavailable/planned until implemented and
 1. Open **BIM Family Generator** using the BFG launcher or Command Palette.
 2. Import a PDF, CSV/TSV/TXT or JSON product catalogue.
 3. For a scanned PDF, enable local vision OCR and select a vision-capable Ollama model in AI Settings. PDF page images are sent only to the configured local/private Ollama endpoint.
-4. Review extracted product rows, source-page numbers and QA warnings.
-3. Review the extracted model rows and QA warnings.
-4. Set the family name, category and source dimension unit.
-5. Correct the source catalogue if required; missing dimensions are never invented.
-6. Create the family. The existing project-scoped Family Store persists it.
-7. Open the existing Parametric Families panel to inspect parameters, types and regenerate geometry.
+5. Review extracted product rows, source-page numbers and QA warnings.
+6. Set the family name, category and source dimension unit.
+7. Correct the source catalogue if required; missing dimensions are never invented.
+8. Create the family. The existing project-scoped Family Store persists it.
+9. Open the existing Parametric Families panel to inspect parameters, types and regenerate geometry.
 
 ## Supported catalogue columns
 
@@ -58,9 +57,9 @@ CSV/TSV and PDF table readers recognize model/model number/type, manufacturer/br
 
 ## Next implementation milestones
 
-1. PDF text/table extraction with page-level evidence and OCR adapter for scanned pages.
-2. XLSX importer with workbook/sheet/row provenance.
+1. XLSX importer with workbook/sheet/row provenance.
+2. Improve PDF layout reconstruction for rotated tables, merged headers, multi-column brochures and engineering unit inference.
 3. Parameter mapping UI with units, type/instance scope, GUID mapping and source confidence.
-4. Reuse existing parametric feature tree for detailed geometry templates.
+4. Reuse the existing parametric feature tree for detailed product geometry templates.
 5. Connector mapping and placement editor, validated against existing MEP connector definitions.
 6. Revit 2020 adapter proof-of-concept, then version-specific adapters and reopen verification.
