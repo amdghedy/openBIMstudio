@@ -81,3 +81,5 @@ public/rvt/.gitignore
 .tmp-hatch-test/
 .tmp-draworder-test/
 test-results/
+.v69-engine-ui-test-
+.type-swap-test-
