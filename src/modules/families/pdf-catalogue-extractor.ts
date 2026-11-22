@@ -173,9 +173,10 @@ async function runLocalOllamaOcr(imageBase64: string, pageNumber: number): Promi
   if (config.kind !== "ollama") {
     throw new Error("Scanned PDF OCR requires Ollama selected in AI Settings and a vision-capable model such as LLaVA or Qwen2.5-VL. Cloud providers are deliberately not used.");
   }
-  const base = typeof location !== "undefined" && (location.hostname === "localhost" || location.hostname === "127.0.0.1")
-    ? "/ollama"
-    : localOllamaBase(config.endpoint);
+  const configuredEndpoint = new URL(config.endpoint);
+  const appIsLocal = typeof location !== "undefined" && (location.hostname === "localhost" || location.hostname === "127.0.0.1");
+  const ollamaIsLocalhost = configuredEndpoint.hostname === "localhost" || configuredEndpoint.hostname === "127.0.0.1";
+  const base = appIsLocal && ollamaIsLocalhost ? "/ollama" : localOllamaBase(config.endpoint);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 120_000);
   try {
@@ -187,6 +188,7 @@ async function runLocalOllamaOcr(imageBase64: string, pageNumber: number): Promi
         model: config.model,
         stream: false,
         images: [imageBase64],
+        format: "json",
         prompt: [
           "Read this manufacturer BIM/HVAC/mechanical/electrical product catalogue page.",
           "Extract only values visibly printed on the page. Never infer missing values.",
@@ -231,8 +233,8 @@ async function runLocalOllamaOcr(imageBase64: string, pageNumber: number): Promi
 async function renderPageForOcr(pdfPage: any, pageNumber: number): Promise<string> {
   if (typeof document === "undefined") throw new Error("PDF page OCR rendering is available in the browser only.");
   const baseViewport = pdfPage.getViewport({ scale: 1 });
-  const scale = Math.min(2, 2200 / Math.max(baseViewport.width, baseViewport.height));
-  const viewport = pdfPage.getViewport({ scale: Math.max(1, scale) });
+  const scale = Math.max(0.5, Math.min(2, 2200 / Math.max(baseViewport.width, baseViewport.height)));
+  const viewport = pdfPage.getViewport({ scale });
   const canvas = document.createElement("canvas");
   canvas.width = Math.ceil(viewport.width);
   canvas.height = Math.ceil(viewport.height);
