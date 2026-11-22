@@ -43,7 +43,7 @@ self.addEventListener("message", (ev: MessageEvent<DwgReaderRequest>) => {
   // Ack before touching the bytes: the worker processes messages sequentially,
   // so this also tells the main thread when its parse timer actually starts.
   post({ id: valid.id, kind: "started" });
-  parseDwgBytes(valid.bytes, valid.fileName)
+  parseDwgBytes(valid.bytes, valid.fileName, { nativeBlocks: valid.kind === "parse" && valid.nativeBlocks === true })
     .then((res): DwgReaderResponse => ({
       id: valid.id,
       ok: true,

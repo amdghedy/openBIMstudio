@@ -94,9 +94,8 @@ milestone proves otherwise.
 
 **Limits (not hidden)**
 
-- **The editor does not use it yet.** `openFile` still reads flat copies; M2b switches it on together with rendering,
-  BLOCK/INSERT/EXPLODE/ATTEDIT commands and undo. Until then no user-visible behaviour changed.
-- The DWG-engine reader (`acad-engine.ts`) and the LibreDWG path still expand blocks; native DWG blocks are M2b.
+- (Superseded by §6: the editor now renders and edits native references; opening files natively is opt-in.)
+- The LibreDWG fallback reader still expands blocks.
 - A nested reference under a non-uniform parent scale with a rotated child is approximated (the composite is not a
   rotation × scale).
 - BYBLOCK colour/linetype are not modelled (inherited as BYLAYER, as before).
@@ -104,3 +103,47 @@ milestone proves otherwise.
   blocks.
 - `transformEntity` flattens spline/ellipse definitions inside block bodies to their tessellation.
 - Not validated against a desktop CAD application. An independent ezdxf check of written files runs in CI only.
+
+## 6. M2b — editor-native blocks (Phase 1)
+
+**Implemented (unit/integration-tested; browser test written, see Evidence)**
+
+- `block-edit.ts` (pure): `createBlock` (name validation, redefine, base shift, cycle rejection), `makeInsert`
+  (scale, rotation, MINSERT, ATTDEF default/override values), `explodeInDoc`, `atteditInsert`, `wblockDocument`
+  (nested definitions + layers travel with it), `purgeBlocks`, `blockClosure`/`wouldCycle`.
+- Editor: INSERT is drawn by resolving the definition lazily (layer visibility, colours, linetypes from the children;
+  highlight and ghost overlays keep their own style). BLOCK now creates a native definition and, by default, replaces
+  the selection with one reference; INSERT places a native reference (scale, rotation, MINSERT, attribute prompts)
+  and materialises library blocks as native definitions; EXPLODE turns a reference into its one-level children;
+  ATTEDIT edits a reference's attribute values; WBLOCK writes references with their nested definitions; SVG export
+  resolves references.
+- Undo/redo: entity change and block-table snapshot are one transaction (`blocksBefore/blocksAfter`).
+- Copied / moved / pasted references (new objects) resolve through the active drawing's block table
+  (`setActiveBlocks`), so they never silently vanish.
+- The DWG/DXF engine reader has a native mode (`parseWithAcadEngine(bytes, name, { nativeBlocks })`, threaded through
+  the reader worker and `readCadFile`): INSERT with scale/rotation/MINSERT (no 64-cell clamp), ATTRIB values, ATTDEF
+  definitions, nested references, one definition table. Verified against the real wasm engine on a DXF and on
+  `sample_2000.dwg` / `sample_2018.dwg` (line/circle/arc counts equal the legacy expanded result).
+- Selection, bbox, spatial index, snap (`insertion` snap) and grips use the reference's bounding box and insertion
+  point (M2a).
+
+**Limits (not hidden)**
+
+- Opening files with native blocks is **opt-in** (`NATIVEBLOCKS ON`, applies to the next file) and **experimental**:
+  about thirty modules still read `doc.entities` expecting primitives (plot/PDF, queries, IFC bridge, …) and have
+  not been audited for INSERT. Only DXF/DWG save, SVG export and WBLOCK are known to handle it. It becomes the default
+  only after that audit and a green browser run.
+- No block-instance in-place editing (BEDIT) yet: a definition changes only through BLOCK with the same name
+  (redefine, all references update). No attribute-definition authoring command (ATTDEF); ATTDEFs come from files.
+- Block editing uses a whole-table snapshot (shallow) for undo: fine for hundreds of definitions, not designed for
+  tens of thousands.
+- BYBLOCK colour/linetype are still not inherited from the reference; dynamic blocks are not interpreted; nested
+  references under non-uniform scale with rotated children are approximated; LibreDWG fallback still expands.
+- Grips for a reference move its insertion point only (no per-attribute grips).
+- The browser test (`tests/e2e/cad-native-blocks.spec.ts`) could not be run in the authoring sandbox (no
+  node_modules/browser); CI is the first execution.
+
+**Benchmark (20 000 references × 60 entities, Node, this sandbox, single run — not p50/p95)**
+
+read native 732 ms (~215 MB heap) vs legacy copies 1111 ms (~283 MB); first bbox pass 546 ms, cached 119 ms; index
+build 131 ms; 200 snap queries 13 ms; write native 38 ms vs 7454 ms. The p50/p95 harness is Phase 5.

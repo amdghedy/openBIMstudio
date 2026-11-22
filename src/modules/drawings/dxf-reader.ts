@@ -22,7 +22,7 @@ import {
   insUnitsToUnits, transformEntity, flipEntityX, isMirroredOcs, type InsertXform,
 } from "./dxf-geometry";
 import { attachNative } from "./native-curves";
-import { resolveInsert } from "./block-refs";
+import { bindDocumentBlocks, resolveInsert } from "./block-refs";
 
 /** IMAGEDEF handle -> file path, filled per parse (parsing is synchronous). */
 let imageDefs = new Map<string, string>();
@@ -628,7 +628,7 @@ export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocume
   }
   const extentSource = native && blockTable ? flattenForExtents(entities, blockTable) : entities;
 
-  return {
+  const result: DxfDocument = {
     layers,
     entities,
     extents: computeExtents(extentSource),
@@ -644,6 +644,9 @@ export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocume
     dimStyleTable: Object.keys(dimStyleTable).length ? dimStyleTable : undefined,
     skipped: Object.keys(skipped).length ? skipped : undefined,
   };
+  // Native references resolve lazily through the document's own block table.
+  if (result.blocks) bindDocumentBlocks(result);
+  return result;
 }
 
 function expandRecs(

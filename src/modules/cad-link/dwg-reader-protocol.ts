@@ -33,6 +33,8 @@ export interface DwgParseRequest {
   kind: "parse";
   bytes: ArrayBuffer;
   fileName: string;
+  /** Keep block references native (INSERT + block table) instead of expanding them. */
+  nativeBlocks?: boolean;
 }
 
 /** thumbnail extraction: extract the embedded preview bitmap of a DWG. */
@@ -100,6 +102,9 @@ export function validateDwgReaderRequest(req: unknown): DwgReaderRequestValidati
   }
   if (typeof r.fileName !== "string" || r.fileName.length === 0 || r.fileName.length > DWG_READER_MAX_FILE_NAME) {
     return { ok: false, id, message: "The DWG reader received a request without a valid file name." };
+  }
+  if (r.nativeBlocks !== undefined && typeof r.nativeBlocks !== "boolean") {
+    return { ok: false, id, message: "The DWG reader received an invalid nativeBlocks option (expected a boolean)." };
   }
   return { ok: true, request: req as DwgReaderRequest };
 }

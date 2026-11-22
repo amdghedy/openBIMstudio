@@ -39,13 +39,15 @@ import {
   parseClip,
   type CadClip,
 } from "../modules/cad-viewer/clipboard";
-import type { DxfDocument, DxfEntity, DxfPoint } from "../modules/drawings/dxf-types";
+import type { DxfBlockDef, DxfDocument, DxfEntity, DxfPoint } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
 import { safeLoad, MarkupsFileSchema } from "../core/safeLoad";
 import { setCadHotkeyOwner } from "../core/cad-hotkey-ownership";
 import { resolveDblClick } from "../shell/ribbon-collapse";
 import { sanitizeSessionUi, sessionUiSignature, hiddenEntityIndexes, sanitizeHiddenEntities, type SessionUi, type SessionHiddenEntities } from "../modules/cad-viewer/session-state";
 import * as M from "../modules/cad-viewer/viewer-math";
+import { resolvedOf, bindDocumentBlocks, setActiveBlocks, touchBlocks, explodeInsert } from "../modules/drawings/block-refs";
+import * as BE from "../modules/drawings/block-edit";
 import * as X from "../modules/cad-viewer/modify-math";
 import * as AcadParity from "../modules/cad-viewer/acad-parity"
 import {
@@ -409,7 +411,8 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "DIMUPDATE", aliases: ["DIMUPD"], description: "Re-render the selected dimensions with their current style (re-measured)" },
   { name: "TABLE", aliases: ["TB"], description: "Insert a drawing table (rows × columns grid)" },
   { name: "IMPORT", aliases: ["IMP"], description: "Merge a DWG / DXF file into the current drawing" },
-  { name: "BLOCK", aliases: ["B", "BMAKE"], description: "Create a block from the selected objects (base point, name)" },
+  { name: "BLOCK", aliases: ["B", "BMAKE"], description: "Create a native block definition from the selected objects (base point, name); they become one reference" },
+  { name: "NATIVEBLOCKS", aliases: ["NBLK"], description: "ON/OFF: open DWG/DXF with block references kept native (experimental, applies to the next file opened)" },
   { name: "INSERT", aliases: ["I", "DDINSERT", "-INSERT"], description: "Insert a block from the library (scale, rotation) or a drawing file as a block" },
   { name: "WBLOCK", aliases: ["W"], description: "Write the selected objects (or a library block) to a DXF file" },
   { name: "BLOCKLIB", aliases: ["BLOCKS", "BLIB"], description: "Block library: list, insert, rename, delete, export" },
@@ -1747,7 +1750,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     /** DRAWORDER: the full entity paint order before / after the reorder. */
     orderBefore?: DxfEntity[];
     orderAfter?: DxfEntity[];
+    /** Block table snapshots (BLOCK / redefine): restored with the entities so undo/redo is one transaction. */
+    blocksBefore?: Record<string, DxfBlockDef> | null;
+    blocksAfter?: Record<string, DxfBlockDef> | null;
   }
+  const snapBlocks = (): Record<string, DxfBlockDef> | null => (doc?.blocks ? { ...doc.blocks } : null);
+  const restoreBlocks = (t: Record<string, DxfBlockDef> | null | undefined): void => {
+    if (!doc || t === undefined) return;
+    if (t) { doc.blocks = { ...t }; bindDocumentBlocks(doc); touchBlocks(doc.blocks); setActiveBlocks(doc.blocks); }
+    else delete doc.blocks;
+  };
   const undoStack: UndoAction[] = [];
   /**
    * Undo depth bound for the drawing workspace — mirrors the unified
@@ -2088,10 +2100,41 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     return true;
   }
 
+  const nativeBlocksOn = (): boolean => { try { return localStorage.getItem("obs.cad.nativeBlocks") === "1"; } catch { return false; } };
+  /** >0 while drawing highlight / ghost overlays: block children then keep the caller's stroke style. */
+  let inheritStyle = 0;
+  const drawPlain = (c: CanvasRenderingContext2D, e: DxfEntity, v: M.View): void => {
+    inheritStyle++;
+    try { drawEntity(c, e, v); } finally { inheritStyle--; }
+  };
+
   function drawEntity(c: CanvasRenderingContext2D, e: DxfEntity, v: M.View, flipY = true): void {
     const P = (x: number, y: number) => M.worldToScreen(v, x, y);
     c.beginPath();
     switch (e.type) {
+      // Native block reference: geometry is resolved lazily from doc.blocks (never copied into the drawing).
+      case "INSERT": {
+        const kids = resolvedOf(e);
+        if (!kids.length) {
+          const p = P(e.position.x, e.position.y);
+          c.moveTo(p.x - 4, p.y); c.lineTo(p.x + 4, p.y); c.moveTo(p.x, p.y - 4); c.lineTo(p.x, p.y + 4);
+          c.stroke();
+          break;
+        }
+        c.save();
+        for (const k of kids) {
+          if (!shown(k)) continue;
+          if (!inheritStyle) {
+            const col = colorOf(k);
+            c.strokeStyle = col;
+            c.fillStyle = col;
+            c.setLineDash(dashFor(k, v));
+          }
+          drawEntity(c, k, v, flipY);
+        }
+        c.restore();
+        break;
+      }
       case "LINE": {
         const a = P(e.start.x, e.start.y),
           b = P(e.end.x, e.end.y);
@@ -2672,6 +2715,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   function render(c: CanvasRenderingContext2D, v: M.View, withUi: boolean): void {
+    setActiveBlocks(doc?.blocks);
     strokeBudget = 60000; // stroke-glyph budget per render (huge drawings fall back to normal fonts)
     c.save();
     c.fillStyle = BG[bg] || BG.drafting;
@@ -2745,7 +2789,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       c.lineWidth = lw + 2;
       c.strokeStyle = "#38bdf8";
       c.fillStyle = "#38bdf8";
-      for (const i of sel) if (ents[i] && visible(ents[i])) drawEntity(c, ents[i], v);
+      for (const i of sel) if (ents[i] && visible(ents[i])) drawPlain(c, ents[i], v);
       c.restore();
     }
 
@@ -2787,7 +2831,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       c.setLineDash([6, 4]);
       c.lineWidth = lw + 1;
       c.strokeStyle = "#facc15";
-      drawEntity(c, pick.ghost, v);
+      drawPlain(c, pick.ghost, v);
       c.restore();
     }
 
@@ -2814,7 +2858,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       c.strokeStyle = "#facc15";
       c.fillStyle = "#facc15";
       c.globalAlpha = 0.85;
-      for (const e of modGhost) drawEntity(c, e, v);
+      for (const e of modGhost) drawPlain(c, e, v);
       c.restore();
     }
 
@@ -3780,6 +3824,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   };
 
   const rebuildIndex = (): void => {
+    setActiveBlocks(doc?.blocks);
     let b: M.BBox | null = null;
     for (const e of ents) b = M.unionBBox(b, M.entityBBox(e));
     bounds = b ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 };
@@ -3792,6 +3837,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd("Nothing to undo.");
       return;
     }
+    restoreBlocks(act.blocksBefore);
     if (act.type === "add") {
       // Remove added entities
       const addSet = new Set(act.entities ?? []);
@@ -3839,6 +3885,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd("Nothing to redo.");
       return;
     }
+    restoreBlocks(act.blocksAfter);
     if (act.type === "add") {
       ents.push(...(act.entities ?? []));
       if (layoutI < 0) modelEnts.push(...(act.entities ?? []));
@@ -4136,7 +4183,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   /** N→M replacement commit (TRIM / BREAK / EXPLODE / JOIN / FILLET / CHAMFER / AUDIT). */
-  function commitReplace(before: DxfEntity[], after: DxfEntity[]): void {
+  function commitReplace(before: DxfEntity[], after: DxfEntity[], blocks?: { before: Record<string, DxfBlockDef> | null; after: Record<string, DxfBlockDef> | null }): void {
     if (!before.length) return;
     if (before.some((e) => fixedEnts.has(e))) {
       logCmd("CONSTRAINT: a fixed object is in the selection (FIX). Run UNFIX on it to allow edits.");
@@ -4151,7 +4198,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     kept.push(...after);
     ents = kept;
     if (layoutI < 0) modelEnts = ents;
-    pushUndoAct({ type: "replace", before, after });
+    pushUndoAct({ type: "replace", before, after, ...(blocks ? { blocksBefore: blocks.before, blocksAfter: blocks.after } : {}) });
     markDirty();
     redoStack.length = 0;
     rebuildIndex();
@@ -5347,7 +5394,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     const before = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
     const after: DxfEntity[] = [];
-    let hatched = 0;
+    let hatched = 0, blockRefs = 0;
     for (const e of before) {
       if (e.type === "LWPOLYLINE") {
         if (e.hatch) hatched++;
@@ -5358,10 +5405,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             b = e.points[(i + 1) % n];
           after.push({ type: "LINE", layer: e.layer, color: e.color, rgb: e.rgb, lineType: e.lineType, lineweight: e.lineweight, ltScale: e.ltScale, transparency: e.transparency, start: { x: a.x, y: a.y }, end: { x: b.x, y: b.y } });
         }
+      } else if (e.type === "INSERT") {
+        // Native block reference → its one-level children (nested references stay references).
+        const kids = explodeInsert(doc?.blocks, e);
+        if (!kids.length) { after.push(e); continue; }
+        for (const k of kids) after.push(k);
+        blockRefs++;
       } else after.push(e);
     }
-    if (after.length === before.length) {
-      logCmd("EXPLODE: nothing to explode in the selection — polylines are the only composite objects.");
+    if (after.length === before.length && !blockRefs) {
+      logCmd("EXPLODE: nothing to explode in the selection — polylines and block references are the composite objects.");
       return;
     }
     commitReplace(before, after);
@@ -5555,8 +5608,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       1000,
     );
     try {
-      const r = await readCadFile(file);
+      const r = await readCadFile(file, { nativeBlocks: nativeBlocksOn() });
       doc = r.doc;
+      if (doc.blocks) bindDocumentBlocks(doc);
       name = file.name;
       drawingClock = AcadParity.createClock();
       cadGroups.clear();
@@ -9827,9 +9881,29 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     if (cmd === "ATTEDIT" || cmd === "ATE") {
-      if (!sel.size) { logCmd("ATTEDIT: select TEXT first."); return; }
+      if (!sel.size) { logCmd("ATTEDIT: select a block reference with attributes (or a TEXT) first."); return; }
       const e = ents[[...sel][0]];
-      if (!e || e.type !== "TEXT") { logCmd("ATTEDIT: select a TEXT object."); return; }
+      if (e && e.type === "INSERT") {
+        const attrs = e.attributes ?? [];
+        if (!attrs.length) { logCmd(`ATTEDIT: block "${e.name}" has no attributes.`); return; }
+        void (async () => {
+          const r = await openFormModal({
+            title: `Edit attributes — ${e.name}`,
+            fields: attrs.map((a, i) => ({ kind: "text" as const, key: `a${i}`, label: a.tag, default: a.value })),
+            submitLabel: "Apply",
+          });
+          if (!r) { logCmd("ATTEDIT cancelled."); return; }
+          const vals: Record<string, string> = {};
+          attrs.forEach((a, i) => { vals[a.tag] = String(r[`a${i}`] ?? ""); });
+          const res = BE.atteditInsert(e, vals);
+          if (!res.changed.length) { logCmd("ATTEDIT: no attribute changed."); return; }
+          commitModify([e], [res.insert]);
+          draw();
+          logCmd(`ATTEDIT: updated ${res.changed.join(", ")}.`);
+        })();
+        return;
+      }
+      if (!e || e.type !== "TEXT") { logCmd("ATTEDIT: select a block reference or a TEXT object."); return; }
       void (async () => {
         const nv = await promptLine("ATTEDIT", "New text", String((e as any).value ?? ""), "value");
         if (nv == null) return;
@@ -10258,6 +10332,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     if (cmd === "LAYERSTATE" || cmd === "LAS" || cmd === "LAYSTATE") {
       layerStateCommand(parts.slice(1));
+      return;
+    }
+    if (cmd === "NATIVEBLOCKS" || cmd === "NBLK") {
+      const a = (parts[1] ?? "").toUpperCase();
+      if (a === "ON" || a === "OFF") { try { localStorage.setItem("obs.cad.nativeBlocks", a === "ON" ? "1" : "0"); } catch { /* */ } }
+      logCmd(`NATIVEBLOCKS: ${nativeBlocksOn() ? "ON" : "OFF"} — ${nativeBlocksOn() ? "block references stay native when a DWG/DXF is opened (experimental)." : "block references are expanded when a file is opened (default)."} Applies to the next file you open.`);
       return;
     }
     if (cmd === "BLOCK" || cmd === "B" || cmd === "BMAKE") { void createBlockCmd(parts.slice(1)); return; }
@@ -12359,8 +12439,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return `${F(q.x)},${F(q.y)}`;
     };
 
-    for (let i = 0; i < ents.length; i++) {
-      const e = ents[i];
+    // Native block references are written as their resolved geometry (SVG has no block model).
+    const svgEnts = ents.flatMap((x) => (x.type === "INSERT" ? resolvedOf(x) : [x]));
+    for (let i = 0; i < svgEnts.length; i++) {
+      const e = svgEnts[i];
       if (!shown(e)) continue;
       const col = colorOf(e);
       const st = `stroke="${col}" fill="none" stroke-width="${lw}"`;
@@ -12799,19 +12881,31 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         { kind: "text", key: "name", label: "Name", default: args[0] ?? `Block${blockLib.size + 1}`, validate: (v) => validateBlockName(String(v)) },
         { kind: "select", key: "base", label: "Base point", options: blockBaseChoices(b), default: "ll", hint: "The point that lands on your click when the block is inserted." },
         { kind: "text", key: "desc", label: "Description", default: "" },
-        { kind: "checkbox", key: "remove", label: "Remove the selected objects from the drawing", default: false },
+        { kind: "checkbox", key: "remove", label: "Replace the selected objects by a reference to the block", default: true },
       ],
       submitLabel: "Create",
     });
     if (!r) { logCmd("BLOCK cancelled."); return; }
     const nm = String(r.name).trim();
-    if (blockLib.has(nm) && !(await confirmDialog("Redefine block", `A block named "${nm}" already exists. Replace its definition?`))) { logCmd("BLOCK cancelled."); return; }
+    const exists = blockLib.has(nm) || !!doc.blocks?.[nm];
+    if (exists && !(await confirmDialog("Redefine block", `A block named "${nm}" already exists. Replace its definition? Every reference to it updates.`))) { logCmd("BLOCK cancelled."); return; }
     try {
-      const def = makeBlock(nm, list, resolveBlockBase(String(r.base), b), doc.layers as any, String(r.desc || "") || undefined);
+      const baseP = resolveBlockBase(String(r.base), b);
+      const def = makeBlock(nm, list, baseP, doc.layers as any, String(r.desc || "") || undefined);
       blockLib.add(def, true);
+      // Native definition in the drawing's own block table (one transaction with the entity change).
+      const bBefore = snapBlocks();
+      BE.createBlock(doc, nm, list, { base: baseP, description: String(r.desc || "") || undefined, overwrite: true });
+      const bAfter = snapBlocks();
+      if (r.remove) {
+        const ref = BE.makeInsert(doc, nm, baseP, { layer: currentLayer });
+        commitReplace(list, [ref], { before: bBefore, after: bAfter });
+      } else {
+        pushUndoAct({ type: "add", entities: [], blocksBefore: bBefore, blocksAfter: bAfter });
+        markDirty();
+      }
       const stored = persistBlockLib();
       logCmd(`BLOCK: "${def.name}" defined from ${list.length} object(s).${stored ? "" : " (Could not store it in this browser; it lasts until you close the page.)"}`);
-      if (r.remove) eraseSelected();
     } catch (err) { logCmd(`BLOCK failed: ${(err as Error).message}`); }
   }
 
@@ -12835,35 +12929,62 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   async function insertBlockCmd(preselect?: string): Promise<void> {
     if (!doc) { logCmd("INSERT: open or start a drawing first."); return; }
-    if (!blockLib.size) {
-      logCmd("INSERT: the block library is empty. Use BLOCK on selected objects, or 'Insert file as block' to bring in a DWG / DXF.");
+    const nativeNames = Object.keys(doc.blocks ?? {}).filter((n) => !n.startsWith("*"));
+    const names = [...new Set([...nativeNames, ...blockLib.names()])];
+    if (!names.length) {
+      logCmd("INSERT: no blocks yet. Use BLOCK on selected objects, or 'Insert file as block' to bring in a DWG / DXF.");
       uiAlert("There are no blocks yet. Create one with BLOCK (select objects first), or use Insert file as block on the Insert tab.");
       return;
     }
-    const names = blockLib.names();
     const lastScale = Number(localStorage.getItem("obs.cad.insScale")) || 1;
+    const label = (n: string): string => {
+      const nd = doc!.blocks?.[n];
+      return nd ? `${n} — ${nd.entities.length} obj${nd.attdefs.length ? `, ${nd.attdefs.length} attr` : ""}` : `${n} — library`;
+    };
     const r = await openFormModal({
       title: "Insert Block",
       fields: [
-        { kind: "select", key: "name", label: "Block", options: names.map((n) => {
-            const d = blockLib.get(n)!; const ex = blockExtent(d);
-            return [n, `${n} — ${d.entities.length} obj${ex ? `, ${fmt(ex.w)} × ${fmt(ex.h)}` : ""}`] as [string, string];
-          }), default: preselect && blockLib.has(preselect) ? blockLib.get(preselect)!.name : names[0] },
+        { kind: "select", key: "name", label: "Block", options: names.map((n) => [n, label(n)] as [string, string]), default: preselect && names.includes(preselect) ? preselect : names[0] },
         { kind: "number", key: "scale", label: "Scale", default: lastScale, min: 0.000001, step: 0.1, hint: "Uniform scale about the base point." },
         { kind: "number", key: "rot", label: "Rotation", default: 0, unit: "°" },
-        { kind: "select", key: "layer", label: "Layer", options: [["", "Keep the block's own layers"], ...doc.layers.map((l) => [l.name, l.name] as [string, string])], default: "" },
+        { kind: "number", key: "cols", label: "Columns (MINSERT)", default: 1, min: 1, step: 1 },
+        { kind: "number", key: "rows", label: "Rows (MINSERT)", default: 1, min: 1, step: 1 },
+        { kind: "number", key: "dx", label: "Column spacing", default: 0 },
+        { kind: "number", key: "dy", label: "Row spacing", default: 0 },
+        { kind: "select", key: "layer", label: "Layer", options: [["", "Current layer"], ...doc.layers.map((l) => [l.name, l.name] as [string, string])], default: "" },
       ],
       submitLabel: "Place",
     });
     if (!r) { logCmd("INSERT cancelled."); return; }
-    const def = blockLib.get(String(r.name));
-    if (!def) { logCmd("INSERT: block not found."); return; }
+    const nm = String(r.name);
     try {
+      if (!doc.blocks?.[nm]) {
+        // Library block: materialise it as a native definition once, then reference it.
+        const lib = blockLib.get(nm);
+        if (!lib) { logCmd("INSERT: block not found."); return; }
+        ensureDocLayers(lib.layers as any);
+        BE.createBlock(doc, nm, lib.entities, { base: lib.base });
+      }
+      const def = doc.blocks![nm]!;
+      let values: Record<string, string> | undefined;
+      const prompts = def.attdefs.filter((a) => !a.constant);
+      if (prompts.length) {
+        const a = await openFormModal({
+          title: `Attributes — ${def.name}`,
+          fields: prompts.map((p, i) => ({ kind: "text" as const, key: `a${i}`, label: p.prompt || p.tag, default: p.defaultValue })),
+          submitLabel: "OK",
+        });
+        if (!a) { logCmd("INSERT cancelled."); return; }
+        values = {};
+        prompts.forEach((p, i) => { values![p.tag] = String(a[`a${i}`] ?? ""); });
+      }
       const scale = Number(r.scale), rot = Number(r.rot) || 0;
-      const placed = instantiateBlock(def, def.base, { scale, rotation: rot, layer: String(r.layer) || undefined });
+      const ref = BE.makeInsert(doc, def.name, { x: 0, y: 0 }, {
+        scale, rotation: rot, layer: String(r.layer) || currentLayer, values,
+        columns: Number(r.cols) || 1, rows: Number(r.rows) || 1, columnSpacing: Number(r.dx) || 0, rowSpacing: Number(r.dy) || 0,
+      });
       try { localStorage.setItem("obs.cad.insScale", String(scale)); } catch { /* */ }
-      if (!r.layer) ensureDocLayers(def.layers as any);
-      beginPlacement(placed, def.base, "INSERT");
+      beginPlacement([ref], { x: 0, y: 0 }, "INSERT");
     } catch (err) { logCmd(`INSERT failed: ${(err as Error).message}`); }
   }
 
@@ -12883,6 +13004,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         submitLabel: "Save DXF",
       });
       if (!r) { logCmd("WBLOCK cancelled."); return; }
+      if (list.some((e) => e.type === "INSERT")) {
+        // References are written as references: nested definitions travel with them.
+        try {
+          const wd = BE.wblockDocument(doc, { entities: list, base: resolveBlockBase(String(r.base), b) });
+          downloadDxf(wd, `${String(r.name).trim()}.dxf`);
+          logCmd(`WBLOCK: wrote ${String(r.name).trim()}.dxf (${list.length} object(s), ${Object.keys(wd.blocks ?? {}).length} block definition(s)).`);
+        } catch (err) { logCmd(`WBLOCK failed: ${(err as Error).message}`); }
+        return;
+      }
       try { def = makeBlock(String(r.name), list, resolveBlockBase(String(r.base), b), doc.layers as any); }
       catch (err) { logCmd(`WBLOCK failed: ${(err as Error).message}`); return; }
     } else if (blockLib.size) {
