@@ -387,6 +387,18 @@ export function setupParametricFamilyPanel(): void {
         kbd: "Ctrl+Shift+F",
         run: () => toggleParamFamilyPanel(),
       });
+      cp.registerCommand?.({
+        id: "family.creator",
+        label: "Create or edit parametric family",
+        category: "Architecture",
+        run: () => openParamFamilyPanel(),
+      });
+      cp.registerCommand?.({
+        id: "family.sketch",
+        label: "Create family from sketch",
+        category: "Architecture",
+        run: () => void import("./family-sketch-editor").then((m) => m.openFamilySketchEditor({})),
+      });
     } catch { /* */ }
   })();
 
