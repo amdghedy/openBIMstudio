@@ -1,0 +1,154 @@
+{
+  "schema": "IFC4",
+  "classes": [
+    {
+      "name": "IFCAPPLICATION",
+      "count": 1
+    },
+    {
+      "name": "IFCAXIS2PLACEMENT2D",
+      "count": 4
+    },
+    {
+      "name": "IFCAXIS2PLACEMENT3D",
+      "count": 12
+    },
+    {
+      "name": "IFCBUILDING",
+      "count": 1
+    },
+    {
+      "name": "IFCBUILDINGSTOREY",
+      "count": 1
+    },
+    {
+      "name": "IFCCARTESIANPOINT",
+      "count": 6
+    },
+    {
+      "name": "IFCCOLOURRGB",
+      "count": 1
+    },
+    {
+      "name": "IFCDIRECTION",
+      "count": 5
+    },
+    {
+      "name": "IFCELEMENTQUANTITY",
+      "count": 4
+    },
+    {
+      "name": "IFCEXTRUDEDAREASOLID",
+      "count": 4
+    },
+    {
+      "name": "IFCGEOMETRICREPRESENTATIONCONTEXT",
+      "count": 1
+    },
+    {
+      "name": "IFCGEOMETRICREPRESENTATIONSUBCONTEXT",
+      "count": 1
+    },
+    {
+      "name": "IFCLOCALPLACEMENT",
+      "count": 7
+    },
+    {
+      "name": "IFCORGANIZATION",
+      "count": 1
+    },
+    {
+      "name": "IFCOWNERHISTORY",
+      "count": 1
+    },
+    {
+      "name": "IFCPERSON",
+      "count": 1
+    },
+    {
+      "name": "IFCPERSONANDORGANIZATION",
+      "count": 1
+    },
+    {
+      "name": "IFCPRODUCTDEFINITIONSHAPE",
+      "count": 4
+    },
+    {
+      "name": "IFCPROJECT",
+      "count": 1
+    },
+    {
+      "name": "IFCPROPERTYSET",
+      "count": 4
+    },
+    {
+      "name": "IFCPROPERTYSINGLEVALUE",
+      "count": 8
+    },
+    {
+      "name": "IFCQUANTITYLENGTH",
+      "count": 12
+    },
+    {
+      "name": "IFCQUANTITYVOLUME",
+      "count": 4
+    },
+    {
+      "name": "IFCRECTANGLEPROFILEDEF",
+      "count": 4
+    },
+    {
+      "name": "IFCRELAGGREGATES",
+      "count": 3
+    },
+    {
+      "name": "IFCRELCONTAINEDINSPATIALSTRUCTURE",
+      "count": 1
+    },
+    {
+      "name": "IFCRELDEFINESBYPROPERTIES",
+      "count": 8
+    },
+    {
+      "name": "IFCRELDEFINESBYTYPE",
+      "count": 1
+    },
+    {
+      "name": "IFCSHAPEREPRESENTATION",
+      "count": 4
+    },
+    {
+      "name": "IFCSITE",
+      "count": 1
+    },
+    {
+      "name": "IFCSIUNIT",
+      "count": 4
+    },
+    {
+      "name": "IFCSTYLEDITEM",
+      "count": 4
+    },
+    {
+      "name": "IFCSURFACESTYLE",
+      "count": 1
+    },
+    {
+      "name": "IFCSURFACESTYLERENDERING",
+      "count": 1
+    },
+    {
+      "name": "IFCUNITASSIGNMENT",
+      "count": 1
+    },
+    {
+      "name": "IFCWALL",
+      "count": 4
+    },
+    {
+      "name": "IFCWALLTYPE",
+      "count": 1
+    }
+  ],
+  "geomHash": "f2deeceffb326bab"
+}
