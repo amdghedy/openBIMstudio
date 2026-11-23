@@ -476,6 +476,30 @@ visibility.content.append(
     }),
   ),
   row(
+    action("Count by Type", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-13").then((m) => m.countByType());
+    }),
+    action("Zoom Selection", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-13").then((m) => m.zoomToSelection());
+    }),
+  ),
+  row(
+    action("Project Summary", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-14").then((m) => m.projectSummary());
+    }),
+    action("Search Elements", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-14").then((m) => m.elementSearch());
+    }),
+  ),
+  row(
+    action("Copy IDs", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-14").then((m) => m.copySelectedIds());
+    }),
+    action("Diagnostics", () => {
+      void import("../modules/bim-gaps/critical-workflow-pack-14").then((m) => m.runDiagnosticsDump());
+    }),
+  ),
+  row(
     action("Recovery", () => {
       void import("../modules/bim-gaps/critical-workflow-pack-11").then((m) => m.openRecoveryUi());
     }),
