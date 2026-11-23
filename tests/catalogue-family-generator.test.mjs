@@ -22,6 +22,14 @@ const profile = parseCatalogueMappingProfile({
 });
 assert.equal(profile.mappings["Nominal W"], "width");
 assert.equal(profile.manufacturer, "Example Manufacturer");
+assert.equal(Object.getPrototypeOf(profile.mappings), null, "mapping dictionaries must not inherit attacker-controlled keys");
+const hostileProfile = parseCatalogueMappingProfile(JSON.parse('{"schemaVersion":1,"name":"Hostile","mappings":{"__proto__":"model","constructor":"width"},"updatedAt":"2026-11-23T00:00:00.000Z"}'));
+assert.equal(Object.hasOwn(hostileProfile.mappings, "__proto__"), true);
+assert.equal(Object.getPrototypeOf(hostileProfile.mappings), null);
+const hostileHeader = parseDelimitedCatalogue("Model,__proto__,Depth,Height\\nFAN-1,unsafe,300,600");
+assert.equal(Object.getPrototypeOf(hostileHeader.rows[0]), Object.prototype);
+assert.equal(Object.hasOwn(hostileHeader.rows[0], "__proto__"), true);
+
 assert.throws(() => parseCatalogueMappingProfile({
   schemaVersion: 99, name: "Bad", mappings: {}, updatedAt: "2026-11-23T00:00:00.000Z",
 }), /Unsupported mapping profile schema version/);
