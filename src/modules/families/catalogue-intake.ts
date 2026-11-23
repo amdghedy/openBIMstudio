@@ -198,7 +198,13 @@ export function buildCatalogueFamilyDefinition(
 export function validateCatalogueRows(rows: CatalogueRow[]): string[] {
   const issues: string[] = [];
   if (!rows.length) return ["No product rows were extracted."];
+  const seenModels = new Set<string>();
   rows.forEach((r, i) => {
+    const normalizedModel = String(r.model ?? "").trim().toLocaleLowerCase();
+    if (normalizedModel && seenModels.has(normalizedModel)) {
+      issues.push(`Row ${i + 1} (${r.model}): duplicate model identifier; resolve duplicate variants before family creation.`);
+    }
+    if (normalizedModel) seenModels.add(normalizedModel);
     for (const key of ["width", "depth", "height"] as const) {
       if (r[key] === undefined) issues.push(`Row ${i + 1} (${r.model}): ${key} is missing; preview geometry will use a 1 m fallback until corrected.`);
       else if (r[key] <= 0) issues.push(`Row ${i + 1} (${r.model}): ${key} must be greater than zero.`);
