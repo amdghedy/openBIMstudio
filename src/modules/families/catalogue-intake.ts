@@ -234,6 +234,47 @@ function dimensionToMetres(value: number | undefined, sourceUnit: string): numbe
   return value;
 }
 
+export type CatalogueColumnUnitOverrides = Partial<Record<"width" | "depth" | "height" | "airflow" | "staticPressure" | "power" | "voltage", string>>;
+
+/** Convert explicitly reviewed source units into the family contract units. */
+export function normalizeCatalogueRowsWithUnits(
+  rows: CatalogueRow[],
+  units: CatalogueColumnUnitOverrides,
+  dimensionTarget: "mm" | "cm" | "m" = "mm",
+): CatalogueRow[] {
+  const dimensionToM: Record<string, number> = { mm: 0.001, cm: 0.01, m: 1, in: 0.0254, ft: 0.3048 };
+  const dimensionFromM: Record<string, number> = { mm: 1000, cm: 100, m: 1 };
+  const performance: Record<string, Record<string, number>> = {
+    airflow: { "m3/h": 1, "m³/h": 1, "m3/s": 3600, "m³/s": 3600, "l/s": 3.6, "l/min": 0.06 },
+    staticPressure: { pa: 1, kpa: 1000, bar: 100000 },
+    power: { kw: 1, w: 0.001 },
+    voltage: { v: 1, kv: 1000 },
+  };
+  const normalizedUnit = (value: string) => value.trim().toLowerCase().replace(/\\s+/g, "");
+  return rows.map((row, rowIndex) => {
+    const next: CatalogueRow = { ...row };
+    for (const field of ["width", "depth", "height"] as const) {
+      const sourceUnit = units[field];
+      if (!sourceUnit || next[field] === undefined) continue;
+      const factor = dimensionToM[normalizedUnit(sourceUnit)];
+      if (!factor) throw new Error(`Unsupported ${field} source unit "${sourceUnit}" (use mm, cm, m, in or ft).`);
+      const metres = Number(next[field]) * factor;
+      next[field] = metres * dimensionFromM[dimensionTarget];
+    }
+    for (const field of ["airflow", "staticPressure", "power", "voltage"] as const) {
+      const sourceUnit = units[field];
+      if (!sourceUnit || next[field] === undefined) continue;
+      const factor = performance[field][normalizedUnit(sourceUnit)];
+      if (factor === undefined) throw new Error(`Unsupported ${field} source unit "${sourceUnit}".`);
+      next[field] = Number(next[field]) * factor;
+    }
+    Object.defineProperty(next, "__unitNormalization", {
+      value: { ...units, dimensionTarget, row: rowIndex + 1 }, enumerable: true, configurable: true,
+    });
+    return next;
+  });
+}
+
 export interface CatalogueFamilyOptions {
   name: string;
   category?: FamilyDefinition["category"];
