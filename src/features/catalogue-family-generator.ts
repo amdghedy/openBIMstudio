@@ -493,7 +493,6 @@ export function setupCatalogueFamilyGenerator(): void {
   launch.style.cssText = "position:fixed;left:218px;bottom:52px;z-index:10002;height:40px;min-width:48px;padding:0 10px;border-radius:10px;border:1px solid #8b5cf6;background:rgba(139,92,246,.16);color:#c4b5fd;font:700 11px Inter,system-ui;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.35);";
   launch.addEventListener("click", openCatalogueFamilyGenerator);
   document.body.appendChild(launch);
-  (window as Any).__obsCatalogueFamilyGenerator = { open: openCatalogueFamilyGenerator, close: closeCatalogueFamilyGenerator };
   void import("./command-palette").then((m) => m.registerCommand?.({
     id: "family.catalogueGenerator", label: "BIM Family Generator", category: "Architecture",
     run: openCatalogueFamilyGenerator,
