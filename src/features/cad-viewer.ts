@@ -103,6 +103,7 @@ import {
   alignCenters,
   circlesToPolylines,
   verticesToPoints,
+  describeUnsavedSkipped,
   type TextCase,
 } from "../modules/cad-viewer/cad-2d-extras";
 import * as PolyBool from "../modules/cad-viewer/poly-boolean";
@@ -12167,6 +12168,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     void recordRecentDrawing({ name: fn, format: "DXF", size: blob.size, blob });
     logCmd(`Saved ${fn} — ${entities.length} entities, ${doc.layers.length} layers.`);
     const lost = layoutsNotSaved(doc);
+    const unsaved = describeUnsavedSkipped(doc.skipped);
+    if (unsaved) {
+      logCmd(`SAVE WARNING: ${unsaved} were not imported (unsupported object types) and are NOT in ${fn}. Keep the original file.`);
+      uiAlert(`${fn} was saved, but these imported objects are not part of the drawing model and were not written: ${unsaved}. Keep the original file if you need them.`);
+    }
     if (lost) uiAlert(`${fn} was saved with the first sheet only. ${lost} other layout${lost === 1 ? "" : "s"} could not be saved to DXF yet.`);
     status(`Saved ${fn}`);
     markSaved();

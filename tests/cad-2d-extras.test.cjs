@@ -32,4 +32,7 @@ t("circle to polyline",()=>{const e=[{type:"CIRCLE",layer:"L",center:{x:1,y:1},r
  assert.equal(X.circlesToPolylines(e,[0],1)[0].points.length,3);});
 t("vertices to points dedupes",()=>{const e=[{type:"LWPOLYLINE",layer:"A",points:[{x:0,y:0},{x:1,y:0}],closed:false},{type:"LINE",layer:"B",start:{x:1,y:0},end:{x:2,y:2}}];
  const o=X.verticesToPoints(e,[0,1],"0");assert.equal(o.length,3);assert.ok(o.every(p=>p.type==="POINT"));});
+t("import-loss description is ordered, ignores zero counts, empty when nothing dropped",()=>{
+ assert.equal(X.describeUnsavedSkipped(undefined),"");assert.equal(X.describeUnsavedSkipped({MLINE:0}),"");
+ assert.equal(X.describeUnsavedSkipped({"3DSOLID":2,MLINE:5,ACAD_TABLE:2}),"5 MLINE, 2 3DSOLID, 2 ACAD_TABLE");});
 console.log(`${pass} passed, ${fail} failed`);process.exit(fail?1:0);
