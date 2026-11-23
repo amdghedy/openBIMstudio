@@ -181,16 +181,16 @@ export function migrateFamilyDefinition(input: unknown): FamilyMigrationResult {
     const t = types[i]!;
     if (typeof t.id !== "string" || !t.id.trim()) {
       const rawName = typeof t.name === "string" ? t.name.trim() : "";
-      const normalizedName = rawName.toLocaleLowerCase("en-US").replace(/\\s+/g, " ");
+      const normalizedName = rawName.toLocaleLowerCase("en-US").replace(/\s+/g, " ");
       const slug = normalizedName
         .normalize("NFKD")
-        .replace(/[\\u0300-\\u036f]/g, "")
+        .replace(/[\u0300-\u036f]/g, "")
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "") || `type-${i + 1}`;
-      const fingerprint = `${String(id)}\\0${normalizedName}\\0${canonical(t.values ?? {})}`;
+      const fingerprint = `${String(id)}\0${normalizedName}\0${canonical(t.values ?? {})}`;
       const occurrence = occurrences.get(fingerprint) ?? 0;
       occurrences.set(fingerprint, occurrence + 1);
-      const identity = `${fingerprint}\\0${occurrence}`;
+      const identity = `${fingerprint}\0${occurrence}`;
       let h1 = 0x811c9dc5, h2 = 0x9e3779b9;
       for (let c = 0; c < identity.length; c++) {
         const code = identity.charCodeAt(c);
