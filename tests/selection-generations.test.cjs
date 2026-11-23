@@ -421,26 +421,19 @@ t("wiring: the engine is reachable in the live UI via the Sel Inspector ribbon b
   assert(ribbonTs.includes("openSelectionInspectorDialog"), "ribbon must wire it to openSelectionInspectorDialog");
 });
 
-t("wiring [KNOWN LIMITATION, pinned]: modify-actions select-similar reads the engine-class global, so it can never run", () => {
-  // The "Select Similar" context-menu action (registry: "Select authored
-  // elements similar to the selected source element") reads the global
-  // that holds the SelectionEngine CLASS object and calls
-  // sel.selectSimilar("native", ids[0]). The class has no selectSimilar
-  // method (and no instance is ever exposed), so `!sel?.selectSimilar`
-  // is always true and the action always warns instead of selecting.
-  // Fixing it needs authored select-similar semantics (same type? same
-  // category? via the engine's SelectByCategory/SelectByType or the
-  // authoring module) — a follow-up, NOT a silent rewire to the live
-  // fragment service, whose selectSimilar(modelId, numeric localId)
-  // takes the wrong argument types for authored string ids. If that
-  // follow-up lands, update this assertion with it.
+t("wiring [RESOLVED]: modify-actions select-similar routes to the authoring selection, not the engine-class global", () => {
+  // The earlier pinned limitation (select-similar read the SelectionEngine
+  // CLASS global and could never run) was fixed in 718592ca: the action now
+  // selects every authored element of the seed's type through the authoring
+  // selection. The boundary this test guards is unchanged: the engine class
+  // still has no selectSimilar, and the action must not read it.
   assert(
-    modifyActions.includes("const sel = (window as Any).__obsSelection;"),
-    "modify-actions select-similar must read the engine-class global (pinned current state)",
+    !modifyActions.includes('await sel.selectSimilar("native", ids[0]);'),
+    "modify-actions select-similar must no longer call the engine-class global",
   );
   assert(
-    modifyActions.includes('await sel.selectSimilar("native", ids[0]);'),
-    "modify-actions select-similar must call sel.selectSimilar (pinned current state)",
+    modifyActions.includes('setSelectedAuthored(match, "replace")'),
+    "modify-actions select-similar must select through the authoring selection",
   );
   assertEq(typeof engMod.SelectionEngine.selectSimilar, "undefined", "the SelectionEngine class has no selectSimilar");
 });
