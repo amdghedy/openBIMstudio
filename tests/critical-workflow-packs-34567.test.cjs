@@ -271,13 +271,22 @@ for (const key of Object.keys(compiled)) {
 }
 
 /* ── 1. Registration into the real command palette (the dead-channel fix) ── */
-t("packs 3–7 register their commands into the real palette (11+10+10+10+10 = 51)", () => {
+// NOTE (2026-11-24, #102): pack 3 used to register 11 commands — its cmds
+// table carried an "rg-isolate" row duplicating the registration in
+// src/modules/bim-gaps/bim-gaps-boot.ts, which is the one that wins at
+// runtime. #102 removed the duplicate row, so pack 3 registers 10 like the
+// other four packs and the total is 50, not 51. rg-isolate itself is not
+// gone: it still registers via bim-gaps-boot.ts in the real app.
+t("packs 3–7 register their commands into the real palette (10+10+10+10+10 = 50)", () => {
   for (const key of ["p3", "p4", "p5", "p6", "p7"]) {
     const setup = packs[key][`setupCriticalWorkflowPack${key.slice(1)}`];
     assert(typeof setup === "function", `${key}: setup export missing`);
     setup();
   }
-  assert(registered.length === 51, `expected 51 commands, got ${registered.length}`);
+  assert(registered.length === 50, `expected 50 commands, got ${registered.length}`);
+  // Pin the duplicate removal: rg-isolate must not come back as an 11th
+  // pack-3 row (it lives in bim-gaps-boot.ts).
+  assert(!registered.some((c) => c.id === "rg-isolate"), "rg-isolate registered twice: pack row + boot");
 });
 
 t("every registered command has label, category and a runnable function", () => {
