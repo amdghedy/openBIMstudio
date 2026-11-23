@@ -4,7 +4,7 @@
 
 The current experimental delivery adds a BIM Family Generator launcher and local catalogue intake workflow integrated with the existing project-scoped family service.
 
-**Status update (2026-11-23):** CSV/TSV, XLSX and selectable-text PDF tables share the mapping review and browser-local mapping profile workflow. Per-column unit overrides, a row-level QA dashboard, and GUID registration with the shared-parameter manager are also implemented on this feature branch. Regression assertions have been added but have not yet been executed.
+**Status update (2026-11-23):** CSV/TSV, XLSX and selectable-text PDF tables share the mapping review and browser-local mapping profile workflow. Per-column unit overrides, a row-level QA dashboard, product-description preservation, and GUID registration with the shared-parameter manager are implemented on this feature branch. CSV unit overrides now use the retained original numeric values (including after row-copy operations), preventing double conversion; the internal raw-value metadata uses a non-serialized symbol. Unit labels are whitespace-normalized and conversion metadata is not added to catalogue records. Regression assertions have been added for these corrections but have not yet been executed against the latest commit.
 
 **Currently implemented**
 - XLSX (selectable worksheet), CSV, TSV, TXT-delimited and JSON product catalogue intake (40 MB per-file limit).
@@ -12,7 +12,7 @@ The current experimental delivery adds a BIM Family Generator launcher and local
 - Table reconstruction from recognized model/manufacturer/dimension/performance column headings.
 - Image-only page detection and optional local OCR through the configured Ollama vision model (LLaVA, Qwen2.5-VL or another image-capable model); no cloud OCR path is used.
 - PDF page-count, file-size and extracted-text safety limits.
-- Quoted CSV fields and header aliases for common manufacturer catalogue columns.
+- Quoted CSV fields and header aliases for common manufacturer catalogue columns, including product descriptions retained as a generated type parameter.
 - Interactive CSV/TSV/XLSX/selectable-text PDF column mapping review with explainable suggestions, manual canonical-field overrides, source-column exclusion and reusable browser-local mapping profiles.
 - Reusable mapping profiles stored locally in the browser, with manufacturer labels, validated versioned JSON import/export, and explicit apply/review before parsing. Profiles can be shared between users through exported JSON; browser-local saved profiles are not automatically synchronized across devices or projects.
 - Imported profile validation limits profile size and column count, rejects unsupported fields/schema versions, and isolates invalid saved entries. Unmapped source headings are stored as own data properties so hostile names such as `__proto__` cannot mutate object prototypes.
