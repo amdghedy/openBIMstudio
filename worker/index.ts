@@ -231,9 +231,12 @@ export default {
         }
         // Popup: tell the opener and close. Top-level: land with ?signedin=1 so
         // the app greets the returning user and remembers the account.
-        return popup
-          ? googlePopupCallbackPage(true)
-          : new Response(null, { status: 302, headers: { location: "/?signedin=1", "set-cookie": setCookie } });
+        if (popup) {
+          const response = googlePopupCallbackPage(true);
+          response.headers.set("set-cookie", setCookie);
+          return response;
+        }
+        return new Response(null, { status: 302, headers: { location: "/?signedin=1", "set-cookie": setCookie } });
       } catch (cause) {
         const code = cause instanceof Error ? cause.message : "error";
         if (code === "google-not-configured") return popup ? googlePopupCallbackPage(false, "Google sign-in is not configured on this deployment.") : googleSetupPage(request);
