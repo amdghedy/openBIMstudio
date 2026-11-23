@@ -234,7 +234,9 @@ export default {
         // Cookie MUST be set on the popup HTML response or the opener sees
         // Google success but /api/auth/me stays null ("session did not stick").
         return popup
-          ? googlePopupCallbackPage(true, "", setCookie)
+          ? (setCookie
+              ? googlePopupCallbackPage(true, "", setCookie)
+              : googlePopupCallbackPage(true))
           : new Response(null, { status: 302, headers: { location: "/?signedin=1", "set-cookie": setCookie } });
       } catch (cause) {
         const code = cause instanceof Error ? cause.message : "error";

@@ -22,99 +22,131 @@
  *   GET  /api/auth/me
  *   POST /api/auth/logout
  *   POST /api/auth/forgot     {email} → creates a reset token; the worker
- *                             emails it (Resend) when RESEND_API_KEY is set
+ *                             emails it (RESEND_API_KEY) or returns a one-time
+ *                             link for deployments without mail delivery
  *   POST /api/auth/reset      {token,password} → sets the new password and
- *                             signs the user in
+ *                             signs the user in (session cookie)
  *   GET  /api/auth/google/status      → {configured:boolean} — lets the UI
- *                                      hide the Google button when unset
- *   GET  /api/auth/google/start        → 302 to Google consent
- *   GET  /api/auth/google/callback     → exchange code, upsert user, set cookie
- *   GET  /api/projects
- *   POST /api/projects        {id,name,data} (base64)
- *   GET  /api/projects/:id
- *   DELETE /api/projects/:id
+ *         grey out / explain Google sign-in before navigating away
+ *   GET  /api/auth/google/start        → 302 Google consent, or a friendly
+ *         HTML setup page when GOOGLE_CLIENT_ID/SECRET are not configured;
+ *         ?popup=1 marks the state so the callback can message the opener
+ *   GET  /api/auth/google/callback     → upsert user, set cookie, 302 /
+ *   GET  /api/projects                 → list of the signed-in user's cloud projects
+ *   POST /api/projects                 → save {name, data(base64 .obsproj)} (upsert by name)
+ *   GET  /api/projects/<id>            → {name, data} project file bytes
+ *   DELETE /api/projects/<id>
  *
- * Password hashing: PBKDF2-SHA-256, 100k iterations, 16-byte salt, 32-byte key.
- * Session tokens: HMAC-SHA-256 of {email,exp} with a vault-stored secret.
+ * Passwords: PBKDF2-SHA-256, 100 000 iterations, 16-byte random salt — the
+ * plain password never leaves the request handler and is never stored.
+ * Sessions: HMAC-SHA-256 signed token (email + expiry), 30 days, HttpOnly.
  */
 
-export interface AuthEnv {
-  AUTH: DurableObjectNamespace;
-  GOOGLE_CLIENT_ID?: string;
-  GOOGLE_CLIENT_SECRET?: string;
-  RESEND_API_KEY?: string;
-  RESEND_FROM?: string;
-}
+const COOKIE = "obs_session";
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const PBKDF2_ITERATIONS = 100_000;
+/** base64 chunk size for project blobs — stays far below the 128 KiB DO value cap. */
+const CHUNK_B64 = 100_000;
+const MAX_PROJECT_B64 = 48 * 1024 * 1024; // ~36 MB raw project file
+const RATE_WINDOW_MS = 60_000;
+const RATE_MAX_ATTEMPTS = 10;
+const FORGOT_MAX_PER_MIN = 5;
+const RESET_TTL_MS = 30 * 60 * 1000; // reset links live 30 minutes
 
-type AuthStorage = {
-  get: <T = unknown>(key: string) => Promise<T | undefined>;
-  put: (key: string, value: unknown) => Promise<void>;
-  delete: (key: string) => Promise<void>;
-  list: (opts?: { prefix?: string }) => Promise<Map<string, unknown>>;
-};
+/** KV-style DO storage (matches the VisitCounter pattern). */
+interface AuthStorage {
+  get<T>(key: string): Promise<T | undefined>;
+  put<T>(key: string, value: T): Promise<void>;
+  delete(key: string): Promise<boolean>;
+  list(options?: { prefix?: string; limit?: number }): Promise<Map<string, unknown>>;
+}
 
 interface UserRecord {
   email: string;
   name: string;
-  salt?: string;
-  hash?: string;
-  provider?: string;
+  salt: string;
+  hash: string;
+  provider: "password" | "google";
   googleId?: string;
   createdAt: number;
 }
 
-const COOKIE = "obs_session";
-const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-const enc = new TextEncoder();
+interface ProjectMeta {
+  id: string;
+  name: string;
+  updatedAt: number;
+  size: number;
+  chunks: number;
+}
 
-function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
+interface AuthEnv {
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+}
+
+function json(data: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8", ...headers },
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...extraHeaders },
   });
 }
 
-function validEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
+const enc = new TextEncoder();
+
+function b64encode(bytes: ArrayBuffer | Uint8Array): string {
+  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  let bin = "";
+  for (let i = 0; i < view.length; i += 0x8000) {
+    bin += String.fromCharCode(...view.subarray(i, i + 0x8000));
+  }
+  return btoa(bin);
 }
 
-function b64url(buf: ArrayBuffer | Uint8Array): string {
-  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
-  let s = "";
-  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]!);
-  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function b64urlDecode(s: string): Uint8Array {
-  const pad = s.length % 4 === 0 ? "" : "=".repeat(4 - (s.length % 4));
-  const b64 = s.replace(/-/g, "+").replace(/_/g, "/") + pad;
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
+function b64decode(text: string): Uint8Array<ArrayBuffer> {
+  const bin = atob(text);
+  const out = new Uint8Array(new ArrayBuffer(bin.length));
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
 
-function randomB64(n: number): string {
-  const a = new Uint8Array(n);
-  crypto.getRandomValues(a);
-  return b64url(a);
+function b64url(bytes: ArrayBuffer | Uint8Array): string {
+  return b64encode(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function b64urlDecode(text: string): Uint8Array {
+  const pad = text.length % 4 === 0 ? "" : "=".repeat(4 - (text.length % 4));
+  return b64decode(text.replace(/-/g, "+").replace(/_/g, "/") + pad);
 }
 
 async function hmacKey(secret: string): Promise<CryptoKey> {
   return crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
 }
 
-async function pbkdf2(password: string, saltB64: string): Promise<string> {
-  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
+/** PBKDF2-SHA-256 → base64 hash. */
+async function passwordHash(password: string, saltB64: string): Promise<string> {
+  const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt: b64urlDecode(saltB64), iterations: 100_000, hash: "SHA-256" },
-    key,
+    { name: "PBKDF2", salt: b64decode(saltB64), iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
+    keyMaterial,
     256,
   );
-  return b64url(bits);
+  return b64encode(bits);
 }
 
-function setCookie(token: string): string {
+function randomB64(bytes = 16): string {
+  return b64encode(crypto.getRandomValues(new Uint8Array(bytes)));
+}
+
+async function sha256hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", enc.encode(text));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function validEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) && email.length <= 254;
+}
+
+function sessionCookie(token: string): string {
   return `${COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`;
 }
 
@@ -143,7 +175,7 @@ export class AuthVault {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    const path = url.pathname;
+    const path = url.pathname; // worker forwards the full pathname
     try {
       if (path === "/api/auth/register" && request.method === "POST") return this.register(request);
       if (path === "/api/auth/login" && request.method === "POST") return this.login(request);
@@ -162,6 +194,8 @@ export class AuthVault {
       return json({ error: "internal error" }, 500);
     }
   }
+
+  // ── sessions ────────────────────────────────────────────────────────────
 
   private async secret(): Promise<string> {
     if (this.secretCache) return this.secretCache;
@@ -203,6 +237,8 @@ export class AuthVault {
     return (await this.storage.get<UserRecord>(`u:${parsed.e.toLowerCase()}`)) ?? null;
   }
 
+  // ── auth handlers ───────────────────────────────────────────────────────
+
   private async register(request: Request): Promise<Response> {
     const body = await request.json().catch(() => null) as { email?: string; password?: string; name?: string } | null;
     const email = (body?.email ?? "").trim().toLowerCase();
@@ -213,96 +249,130 @@ export class AuthVault {
     const key = `u:${email}`;
     if (await this.storage.get(key)) return json({ error: "An account with this email already exists. Sign in instead." }, 409);
     const salt = randomB64(16);
-    const hash = await pbkdf2(password, salt);
-    const user: UserRecord = { email, name, salt, hash, provider: "password", createdAt: Date.now() };
+    const user: UserRecord = {
+      email,
+      name: name.slice(0, 80),
+      salt,
+      hash: await passwordHash(password, salt),
+      provider: "password",
+      createdAt: Date.now(),
+    };
     await this.storage.put(key, user);
     const token = await this.signToken(email);
-    return json({ user: { email, name } }, 201, { "set-cookie": setCookie(token) });
+    return json({ ok: true, user: publicUser(user) }, 200, { "set-cookie": sessionCookie(token) });
   }
 
   private async login(request: Request): Promise<Response> {
     const body = await request.json().catch(() => null) as { email?: string; password?: string } | null;
     const email = (body?.email ?? "").trim().toLowerCase();
     const password = body?.password ?? "";
-    if (!validEmail(email) || !password) return json({ error: "Email and password are required." }, 400);
-    const minute = Math.floor(Date.now() / 60_000);
-    const rlKey = `t:${email}:${minute}`;
-    const hits = Number((await this.storage.get<number>(rlKey)) ?? 0);
-    if (hits >= 20) return json({ error: "Too many attempts. Wait a minute and try again." }, 429);
-    await this.storage.put(rlKey, hits + 1);
     const user = await this.storage.get<UserRecord>(`u:${email}`);
-    if (!user || !user.salt || !user.hash) return json({ error: "Invalid email or password." }, 401);
-    const hash = await pbkdf2(password, user.salt);
-    if (hash !== user.hash) return json({ error: "Invalid email or password." }, 401);
+    // Uniform error + rate limit so the endpoint cannot be used to enumerate accounts.
+    const minute = Math.floor(Date.now() / RATE_WINDOW_MS);
+    const rateKey = `t:${email}:${minute}`;
+    const attempts = (await this.storage.get<number>(rateKey)) ?? 0;
+    if (attempts >= RATE_MAX_ATTEMPTS) return json({ error: "Too many attempts. Wait a minute and try again." }, 429);
+    await this.storage.put(rateKey, attempts + 1);
+    if (!user || user.provider !== "password") return json({ error: "Wrong email or password." }, 401);
+    const hash = await passwordHash(password, user.salt);
+    if (hash !== user.hash) return json({ error: "Wrong email or password." }, 401);
     const token = await this.signToken(email);
-    return json({ user: { email: user.email, name: user.name } }, 200, { "set-cookie": setCookie(token) });
+    return json({ ok: true, user: publicUser(user) }, 200, { "set-cookie": sessionCookie(token) });
   }
 
   private async me(request: Request): Promise<Response> {
     const user = await this.readSession(request);
-    if (!user) return json({ user: null });
-    return json({ user: { email: user.email, name: user.name } });
+    return json({ user: user ? publicUser(user) : null });
   }
 
+  /** Called by the worker after a successful Google code exchange. */
   private async googleUpsert(request: Request): Promise<Response> {
     const body = await request.json().catch(() => null) as { email?: string; name?: string; googleId?: string } | null;
     const email = (body?.email ?? "").trim().toLowerCase();
-    const name = (body?.name ?? "").trim() || email.split("@")[0];
-    const googleId = body?.googleId;
-    if (!validEmail(email)) return json({ error: "invalid email" }, 400);
+    if (!validEmail(email)) return json({ error: "Google did not return a usable email." }, 400);
     const key = `u:${email}`;
     const existing = await this.storage.get<UserRecord>(key);
     const user: UserRecord = existing
-      ? { ...existing, name: name || existing.name, provider: existing.provider === "password" ? "password" : "google", googleId: googleId ?? existing.googleId }
-      : { email, name, provider: "google", googleId, createdAt: Date.now() };
+      ? { ...existing, provider: existing.provider === "password" ? "password" : "google", googleId: body?.googleId ?? existing.googleId }
+      : {
+          email,
+          name: (body?.name ?? email.split("@")[0]).slice(0, 80),
+          salt: "",
+          hash: "",
+          provider: "google",
+          googleId: body?.googleId,
+          createdAt: Date.now(),
+        };
     await this.storage.put(key, user);
     const token = await this.signToken(email);
-    return json({ user: { email: user.email, name: user.name } }, 200, { "set-cookie": setCookie(token) });
+    return json({ ok: true }, 200, { "set-cookie": sessionCookie(token) });
   }
 
+  // ── forgot / reset password ──────────────────────────────────────────────
+
+  /**
+   * Creates a single-use reset token for a password account. The DO returns
+   * the raw token to the worker only; the worker decides whether to email it
+   * (RESEND_API_KEY configured) or hand back a one-time link for deployments
+   * without mail delivery. Responses are uniform for unknown emails so the
+   * endpoint cannot enumerate accounts (the dev-link absence is the only hint,
+   * acceptable for a single-owner deployment and rate-limited per minute).
+   */
   private async forgotPassword(request: Request): Promise<Response> {
     const body = await request.json().catch(() => null) as { email?: string } | null;
     const email = (body?.email ?? "").trim().toLowerCase();
     if (!validEmail(email)) return json({ error: "Enter a valid email address." }, 400);
-    const minute = Math.floor(Date.now() / 60_000);
-    const rlKey = `f:${email}:${minute}`;
-    const hits = Number((await this.storage.get<number>(rlKey)) ?? 0);
-    if (hits >= 5) return json({ error: "Too many reset requests. Wait a minute." }, 429);
-    await this.storage.put(rlKey, hits + 1);
+    const minute = Math.floor(Date.now() / RATE_WINDOW_MS);
+    const rateKey = `f:${email}:${minute}`;
+    const attempts = (await this.storage.get<number>(rateKey)) ?? 0;
+    if (attempts >= FORGOT_MAX_PER_MIN) return json({ error: "Too many reset requests. Wait a minute and try again." }, 429);
+    await this.storage.put(rateKey, attempts + 1);
     const user = await this.storage.get<UserRecord>(`u:${email}`);
-    if (!user) return json({ ok: true });
-    const raw = randomB64(32);
-    const digest = b64url(await crypto.subtle.digest("SHA-256", enc.encode(raw)));
-    await this.storage.put(`rt:${digest}`, { e: email, exp: Date.now() + 30 * 60 * 1000 });
-    return json({ ok: true, token: raw });
+    if (!user || user.provider !== "password") return json({ ok: true, hasAccount: false });
+    const token = b64url(crypto.getRandomValues(new Uint8Array(32)));
+    await this.storage.put(`rt:${await sha256hex(token)}`, { e: email, exp: Date.now() + RESET_TTL_MS });
+    return json({ ok: true, hasAccount: true, token });
   }
 
+  /** Consumes a reset token, sets the new password and signs the user in. */
   private async resetPassword(request: Request): Promise<Response> {
     const body = await request.json().catch(() => null) as { token?: string; password?: string } | null;
-    const token = body?.token ?? "";
+    const token = (body?.token ?? "").trim();
     const password = body?.password ?? "";
-    if (!token || password.length < 6) return json({ error: "Invalid reset request." }, 400);
-    const digest = b64url(await crypto.subtle.digest("SHA-256", enc.encode(token)));
-    const rec = await this.storage.get<{ e?: string; exp?: number }>(`rt:${digest}`);
-    if (!rec?.e || typeof rec.exp !== "number" || rec.exp < Date.now()) return json({ error: "Reset link expired or already used." }, 400);
-    await this.storage.delete(`rt:${digest}`);
-    const email = rec.e.toLowerCase();
-    const user = await this.storage.get<UserRecord>(`u:${email}`);
-    if (!user) return json({ error: "Account not found." }, 404);
+    if (!token) return json({ error: "This reset link is missing its code — request a new one." }, 400);
+    if (password.length < 6) return json({ error: "Password must be at least 6 characters." }, 400);
+    const recordKey = `rt:${await sha256hex(token)}`;
+    const record = await this.storage.get<{ e: string; exp: number }>(recordKey);
+    if (!record || typeof record.exp !== "number" || record.exp < Date.now()) {
+      return json({ error: "This reset link has expired or was already used — request a new one." }, 400);
+    }
+    const user = await this.storage.get<UserRecord>(`u:${record.e}`);
+    if (!user) return json({ error: "This account no longer exists." }, 400);
+    // Single-use: burn the token before writing anything else.
+    await this.storage.delete(recordKey);
     const salt = randomB64(16);
-    const hash = await pbkdf2(password, salt);
-    await this.storage.put(`u:${email}`, { ...user, salt, hash, provider: "password" });
-    const session = await this.signToken(email);
-    return json({ ok: true }, 200, { "set-cookie": setCookie(session) });
+    user.salt = salt;
+    user.hash = await passwordHash(password, salt);
+    user.provider = "password";
+    await this.storage.put(`u:${user.email}`, user);
+    const session = await this.signToken(user.email);
+    return json({ ok: true, user: publicUser(user) }, 200, { "set-cookie": sessionCookie(session) });
+  }
+
+  // ── project storage ─────────────────────────────────────────────────────
+
+  private async requireUser(request: Request): Promise<UserRecord | Response> {
+    const user = await this.readSession(request);
+    if (!user) return json({ error: "Sign in first." }, 401);
+    return user;
   }
 
   private async listProjects(request: Request): Promise<Response> {
-    const user = await this.readSession(request);
-    if (!user) return json({ error: "Sign in required." }, 401);
-    const prefix = `p:${user.email}:`;
-    const map = await this.storage.list({ prefix });
-    const projects = [...map.entries()].map(([k, v]) => {
-      const meta = v as { id: string; name: string; updatedAt: number; size: number };
+    const user = await this.requireUser(request);
+    if (user instanceof Response) return user;
+    const metas = await this.storage.list({ prefix: `p:${user.email}:` });
+    const projects = [...metas.values()].map((m) => {
+      const meta = m as ProjectMeta;
       return { id: meta.id, name: meta.name, updatedAt: meta.updatedAt, size: meta.size };
     });
     projects.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -310,61 +380,154 @@ export class AuthVault {
   }
 
   private async saveProject(request: Request): Promise<Response> {
-    const user = await this.readSession(request);
-    if (!user) return json({ error: "Sign in required." }, 401);
-    const body = await request.json().catch(() => null) as { id?: string; name?: string; data?: string } | null;
-    const id = (body?.id ?? "").trim() || randomB64(12);
-    const name = (body?.name ?? "Untitled").trim() || "Untitled";
+    const user = await this.requireUser(request);
+    if (user instanceof Response) return user;
+    const body = await request.json().catch(() => null) as { name?: string; id?: string; data?: string } | null;
+    const name = (body?.name ?? "").trim().slice(0, 120);
     const data = body?.data ?? "";
-    if (data.length > 8_000_000) return json({ error: "Project too large." }, 413);
-    const chunkSize = 100_000;
-    const chunks = Math.ceil(data.length / chunkSize) || 1;
-    for (let i = 0; i < chunks; i++) {
-      const part = data.slice(i * chunkSize, (i + 1) * chunkSize);
-      await this.storage.put(`c:${user.email}:${id}:${String(i).padStart(4, "0")}`, part);
+    if (!name) return json({ error: "Project name is required." }, 400);
+    if (!data || data.length > MAX_PROJECT_B64) return json({ error: "Project payload missing or too large." }, 413);
+    const id = (body?.id ?? "").trim() || (crypto.randomUUID?.() ?? `${Date.now()}-${randomB64(6)}`);
+    const chunks = Math.ceil(data.length / CHUNK_B64);
+    const metaKey = `p:${user.email}:${id}`;
+    const previous = await this.storage.get<ProjectMeta>(metaKey);
+    // Remove stale chunks when overwriting a bigger previous version.
+    if (previous && previous.chunks > chunks) {
+      for (let i = chunks; i < previous.chunks; i++) await this.storage.delete(`c:${user.email}:${id}:${String(i).padStart(4, "0")}`);
     }
-    const meta = { id, name, updatedAt: Date.now(), size: data.length, chunks };
-    await this.storage.put(`p:${user.email}:${id}`, meta);
-    return json({ ok: true, id });
+    for (let i = 0; i < chunks; i++) {
+      await this.storage.put(`c:${user.email}:${id}:${String(i).padStart(4, "0")}`, data.slice(i * CHUNK_B64, (i + 1) * CHUNK_B64));
+    }
+    const meta: ProjectMeta = { id, name, updatedAt: Date.now(), size: data.length, chunks };
+    await this.storage.put(metaKey, meta);
+    return json({ ok: true, project: { id: meta.id, name: meta.name, updatedAt: meta.updatedAt, size: meta.size } });
   }
 
   private async loadProject(request: Request, id: string): Promise<Response> {
-    const user = await this.readSession(request);
-    if (!user) return json({ error: "Sign in required." }, 401);
-    const meta = await this.storage.get<{ id: string; name: string; updatedAt: number; size: number; chunks: number }>(`p:${user.email}:${id}`);
-    if (!meta) return json({ error: "Not found." }, 404);
+    const user = await this.requireUser(request);
+    if (user instanceof Response) return user;
+    if (!/^[\w.-]{1,120}$/.test(id)) return json({ error: "Bad project id." }, 400);
+    const meta = await this.storage.get<ProjectMeta>(`p:${user.email}:${id}`);
+    if (!meta) return json({ error: "Project not found." }, 404);
     let data = "";
     for (let i = 0; i < meta.chunks; i++) {
-      const part = await this.storage.get<string>(`c:${user.email}:${id}:${String(i).padStart(4, "0")}`);
-      data += part ?? "";
+      const chunk = await this.storage.get<string>(`c:${user.email}:${id}:${String(i).padStart(4, "0")}`);
+      if (chunk === undefined) return json({ error: "Project data is incomplete." }, 500);
+      data += chunk;
     }
-    return json({ id: meta.id, name: meta.name, updatedAt: meta.updatedAt, data });
+    return json({ project: { id: meta.id, name: meta.name, updatedAt: meta.updatedAt }, data });
   }
 
   private async deleteProject(request: Request, id: string): Promise<Response> {
-    const user = await this.readSession(request);
-    if (!user) return json({ error: "Sign in required." }, 401);
-    const meta = await this.storage.get<{ chunks?: number }>(`p:${user.email}:${id}`);
-    if (!meta) return json({ error: "Not found." }, 404);
-    const chunks = meta.chunks ?? 0;
-    for (let i = 0; i < chunks; i++) await this.storage.delete(`c:${user.email}:${id}:${String(i).padStart(4, "0")}`);
+    const user = await this.requireUser(request);
+    if (user instanceof Response) return user;
+    if (!/^[\w.-]{1,120}$/.test(id)) return json({ error: "Bad project id." }, 400);
+    const meta = await this.storage.get<ProjectMeta>(`p:${user.email}:${id}`);
+    if (!meta) return json({ ok: true });
+    for (let i = 0; i < meta.chunks; i++) await this.storage.delete(`c:${user.email}:${id}:${String(i).padStart(4, "0")}`);
     await this.storage.delete(`p:${user.email}:${id}`);
     return json({ ok: true });
   }
 }
 
-function esc(s: string): string {
-  return s.replace(/&/g, "&").replace(/</g, "<").replace(/>/g, ">").replace(/"/g, """);
+function publicUser(user: UserRecord): { email: string; name: string; provider: string } {
+  return { email: user.email, name: user.name, provider: user.provider };
 }
 
+// ── Google OAuth 2.0 (worker-side helpers) ────────────────────────────────
+
+/** Cheap, side-effect-free probe so the UI can react before navigating away. */
 export function googleStatus(env: AuthEnv): Response {
   return json({ configured: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) });
 }
 
+function esc(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/**
+ * Friendly full-page fallback for /api/auth/google/start (a top-level browser
+ * navigation). Instead of raw JSON the user gets a styled page that explains
+ * what works right now (email accounts) and exactly how the deployment owner
+ * turns Google sign-in on.
+ */
+export function googleSetupPage(request: Request, opts: { reason?: string; status?: number } = {}): Response {
+  const origin = new URL(request.url).origin;
+  const redirectUri = `${origin}/api/auth/google/callback`;
+  const reason = opts.reason
+    ? `<p class="reason">${esc(opts.reason)}</p>`
+    : `<p class="reason">Google sign-in isn't configured on this deployment yet.</p>`;
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Google sign-in — Open BIM Studio</title>
+<style>
+  :root{color-scheme:dark}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+    background:#0a0e14;color:#e2e8f0;font:14px/1.55 system-ui,-apple-system,sans-serif;padding:20px}
+  .card{width:min(560px,100%);border-radius:14px;border:1px solid rgba(148,163,184,.25);
+    background:#0d1219;box-shadow:0 24px 80px rgba(0,0,0,.6);padding:26px 28px}
+  h1{margin:0 0 6px;font-size:19px;color:#f1f5f9}
+  .reason{margin:0 0 14px;color:#fcd34d;font-size:13px}
+  p{margin:8px 0}
+  .ok{color:#7dd3fc}
+  ol{margin:10px 0 4px;padding-left:22px}
+  li{margin:7px 0}
+  code{background:#0a0e14;border:1px solid rgba(148,163,184,.25);border-radius:6px;
+    padding:1px 6px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#93c5fd;word-break:break-all}
+  .uri{display:block;margin:6px 0 2px;padding:8px 10px;border-radius:8px;background:#0a0e14;
+    border:1px solid rgba(56,189,248,.35);color:#7dd3fc;font:12px ui-monospace,monospace;word-break:break-all}
+  .back{display:inline-block;margin-top:16px;padding:9px 16px;border-radius:8px;background:#0ea5e9;
+    color:#04121d;font-weight:700;text-decoration:none;font-size:13px}
+  .back:hover{background:#38bdf8}
+  .fine{margin-top:14px;color:#64748b;font-size:12px}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Google sign-in isn't set up here yet</h1>
+  ${reason}
+  <p class="ok"><strong>You can sign in right now with an email account</strong> — open
+  <a href="/" style="color:#38bdf8">Open BIM Studio</a>, press the <strong>Sign in</strong> button
+  (top-left, next to the logo) and choose <strong>Create account</strong>. Cloud project
+  saving and opening from any device work the same way.</p>
+  <p>To switch on “Continue with Google”, the deployment owner does a one-time setup:</p>
+  <ol>
+    <li>In <a href="https://console.cloud.google.com/apis/credentials" style="color:#38bdf8">Google Cloud Console → APIs &amp; Services → Credentials</a>,
+        create an <strong>OAuth client ID → Web application</strong> and add this
+        <strong>Authorized redirect URI</strong>:
+        <span class="uri">${esc(redirectUri)}</span></li>
+    <li>Set the two Worker secrets (Cloudflare dashboard → Workers → openbimstudio → Settings →
+        Variables and Secrets, or <code>npx wrangler secret put GOOGLE_CLIENT_ID</code> and
+        <code>npx wrangler secret put GOOGLE_CLIENT_SECRET</code>):
+        <span class="uri">GOOGLE_CLIENT_ID · GOOGLE_CLIENT_SECRET</span></li>
+    <li>Redeploy / retry — the “Continue with Google” button starts working automatically.</li>
+  </ol>
+  <a class="back" href="/">← Back to Open BIM Studio</a>
+  <p class="fine">Your projects are stored per account in a private cloud vault —
+  sign in with the same account on any device to see them.</p>
+</div>
+</body>
+</html>`;
+  return new Response(html, {
+    status: opts.status ?? 503,
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+  });
+}
+
+/** Build the Google consent redirect. Returns null when credentials are missing. */
 export function googleStartUrl(request: Request, env: AuthEnv): string | null {
   if (!env.GOOGLE_CLIENT_ID) return null;
-  const origin = new URL(request.url).origin;
-  const popup = new URL(request.url).searchParams.get("popup") === "1";
+  const url = new URL(request.url);
+  const origin = url.origin;
+  // Popup flow: carry the marker in the OAuth `state` (Google echoes it back
+  // verbatim) so the callback can message + close the opener window instead
+  // of navigating the whole app away. `prompt=select_account` makes Google
+  // list the previously used accounts, speeding up repeat sign-ins.
+  const popup = url.searchParams.get("popup") === "1";
   const params = new URLSearchParams({
     client_id: env.GOOGLE_CLIENT_ID,
     redirect_uri: `${origin}/api/auth/google/callback`,
@@ -377,43 +540,23 @@ export function googleStartUrl(request: Request, env: AuthEnv): string | null {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 }
 
-export function googleSetupPage(request: Request, opts?: { reason?: string; status?: number }): Response {
-  const origin = new URL(request.url).origin;
-  const reason = opts?.reason ?? "";
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Google sign-in setup</title>
-<style>body{font:15px/1.5 system-ui;background:#0a0e14;color:#e2e8f0;max-width:640px;margin:48px auto;padding:0 20px}
-a{color:#38bdf8}.uri{font-family:ui-monospace,monospace;background:#111827;padding:2px 6px;border-radius:4px}</style></head>
-<body>
-  <h1>Google sign-in</h1>
-  ${reason ? `<p style="color:#fbbf24">${esc(reason)}</p>` : ""}
-  <p>To switch on “Continue with Google”, the deployment owner does a one-time setup:</p>
-  <ol>
-    <li>Create an OAuth Web client in Google Cloud Console.</li>
-    <li>Authorized JavaScript origins: <span class="uri">${esc(origin)}</span></li>
-    <li>Authorized redirect URI: <span class="uri">${esc(origin)}/api/auth/google/callback</span></li>
-    <li>Set Worker secrets <span class="uri">GOOGLE_CLIENT_ID</span> and <span class="uri">GOOGLE_CLIENT_SECRET</span></li>
-    <li>Redeploy — the button starts working automatically.</li>
-  </ol>
-  <p><a href="/">← Back to Open BIM Studio</a></p>
-</body></html>`;
-  return new Response(html, { status: opts?.status ?? 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
-}
-
-export async function sendResetEmail(env: AuthEnv, to: string, resetUrl: string): Promise<boolean> {
+/**
+ * Email the reset link through Resend when the deployment sets RESEND_API_KEY
+ * (optional). Returns false when mail delivery is not configured — the caller
+ * then falls back to showing the one-time link in the UI.
+ */
+export async function sendResetEmail(env: AuthEnv & { RESEND_API_KEY?: string; RESEND_FROM?: string }, to: string, resetUrl: string): Promise<boolean> {
   if (!env.RESEND_API_KEY) return false;
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: {
-        authorization: `Bearer ${env.RESEND_API_KEY}`,
-        "content-type": "application/json",
-      },
+      headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
       body: JSON.stringify({
         from: env.RESEND_FROM || "Open BIM Studio <onboarding@resend.dev>",
         to: [to],
         subject: "Reset your Open BIM Studio password",
         html:
-          `<p>Click the link below to choose a new password (valid for 30 minutes):</p>` +
+          `<p>Hi,</p><p>Use this one-time link within <strong>30 minutes</strong> to choose a new password:</p>` +
           `<p><a href="${esc(resetUrl)}">${esc(resetUrl)}</a></p>` +
           `<p>If you didn't request this, you can safely ignore this email — your current password keeps working.</p>`,
       }),
@@ -428,7 +571,7 @@ export async function sendResetEmail(env: AuthEnv, to: string, resetUrl: string)
  * Tiny self-closing page returned to the OAuth popup after Google consent:
  * it posts the result to the opener (same origin) and closes itself.
  */
-export function googlePopupCallbackPage(ok: boolean, message = "", setCookie = ""): Response {
+export function googlePopupCallbackPage(ok: boolean, message = "", setCookie?: string): Response {
   const payload = JSON.stringify({ type: "obs-oauth", ok, message }).replace(/</g, "\\u003c");
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Signing in…</title></head>
 <body style="font:14px system-ui;background:#0a0e14;color:#e2e8f0;display:grid;place-items:center;height:100vh;margin:0">
@@ -441,12 +584,7 @@ export function googlePopupCallbackPage(ok: boolean, message = "", setCookie = "
   setTimeout(function () { window.close(); }, 400);
 </script>
 </body></html>`;
-  // Session cookie MUST be set on the popup response; without it the opener sees
-  // Google success but /api/auth/me still returns null ("session did not stick").
-  const headers: Record<string, string> = {
-    "content-type": "text/html; charset=utf-8",
-    "cache-control": "no-store",
-  };
+  const headers: Record<string, string> = { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" };
   if (setCookie) headers["set-cookie"] = setCookie;
   return new Response(html, { headers });
 }
