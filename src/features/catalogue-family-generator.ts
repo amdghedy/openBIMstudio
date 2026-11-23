@@ -10,6 +10,7 @@ import { buildCatalogueFamilyDefinition, mapCatalogueHeader, parseCatalogueMappi
 import { extractPdfCatalogue } from "../modules/families/pdf-catalogue-extractor";
 import { extractXlsxCatalogue, listXlsxWorksheets } from "../modules/families/xlsx-catalogue-extractor";
 import { z } from "zod";
+import { sharedParameterManager } from "../modules/families/shared-parameters";
 import { safeLoad } from "../core/safeLoad";
 
 const CatalogueJsonSchema = z.union([
@@ -461,7 +462,23 @@ function createFamily(): void {
     }
     const normalizedRows = normalizeCatalogueRowsWithUnits(reviewedRows, columnUnits, unit);
     const definition = buildCatalogueFamilyDefinition(normalizedRows, { name, category, dimensionUnit: unit, parameterScopes, parameterGuids });
+    const sharedDefinitions = definition.parameters.filter((parameter) => parameter.guid).map((parameter) => ({
+      guid: parameter.guid!,
+      name: parameter.name,
+      group: parameter.group ?? "General",
+      type: ({ text: "string", colour: "string", "family-type": "string" } as Record<string, string>)[parameter.type] ?? parameter.type,
+      description: parameter.description,
+      defaultValue: parameter.default,
+      isInstance: parameter.scope === "instance",
+    }));
+    const registered = sharedParameterManager.list();
+    for (const parameter of sharedDefinitions) {
+      const guidConflict = registered.find((item) => item.guid === parameter.guid && item.name.toLowerCase() !== parameter.name.toLowerCase());
+      const nameConflict = registered.find((item) => item.name.toLowerCase() === parameter.name.toLowerCase() && item.guid !== parameter.guid);
+      if (guidConflict || nameConflict) throw new Error("Shared parameter registry conflict for " + parameter.name + ". Resolve the existing GUID/name definition before family creation.");
+    }
     const family = svc.create(definition);
+    if (sharedDefinitions.length) sharedParameterManager.import(sharedDefinitions);
     if (!family?.id) throw new Error("Family service did not return a saved family ID.");
     status(`Created "${family.name}" with ${family.types.length} type(s) in the existing project family library. Geometry is currently a dimension-driven bounding-box template; detailed product geometry and native RFA export are later phases.`, "success");
     window.dispatchEvent(new CustomEvent("obs:catalogue-family-created", { detail: { familyId: family.id, sourceName, typeCount: family.types.length } }));
