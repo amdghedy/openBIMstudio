@@ -86,7 +86,7 @@ assert.equal(whitespaceUnits[0].voltage, 1000);
 assert.throws(() => normalizeCatalogueRowsWithUnits([{ model: "BAD", width: 1 }], { width: "yards" }), /Unsupported width source unit/);
 
 
-const parsed = parseDelimitedCatalogue('Model,Manufacturer,Width,Depth,Height,Airflow\nFAN-300,Acme,300,300,450,1200\nFAN-500,Acme,500,500,650,2500');
+const parsed = parseDelimitedCatalogue('Model,Manufacturer,Description,Width,Depth,Height,Airflow\nFAN-300,Acme,"Pump, inline",300,300,450,1200\nFAN-500,Acme,"Pump, inline",500,500,650,2500');
 assert.equal(parsed.rows.length, 2);
 assert.equal(parsed.rows[1].model, "FAN-500");
 assert.equal(parsed.rows[1].airflow, 2500);
