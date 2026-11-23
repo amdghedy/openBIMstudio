@@ -92,7 +92,7 @@ product-shaped classes (22-char GlobalId, ≥6 arguments) are reported
 
 ## 4. Corpus numbers (measured, not claimed)
 
-Environment: this VM, Node v24.22.1, web-ifc 0.0.77, 2026-11-21.
+Environment: this VM, Node v24.22.1, web-ifc 0.0.77, 2026-11-24.
 Regenerate with `npm run report:ifc-per-entity`
 (`node scripts/ifc-per-entity-report.mjs`); the drift gate is
 `npm run test:ifc-per-entity-corpus`.
@@ -100,17 +100,33 @@ Regenerate with `npm run report:ifc-per-entity`
 ### 4.1 Main corpus (checked in with this branch)
 
 `tests/fixtures/ifc-corpus/per-entity-reports/` — one JSON per fixture +
-`summary.json`. 26 files, 24 reported, **1,579 products: 1,510 preserved /
-61 transformed / 5 approximated / 0 unsupported / 1 skipped / 2 failed**
-(95.6% preserved, 4.2% degraded, 0.2% lost), plus **707 definitions**
+`summary.json`. 42 files, 40 reported, **2,740 products: 2,602 preserved /
+76 transformed / 33 approximated / 26 unsupported / 1 skipped / 2 failed**
+(95.0% preserved, 4.0% degraded, 1.1% lost), plus **1,126 definitions**
 (type objects, styles and property definitions — counted, never rows;
-see §4.2). The corpus is the merged golden corpus (§12, 24 fixtures) plus
-the two buildingSMART Duplex files (§4.2).
+see §4.2). The corpus is the golden corpus (41 `.ifc` fixtures + 1
+`.ifczip`): 14 self-authored valid top-level fixtures, 15 `extended/`
+valid fixtures, 3 third-party models (§4.2), 5 invalid, 4 malformed.
 
 | File | Products | Preserved | Transformed | Approximated | Unsupported | Skipped | Failed |
 |---|---|---|---|---|---|---|---|
 | arch-2x3.ifc (IFC2X3) | 15 | 12 | 3 | 0 | 0 | 0 | 0 |
 | arch-classified.ifc (IFC4) | 10 | 10 | 0 | 0 | 0 | 0 | 0 |
+| extended/ifc2x3-classified.ifc (IFC2X3) | 6 | 4 | 2 | 0 | 0 | 0 | 0 |
+| extended/ifc2x3-mep-systems.ifc (IFC2X3) | 11 | 10 | 1 | 0 | 0 | 0 | 0 |
+| extended/ifc2x3-multi-storey.ifc (IFC2X3) | 19 | 11 | 8 | 0 | 0 | 0 | 0 |
+| extended/ifc2x3-single-room.ifc (IFC2X3) | 9 | 5 | 4 | 0 | 0 | 0 | 0 |
+| extended/ifc2x3-structural-frame.ifc (IFC2X3) | 13 | 13 | 0 | 0 | 0 | 0 | 0 |
+| extended/ifc4-envelope-roof-curtain.ifc (IFC4) | 7 | 7 | 0 | 0 | 0 | 0 | 0 |
+| extended/ifc4-mep-systems.ifc (IFC4) | 11 | 11 | 0 | 0 | 0 | 0 | 0 |
+| extended/ifc4-multi-storey.ifc (IFC4) | 19 | 19 | 0 | 0 | 0 | 0 | 0 |
+| extended/ifc4-openings-doors-windows.ifc (IFC4) | 11 | 11 | 0 | 0 | 0 | 0 | 0 |
+| extended/ifc4-single-room.ifc (IFC4) | 9 | 9 | 0 | 0 | 0 | 0 | 0 |
+| extended/ifc4-spaces-rooms.ifc (IFC4) | 8 | 8 | 0 | 0 | 0 | 0 | 0 |
+| extended/ifc4-stress-400-walls.ifc (IFC4) | 405 | 405 | 0 | 0 | 0 | 0 | 0 |
+| extended/ifc4-structural-frame.ifc (IFC4) | 13 | 13 | 0 | 0 | 0 | 0 | 0 |
+| extended/ifc4-unicode-and-quotes.ifc (IFC4) | 5 | 5 | 0 | 0 | 0 | 0 | 0 |
+| extended/ifc4-vertical-circulation.ifc (IFC4) | 8 | 8 | 0 | 0 | 0 | 0 | 0 |
 | generated-2x3.ifc (IFC2X3) | 9 | 7 | 2 | 0 | 0 | 0 | 0 |
 | generated-small.ifc (IFC4) | 9 | 9 | 0 | 0 | 0 | 0 | 0 |
 | generated-structural.ifc (IFC4) | 5 | 5 | 0 | 0 | 0 | 0 | 0 |
@@ -134,14 +150,19 @@ the two buildingSMART Duplex files (§4.2).
 | structural-2x3.ifc (IFC2X3) | 14 | 14 | 0 | 0 | 0 | 0 | 0 |
 | third-party/duplex-a.ifc (IFC2X3) | 296 | 237 | 56 | 3 | 0 | 0 | 0 |
 | third-party/duplex-mep.ifc (IFC2X3) | 974 | 974 | 0 | 0 | 0 | 0 | 0 |
+| third-party/gymzaal-amersfoort.ifc (IFC4) | 607 | 553 | 0 | 28 | 26 | 0 | 0 |
 | units-imperial.ifc (IFC4) | 8 | 8 | 0 | 0 | 0 | 0 | 0 |
 
-Valid fixtures (16 `.ifc` + 1 `.ifczip`, 1,546 products): **1,482 preserved /
-61 transformed / 3 approximated / 0 lost**. The 61 transformed are all
-`IFCWALLSTANDARDCASE` → `IfcWall` (2 in `generated-2x3.ifc`, 3 in
-`arch-2x3.ifc`, 56 in `duplex-a.ifc`). The 3 approximated are the `IFCSTAIR`
-(2) and `IFCROOF` (1) in `duplex-a.ifc`, all with `GEOMETRY_MISSING`.
-Invalid + malformed (33 products): 28 preserved, 1 skipped (duplicate-GUID
+Valid fixtures (32 `.ifc` + 1 `.ifczip`, 2,707 products): **2,574 preserved /
+76 transformed / 31 approximated / 26 unsupported / 0 lost otherwise**.
+The 76 transformed are all `IFCWALLSTANDARDCASE` → `IfcWall` (3 in
+`arch-2x3.ifc`, 2 in `generated-2x3.ifc`, 15 across the `extended/` IFC2X3
+fixtures, 56 in `duplex-a.ifc`). The 31 approximated are all
+`GEOMETRY_MISSING`: 28 in `gymzaal-amersfoort.ifc` (27 `IFCCURTAINWALL`
++ 1 `IFCROOF`) and 3 in `duplex-a.ifc` (`IFCSTAIR` 2, `IFCROOF` 1). The
+26 unsupported are all in Gymzaal: 22 `IFCSANITARYTERMINAL`, 3 `IFCGRID`,
+1 `IFCFURNITURE` — product classes the platform's known set does not
+cover (see §5). Invalid + malformed (33 products): 28 preserved, 1 skipped (duplicate-GUID
 wall `#71` in `duplicate-guid.ifc`, first occurrence `#43` kept), 2
 approximated (wall uncontained in `dangling-ref.ifc`; building with missing
 placement in `broken-enum-shift-min.ifc`), 2 failed (invalid-GUID project
@@ -153,9 +174,12 @@ passes. The truncated fixture's 5 prefix products (all spatial) are all
 preserved; the wall past the cut is correctly absent. `model.ifczip`
 extracts and reports 16/16 preserved.
 
-Web-ifc cross-check (main corpus): 22 of 24 reported files opened,
-**1,577/1,577 GlobalIds matched with the same type, 0 missing, 0
-mismatched**. The 2 exceptions are the `broken-enum-min.ifc` fixtures:
+Web-ifc cross-check (main corpus): 37 of 40 reported files opened,
+**2,725/2,725 GlobalIds matched with the same type, 0 missing, 0
+mismatched**. The 3 not-opened among the reported files are
+`extended/ifc2x3-structural-frame.ifc` (web-ifc `FromRawLineData…
+is not a function`, pre-existing — the file still parses through the
+independent STEP reader) and the 2 `broken-enum-min.ifc` fixtures:
 `OpenModel` did not return within the 120 s per-file budget in a fresh
 process on this VM (recorded as not-opened — not as a hang, and not as a
 pass); the same inputs aborted in web-ifc 0.0.77 with WASM
@@ -165,14 +189,17 @@ fixtures, not a claim about full files. The cross-check verifies presence
 + type, not GUID validity — the invalid project GUID "matches" because
 web-ifc sees the same stated value; validity is the STEP report's job.
 
-### 4.2 Third-party files: buildingSMART Duplex (CC BY 4.0)
+### 4.2 Third-party files: buildingSMART Duplex + Gymzaal Amersfoort (CC BY 4.0)
 
-The corpus now includes two real Revit exports, not just self-authored
+The corpus now includes three real Revit exports, not just self-authored
 fixtures: `Duplex_A_20110907.ifc` (2,380,763 bytes, 38,898 records,
-IFC2X3, Revit Architecture 2011) and `Duplex_MEP_20110907.ifc`
-(17,871,432 bytes, 311,480 records, IFC2X3, Revit MEP 2011), from the
-buildingSMART Community Sample Test Files, CC BY 4.0 (attribution in
-`tests/fixtures/ifc-corpus/third-party/README.md`). They live under
+IFC2X3, Revit Architecture 2011), `Duplex_MEP_20110907.ifc`
+(17,871,432 bytes, 311,480 records, IFC2X3, Revit MEP 2011), and
+`example project location.ifc` (2,959,580 bytes, 32,183 records, IFC4,
+Revit 2020 — vendored as `third-party/gymzaal-amersfoort.ifc`), all from
+the buildingSMART Community Sample Test Files, CC BY 4.0 (attribution in
+`tests/fixtures/ifc-corpus/third-party/README.md`). Gymzaal is the
+corpus's first independent IFC4 model (#96). They live under
 `third-party/` so the fuzz gate does not seed on a 17.9 MB file; they are
 covered by the manifest test, this report, and the browser timeout spec.
 
@@ -182,6 +209,14 @@ covered by the manifest test, this report, and the browser timeout spec.
   with `GEOMETRY_MISSING`.
 - `duplex-mep.ifc`: 974 products — **974 preserved, 0 lost**. Every
   placed product in the file survives the STEP read.
+- `gymzaal-amersfoort.ifc`: 607 products — **553 preserved / 0
+  transformed / 28 approximated / 26 unsupported / 0 lost**. The 28
+  approximated are `IFCCURTAINWALL` (27) and `IFCROOF` (1), all
+  `GEOMETRY_MISSING`; the 26 unsupported are `IFCSANITARYTERMINAL` (22),
+  `IFCGRID` (3) and `IFCFURNITURE` (1). The file also carries 346
+  definitions and three `IfcGroup` area schedules (BVO/GO/VVO, 16 spaces
+  each) plus IFC4 georeferencing (`IFCPROJECTEDCRS` EPSG:28992). Web-ifc
+  opened it and matched all 607 GlobalIds with the same type.
 
 **Definitions, not lost products.** The first run against these files
 reported 582 `unsupported` rows and a 35.7% lost rate for `duplex-mep.ifc`
@@ -191,15 +226,16 @@ products: 407 `IFCPIPESEGMENTTYPE`, 59 `IFCPIPEFITTINGTYPE`, 25
 definitions. The report's product heuristic treated any entity with a
 22-char first argument and 6+ arguments as product-shaped, and type
 objects are product-shaped. They are now excluded from rows and counted
-in a separate `definitions` tally (707 across the corpus: 123 in
-`duplex-a.ifc`, 518 in `duplex-mep.ifc`, top entries `IFCPIPESEGMENTTYPE`
-407, `IFCSURFACESTYLE` 33, `IFCCURVESTYLE` 31, `IFCFURNITURETYPE` 25).
+in a separate `definitions` tally (1,126 across the corpus, top entries
+`IFCPIPESEGMENTTYPE` 408, `IFCSURFACESTYLE` 163, `IFCMEMBERTYPE` 94,
+`IFCPIPEFITTINGTYPE` 59, `IFCSPACETYPE` 48).
 Three genuine product classes the known set was missing were also added:
 `IFCSTAIRFLIGHT` (2 in `duplex-a.ifc`), `IFCENERGYCONVERSIONDEVICE` (16
-in `duplex-mep.ifc`), `IFCDISTRIBUTIONCONTROLELEMENT` (2). Post-fix the
-corpus has **0 unsupported products**.
+in `duplex-mep.ifc`), `IFCDISTRIBUTIONCONTROLELEMENT` (2). The 26
+unsupported products that remain are all in Gymzaal (sanitary terminals,
+grids, furniture — §5), not definitions miscounted as products.
 
-**Two real-world bugs the Duplex files surfaced, fixed in this branch:**
+**Four real-world bugs the third-party files surfaced, fixed in this branch:**
 
 - *Pre-flight rejected real Revit coordinates.* The STEP pre-flight
   capped any digit run at 18 digits, counting fractional digits too.
@@ -217,9 +253,28 @@ corpus has **0 unsupported products**.
   (`IFCPROPERTY*` except set/template, `IFCQUANTITY*`, profile defs,
   presentation styles, `IFCMATERIAL`, conversion-based units, document
   references) are now excluded from GlobalId candidacy.
+- *The STEP reader rejected a space after `=`.* The EXPRESS Data Manager
+  writer (Revit 2020 export, Gymzaal) writes `#1= IFCORGANIZATION(…)`
+  — a space after every `=` — and the reader's record regex required
+  `#id=NAME(` with no space, so it silently read **zero** entities from
+  a valid 32,183-record IFC4 file. ISO 10303-21 whitespace is
+  insignificant between tokens; the regex now allows it (#96).
+- *Material-definition sets were treated as IfcRoots.* The non-root
+  exclusion listed `IFCMATERIALCONSTITUENT(?!SET)`, so
+  `IFCMATERIALCONSTITUENTSET('MaterialConstituentSet',…)` — a 22-char
+  Name, not a GlobalId — was flagged `IFC-E-BAD-GUID` 92 times in
+  Gymzaal. `IfcMaterialDefinition` is not an `IfcRoot` subtype in either
+  schema (the IFC2X3 Duplex file writes
+  `#3982=IFCMATERIALLAYERSET((#3892,…), 'Basic Wall:…')` — first
+  argument a layer list, not a GUID), so LayerSet / ProfileSet /
+  ConstituentSet now join the non-root family (#96).
 
-Neither file carries an `IfcSystem`, so MEP system-membership coverage
-is still open anywhere in the corpus (§6).
+Neither Duplex file carries an `IfcSystem`, and neither does Gymzaal —
+but MEP system membership is no longer uncovered: `mep-systems.ifc`
+carries two `IfcSystem` groups ('Supply Air', 'Chilled Water', §5a
+transform in `scripts/generate-ifc-corpus.mjs`), the importer resolves
+them as `assigns-to-group` relationships, and the manifest test pins the
+membership (§4.1).
 
 ### 4.3 Round-trip: import → twin export → re-import (main)
 
@@ -241,6 +296,10 @@ so it stays green as the writer improves further.
   contains no `IFCCOLUMN` (5 products, beam only). Recorded in
   `tests/fixtures/ifc-corpus/README.md`; fixing the fixture or its
   description is separate work.
+- Gymzaal's 26 unsupported products (`IFCSANITARYTERMINAL` 22,
+  `IFCGRID` 3, `IFCFURNITURE` 1) are product classes the platform's
+  known set does not cover. They are reported `unsupported`, never
+  dropped; adding the classes to the known set is separate work.
 - The semantic model's "not contained" warning also fires for
   `IfcOpeningElement`s (e.g. `arch-2x3.ifc`: "2 physical element(s) not
   contained"), which are contained via voids, not spatially. The report
@@ -274,11 +333,11 @@ so it stays green as the writer improves further.
 ## 6. What is NOT covered
 
 - **No desktop-tool validation.** No exported file has been opened in
-  Revit, ArchiCAD, Solibri, Navisworks or AutoCAD. Two third-party IFC
-  files (the buildingSMART Duplex pair, §4.2) have now been put through
-  the pipeline, but no issued deliverable has been opened in the tool it
-  was issued for — that is item 13, not this one; do not describe IFC
-  interop as certified on the basis of this report.
+  Revit, ArchiCAD, Solibri, Navisworks or AutoCAD. Three third-party IFC
+  files (the buildingSMART Duplex pair and Gymzaal Amersfoort, §4.2) have
+  now been put through the pipeline, but no issued deliverable has been
+  opened in the tool it was issued for — that is item 13, not this one;
+  do not describe IFC interop as certified on the basis of this report.
 - **No per-entity FRAG proof.** The import rows are STEP/semantic
   fidelity, not web-ifc FRAG-conversion proof (§2). A browser proof
   needs per-entity instrumentation of the live import path (items 6–8).
@@ -286,8 +345,10 @@ so it stays green as the writer improves further.
   against the native-twin writer only. The authored writer
   (`authored-ifc.ts`) has no per-entity export measurement yet.
 - **No `IfcSystem` / port-connectivity fidelity.** MEP system membership
-  is not in the corpus (the writer emits no `IfcSystem` grouping, and
-  neither Duplex file carries one) and the report does not score it.
+  is now in the corpus (`mep-systems.ifc`: two `IfcSystem` groups, and
+  the report records the `assigns-to-group` relationship on each member
+  row), but the report does not score system fidelity beyond that, and
+  port connectivity is not scored.
 
 ## 7. Regeneration and the drift gate
 
@@ -312,7 +373,8 @@ no timestamps, sorted rows, fixed key order.
   proxied), not the *report* — §4.3 was re-run and records 1/5.
 - **§12 `feat/golden-corpus-20`**: the 24 §12 fixtures are checked in
   on this branch (rebased onto eabab92), plus the two buildingSMART
-  Duplex files (§4.2). The drift gate now covers all 26 fixtures.
+  Duplex files and the Gymzaal file (§4.2), plus the 15 `extended/`
+  fixtures. The drift gate now covers all 42 fixtures.
 - **§20 `docs/final-deliverables`** (`docs/engineering/
   IFC_INTEROPERABILITY.md`, which does not exist on main): this branch
   does **not** port that file — it covers fuzz/corpus/native-ifc work
@@ -326,9 +388,9 @@ no timestamps, sorted rows, fixed key order.
   > reports per-entity import, export and round-trip fidelity with
   > status (preserved / transformed / approximated / unsupported /
   > skipped / failed) and reason codes, wired into the import queue's
-  > existing Entity-inventory block. Measured: corpus 1,579 products
-  > (1,510 preserved / 61 transformed / 5 approximated / 0 unsupported /
-  > 1 skipped / 2 failed), plus 707 definitions counted separately;
+  > existing Entity-inventory block. Measured: corpus 2,740 products
+  > (2,602 preserved / 76 transformed / 33 approximated / 26 unsupported /
+  > 1 skipped / 2 failed), plus 1,126 definitions counted separately;
   > twin round-trip on main 1/5 proxied (post-#246; the remaining proxy
   > is flagged, reported not hidden). Full numbers in
   > `docs/engineering/PER_ENTITY_IFC_REPORT.md`. Still not covered:

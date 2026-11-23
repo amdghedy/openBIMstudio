@@ -118,8 +118,19 @@ t("manifest: every entry is a real .ifc/.ifczip source (never a snapshot)", () =
     if (f.licence === "CC BY 4.0") {
       // Third-party content stays under its own licence: the manifest must
       // carry the attribution the source requires, not just a licence tag.
-      assert.ok(f.source.includes("BSI (2020)"), `${f.file}: CC BY 4.0 fixture without the required BSI attribution in its source`);
+      // Every CC BY 4.0 fixture names the Sample-Test-Files repository;
+      // each file additionally carries its own attribution: the Duplex
+      // files the BSI (2020) citation, Gymzaal its example name and
+      // upstream folder path (its folder README names no personal author;
+      // the exporter is recorded in the manifest source).
       assert.ok(f.source.includes("github.com/buildingsmart-community/Community-Sample-Test-Files"), `${f.file}: CC BY 4.0 fixture without its source URL`);
+      if (f.file.includes("duplex")) {
+        assert.ok(f.source.includes("BSI (2020)"), `${f.file}: CC BY 4.0 Duplex fixture without the required BSI attribution in its source`);
+      }
+      if (f.file.includes("gymzaal")) {
+        assert.ok(f.source.includes("Gymzaal Amersfoort"), `${f.file}: CC BY 4.0 Gymzaal fixture without its attribution in its source`);
+        assert.ok(f.source.includes("Example project location"), `${f.file}: Gymzaal fixture without its upstream folder path`);
+      }
     }
     assert.ok(f.source && f.source.length > 10, f.file);
     assert.ok(Array.isArray(f.coverage) && f.coverage.length > 0, f.file);
@@ -182,6 +193,14 @@ t("coverage: both schemas present as valid parseable fixtures", () => {
   for (const schema of ["IFC2X3", "IFC4"]) {
     assert.ok(fixtures.some((f) => f.kind === "valid" && f.schema === schema), schema);
   }
+});
+t("coverage: MEP system membership has a fixture (mep-systems.ifc, #96)", () => {
+  const hits = fixtures.filter((f) => f.coverage.includes("mep-system-membership")).map((f) => f.file);
+  assert.deepStrictEqual(hits, ["mep-systems.ifc"]);
+});
+t("coverage: an independent IFC4 third-party model exists (gymzaal, #96)", () => {
+  const hits = fixtures.filter((f) => f.independent === true && f.schema === "IFC4").map((f) => f.file);
+  assert.deepStrictEqual(hits, ["third-party/gymzaal-amersfoort.ifc"]);
 });
 
 /* ── C. Per-fixture behaviour, driven by the manifest ──────────────────── */
@@ -315,10 +334,53 @@ t("third-party: duplex files are CC BY 4.0, attributed, and real Revit exports",
   const segments = ["IFCFLOWSEGMENT", "IFCDUCTSEGMENT", "IFCPIPESEGMENT"]
     .reduce((n, c) => n + (mep.byClass.get(c) || []).length, 0);
   assert.ok(segments >= 400, `duplex-mep: expected 400+ MEP segments, got ${segments}`);
-  // Neither Revit 2011 Coordination View file carries IfcSystem: the known
-  // MEP-system-membership gap is real and still open (see manifest).
+  // Neither Revit 2011 Coordination View file carries IfcSystem — that is
+  // a property of the 2011 exports, not a corpus gap any more: MEP system
+  // membership is covered by mep-systems.ifc (see the test below).
   assert.strictEqual((arch.byClass.get("IFCSYSTEM") || []).length, 0, "duplex-a unexpectedly carries IfcSystem");
   assert.strictEqual((mep.byClass.get("IFCSYSTEM") || []).length, 0, "duplex-mep unexpectedly carries IfcSystem");
+});
+
+t("third-party: gymzaal-amersfoort.ifc is the first independent IFC4 model", () => {
+  const m = fixtures.find((x) => x.file === "third-party/gymzaal-amersfoort.ifc");
+  assert.ok(m, "gymzaal missing from manifest");
+  assert.strictEqual(m.licence, "CC BY 4.0");
+  assert.strictEqual(m.schema, "IFC4");
+  assert.strictEqual(m.kind, "valid");
+  assert.strictEqual(m.independent, true);
+  // Revit 2020 ReferenceView export of the Amersfoort sports hall:
+  // contents recorded in the manifest from the file itself, not assumed.
+  const model = M.buildSemanticModel(fs.readFileSync(path.join(CORPUS, "third-party/gymzaal-amersfoort.ifc"), "utf8"));
+  assert.strictEqual((model.byClass.get("IFCSPACE") || []).length, 48, "gymzaal: expected 48 IfcSpace");
+  assert.strictEqual((model.byClass.get("IFCWALL") || []).length, 78, "gymzaal: expected 78 IfcWall");
+  assert.strictEqual((model.byClass.get("IFCWINDOW") || []).length, 69, "gymzaal: expected 69 IfcWindow");
+  assert.strictEqual(model.spatial.storeys, 3, "gymzaal: expected 3 storeys");
+  // IFC4 georeferencing: the project carries an EPSG:28992 projected CRS.
+  assert.ok([...model.entities.values()].some((e) => e.name === "IFCPROJECTEDCRS" && e.raw.includes("EPSG:28992")), "gymzaal: expected IFCPROJECTEDCRS EPSG:28992");
+  // The three IfcGroup area schedules (BVO/GO/VVO) each claim 16 spaces
+  // through IfcRelAssignsToGroup — group assignment through the importer.
+  const groups = model.relationships.filter((r) => r.kind === "assigns-to-group");
+  assert.strictEqual(groups.length, 3, `gymzaal: expected 3 assigns-to-group, got ${groups.length}`);
+  const names = groups.map((r) => M.unquote(model.entities.get(r.relating).args[2])).sort();
+  assert.deepStrictEqual(names, ["BVO", "GO", "VVO"]);
+  for (const r of groups) {
+    assert.strictEqual(r.related.length, 16, `gymzaal group ${M.unquote(model.entities.get(r.relating).args[2])}: expected 16 members`);
+    assert.ok(r.related.every((id) => model.entities.get(id).name === "IFCSPACE"), "gymzaal group member is not an IfcSpace");
+  }
+});
+
+t("mep systems: mep-systems.ifc carries two IfcSystem groups with resolved members (#96)", () => {
+  const model = M.buildSemanticModel(fs.readFileSync(path.join(CORPUS, "mep-systems.ifc"), "utf8"));
+  assert.strictEqual((model.byClass.get("IFCSYSTEM") || []).length, 2, "expected 2 IfcSystem");
+  assert.strictEqual((model.byClass.get("IFCRELASSIGNSTOGROUP") || []).length, 2, "expected 2 IfcRelAssignsToGroup");
+  const nameOf = (id) => { const e = model.entities.get(id); return e ? M.unquote(e.args[2]) : null; };
+  const groups = model.relationships.filter((r) => r.kind === "assigns-to-group");
+  assert.strictEqual(groups.length, 2, `expected 2 assigns-to-group relationships, got ${groups.length}`);
+  const byName = new Map(groups.map((r) => [nameOf(r.relating), r.related.map(nameOf).sort()]));
+  assert.deepStrictEqual(byName.get("Supply Air"), ["AHU 01", "AHU 02", "First-floor duct", "Return duct", "Supply duct"]);
+  assert.deepStrictEqual(byName.get("Chilled Water"), ["AHU 01", "AHU 02", "CHW return", "CHW supply"]);
+  // Both AHUs serve both systems — the shared-member case, not two disjoint sets.
+  assert.ok(byName.get("Supply Air").includes("AHU 01") && byName.get("Chilled Water").includes("AHU 01"), "AHU 01 must belong to both systems");
 });
 
 t("relationships: relationships.ifc has voids, fills, material and classification links", () => {

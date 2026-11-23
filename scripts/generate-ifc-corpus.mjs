@@ -8,7 +8,19 @@
  * repository (the malformed/ regression fixtures), or vendored verbatim
  * from a third-party dataset under an open licence (the third-party/
  * fixtures — CC BY 4.0, see below). Licence is MIT throughout except the
- * two third-party files, which stay CC BY 4.0 with attribution.
+ * three third-party files, which stay CC BY 4.0 with attribution.
+ *
+ * NOTE (2026-11-24, #96): the manifest section (§14) still writes the
+ * pre-#253 schema (`fixtures`, `license`, `testPurpose`,
+ * `expectedResult`) and knows nothing of the `extended/` fixtures, while
+ * the checked-in manifest.json uses the #253 schema (`files`, `licence`,
+ * `purpose`, `expect`) and lists 41 files. Do NOT run this script
+ * expecting manifest.json to be regenerated — it would clobber the
+ * manifest into the old schema and drop the extended entries. The
+ * fixture emits (§1–§13) are still the regeneration path for the files
+ * themselves; the manifest is maintained by hand from measured
+ * bytes/sha256/entity counts (see commit 40e87635). Reconciling §14 with
+ * the checked-in manifest is separate work.
  *
  * Valid fixtures (top level, scanned by scripts/golden-roundtrip.mjs):
  *   generated-small.ifc           IFC4  — 2 walls + 1 door (hosted opening) + 1 slab
@@ -51,23 +63,32 @@
  *     of the Duplex Apartment ("Hello World" Coordination MVD model)
  *   third-party/duplex-mep.ifc     IFC2X3 — Revit MEP 2011 export of the
  *     same building's MEP systems (ducts, pipes, equipment, spaces)
+ *   third-party/gymzaal-amersfoort.ifc  IFC4 — Revit 2020 export of the
+ *     Gymzaal Amersfoort sports hall (geolocation example, EPSG:28992);
+ *     the corpus's first independent IFC4 model (#96)
  *   Source: buildingsmart-community/Community-Sample-Test-Files,
- *   "IFC 2.3.0.1 (IFC 2x3)/Duplex Apartment" (Git LFS; the vendored bytes
- *   are byte-identical to the LFS objects — sha256 equals the LFS oid).
+ *   "IFC 2.3.0.1 (IFC 2x3)/Duplex Apartment" and "IFC 4.0.2.1 (IFC 4)/
+ *   Example project location" (Git LFS; the vendored bytes are
+ *   byte-identical to the LFS objects — sha256 equals the LFS oid).
  *   Licence: CC BY 4.0. Attribution required by the source README:
  *   BSI (2020) "Duplex Apartment Test Files," buildingSMART International,
  *   https://github.com/buildingsmart-community/Community-Sample-Test-Files
  *   — recorded per fixture in the manifest and in
- *   tests/fixtures/ifc-corpus/third-party/README.md. The files are kept in
- *   third-party/ (not top level) deliberately: the fuzz gate seeds on
- *   top-level valid fixtures, and a 17.9 MB seed would make every nightly
- *   run pay a real-world parse per mutation. They are still covered by the
- *   manifest test (pre-flight + web-ifc + error-free semantic validation +
- *   golden snapshot), the per-entity fidelity report (recursive walk), and
- *   the browser import-timeout spec. Known limit, measured: neither file
- *   carries an IfcSystem grouping (Revit 2011 Coordination View did not
- *   emit one), so MEP *system membership* is still uncovered anywhere in
- *   the corpus — the writer gap noted in the manifest stands.
+ *   tests/fixtures/ifc-corpus/third-party/README.md. The Gymzaal file's
+ *   folder README names no personal author; its manifest attribution is
+ *   the Gymzaal Amersfoort example + the Revit 2020 exporter (Hans
+ *   Hendriks, deBIMspecialist). The files are kept in third-party/ (not
+ *   top level) deliberately: the fuzz gate seeds on top-level valid
+ *   fixtures, and a 17.9 MB seed would make every nightly run pay a
+ *   real-world parse per mutation. They are still covered by the manifest
+ *   test (pre-flight + web-ifc + error-free semantic validation + golden
+ *   snapshot), the per-entity fidelity report (recursive walk), and the
+ *   browser import-timeout spec. Known limit, measured: neither Duplex
+ *   file carries an IfcSystem grouping (Revit 2011 Coordination View did
+ *   not emit one), and neither does Gymzaal (architecture/geolocation
+ *   example) — but MEP *system membership* is covered since #96 by
+ *   mep-systems.ifc (§5a below), and group assignment by Gymzaal's three
+ *   IfcGroup area schedules.
  *
  * The generator also writes tests/fixtures/ifc-corpus/manifest.json — the
  * machine-readable source of truth (source, licence, schema, expected
@@ -100,6 +121,7 @@ if (tsc.status !== 0) process.exit(1);
 
 const require = createRequire(import.meta.url);
 const { exportAuthoredToIfc } = require(path.join(out, "modules/bim-gaps/authored-ifc.js"));
+const { stableIfcGuid } = require(path.join(out, "modules/bim-gaps/ifc-guid.js"));
 
 const CORPUS = path.join(root, "tests/fixtures/ifc-corpus");
 const INVALID = path.join(CORPUS, "invalid");
@@ -200,7 +222,7 @@ emit("structural-2x3.ifc", [
 ], { schema: "IFC2X3", levels, projectName: "Structural 2x3 Corpus" });
 
 /* ── 5. MEP systems model (IFC4): more runs, 2 AHUs, 2 storeys ─────────── */
-emit("mep-systems.ifc", [
+const mepSystemsText = emit("mep-systems.ifc", [
   { id: "w1", type: "wall", name: "Wall A", params: { start: [0, 0], end: [12, 0], height: 3, thickness: 0.2, elevation: 0 }, levelId: "L0" },
   { id: "d1", type: "duct", name: "Supply duct", params: { start: [0, 0.3], end: [12, 0.3], height: 3.0, thickness: 0.5, depth: 0.3, elevation: 2.9 }, levelId: "L0" },
   { id: "d2", type: "duct", name: "Return duct", params: { start: [0, 0.9], end: [12, 0.9], height: 3.0, thickness: 0.5, depth: 0.3, elevation: 2.9 }, levelId: "L0" },
@@ -212,6 +234,44 @@ emit("mep-systems.ifc", [
   { id: "ahu1", type: "equipment", name: "AHU 01", params: { point: [1, 3], height: 1.8, thickness: 2.4, depth: 1.2, elevation: 0.4 }, levelId: "L0" },
   { id: "ahu2", type: "equipment", name: "AHU 02", params: { point: [1, 3], height: 1.8, thickness: 2.4, depth: 1.2, elevation: 3.6 }, levelId: "L1" },
 ], { schema: "IFC4", levels, projectName: "MEP Systems Corpus" });
+
+/* ── 5a. MEP system groups: the authored writer emits no IfcSystem
+ * grouping, so the two systems are appended here by a deterministic
+ * STEP transform (same pattern as §11a). GUIDs are stableIfcGuid() values
+ * (the repo's own deterministic GUIDs), member ids are resolved from the
+ * writer's authored-id tags (never hardcoded), and the records go inside
+ * the DATA section — the first ENDSEC in the file closes the HEADER, so
+ * the insert point is the ENDSEC after the DATA; marker. The result is
+ * what tests/ifc-corpus-manifest.test.mjs covers as MEP system
+ * membership (#96): 'Supply Air' = d1+d2+d3+ahu1+ahu2, 'Chilled Water'
+ * = p1+p2+ahu1+ahu2 (both AHUs serve both systems). */
+function addMepSystemGroups(text) {
+  const lines = text.split("\n");
+  const maxId = lines.reduce((m, l) => { const x = /^#(\d+)=/.exec(l); return x ? Math.max(m, Number(x[1])) : m; }, 0);
+  const owner = lines.find((l) => /=IFCOWNERHISTORY\(/.test(l));
+  if (!owner) throw new Error("mep-systems §5a: no OwnerHistory");
+  const ownerId = Number(/^#(\d+)=/.exec(owner)[1]);
+  const byTag = {};
+  for (const l of lines) {
+    const m = /^#(\d+)=IFC(?:DUCTSEGMENT|PIPESEGMENT|BUILDINGELEMENTPROXY)\('[^']+',#\d+,'[^']*',\$,'[^']*',#\d+,#\d+,'([^']+)',/.exec(l);
+    if (m) byTag[m[2]] = Number(m[1]);
+  }
+  for (const tag of ["d1", "d2", "d3", "p1", "p2", "ahu1", "ahu2"]) {
+    if (!byTag[tag]) throw new Error(`mep-systems §5a: member ${tag} not found`);
+  }
+  const sysAir = maxId + 1, relAir = maxId + 2, sysChw = maxId + 3, relChw = maxId + 4;
+  const dataAt = lines.findIndex((l) => l.trim() === "DATA;");
+  const endsec = lines.findIndex((l, i) => i > dataAt && l.trim() === "ENDSEC;");
+  if (dataAt < 0 || endsec < 0) throw new Error("mep-systems §5a: DATA/ENDSEC not found");
+  lines.splice(endsec, 0,
+    `#${sysAir}=IFCSYSTEM('${stableIfcGuid("mep-systems:system:supply-air")}',#${ownerId},'Supply Air','Supply air distribution system',$);`,
+    `#${relAir}=IFCRELASSIGNSTOGROUP('${stableIfcGuid("mep-systems:relassigns:supply-air")}',#${ownerId},$,$,(#${byTag.d1},#${byTag.d2},#${byTag.d3},#${byTag.ahu1},#${byTag.ahu2}),$,#${sysAir});`,
+    `#${sysChw}=IFCSYSTEM('${stableIfcGuid("mep-systems:system:chilled-water")}',#${ownerId},'Chilled Water','Chilled water distribution system',$);`,
+    `#${relChw}=IFCRELASSIGNSTOGROUP('${stableIfcGuid("mep-systems:relassigns:chilled-water")}',#${ownerId},$,$,(#${byTag.p1},#${byTag.p2},#${byTag.ahu1},#${byTag.ahu2}),$,#${sysChw});`);
+  return lines.join("\n");
+}
+writeFileSync(path.join(CORPUS, "mep-systems.ifc"), addMepSystemGroups(mepSystemsText));
+console.log("  ✅ mep-systems.ifc — §5a appended 2 IfcSystem + 2 IfcRelAssignsToGroup (Supply Air, Chilled Water)");
 
 /* ── 6. Property sets (IFC4): properties + materials + quantities ──────── */
 emit("property-sets.ifc", [
@@ -429,7 +489,7 @@ const META = {
   "arch-classified.ifc": { kind: "valid", schema: "IFC4", source: "project writer (this script)", testPurpose: "arch model + Uniclass 2015 classification references on 4 elements", coverage: ["ifc4", "architecture", "property-sets", "relationships"], expectedResult: "parse-ok" },
   "spatial-hierarchy.ifc": { kind: "valid", schema: "IFC4", source: "project writer (this script)", testPurpose: "spatial tree depth: site→building→3 storeys→4 IfcSpace rooms with departments", coverage: ["ifc4", "architecture", "spatial-hierarchy"], expectedResult: "parse-ok" },
   "structural-2x3.ifc": { kind: "valid", schema: "IFC2X3", source: "project writer (this script)", testPurpose: "structural model under IFC2X3: columns, beams, pad + strip footings, diagonal brace", coverage: ["ifc2x3", "structural"], expectedResult: "parse-ok" },
-  "mep-systems.ifc": { kind: "valid", schema: "IFC4", source: "project writer (this script)", testPurpose: "extended MEP: 3 ducts, 2 pipes, tray + conduit, 2 AHUs across 2 storeys. NOTE: the writer emits no IfcSystem grouping, so system membership is not covered here", coverage: ["ifc4", "mep", "spatial-hierarchy"], expectedResult: "parse-ok" },
+  "mep-systems.ifc": { kind: "valid", schema: "IFC4", source: "project writer (this script) + deterministic STEP transform (§5a) appending the IfcSystem groups", testPurpose: "extended MEP: 3 ducts, 2 pipes, tray + conduit, 2 AHUs across 2 storeys, grouped into two IfcSystem systems ('Supply Air': 3 ducts + 2 AHUs; 'Chilled Water': 2 pipes + 2 AHUs) via IfcRelAssignsToGroup — MEP system membership is covered here (#96)", coverage: ["ifc4", "mep", "spatial-hierarchy"], expectedResult: "parse-ok" },
   "property-sets.ifc": { kind: "valid", schema: "IFC4", source: "project writer (this script)", testPurpose: "rich property sets on every element (incl. typed values: label, number, boolean), material associations, element quantities", coverage: ["ifc4", "architecture", "property-sets", "relationships"], expectedResult: "parse-ok" },
   "units-imperial.ifc": { kind: "valid", schema: "IFC4", source: "project writer + deterministic STEP transform (this script §11a)", testPurpose: "non-SI units: conversion-based FOOT length unit (0.3048 m); the independent reader must report factor 0.3048 and validation must stay error-free", coverage: ["ifc4", "units"], expectedResult: "parse-ok" },
   "geometry-complex.ifc": { kind: "valid", schema: "IFC4", source: "project writer (this script)", testPurpose: "geometry variety: L-stair, ramp, railing, curtain wall, gable roof (IfcSlab .ROOF.), baseboard sweep (IfcCovering), vertical opening voiding a slab", coverage: ["ifc4", "architecture", "geometry-complexity", "relationships"], expectedResult: "parse-ok" },
@@ -438,7 +498,8 @@ const META = {
   "scale-grid.ifc": { kind: "valid", schema: "IFC4", source: "project writer (this script)", testPurpose: "scale: 4 storeys x 8 bays, 100 elements (walls, columns, beams, slabs); the corpus's largest fixture by element count", coverage: ["ifc4", "architecture", "structural", "scale", "geometry-complexity"], expectedResult: "parse-ok" },
   "model.ifczip": { kind: "archive", schema: "IFC4", source: "project writer output packaged by this script (§13, STORE zip, fixed timestamp)", testPurpose: ".ifczip packaging: exactly one .ifc entry (spatial-hierarchy.ifc) that parses identically to the loose file", coverage: ["ifc4", "architecture", "spatial-hierarchy", "ifczip"], expectedResult: "unzip-and-parse-ok", innerFile: "spatial-hierarchy.ifc" },
   "third-party/duplex-a.ifc": { kind: "valid", schema: "IFC2X3", license: "CC BY 4.0", source: "buildingSMART Community Sample Test Files, Duplex Apartment — https://github.com/buildingsmart-community/Community-Sample-Test-Files (IFC 2.3.0.1 (IFC 2x3)/Duplex Apartment/Duplex_A_20110907.ifc); vendored verbatim, attribution: BSI (2020) \"Duplex Apartment Test Files,\" buildingSMART International", testPurpose: "real-world Revit Architecture 2011 export (Coordination View): 2-storey duplex apartment, 21 IfcSpace, 4 storeys; the corpus's only non-synthetic model", coverage: ["ifc2x3", "architecture", "spatial-hierarchy", "real-world"], expectedResult: "parse-ok" },
-  "third-party/duplex-mep.ifc": { kind: "valid", schema: "IFC2X3", license: "CC BY 4.0", source: "buildingSMART Community Sample Test Files, Duplex Apartment — https://github.com/buildingsmart-community/Community-Sample-Test-Files (IFC 2.3.0.1 (IFC 2x3)/Duplex Apartment/Duplex_MEP_20110907.ifc); vendored verbatim, attribution: BSI (2020) \"Duplex Apartment Test Files,\" buildingSMART International", testPurpose: "real-world Revit MEP 2011 export of the same building: ducts, pipes, equipment, 42 IfcSpace; the corpus's largest fixture (311k records). NOTE: carries no IfcSystem grouping, so MEP system membership is still uncovered", coverage: ["ifc2x3", "mep", "spatial-hierarchy", "real-world", "scale"], expectedResult: "parse-ok" },
+  "third-party/duplex-mep.ifc": { kind: "valid", schema: "IFC2X3", license: "CC BY 4.0", source: "buildingSMART Community Sample Test Files, Duplex Apartment — https://github.com/buildingsmart-community/Community-Sample-Test-Files (IFC 2.3.0.1 (IFC 2x3)/Duplex Apartment/Duplex_MEP_20110907.ifc); vendored verbatim, attribution: BSI (2020) \"Duplex Apartment Test Files,\" buildingSMART International", testPurpose: "real-world Revit MEP 2011 export of the same building: ducts, pipes, equipment, 42 IfcSpace; the corpus's largest fixture (311k records). NOTE: carries no IfcSystem grouping (Revit 2011 Coordination View did not emit one); MEP system membership is covered by mep-systems.ifc §5a instead", coverage: ["ifc2x3", "mep", "spatial-hierarchy", "real-world", "scale"], expectedResult: "parse-ok" },
+  "third-party/gymzaal-amersfoort.ifc": { kind: "valid", schema: "IFC4", license: "CC BY 4.0", source: "buildingSMART Community Sample Test Files — https://github.com/buildingsmart-community/Community-Sample-Test-Files (IFC 4.0.2.1 (IFC 4)/Example project location/example project location.ifc); vendored verbatim, attribution: Gymzaal Amersfoort example, buildingSMART Community Sample Test Files (CC BY 4.0); IFC exported from Revit 2020 by Hans Hendriks (deBIMspecialist)", testPurpose: "real-world Revit 2020 export (ReferenceView V1.2): sports hall in Amersfoort, NL — 48 IfcSpace, 78 walls, 69 windows, 3 storeys, 3 IfcGroup area schedules (BVO/GO/VVO) via IfcRelAssignsToGroup, IFC4 georeferencing (EPSG:28992); the corpus's first independent IFC4 model (#96)", coverage: ["ifc4", "architecture", "spatial-hierarchy", "real-world", "georeferencing"], expectedResult: "parse-ok" },
   "invalid/bad-guid.ifc": { kind: "invalid", schema: "IFC4", source: "project writer + deterministic STEP transform (this script §12a)", testPurpose: "GlobalId outside the base64 alphabet must be flagged, model stays readable", coverage: ["invalid"], expectedResult: "semantic-findings", expectedFindingCodes: ["IFC-E-BAD-GUID"] },
   "invalid/dangling-ref.ifc": { kind: "invalid", schema: "IFC4", source: "project writer + deterministic STEP transform (this script §12b)", testPurpose: "relationship references a missing entity (#99999) must be flagged with attribution", coverage: ["invalid"], expectedResult: "semantic-findings", expectedFindingCodes: ["IFC-E-DANGLING-REF"] },
   "invalid/truncated.ifc": { kind: "invalid", schema: "IFC4", source: "project writer output cut mid-DATA (this script §12c)", testPurpose: "truncated file: readable prefix preserved, truncation warned, no crash", coverage: ["invalid"], expectedResult: "graceful-prefix", expectedFindingCodes: [] },
@@ -484,7 +545,7 @@ for (const [file, meta] of Object.entries(META)) {
 const manifest = {
   version: 1,
   generatedBy: "scripts/generate-ifc-corpus.mjs",
-  license: "MIT for all project-generated/hand-authored fixtures; CC BY 4.0 for third-party/duplex-a.ifc and third-party/duplex-mep.ifc (attribution: BSI (2020) \"Duplex Apartment Test Files,\" buildingSMART International — see scripts/generate-ifc-corpus.mjs). JSON snapshots under snapshots/ are derived artifacts and are NOT source fixtures.",
+  license: "MIT for all project-generated/hand-authored fixtures; CC BY 4.0 for third-party/duplex-a.ifc, third-party/duplex-mep.ifc and third-party/gymzaal-amersfoort.ifc (attribution: BSI (2020) \"Duplex Apartment Test Files,\" buildingSMART International for the Duplex files; Gymzaal Amersfoort example, buildingSMART Community Sample Test Files, IFC exported from Revit 2020 by Hans Hendriks (deBIMspecialist) — see scripts/generate-ifc-corpus.mjs). JSON snapshots under snapshots/ are derived artifacts and are NOT source fixtures.",
   sourceFixtureCount: fixtures.length,
   fixtures,
 };

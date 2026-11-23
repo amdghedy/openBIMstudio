@@ -6,3 +6,7 @@
 *.jpg binary
 *.dwg binary
 *.ifc text eol=lf
+# The Gymzaal file is CRLF-terminated upstream; it must be stored
+# byte-identical (its sha256 equals the LFS oid and the manifest pins
+# those bytes), so it is exempt from the *.ifc LF normalisation above.
+tests/fixtures/ifc-corpus/third-party/gymzaal-amersfoort.ifc binary

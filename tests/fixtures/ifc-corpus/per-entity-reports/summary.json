@@ -700,7 +700,7 @@
       "definitions": 0,
       "webIfc": {
         "opened": false,
-        "error": "Aborted(). Build with -sASSERTIONS for more info."
+        "error": "memory access out of bounds"
       }
     },
     {
@@ -723,7 +723,7 @@
       "definitions": 0,
       "webIfc": {
         "opened": false,
-        "error": "Aborted(). Build with -sASSERTIONS for more info."
+        "error": "memory access out of bounds"
       }
     },
     {
@@ -792,7 +792,7 @@
       "definitions": 6,
       "webIfc": {
         "opened": true,
-        "productsSeen": 60,
+        "productsSeen": 64,
         "globalIdsMatched": 15,
         "globalIdsMissing": [],
         "typeMismatches": []
@@ -1008,6 +1008,32 @@
       }
     },
     {
+      "file": "third-party/gymzaal-amersfoort.ifc",
+      "kind": "valid",
+      "schema": "IFC4",
+      "report": "third-party/gymzaal-amersfoort.ifc.json",
+      "totalProducts": 607,
+      "totals": {
+        "preserved": 553,
+        "transformed": 0,
+        "approximated": 28,
+        "unsupported": 26,
+        "skipped": 0,
+        "failed": 0,
+        "preservedPct": 91.1,
+        "degradedPct": 4.6,
+        "lostPct": 4.3
+      },
+      "definitions": 346,
+      "webIfc": {
+        "opened": true,
+        "productsSeen": 5505,
+        "globalIdsMatched": 607,
+        "globalIdsMissing": [],
+        "typeMismatches": []
+      }
+    },
+    {
       "file": "units-imperial.ifc",
       "kind": "valid",
       "schema": "IFC4",
@@ -1035,15 +1061,15 @@
     }
   ],
   "totals": {
-    "files": 41,
-    "reported": 39,
+    "files": 42,
+    "reported": 40,
     "unreported": 2,
-    "products": 2133,
-    "definitions": 780,
-    "preserved": 2049,
+    "products": 2740,
+    "definitions": 1126,
+    "preserved": 2602,
     "transformed": 76,
-    "approximated": 5,
-    "unsupported": 0,
+    "approximated": 33,
+    "unsupported": 26,
     "skipped": 1,
     "failed": 2
   }

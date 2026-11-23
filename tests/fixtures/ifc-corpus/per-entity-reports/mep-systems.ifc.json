@@ -301,6 +301,7 @@
         "BaseQuantities"
       ],
       "relationships": [
+        "assigns-to-group",
         "containment",
         "properties"
       ],
@@ -333,6 +334,7 @@
         "BaseQuantities"
       ],
       "relationships": [
+        "assigns-to-group",
         "containment",
         "properties"
       ],
@@ -365,6 +367,7 @@
         "BaseQuantities"
       ],
       "relationships": [
+        "assigns-to-group",
         "containment",
         "properties"
       ],
@@ -397,6 +400,7 @@
         "BaseQuantities"
       ],
       "relationships": [
+        "assigns-to-group",
         "containment",
         "properties"
       ],
@@ -429,6 +433,7 @@
         "BaseQuantities"
       ],
       "relationships": [
+        "assigns-to-group",
         "containment",
         "properties"
       ],
@@ -525,6 +530,7 @@
         "BaseQuantities"
       ],
       "relationships": [
+        "assigns-to-group",
         "containment",
         "properties"
       ],
@@ -557,6 +563,7 @@
         "BaseQuantities"
       ],
       "relationships": [
+        "assigns-to-group",
         "containment",
         "properties"
       ],

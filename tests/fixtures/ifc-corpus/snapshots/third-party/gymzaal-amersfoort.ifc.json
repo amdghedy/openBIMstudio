@@ -1,0 +1,426 @@
+{
+  "schema": "IFC4",
+  "classes": [
+    {
+      "name": "IFCAPPLICATION",
+      "count": 2
+    },
+    {
+      "name": "IFCARBITRARYCLOSEDPROFILEDEF",
+      "count": 434
+    },
+    {
+      "name": "IFCARBITRARYPROFILEDEFWITHVOIDS",
+      "count": 11
+    },
+    {
+      "name": "IFCAXIS2PLACEMENT3D",
+      "count": 1631
+    },
+    {
+      "name": "IFCBEAM",
+      "count": 3
+    },
+    {
+      "name": "IFCBEAMTYPE",
+      "count": 2
+    },
+    {
+      "name": "IFCBUILDING",
+      "count": 1
+    },
+    {
+      "name": "IFCBUILDINGELEMENTPROXY",
+      "count": 13
+    },
+    {
+      "name": "IFCBUILDINGELEMENTPROXYTYPE",
+      "count": 13
+    },
+    {
+      "name": "IFCBUILDINGSTOREY",
+      "count": 3
+    },
+    {
+      "name": "IFCCARTESIANPOINT",
+      "count": 967
+    },
+    {
+      "name": "IFCCARTESIANPOINTLIST2D",
+      "count": 493
+    },
+    {
+      "name": "IFCCARTESIANPOINTLIST3D",
+      "count": 149
+    },
+    {
+      "name": "IFCCARTESIANTRANSFORMATIONOPERATOR3D",
+      "count": 1
+    },
+    {
+      "name": "IFCCLASSIFICATION",
+      "count": 1
+    },
+    {
+      "name": "IFCCLASSIFICATIONREFERENCE",
+      "count": 15
+    },
+    {
+      "name": "IFCCOLOURRGB",
+      "count": 19
+    },
+    {
+      "name": "IFCCOLOURRGBLIST",
+      "count": 203
+    },
+    {
+      "name": "IFCCOLUMN",
+      "count": 30
+    },
+    {
+      "name": "IFCCOLUMNTYPE",
+      "count": 9
+    },
+    {
+      "name": "IFCCONVERSIONBASEDUNIT",
+      "count": 1
+    },
+    {
+      "name": "IFCCOVERING",
+      "count": 16
+    },
+    {
+      "name": "IFCCOVERINGTYPE",
+      "count": 16
+    },
+    {
+      "name": "IFCCURTAINWALL",
+      "count": 27
+    },
+    {
+      "name": "IFCCURTAINWALLTYPE",
+      "count": 5
+    },
+    {
+      "name": "IFCDERIVEDUNIT",
+      "count": 9
+    },
+    {
+      "name": "IFCDERIVEDUNITELEMENT",
+      "count": 25
+    },
+    {
+      "name": "IFCDIMENSIONALEXPONENTS",
+      "count": 2
+    },
+    {
+      "name": "IFCDIRECTION",
+      "count": 676
+    },
+    {
+      "name": "IFCDOOR",
+      "count": 21
+    },
+    {
+      "name": "IFCDOORLININGPROPERTIES",
+      "count": 14
+    },
+    {
+      "name": "IFCDOORPANELPROPERTIES",
+      "count": 14
+    },
+    {
+      "name": "IFCDOORTYPE",
+      "count": 14
+    },
+    {
+      "name": "IFCELEMENTQUANTITY",
+      "count": 532
+    },
+    {
+      "name": "IFCEXTRUDEDAREASOLID",
+      "count": 445
+    },
+    {
+      "name": "IFCFURNITURE",
+      "count": 1
+    },
+    {
+      "name": "IFCFURNITURETYPE",
+      "count": 1
+    },
+    {
+      "name": "IFCGEOMETRICCURVESET",
+      "count": 6
+    },
+    {
+      "name": "IFCGEOMETRICREPRESENTATIONCONTEXT",
+      "count": 1
+    },
+    {
+      "name": "IFCGEOMETRICREPRESENTATIONSUBCONTEXT",
+      "count": 4
+    },
+    {
+      "name": "IFCGRID",
+      "count": 3
+    },
+    {
+      "name": "IFCGRIDAXIS",
+      "count": 6
+    },
+    {
+      "name": "IFCGROUP",
+      "count": 3
+    },
+    {
+      "name": "IFCINDEXEDCOLOURMAP",
+      "count": 69
+    },
+    {
+      "name": "IFCINDEXEDPOLYCURVE",
+      "count": 573
+    },
+    {
+      "name": "IFCINDEXEDPOLYGONALFACE",
+      "count": 14327
+    },
+    {
+      "name": "IFCINDEXEDPOLYGONALFACEWITHVOIDS",
+      "count": 18
+    },
+    {
+      "name": "IFCLOCALPLACEMENT",
+      "count": 606
+    },
+    {
+      "name": "IFCMAPCONVERSION",
+      "count": 1
+    },
+    {
+      "name": "IFCMAPPEDITEM",
+      "count": 335
+    },
+    {
+      "name": "IFCMATERIAL",
+      "count": 18
+    },
+    {
+      "name": "IFCMATERIALCONSTITUENT",
+      "count": 211
+    },
+    {
+      "name": "IFCMATERIALCONSTITUENTSET",
+      "count": 96
+    },
+    {
+      "name": "IFCMEASUREWITHUNIT",
+      "count": 1
+    },
+    {
+      "name": "IFCMEMBER",
+      "count": 186
+    },
+    {
+      "name": "IFCMEMBERTYPE",
+      "count": 94
+    },
+    {
+      "name": "IFCOPENINGELEMENT",
+      "count": 58
+    },
+    {
+      "name": "IFCORGANIZATION",
+      "count": 3
+    },
+    {
+      "name": "IFCOWNERHISTORY",
+      "count": 2
+    },
+    {
+      "name": "IFCPERSON",
+      "count": 2
+    },
+    {
+      "name": "IFCPERSONANDORGANIZATION",
+      "count": 2
+    },
+    {
+      "name": "IFCPHYSICALCOMPLEXQUANTITY",
+      "count": 11
+    },
+    {
+      "name": "IFCPOLYGONALFACESET",
+      "count": 61
+    },
+    {
+      "name": "IFCPOSTALADDRESS",
+      "count": 1
+    },
+    {
+      "name": "IFCPRESENTATIONLAYERASSIGNMENT",
+      "count": 14
+    },
+    {
+      "name": "IFCPRODUCTDEFINITIONSHAPE",
+      "count": 573
+    },
+    {
+      "name": "IFCPROJECT",
+      "count": 1
+    },
+    {
+      "name": "IFCPROJECTEDCRS",
+      "count": 1
+    },
+    {
+      "name": "IFCPROPERTYSET",
+      "count": 1627
+    },
+    {
+      "name": "IFCPROPERTYSINGLEVALUE",
+      "count": 658
+    },
+    {
+      "name": "IFCQUANTITYAREA",
+      "count": 915
+    },
+    {
+      "name": "IFCQUANTITYLENGTH",
+      "count": 932
+    },
+    {
+      "name": "IFCQUANTITYVOLUME",
+      "count": 492
+    },
+    {
+      "name": "IFCRELAGGREGATES",
+      "count": 32
+    },
+    {
+      "name": "IFCRELASSIGNSTOGROUP",
+      "count": 3
+    },
+    {
+      "name": "IFCRELASSOCIATESCLASSIFICATION",
+      "count": 15
+    },
+    {
+      "name": "IFCRELASSOCIATESMATERIAL",
+      "count": 110
+    },
+    {
+      "name": "IFCRELCONTAINEDINSPATIALSTRUCTURE",
+      "count": 3
+    },
+    {
+      "name": "IFCRELDEFINESBYPROPERTIES",
+      "count": 1919
+    },
+    {
+      "name": "IFCRELDEFINESBYTYPE",
+      "count": 269
+    },
+    {
+      "name": "IFCRELVOIDSELEMENT",
+      "count": 58
+    },
+    {
+      "name": "IFCREPRESENTATIONMAP",
+      "count": 156
+    },
+    {
+      "name": "IFCROOF",
+      "count": 2
+    },
+    {
+      "name": "IFCROOFTYPE",
+      "count": 1
+    },
+    {
+      "name": "IFCSANITARYTERMINAL",
+      "count": 22
+    },
+    {
+      "name": "IFCSANITARYTERMINALTYPE",
+      "count": 4
+    },
+    {
+      "name": "IFCSHAPEASPECT",
+      "count": 122
+    },
+    {
+      "name": "IFCSHAPEREPRESENTATION",
+      "count": 954
+    },
+    {
+      "name": "IFCSITE",
+      "count": 1
+    },
+    {
+      "name": "IFCSIUNIT",
+      "count": 20
+    },
+    {
+      "name": "IFCSLAB",
+      "count": 24
+    },
+    {
+      "name": "IFCSLABTYPE",
+      "count": 24
+    },
+    {
+      "name": "IFCSPACE",
+      "count": 48
+    },
+    {
+      "name": "IFCSPACETYPE",
+      "count": 48
+    },
+    {
+      "name": "IFCSTYLEDITEM",
+      "count": 355
+    },
+    {
+      "name": "IFCSURFACESTYLE",
+      "count": 19
+    },
+    {
+      "name": "IFCSURFACESTYLERENDERING",
+      "count": 19
+    },
+    {
+      "name": "IFCTELECOMADDRESS",
+      "count": 1
+    },
+    {
+      "name": "IFCTRIANGULATEDFACESET",
+      "count": 8
+    },
+    {
+      "name": "IFCUNITASSIGNMENT",
+      "count": 1
+    },
+    {
+      "name": "IFCWALL",
+      "count": 78
+    },
+    {
+      "name": "IFCWALLTYPE",
+      "count": 8
+    },
+    {
+      "name": "IFCWINDOW",
+      "count": 69
+    },
+    {
+      "name": "IFCWINDOWLININGPROPERTIES",
+      "count": 30
+    },
+    {
+      "name": "IFCWINDOWTYPE",
+      "count": 30
+    }
+  ],
+  "geomHash": "0d7ffad4af783dee"
+}

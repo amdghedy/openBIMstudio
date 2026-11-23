@@ -4,7 +4,7 @@
  *   entity classes · GlobalIds (validity + duplicates) · unit assignment ·
  *   spatial structure (Project→Site→Building→Storey) · containment ·
  *   relationships (aggregates, containment, voids, fills, properties,
- *   materials, classifications) · property sets · quantity sets ·
+ *   materials, classifications, group assignment) · property sets · quantity sets ·
  *   placement chains (world matrices) · preserved unknown classes.
  *
  * Built ON TOP of the independent step-reader; shares no code with web-ifc
@@ -30,6 +30,7 @@ export type RelKind =
   | "classification"
   | "connects-ports"
   | "nests"
+  | "assigns-to-group"
   | "other";
 
 export interface RelationshipRecord {
@@ -166,6 +167,13 @@ const REL_SHAPES: Record<string, { kind: RelKind; relatedIdx: number; relatingId
   // instead of grouping by category (see modules/mep/ifc-reconstruction).
   IFCRELCONNECTSPORTS: { kind: "connects-ports", relatedIdx: 5, relatingIdx: 4 },
   IFCRELNESTS: { kind: "nests", relatedIdx: 5, relatingIdx: 4 },
+  // Group assignment: IfcRelAssignsToGroup (RelatedObjects #4,
+  // ObjectType #5, RelatingGroup #6 — same arg order in IFC2X3 and IFC4)
+  // is how MEP systems (IfcSystem), zones and area groups (IfcGroup)
+  // claim their members. Without this shape the relationship fell into
+  // the "other" bucket with no resolved members, so system membership
+  // parsed as present-but-unreachable (corpus gap #96).
+  IFCRELASSIGNSTOGROUP: { kind: "assigns-to-group", relatedIdx: 4, relatingIdx: 6 },
 };
 
 /**
@@ -177,13 +185,19 @@ const REL_SHAPES: Record<string, { kind: RelKind; relatedIdx: number; relatingId
  * the buildingSMART Duplex files — and flagged them IFC-E-BAD-GUID, which
  * made real Revit files fail semantic validation (107 + 429 false errors).
  * Roots inside these families are spelled out as exceptions: IfcPropertySet
- * and IfcPropertyTemplate ARE roots (negative lookahead on IFCPROPERTY);
- * IfcMaterialLayerSet / ProfileSet / ConstituentSet ARE roots (lookaheads
- * on IFCMATERIAL); IfcDoorStyle / IfcWindowStyle ARE type objects, so only
- * presentation styles are listed under STYLE.
+ * and IfcPropertyTemplate ARE roots (negative lookahead on IFCPROPERTY).
+ * The material-definition sets are NOT roots in either schema, despite the
+ * old comment here claiming they were: IfcMaterialDefinition is not an
+ * IfcRoot subtype, so IfcMaterialLayerSet / ProfileSet / ConstituentSet
+ * carry no GlobalId — their first argument is a name or a set. Evidence:
+ * the IFC2X3 Duplex file writes `#3982=IFCMATERIALLAYERSET((#3892,…),
+ * 'Basic Wall:…')` (first arg is the layer list), and the IFC4 Gymzaal
+ * file writes `#62584=IFCMATERIALCONSTITUENTSET('MaterialConstituentSet',
+ * …)` — a 22-char Name the old rule misread as a GlobalId and flagged
+ * IFC-E-BAD-GUID 92 times (corpus #96).
  */
 const NON_ROOT_NAME_FIRST_RE =
-  /^(IFCPROPERTY(?!SET|TEMPLATE)|IFCQUANTITY|IFCPRESENTATIONSTYLE|IFCSURFACESTYLE|IFCCURVESTYLE|IFCFILLAREASTYLE|IFCTEXTSTYLE|IFCCONVERSIONBASEDUNIT|IFCMATERIAL$|IFCMATERIALPROFILE(?!SET)|IFCMATERIALCONSTITUENT(?!SET)|IFCDOCUMENTREFERENCE|IFCLIBRARYREFERENCE)|PROFILEDEF$/;
+  /^(IFCPROPERTY(?!SET|TEMPLATE)|IFCQUANTITY|IFCPRESENTATIONSTYLE|IFCSURFACESTYLE|IFCCURVESTYLE|IFCFILLAREASTYLE|IFCTEXTSTYLE|IFCCONVERSIONBASEDUNIT|IFCMATERIAL$|IFCMATERIALPROFILESET|IFCMATERIALPROFILE|IFCMATERIALCONSTITUENTSET|IFCMATERIALCONSTITUENT|IFCMATERIALLAYERSET|IFCDOCUMENTREFERENCE|IFCLIBRARYREFERENCE)|PROFILEDEF$/;
 
 /** Classes the platform intentionally handles; anything else is "unknown" but preserved. */
 const KNOWN_CLASSES = new Set([

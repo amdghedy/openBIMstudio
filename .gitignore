@@ -52,6 +52,8 @@ _backup/
 # ...and the minimal malformed-input regression fixtures (issue #231)
 !tests/fixtures/ifc-corpus/malformed/*.ifc
 !tests/fixtures/ifc-corpus/extended/*.ifc
+# ...and the vendored third-party models (Duplex, Gymzaal — CC BY 4.0)
+!tests/fixtures/ifc-corpus/third-party/*.ifc
 obs-*.txt
 
 # Generated build-time WASM copy (scripts/copy-libredwg-wasm.mjs)

@@ -5,7 +5,7 @@
  *   collectUnits / readUnits      IfcUnitAssignment → SI base conversion
  *   buildSemanticModel            typed index: classes, GUIDs, relationships,
  *                                 psets, quantities, classifications, spatial
- *                                 tree, placements, preserved unknowns
+ *                                 tree, placements, group assignment, preserved unknowns
  *   inspectElement / findByGlobalId / physicalElementIds
  *   validateSemanticModel / summarizeFindings
  */

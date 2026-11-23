@@ -33,7 +33,14 @@ export interface StepFile {
   warnings: string[];
 }
 
-const ID_NAME_RE = /^#(\d+)=([A-Z0-9_]+)\s*\(/i;
+// ISO 10303-21 whitespace is insignificant between tokens, so a record
+// may be written `#1= IFCWALL(...)` as well as `#1=IFCWALL(...)`. The
+// EXPRESS Data Manager writer (Revit 2020 export, buildingSMART
+// "Example project location" / Gymzaal Amersfoort, corpus #96) emits a
+// space after every `=` — with no `\s*` here the reader silently read
+// ZERO entities from a valid 32,183-record IFC4 file. The project's own
+// writer never emits the space, so no corpus fixture exercised this.
+const ID_NAME_RE = /^#(\d+)=\s*([A-Z0-9_]+)\s*\(/i;
 
 /** Split STEP arguments at top level, respecting nesting and 'strings'. */
 export function splitStepArgs(s: string): string[] {

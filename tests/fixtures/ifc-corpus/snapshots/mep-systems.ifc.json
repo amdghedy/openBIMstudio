@@ -122,6 +122,10 @@
       "count": 3
     },
     {
+      "name": "IFCRELASSIGNSTOGROUP",
+      "count": 2
+    },
+    {
       "name": "IFCRELCONTAINEDINSPATIALSTRUCTURE",
       "count": 2
     },
@@ -154,6 +158,10 @@
       "count": 6
     },
     {
+      "name": "IFCSYSTEM",
+      "count": 2
+    },
+    {
       "name": "IFCUNITASSIGNMENT",
       "count": 1
     },
@@ -162,5 +170,5 @@
       "count": 1
     }
   ],
-  "geomHash": "8baa8afb6e527d0f"
+  "geomHash": "22d18657d740faa8"
 }
