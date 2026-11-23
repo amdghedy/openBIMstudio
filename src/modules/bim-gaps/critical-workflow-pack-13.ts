@@ -101,7 +101,7 @@ export function duplicateSelection(): number {
   return c;
 }
 
-export function selectionBBoxInfo(): Any {
+export function selectionBBoxInfo(): Any | null {
   const ids = new Set(selIds());
   if (!ids.size) { notify("warn", "Select elements first"); return null; }
   let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
