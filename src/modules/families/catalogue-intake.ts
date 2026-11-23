@@ -253,7 +253,7 @@ export function normalizeCatalogueRowsWithUnits(
     voltage: { v: 1, kv: 1000 },
   };
   const normalizedUnit = (value: string) => value.trim().toLowerCase().replace(/\s+/g, "");
-  return rows.map((row, rowIndex) => {
+  return rows.map((row) => {
     const next: CatalogueRow = { ...row };
     for (const field of ["width", "depth", "height"] as const) {
       const sourceUnit = units[field];
