@@ -64,7 +64,7 @@ export function parseCatalogueMappingProfile(value: unknown): CatalogueMappingPr
   if (!input.mappings || typeof input.mappings !== "object" || Array.isArray(input.mappings)) {
     throw new Error("Mapping profile must contain a mappings object.");
   }
-  const mappings: CatalogueMappingOverrides = {};
+  const mappings: CatalogueMappingOverrides = Object.create(null) as CatalogueMappingOverrides;
   for (const [header, field] of Object.entries(input.mappings as Record<string, unknown>)) {
     if (!header.trim() || header.length > 200) throw new Error("Mapping profile contains an invalid source heading.");
     if (field !== null && (typeof field !== "string" || !CATALOGUE_FIELDS.has(field as CatalogueField))) {
@@ -211,7 +211,7 @@ export function parseDelimitedCatalogue(source: string, delimiter?: string, mapp
       const key = mapped[c];
       if (key === "model") continue;
       const raw = cells[c] ?? "";
-      if (!key) { if (raw) (item as Record<string, string | number | undefined>)[headers[c]] = raw; continue; }
+      if (!key) { if (raw) Object.defineProperty(item, headers[c], { value: raw, enumerable: true, configurable: true, writable: true }); continue; }
       if (!raw) continue;
       if (["width", "depth", "height", "airflow", "staticPressure", "power", "voltage"].includes(key)) {
         const n = Number(raw.replace(/,/g, ""));
