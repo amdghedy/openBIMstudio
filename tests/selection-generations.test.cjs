@@ -32,11 +32,12 @@
  * MOD-SEL codes) and the engine cannot do fragment selection (no
  * modelId/localId model, no highlighter, no click wiring). The
  * resolution recorded here is therefore: BOTH STAY, the boundary is
- * pinned by this test, and the one place the generations are confused
- * (modify-actions "select-similar" reads the engine-class global and
- * can never run — see the pinned assertion below) is recorded as a
- * follow-up needing authored select-similar semantics, not silently
- * rewired to the wrong-typed live service.
+ * pinned by this test. The one place the generations were confused
+ * (modify-actions "select-similar" read the engine-class global and
+ * could never run) was fixed by the select-similar follow-up: it now
+ * runs authored select-similar semantics (same type, via the
+ * authoring selection) — see the pinned assertion below — and was
+ * never silently rewired to the wrong-typed live service.
  *
  * This test exercises the REAL live path, not mocks: it compiles the
  * real src/features/selection.ts (the actual singleton the boot chain
@@ -421,26 +422,33 @@ t("wiring: the engine is reachable in the live UI via the Sel Inspector ribbon b
   assert(ribbonTs.includes("openSelectionInspectorDialog"), "ribbon must wire it to openSelectionInspectorDialog");
 });
 
-t("wiring [KNOWN LIMITATION, pinned]: modify-actions select-similar reads the engine-class global, so it can never run", () => {
+t("wiring: modify-actions select-similar runs on the authoring selection, not the engine-class global", () => {
   // The "Select Similar" context-menu action (registry: "Select authored
-  // elements similar to the selected source element") reads the global
-  // that holds the SelectionEngine CLASS object and calls
+  // elements similar to the selected source element") used to read the
+  // global holding the SelectionEngine CLASS object and call
   // sel.selectSimilar("native", ids[0]). The class has no selectSimilar
   // method (and no instance is ever exposed), so `!sel?.selectSimilar`
-  // is always true and the action always warns instead of selecting.
-  // Fixing it needs authored select-similar semantics (same type? same
-  // category? via the engine's SelectByCategory/SelectByType or the
-  // authoring module) — a follow-up, NOT a silent rewire to the live
+  // was always true and the action always warned instead of selecting.
+  // The follow-up landed (fix/2d-select-similar): the action now uses
+  // authored select-similar semantics — same type as the seed, via the
+  // authoring selection (setSelectedAuthored, replace) — and never the
   // fragment service, whose selectSimilar(modelId, numeric localId)
-  // takes the wrong argument types for authored string ids. If that
-  // follow-up lands, update this assertion with it.
+  // takes the wrong argument types for authored string ids.
   assert(
-    modifyActions.includes("const sel = (window as Any).__obsSelection;"),
-    "modify-actions select-similar must read the engine-class global (pinned current state)",
+    !modifyActions.includes("const sel = (window as Any).__obsSelection;"),
+    "modify-actions select-similar must not read the engine-class global",
   );
   assert(
-    modifyActions.includes('await sel.selectSimilar("native", ids[0]);'),
-    "modify-actions select-similar must call sel.selectSimilar (pinned current state)",
+    !modifyActions.includes('await sel.selectSimilar("native", ids[0]);'),
+    "modify-actions select-similar must not call sel.selectSimilar",
+  );
+  assert(
+    modifyActions.includes('setSelectedAuthored(match, "replace")'),
+    "modify-actions select-similar must select through the authoring selection (replace)",
+  );
+  assert(
+    modifyActions.includes("e.type === seed.type"),
+    "modify-actions select-similar must match the seed's type",
   );
   assertEq(typeof engMod.SelectionEngine.selectSimilar, "undefined", "the SelectionEngine class has no selectSimilar");
 });
