@@ -82,11 +82,15 @@ assert.equal(def.geometry.kind, "box");
 const scopedGuidFamily = buildCatalogueFamilyDefinition(parsed.rows, {
   name: "Scoped Fan",
   dimensionUnit: "mm",
-  parameterScope: "instance",
+  parameterScopes: { Manufacturer: "instance" },
   parameterGuids: { Width: "550e8400-e29b-41d4-a716-446655440000" },
 });
-assert.ok(scopedGuidFamily.parameters.every((parameter) => parameter.scope === "instance"));
+assert.equal(scopedGuidFamily.parameters.find((parameter) => parameter.name === "Manufacturer").scope, "instance");
+assert.equal(scopedGuidFamily.parameters.find((parameter) => parameter.name === "Width").scope, "type");
 assert.equal(scopedGuidFamily.parameters.find((parameter) => parameter.name === "Width").guid, "550e8400-e29b-41d4-a716-446655440000");
+assert.throws(() => buildCatalogueFamilyDefinition(parsed.rows, {
+  name: "Unsafe instance scope", parameterScopes: { Width: "instance" },
+}), /catalogue variants contain different values/);
 assert.throws(() => buildCatalogueFamilyDefinition(parsed.rows, {
   name: "Bad GUID", parameterGuids: { Width: "not-a-guid" },
 }), /valid RFC 4122 UUID/);
