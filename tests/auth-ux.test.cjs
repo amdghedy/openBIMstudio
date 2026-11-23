@@ -63,7 +63,7 @@ t("auth.ts: sendResetEmail uses Resend only when RESEND_API_KEY exists", () => {
 // ── 2. worker: Google popup + forgot orchestration ──
 t("auth.ts: google start carries state=popup; callback page postMessages + closes", () => {
   const start = src(auth, "export function googleStartUrl", "\n/**\n * Email the reset link");
-  assert.ok(/popup \? "popup" : "app"/.test(start), "state must mark the popup flow");
+  assert.ok(start.includes("state,"), "start must carry browser-bound state");
   assert.ok(/prompt: "select_account"/.test(start), "select_account must stay (remembers previous accounts)");
   const cb = src(auth, "export function googlePopupCallbackPage", "\n/** Exchange the consent code");
   assert.ok(/window\.opener\.postMessage/.test(cb), "popup page must message the opener");
@@ -80,7 +80,7 @@ t("index.ts: forgot is orchestrated (mail when key set, resetUrl otherwise)", ()
 
 t("index.ts: callback branches popup vs top-level /?signedin=1", () => {
   const fn = src(worker, 'url.pathname === "/api/auth/google/callback"', 'url.pathname === "/api/auth/forgot"');
-  assert.ok(fn.includes('searchParams.get("state") === "popup"'), "callback must read the popup state");
+  assert.ok(fn.includes("popup = validateGoogleOAuthState(request)"), "callback must validate browser-bound state before using its popup mode");
   assert.ok(fn.includes('location: "/?signedin=1"'), "top-level flow must land on /?signedin=1");
   assert.ok(fn.includes("googlePopupCallbackPage(true)"), "popup success page missing");
   assert.ok(fn.includes("RESEND_API_KEY?") || worker.includes("RESEND_API_KEY?"), "Env must declare RESEND_API_KEY");
@@ -90,12 +90,12 @@ t("index.ts: Google popup and full-page callbacks both set the session cookie", 
   const start = worker.indexOf("        // Popup: tell the opener and close.");
   const end = worker.indexOf("      } catch (cause)", start);
   assert.ok(start >= 0 && end > start, "success response branch missing");
-  const respond = new Function("popup", "googlePopupCallbackPage", "setCookie", worker.slice(start, end));
+  const respond = new Function("popup", "googlePopupCallbackPage", "setCookie", "finish", worker.slice(start, end));
   const cookie = "obs_session=test-session; Path=/; HttpOnly; Secure; SameSite=Lax";
   for (const popup of [true, false]) {
     const response = respond(popup, () => new Response("popup-success", {
       headers: { "content-type": "text/html; charset=utf-8" },
-    }), cookie);
+    }), cookie, response => response);
     assert.strictEqual(response.headers.get("set-cookie"), cookie,
       `${popup ? "popup" : "full-page"} success must preserve the AuthVault cookie`);
     if (popup) {
@@ -163,6 +163,11 @@ t("cloud-account: popup opener + obs-oauth listener + blocked-popup fallback", (
 t("test is registered in package.json and ci-unit-tests.mjs", () => {
   assert.ok(pkg.scripts["test:auth-ux"], "package.json script test:auth-ux missing");
   assert.ok(ciList.includes("test:auth-ux"), "ci-unit-tests.mjs must run test:auth-ux");
+});
+
+t("Google OAuth runtime security regression suite", () => {
+  require("node:child_process").execFileSync(process.execPath,
+    [path.join(__dirname, "google-oauth-security.test.cjs")], { stdio: "pipe" });
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
