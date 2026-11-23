@@ -234,8 +234,8 @@ function buildPanel(): void {
         <label>Family name<input data-name value="Manufacturer Equipment"></label>
         <label>Manufacturer<input data-manufacturer placeholder="Manufacturer name"></label>
         <label>Revit / IFC category<select data-category><option value="equipment">Mechanical Equipment</option><option value="generic">Generic Model</option><option value="fitting">Fitting</option></select></label>
-        <label>Dimension unit<select data-unit><option value="mm">Millimetres (mm)</option><option value="cm">Centimetres (cm)</option><option value="m">Metres (m)</option></select></label>
-      </div></div>
+        <label>Dimension unit<select data-unit><option value="mm">Millimetres (mm)</option><option value="cm">Centimetres (cm)</option><option value="m">Metres (m)</option></select></label><label>Default parameter scope<select data-parameter-scope><option value="type">Type parameter</option><option value="instance">Instance parameter</option></select></label>
+      </div><label>Shared parameter GUIDs (optional JSON object: parameter name → existing UUID)<textarea data-parameter-guids rows="3" placeholder='{"Width":"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"}'></textarea><p class="cfg-muted">Only enter GUIDs issued by your approved shared-parameter standard. Blank values remain platform-local parameters; GUIDs are validated and duplicates are blocked.</p></div>
       <div class="cfg-card"><strong>04 · Extracted product types</strong><div data-rows><p class="cfg-muted">No product rows loaded yet.</p></div></div>
       <div class="cfg-card"><strong>05 · Quality review</strong><div data-qa class="cfg-muted">Import a catalogue to run completeness checks.</div></div>
       <div data-status role="status" aria-live="polite">Ready. Files are processed locally in this browser.</div>
@@ -382,7 +382,18 @@ function createFamily(): void {
   const unit = (panel?.querySelector<HTMLSelectElement>("[data-unit]")?.value ?? "mm") as "mm" | "cm" | "m";
   const reviewedRows = rows.map((r) => ({ ...r, manufacturer: r.manufacturer || manufacturer || undefined }));
   try {
-    const definition = buildCatalogueFamilyDefinition(reviewedRows, { name, category, dimensionUnit: unit });
+    const guidText = panel?.querySelector<HTMLTextAreaElement>("[data-parameter-guids]")?.value.trim() ?? "";
+    let parameterGuids: Record<string, string> = {};
+    if (guidText) {
+      const parsedGuids: unknown = JSON.parse(guidText);
+      if (!parsedGuids || typeof parsedGuids !== "object" || Array.isArray(parsedGuids)) throw new Error("Shared parameter GUID input must be a JSON object keyed by parameter name.");
+      parameterGuids = Object.fromEntries(Object.entries(parsedGuids as Record<string, unknown>).map(([key, value]) => {
+        if (typeof value !== "string") throw new Error(`GUID for "${key}" must be a string.`);
+        return [key, value];
+      }));
+    }
+    const parameterScope = (panel?.querySelector<HTMLSelectElement>("[data-parameter-scope]")?.value ?? "type") as "type" | "instance";
+    const definition = buildCatalogueFamilyDefinition(reviewedRows, { name, category, dimensionUnit: unit, parameterScope, parameterGuids });
     const family = svc.create(definition);
     if (!family?.id) throw new Error("Family service did not return a saved family ID.");
     status(`Created "${family.name}" with ${family.types.length} type(s) in the existing project family library. Geometry is currently a dimension-driven bounding-box template; detailed product geometry and native RFA export are later phases.`, "success");
