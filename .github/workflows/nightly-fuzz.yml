@@ -50,6 +50,18 @@ jobs:
           FUZZ_CHILD_TIMEOUT_MS: 8000
           FUZZ_ARTIFACT_DIR: fuzz-artifacts-bitflip
         run: npm run test:fuzz-ifc
+      # Replay every recorded failure in an isolated parser child; failures
+      # that reproduce are promoted to tests/fixtures/fuzz-regressions/ifc/
+      # with a manifest entry (seed, kind, input hash, observed failure).
+      # Runs even when a fuzz gate fails — that is when the fixtures matter.
+      # The job cannot commit (contents: read); the promoted fixtures are
+      # uploaded below for a human / follow-up PR to commit.
+      - name: Capture reproducible crashes as regression fixtures
+        if: always()
+        env:
+          FUZZ_INIT_TIMEOUT_MS: 30000
+          FUZZ_CHILD_TIMEOUT_MS: 8000
+        run: node scripts/fuzz-capture-regressions.mjs --format ifc --artifact-dir fuzz-artifacts --artifact-dir fuzz-artifacts-bitflip
       - name: Upload failing inputs and summary
         if: always()
         uses: actions/upload-artifact@v7
@@ -58,5 +70,92 @@ jobs:
           path: |
             fuzz-artifacts/
             fuzz-artifacts-bitflip/
+            tests/fixtures/fuzz-regressions/ifc/
+          if-no-files-found: warn
+          retention-days: 30
+
+  dxf-fuzz:
+    name: DXF corpus fuzzing
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        env:
+          npm_config_registry: https://registry.npmjs.org/
+        run: npm ci --legacy-peer-deps
+      - name: Run deterministic 500-mutation fuzz gate
+        env:
+          FUZZ_ITER: 500
+          FUZZ_SEED: 42
+          FUZZ_INIT_TIMEOUT_MS: 30000
+          FUZZ_CHILD_TIMEOUT_MS: 8000
+          FUZZ_ARTIFACT_DIR: fuzz-artifacts-dxf
+        run: npm run test:fuzz-dxf
+      # Same capture mechanism as the IFC job: replay failures, promote the
+      # reproducible ones to tests/fixtures/fuzz-regressions/dxf/.
+      - name: Capture reproducible crashes as regression fixtures
+        if: always()
+        env:
+          FUZZ_INIT_TIMEOUT_MS: 30000
+          FUZZ_CHILD_TIMEOUT_MS: 8000
+        run: node scripts/fuzz-capture-regressions.mjs --format dxf --artifact-dir fuzz-artifacts-dxf
+      - name: Upload failing inputs and summary
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-dxf-fuzz-${{ github.run_id }}
+          path: |
+            fuzz-artifacts-dxf/
+            tests/fixtures/fuzz-regressions/dxf/
+          if-no-files-found: warn
+          retention-days: 30
+
+  bcf-fuzz:
+    name: BCF markup fuzzing
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        env:
+          npm_config_registry: https://registry.npmjs.org/
+        run: npm ci --legacy-peer-deps
+      - name: Run deterministic 500-mutation fuzz gate
+        env:
+          FUZZ_ITER: 500
+          FUZZ_SEED: 42
+          FUZZ_INIT_TIMEOUT_MS: 30000
+          FUZZ_CHILD_TIMEOUT_MS: 8000
+          FUZZ_ARTIFACT_DIR: fuzz-artifacts-bcf
+        run: npm run test:fuzz-bcf
+      # Same capture mechanism as the IFC job: replay failures, promote the
+      # reproducible ones to tests/fixtures/fuzz-regressions/bcf/.
+      - name: Capture reproducible crashes as regression fixtures
+        if: always()
+        env:
+          FUZZ_INIT_TIMEOUT_MS: 30000
+          FUZZ_CHILD_TIMEOUT_MS: 8000
+        run: node scripts/fuzz-capture-regressions.mjs --format bcf --artifact-dir fuzz-artifacts-bcf
+      - name: Upload failing inputs and summary
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-bcf-fuzz-${{ github.run_id }}
+          path: |
+            fuzz-artifacts-bcf/
+            tests/fixtures/fuzz-regressions/bcf/
           if-no-files-found: warn
           retention-days: 30

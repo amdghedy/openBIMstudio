@@ -34,7 +34,7 @@ const scripts = [
   "test:v73-just", "test:v73-mag", "test:v73-panels", "test:v73-rel",
 
 
-  "test:ifc-semantics", "test:native-ifc-entities", "test:native-ifc-independent-validation", "test:ifc-corpus-manifest", "test:malformed-generators", "test:ifc-exchange", "test:fuzz-ifc", "test:fuzz-kind", "test:pdf-underlay-loader", "test:dep-safety", "test:webifc-abi", "test:ribbon-collapse", "test:project-browser-g11", "test:ribbon-tab-order", "test:ribbon-draw-order", "test:modify-tab-completion", "test:server-hardening", "test:share-links", "test:service-worker", "test:plugins", "test:feature-registry", "test:review-links", "test:escape-all", "test:revit-g9-view-controls",
+  "test:ifc-semantics", "test:native-ifc-entities", "test:native-ifc-independent-validation", "test:ifc-corpus-manifest", "test:malformed-generators", "test:ifc-exchange", "test:fuzz-ifc", "test:fuzz-dxf", "test:fuzz-bcf", "test:fuzz-capture", "test:fuzz-kind", "test:pdf-underlay-loader", "test:dep-safety", "test:webifc-abi", "test:ribbon-collapse", "test:project-browser-g11", "test:ribbon-tab-order", "test:ribbon-draw-order", "test:modify-tab-completion", "test:server-hardening", "test:share-links", "test:service-worker", "test:plugins", "test:feature-registry", "test:review-links", "test:escape-all", "test:revit-g9-view-controls",
   "test:welcome-screen", "test:cad-ai", "test:walk-key-guard", "test:auth-ux", "test:modeling-depth",
   "verify:v70", "verify:v71", "verify:v72", "verify:v73", "verify:v68",
 ];
