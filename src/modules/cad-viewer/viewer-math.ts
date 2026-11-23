@@ -4,207 +4,35 @@
  */
 import { findFont } from "../drawings/cad-styles";
 import type { DxfEntity, DxfLayout, DxfPoint, DxfUnits, DxfViewport } from "../drawings/dxf-types";
-import { pointInPolygon } from "../drawings/hatch-patterns";
 
 export type Pt = { x: number; y: number };
 export interface BBox { minX: number; minY: number; maxX: number; maxY: number }
 
 /* ───────────────────────── view transform ───────────────────────── */
 
-/** World point (cx, cy) at canvas centre; scale = px per world unit; screen Y down.
- *  `rot` (deg): extra upright rotation applied in world space before projection
- *  so drawings saved at an angle match the embedded PNG/top view orientation. */
-export interface View { cx: number; cy: number; scale: number; w: number; h: number; rot?: number }
+/** World point (cx, cy) sits at the canvas centre; scale = pixels per world unit; screen Y points down. */
+export interface View { cx: number; cy: number; scale: number; w: number; h: number }
 
-function rotPair(v: View, x: number, y: number): Pt {
-  const a = ((v.rot ?? 0) * Math.PI) / 180;
-  if (!a) return { x, y };
-  const c = Math.cos(a), s = Math.sin(a);
-  const dx = x - v.cx, dy = y - v.cy;
-  return { x: v.cx + dx * c - dy * s, y: v.cy + dx * s + dy * c };
-}
+export const worldToScreen = (v: View, x: number, y: number): Pt => ({ x: v.w / 2 + (x - v.cx) * v.scale, y: v.h / 2 - (y - v.cy) * v.scale });
+export const screenToWorld = (v: View, sx: number, sy: number): Pt => ({ x: v.cx + (sx - v.w / 2) / v.scale, y: v.cy - (sy - v.h / 2) / v.scale });
 
-function invRotPair(v: View, x: number, y: number): Pt {
-  const a = (-(v.rot ?? 0) * Math.PI) / 180;
-  if (!a) return { x, y };
-  const c = Math.cos(a), s = Math.sin(a);
-  const dx = x - v.cx, dy = y - v.cy;
-  return { x: v.cx + dx * c - dy * s, y: v.cy + dx * s + dy * c };
-}
-
-export const worldToScreen = (v: View, x: number, y: number): Pt => {
-  const p = rotPair(v, x, y);
-  return { x: v.w / 2 + (p.x - v.cx) * v.scale, y: v.h / 2 - (p.y - v.cy) * v.scale };
-};
-export const screenToWorld = (v: View, sx: number, sy: number): Pt => {
-  const x = v.cx + (sx - v.w / 2) / v.scale;
-  const y = v.cy - (sy - v.h / 2) / v.scale;
-  return invRotPair(v, x, y);
-};
-
-export function fitView(b: BBox, w: number, h: number, margin = 0.06, rot = 0): View {
-  const a = (rot * Math.PI) / 180;
-  const c = Math.cos(a), s = Math.sin(a);
-  const cx0 = (b.minX + b.maxX) / 2, cy0 = (b.minY + b.maxY) / 2;
-  // Bounds of the four corners after rotation about centre
-  const corners: Pt[] = [
-    { x: b.minX, y: b.minY }, { x: b.maxX, y: b.minY },
-    { x: b.minX, y: b.maxY }, { x: b.maxX, y: b.maxY },
-  ].map((p) => {
-    const dx = p.x - cx0, dy = p.y - cy0;
-    return { x: cx0 + dx * c - dy * s, y: cy0 + dx * s + dy * c };
-  });
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const p of corners) {
-    if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y;
-    if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y;
-  }
-  const bw = Math.max(maxX - minX, 1e-9), bh = Math.max(maxY - minY, 1e-9);
+export function fitView(b: BBox, w: number, h: number, margin = 0.06): View {
+  const bw = Math.max(b.maxX - b.minX, 1e-9), bh = Math.max(b.maxY - b.minY, 1e-9);
   const scale = Math.min((w * (1 - 2 * margin)) / bw, (h * (1 - 2 * margin)) / bh);
-  return {
-    cx: cx0,
-    cy: cy0,
-    scale: Number.isFinite(scale) && scale > 0 ? scale : 1,
-    w,
-    h,
-    rot: rot || undefined,
-  };
+  return { cx: (b.minX + b.maxX) / 2, cy: (b.minY + b.maxY) / 2, scale: Number.isFinite(scale) && scale > 0 ? scale : 1, w, h };
 }
 
-/**
- * View saved in the file (centre + model-space height shown) -> screen view, or null when it is
- * unusable (non-finite, zero size, twisted, or nowhere near the drawing).
- */
-export function savedViewToView(sv: { cx: number; cy: number; height: number; twist?: number } | undefined, b: BBox | null, w: number, h: number): View | null {
-  if (!sv || !b || !(w > 0) || !(h > 0)) return null;
-  if (![sv.cx, sv.cy, sv.height].every(Number.isFinite) || !(sv.height > 0)) return null;
-  if (sv.twist && Math.abs(sv.twist % 360) > 0.01) return null;
-  const bw = b.maxX - b.minX, bh = b.maxY - b.minY, pad = Math.max(bw, bh) * 0.25;
-  if (sv.cx < b.minX - pad || sv.cx > b.maxX + pad || sv.cy < b.minY - pad || sv.cy > b.maxY + pad) return null;
-  // A saved view hundreds of times larger/smaller than the drawing is a stale default, not a real view.
-  const dim = Math.max(bh, 1e-9);
-  if (sv.height > dim * 20 || sv.height < dim / 5000) return null;
-  return { cx: sv.cx, cy: sv.cy, scale: h / sv.height, w, h };
-}
-
-/**
- * Estimate the dominant axis angle of LINE geometry (degrees, -90..90).
- * Used to upright drawings that were saved with a rotated UCS / view.
- */
-export function estimatePrincipalAngle(entities: DxfEntity[], sampleCap = 12000): number {
-  const samples: Pt[] = [];
-  for (const e of entities) {
-    if (samples.length >= sampleCap) break;
-    if (e.type === "LINE") {
-      samples.push({ x: e.start.x, y: e.start.y }, { x: e.end.x, y: e.end.y });
-    } else if (e.type === "LWPOLYLINE" && e.points?.length) {
-      for (const pt of e.points) {
-        samples.push({ x: pt.x, y: pt.y });
-        if (samples.length >= sampleCap) break;
-      }
-    } else if (e.type === "CIRCLE" || e.type === "ARC") {
-      samples.push({ x: e.center.x, y: e.center.y });
-    } else if (e.type === "TEXT" || e.type === "POINT") {
-      samples.push({ x: e.position.x, y: e.position.y });
-    }
-  }
-  if (samples.length < 16) return 0;
-
-  // Full-circle min-area oriented bounding box (0.5° steps) — reliable for sheets
-  // drawn at an arbitrary angle (door schedules, rotated UCS, etc.).
-  let bestArea = Infinity;
-  let bestAng = 0;
-  for (let deg = 0; deg < 180; deg += 0.5) {
-    const a = (deg * Math.PI) / 180;
-    const c = Math.cos(a), s = Math.sin(a);
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const p of samples) {
-      const x = p.x * c - p.y * s;
-      const y = p.x * s + p.y * c;
-      if (x < minX) minX = x;
-      if (y < minY) minY = y;
-      if (x > maxX) maxX = x;
-      if (y > maxY) maxY = y;
-    }
-    const area = (maxX - minX) * (maxY - minY);
-    if (area < bestArea) {
-      bestArea = area;
-      bestAng = deg;
-    }
-  }
-
-  // Rotate by -bestAng so the tight box axes align with world X/Y.
-  // Prefer the orientation closer to horizontal for the long side.
-  let rot = -bestAng;
-  // Normalize to [-90, 90]
-  while (rot > 90) rot -= 180;
-  while (rot < -90) rot += 180;
-
-  // Compare area at rot vs rot±90 — pick the one with larger width (landscape schedules)
-  const areaAt = (deg: number) => {
-    const a = (deg * Math.PI) / 180;
-    const c = Math.cos(a), s = Math.sin(a);
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const p of samples) {
-      const x = p.x * c - p.y * s;
-      const y = p.x * s + p.y * c;
-      if (x < minX) minX = x;
-      if (y < minY) minY = y;
-      if (x > maxX) maxX = x;
-      if (y > maxY) maxY = y;
-    }
-    return { area: (maxX - minX) * (maxY - minY), w: maxX - minX, h: maxY - minY };
-  };
-  const a0 = areaAt(-rot);
-  const a90 = areaAt(-(rot + 90));
-  // Prefer landscape (w >= h) for typical schedule sheets
-  if (a90.w >= a90.h && a0.w < a0.h) rot = rot + 90;
-  while (rot > 90) rot -= 180;
-  while (rot < -90) rot += 180;
-
-  if (Math.abs(rot) < 0.75) return 0;
-  return rot;
-}
-
-/** Axis-aligned bounds ignoring the farthest 2% of entity centres (outlier junk). */
-export function robustEntityBounds(entities: DxfEntity[]): BBox | null {
-  const centers: Pt[] = [];
-  const boxes: BBox[] = [];
-  for (const e of entities) {
-    const b = entityBBox(e);
-    if (!Number.isFinite(b.minX + b.maxX + b.minY + b.maxY)) continue;
-    if (b.maxX - b.minX > 1e15 || b.maxY - b.minY > 1e15) continue;
-    centers.push({ x: (b.minX + b.maxX) * 0.5, y: (b.minY + b.maxY) * 0.5 });
-    boxes.push(b);
-  }
-  if (!boxes.length) return null;
-  if (boxes.length < 20) {
-    return boxes.reduce((a, b) => unionBBox(a, b)!, boxes[0]);
-  }
-  const mx = centers.map((c) => c.x).sort((a, b) => a - b);
-  const my = centers.map((c) => c.y).sort((a, b) => a - b);
-  const med = (a: number[]) => a[Math.floor(a.length / 2)]!;
-  const cx = med(mx), cy = med(my);
-  const dist = centers.map((c) => Math.hypot(c.x - cx, c.y - cy)).sort((a, b) => a - b);
-  const limit = dist[Math.floor(dist.length * 0.98)]! * 1.05 + 1e-6;
-  let out: BBox | null = null;
-  for (let i = 0; i < boxes.length; i++) {
-    if (Math.hypot(centers[i].x - cx, centers[i].y - cy) > limit) continue;
-    out = unionBBox(out, boxes[i]);
-  }
-  return out ?? boxes.reduce((a, b) => unionBBox(a, b)!, boxes[0]);
-}
-
+/** Zoom keeping the world point under the cursor fixed. */
 export function zoomAt(v: View, sx: number, sy: number, factor: number, minScale = 1e-9, maxScale = 1e9): View {
   const before = screenToWorld(v, sx, sy);
   const scale = Math.min(maxScale, Math.max(minScale, v.scale * factor));
   const next = { ...v, scale };
   const after = screenToWorld(next, sx, sy);
-  return { ...next, cx: v.cx + (before.x - after.x), cy: v.cy + (before.y - after.y), rot: v.rot };
+  return { ...next, cx: v.cx + (before.x - after.x), cy: v.cy + (before.y - after.y) };
 }
 
 export function panBy(v: View, dxPx: number, dyPx: number): View {
-  return { ...v, cx: v.cx - dxPx / v.scale, cy: v.cy + dyPx / v.scale, rot: v.rot };
+  return { ...v, cx: v.cx - dxPx / v.scale, cy: v.cy + dyPx / v.scale };
 }
 
 /** Zoom so the screen rectangle (two corners) fills the view. */
@@ -233,7 +61,7 @@ export function angleInArc(a: number, s: number, e: number): boolean {
 export const arcSweepDeg = (s: number, e: number) => norm360(e - s) || 360;
 
 /**
- * Canvas font stack for a TEXT. DWG SHX stroke fonts have no web equivalent, so they map to the
+ * Canvas font stack for a TEXT. AutoCAD SHX stroke fonts have no web equivalent, so they map to the
  * closest look: simplex/iso/romans/standard -> clean sans, txt/monotxt -> monospace, roman/times/serif TTFs -> serif.
  */
 export function textFontCss(e: Extract<DxfEntity, { type: "TEXT" }>, px: number): string {
@@ -249,7 +77,7 @@ export function textFontCss(e: Extract<DxfEntity, { type: "TEXT" }>, px: number)
   return `${e.italic ? "italic " : ""}${e.bold ? "bold " : ""}${px}px ${stack}`;
 }
 
-/** DWG default MTEXT line pitch = 5/3 of the text height. */
+/** AutoCAD default MTEXT line pitch = 5/3 of the text height. */
 export const TEXT_LINE_PITCH = 5 / 3;
 
 /** A styled slice of text inside a TEXT/MTEXT (from inline MTEXT format codes). */
@@ -539,20 +367,6 @@ export function orthoConstrain(a: Pt, b: Pt): Pt {
   return dx >= dy ? { x: b.x, y: a.y } : { x: a.x, y: b.y };
 }
 
-/**
- * Polar tracking: preserve the cursor distance while constraining its angle
- * to the nearest configured increment. Invalid increments leave B unchanged.
- */
-export function polarConstrain(a: Pt, b: Pt, angleStep = 90): Pt {
-  if (!Number.isFinite(angleStep) || angleStep <= 0 || angleStep > 360) return { ...b };
-  const dx = b.x - a.x, dy = b.y - a.y;
-  const len = Math.hypot(dx, dy);
-  if (!Number.isFinite(len) || len < 1e-12) return { ...b };
-  const increment = (angleStep * Math.PI) / 180;
-  const angle = Math.round(Math.atan2(dy, dx) / increment) * increment;
-  return { x: a.x + Math.cos(angle) * len, y: a.y + Math.sin(angle) * len };
-}
-
 /** Shortest distance from point P to segment AB, and the foot of the perpendicular. */
 export function distPointToSeg(p: Pt, a: Pt, b: Pt): { dist: number; foot: Pt; t: number } {
   const dx = b.x - a.x, dy = b.y - a.y;
@@ -656,43 +470,17 @@ export function formatQty(v: number, from: DxfUnits | undefined, to: DisplayUnit
   return `${n.toFixed(d)} ${unitLabel(from, to)}${power === 2 ? "²" : ""}`;
 }
 
-/**
- * UNITS dialog — Length Type → display unit mapping (same `du` state the
- * settings-bar selector drives, so the dialog and the toolbar cannot disagree).
- * Decimal keeps drawing units; Architectural shows feet; Engineering inches.
- */
-export function displayUnitForLengthType(lengthType: string): DisplayUnit {
-  const k = (lengthType || "").trim().toLowerCase();
-  if (k.startsWith("arch")) return "ft";
-  if (k.startsWith("eng")) return "in";
-  return "drawing";
-}
-
-/** Inverse of displayUnitForLengthType — preselects the dialog's Length Type. */
-export function lengthTypeForDisplayUnit(du: DisplayUnit): string {
-  if (du === "ft") return "Architectural";
-  if (du === "in") return "Engineering";
-  return "Decimal";
-}
-
-/** "0.0000" → 4 decimals, "0.00" → 2, "0.000000" → 6; unparseable keeps the 4-digit default. */
-export function coordDigitsForPrecisionLabel(precisionLabel: string): number {
-  const m = /0\.(0+)/.exec(precisionLabel || "");
-  return m ? Math.min(m[1].length, 8) : 4;
-}
-
 /* ───────────────────────── spatial index ───────────────────────── */
 
-export interface SpatialIndex { cell: number; minX: number; minY: number; cols: number; rows: number; cells: Map<number, number[]>; big: number[]; infinite: number[]; boxes: BBox[] }
+export interface SpatialIndex { cell: number; minX: number; minY: number; cols: number; rows: number; cells: Map<number, number[]>; big: number[]; boxes: BBox[] }
 
 export function buildIndex(entities: DxfEntity[], bounds: BBox, targetCells = 256): SpatialIndex {
   const w = Math.max(bounds.maxX - bounds.minX, 1e-9), h = Math.max(bounds.maxY - bounds.minY, 1e-9);
   const cell = Math.max(w, h) / targetCells;
   const cols = Math.ceil(w / cell) + 1, rows = Math.ceil(h / cell) + 1;
-  const idx: SpatialIndex = { cell, minX: bounds.minX, minY: bounds.minY, cols, rows, cells: new Map(), big: [], infinite: [], boxes: new Array(entities.length) };
+  const idx: SpatialIndex = { cell, minX: bounds.minX, minY: bounds.minY, cols, rows, cells: new Map(), big: [], boxes: new Array(entities.length) };
   entities.forEach((e, i) => {
     const b = entityBBox(e); idx.boxes[i] = b;
-    if (e.type === "RAY" || e.type === "XLINE") idx.infinite.push(i);
     const c0 = Math.floor((b.minX - bounds.minX) / cell), c1 = Math.floor((b.maxX - bounds.minX) / cell);
     const r0 = Math.floor((b.minY - bounds.minY) / cell), r1 = Math.floor((b.maxY - bounds.minY) / cell);
     if ((c1 - c0 + 1) * (r1 - r0 + 1) > 64) { idx.big.push(i); return; }
@@ -703,107 +491,22 @@ export function buildIndex(entities: DxfEntity[], bounds: BBox, targetCells = 25
 
 /** Entity indices whose bounding box could be within `radius` of (x, y). */
 export function queryIndex(idx: SpatialIndex, x: number, y: number, radius: number): number[] {
-  const infinite = new Set(idx.infinite);
-  const out = new Set<number>([...idx.big, ...idx.infinite]);
+  const out = new Set<number>(idx.big);
   const c0 = Math.floor((x - radius - idx.minX) / idx.cell), c1 = Math.floor((x + radius - idx.minX) / idx.cell);
   const r0 = Math.floor((y - radius - idx.minY) / idx.cell), r1 = Math.floor((y + radius - idx.minY) / idx.cell);
   for (let r = Math.max(r0, 0); r <= Math.min(r1, idx.rows - 1); r++) for (let c = Math.max(c0, 0); c <= Math.min(c1, idx.cols - 1); c++) {
     const a = idx.cells.get(r * idx.cols + c); if (a) for (const i of a) out.add(i);
   }
-  return [...out].filter((i) => {
-    if (infinite.has(i)) return true;
-    const b = idx.boxes[i];
-    return !!b && x >= b.minX - radius && x <= b.maxX + radius && y >= b.minY - radius && y <= b.maxY + radius;
-  });
+  return [...out].filter((i) => { const b = idx.boxes[i]; return x >= b.minX - radius && x <= b.maxX + radius && y >= b.minY - radius && y <= b.maxY + radius; });
 }
 
-/**
- * Entity indices whose bounds intersect a world-space viewport / selection box.
- * Cell lookup avoids walking the complete drawing on every repaint. Results
- * are sorted to preserve DXF draw order; long construction lines are always
- * returned because their anchor-only bounding boxes do not describe visibility.
- */
-export function queryIndexBox(idx: SpatialIndex, entities: DxfEntity[], box: BBox): number[] {
-  const candidates = new Set<number>(idx.big);
-  const c0 = Math.floor((box.minX - idx.minX) / idx.cell);
-  const c1 = Math.floor((box.maxX - idx.minX) / idx.cell);
-  const r0 = Math.floor((box.minY - idx.minY) / idx.cell);
-  const r1 = Math.floor((box.maxY - idx.minY) / idx.cell);
-  for (let r = Math.max(0, r0); r <= Math.min(idx.rows - 1, r1); r++) {
-    for (let c = Math.max(0, c0); c <= Math.min(idx.cols - 1, c1); c++) {
-      const cell = idx.cells.get(r * idx.cols + c);
-      if (cell) for (const i of cell) candidates.add(i);
-    }
-  }
-  const infinite = new Set(idx.infinite);
-  for (const i of infinite) candidates.add(i);
-  const out = [...candidates].filter((i) => {
-    if (infinite.has(i)) return true;
-    const b = idx.boxes[i];
-    return !!b && !(b.maxX < box.minX || b.minX > box.maxX || b.maxY < box.minY || b.minY > box.maxY);
-  }).sort((a, b) => a - b);
-  // Avoid a needless candidate sort in the common zoom-extents / tiny drawing case.
-  if (entities.length && out.length >= entities.length * 0.8) {
-    return Array.from({ length: entities.length }, (_, i) => i);
-  }
-  return out;
-}
-
-export interface PickCandidate { index: number; distance: number }
-
-/**
- * Return all visible entities hit by a point, ordered by geometric distance.
- * Equal-distance hits prefer later drawing order (the visually top-most entity).
- * Kept separate from pickEntity so existing modify tools retain their behavior.
- */
-/** True when (x, y) lands inside the fill of a closed hatched polyline (even-odd over its loops). */
-export function hatchFillHit(e: DxfEntity, x: number, y: number): boolean {
-  if (e.type !== "LWPOLYLINE" || !e.hatch || !e.closed || e.hatch.wipeout) return false;
-  for (const loop of e.hatch.loops) {
-    if (pointInPolygon({ x, y }, loop)) return true;
-  }
-  return false;
-}
-
-/**
- * Pick distance for one entity: edge distance (+ hatch penalty when it is a
- * hatch edge, so a line under the cursor beats it), or a inside-fill hit at
- * 0.75·tol — clicking inside an empty hatch area selects the hatch, but an
- * object actually under the cursor still wins.
- */
-function pickDistance(e: DxfEntity, x: number, y: number, tol: number): number {
-  const d0 = distToEntity(e, x, y);
-  if (d0 <= tol) return d0 + (isHatchEntity(e) ? tol * 0.6 : 0);
-  if (hatchFillHit(e, x, y)) return tol * 0.75;
-  return d0;
-}
-
-export function pickEntities(
-  idx: SpatialIndex, entities: DxfEntity[], x: number, y: number, tol: number,
-  visible: (e: DxfEntity) => boolean = () => true, maxResults = 32,
-): PickCandidate[] {
-  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(tol) || tol < 0) return [];
-  const hits: PickCandidate[] = [];
-  for (const index of queryIndex(idx, x, y, tol)) {
-    const entity = entities[index];
-    if (!entity || !visible(entity)) continue;
-    const d = pickDistance(entity, x, y, tol);
-    if (Number.isFinite(d) && d <= tol + 1e-12) hits.push({ index, distance: d });
-  }
-  hits.sort((a, b) => {
-    const delta = a.distance - b.distance;
-    return Math.abs(delta) <= 1e-12 ? b.index - a.index : delta;
-  });
-  const limit = Number.isFinite(maxResults) ? Math.max(1, Math.min(256, Math.floor(maxResults))) : 32;
-  return hits.slice(0, limit);
-}
 /** Index of the entity nearest the point within `tol` (world units), preferring smaller entities on ties. */
 export function pickEntity(idx: SpatialIndex, entities: DxfEntity[], x: number, y: number, tol: number, visible: (e: DxfEntity) => boolean = () => true): number {
   let best = -1, bd = tol;
   for (const i of queryIndex(idx, x, y, tol)) {
     const e = entities[i];
     if (!visible(e)) continue;
-    const d = pickDistance(e, x, y, tol); // a line near the cursor beats a hatch edge; inside a hatch fill selects the hatch
+    const d = distToEntity(e, x, y) + (isHatchEntity(e) ? tol * 0.6 : 0); // a line near the cursor beats a hatch edge
     if (d < bd - 1e-12) { bd = d; best = i; }
   }
   return best;
@@ -811,28 +514,78 @@ export function pickEntity(idx: SpatialIndex, entities: DxfEntity[], x: number, 
 
 /* ───────────────────────── snapping ───────────────────────── */
 
-export type SnapKind = "endpoint" | "midpoint" | "center" | "quadrant" | "intersection" | "perpendicular" | "tangent" | "parallel" | "nearest";
-export interface Snap { x: number; y: number; kind: SnapKind }
-export const ALL_SNAPS: SnapKind[] = ["endpoint", "midpoint", "center", "quadrant", "intersection", "perpendicular", "tangent", "parallel", "nearest"];
+/** Legacy + extended CAD object-snap kinds (AutoCAD parity). */
+export type SnapKind =
+  | "endpoint"
+  | "midpoint"
+  | "center"
+  | "quadrant"
+  | "intersection"
+  | "perpendicular"
+  | "nearest"
+  | "extension"
+  | "parallel"
+  | "tangent"
+  | "node"
+  | "insertion"
+  | "apparent"
+  | "geometric-center";
+export interface Snap { x: number; y: number; kind: SnapKind; direction?: { x: number; y: number }; entityIndex?: number }
+export const ALL_SNAPS: SnapKind[] = [
+  "endpoint", "midpoint", "center", "quadrant", "intersection", "perpendicular", "nearest",
+  "extension", "parallel", "tangent", "node", "insertion", "apparent", "geometric-center",
+];
+/** Default modes for new drawings (AutoCAD-like). */
+export const DEFAULT_SNAP_MODES: SnapKind[] = [
+  "endpoint", "midpoint", "center", "intersection", "perpendicular", "extension", "nearest",
+];
 
 function keyPoints(e: DxfEntity): Snap[] {
   switch (e.type) {
-    case "LINE": return [{ ...e.start, kind: "endpoint" }, { ...e.end, kind: "endpoint" }, { x: (e.start.x + e.end.x) / 2, y: (e.start.y + e.end.y) / 2, kind: "midpoint" }];
-    case "CIRCLE": return [{ x: e.center.x, y: e.center.y, kind: "center" }, ...[0, 90, 180, 270].map((q) => ({ ...arcPt(e, q), kind: "quadrant" as const }))];
+    case "LINE": {
+      const out: Snap[] = [
+        { ...e.start, kind: "endpoint" },
+        { ...e.end, kind: "endpoint" },
+        { x: (e.start.x + e.end.x) / 2, y: (e.start.y + e.end.y) / 2, kind: "midpoint" },
+      ];
+      const L = Math.hypot(e.end.x - e.start.x, e.end.y - e.start.y);
+      if (L > 1e-12) {
+        const ux = (e.end.x - e.start.x) / L, uy = (e.end.y - e.start.y) / L;
+        out.push({ x: e.start.x, y: e.start.y, kind: "extension", direction: { x: -ux, y: -uy } });
+        out.push({ x: e.end.x, y: e.end.y, kind: "extension", direction: { x: ux, y: uy } });
+      }
+      return out;
+    }
+    case "CIRCLE": return [
+      { x: e.center.x, y: e.center.y, kind: "center" },
+      { x: e.center.x, y: e.center.y, kind: "geometric-center" },
+      ...[0, 90, 180, 270].map((q) => ({ ...arcPt(e, q), kind: "quadrant" as const })),
+    ];
     case "ARC": {
       const mid = e.startAngle + arcSweepDeg(e.startAngle, e.endAngle) / 2;
-      return [{ x: e.center.x, y: e.center.y, kind: "center" }, { ...arcPt(e, e.startAngle), kind: "endpoint" }, { ...arcPt(e, e.endAngle), kind: "endpoint" }, { ...arcPt(e, mid), kind: "midpoint" }];
+      return [
+        { x: e.center.x, y: e.center.y, kind: "center" },
+        { ...arcPt(e, e.startAngle), kind: "endpoint" },
+        { ...arcPt(e, e.endAngle), kind: "endpoint" },
+        { ...arcPt(e, mid), kind: "midpoint" },
+      ];
     }
     case "LWPOLYLINE": {
       const out: Snap[] = e.points.map((p) => ({ x: p.x, y: p.y, kind: "endpoint" as const }));
       for (const [a, b] of polySegs(e)) out.push({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, kind: "midpoint" });
+      if (e.points.length >= 3) {
+        let sx = 0, sy = 0;
+        for (const p of e.points) { sx += p.x; sy += p.y; }
+        out.push({ x: sx / e.points.length, y: sy / e.points.length, kind: "geometric-center" });
+      }
       return out;
     }
-    case "TEXT": return [{ x: e.position.x, y: e.position.y, kind: "endpoint" }];
-    case "POINT": return [{ x: e.position.x, y: e.position.y, kind: "endpoint" }];
+    case "TEXT": return [{ x: e.position.x, y: e.position.y, kind: "endpoint" }, { x: e.position.x, y: e.position.y, kind: "insertion" }];
+    case "POINT": return [{ x: e.position.x, y: e.position.y, kind: "endpoint" }, { x: e.position.x, y: e.position.y, kind: "node" }];
     case "RAY":
     case "XLINE": return [{ x: e.start.x, y: e.start.y, kind: "endpoint" }];
   }
+  return [];
 }
 
 export function segSegIntersection(a: Pt, b: Pt, c: Pt, d: Pt): Pt | null {
@@ -844,10 +597,13 @@ export function segSegIntersection(a: Pt, b: Pt, c: Pt, d: Pt): Pt | null {
   return { x: a.x + t * r.x, y: a.y + t * r.y };
 }
 
-const TIER: Record<SnapKind, number> = { endpoint: 0, midpoint: 0, center: 0, quadrant: 0, intersection: 1, perpendicular: 1, tangent: 1, parallel: 1, nearest: 2 };
+const TIER: Record<SnapKind, number> = {
+  endpoint: 0, midpoint: 0, center: 0, quadrant: 0, node: 0, insertion: 0, "geometric-center": 0,
+  intersection: 1, apparent: 1, extension: 1, perpendicular: 1, tangent: 1, parallel: 1, nearest: 2,
+};
 
 /**
- * Object snap. Optional `fromPt` enables DWG-style PERPENDICULAR: the foot
+ * Object snap. Optional `fromPt` enables AutoCAD-style PERPENDICULAR: the foot
  * of the perpendicular from `fromPt` onto nearby segments, when that foot is
  * within `tol` of the cursor (so the user is aiming near the true foot).
  */
@@ -881,63 +637,75 @@ export function findSnap(
     if (d > tol) return;
     if (!best || TIER[s.kind] < TIER[best.kind] || (TIER[s.kind] === TIER[best.kind] && d < bd)) { best = s; bd = d; }
   };
-  for (const i of ids) for (const k of keyPoints(entities[i])) consider(k);
-  if (on.has("intersection")) {
+  for (const i of ids) {
+    for (const k of keyPoints(entities[i])) {
+      if (k.kind === "extension") continue; // projected below
+      consider({ ...k, entityIndex: i });
+    }
+  }
+  if (on.has("intersection") || on.has("apparent")) {
     const segs: Array<[Pt, Pt]> = [];
     for (const i of ids) segs.push(...entitySegments(entities[i]));
-    for (let i = 0; i < segs.length && i < 60; i++) for (let j = i + 1; j < segs.length && j < 60; j++) {
+    for (let i = 0; i < segs.length && i < 80; i++) for (let j = i + 1; j < segs.length && j < 80; j++) {
       const p = segSegIntersection(segs[i][0], segs[i][1], segs[j][0], segs[j][1]);
       if (p) consider({ ...p, kind: "intersection" });
     }
   }
-  // Reference-dependent snaps use a wider search around the previous point.
-  const referenceIds = fromPt
-    ? queryIndex(idx, fromPt.x, fromPt.y, Math.max(tol * 40, 1)).filter((i) => visible(entities[i]) && !isHatchEntity(entities[i]))
-    : [];
-  const referenceSegments: Array<[Pt, Pt]> = [];
-  for (const i of [...new Set([...ids, ...referenceIds])]) referenceSegments.push(...entitySegments(entities[i]));
-
-  // PERPENDICULAR (DWG PERP): foot from the previous point to a segment.
+  // EXTENSION: project cursor onto infinite rays past endpoints
+  if (on.has("extension")) {
+    for (const i of ids) {
+      for (const k of keyPoints(entities[i])) {
+        if (k.kind !== "extension" || !k.direction) continue;
+        const t = (x - k.x) * k.direction.x + (y - k.y) * k.direction.y;
+        if (t < 0) continue;
+        consider({ x: k.x + t * k.direction.x, y: k.y + t * k.direction.y, kind: "extension", direction: k.direction, entityIndex: i });
+      }
+    }
+  }
+  // PERPENDICULAR (AutoCAD PERP): from the previous point drop a foot onto
+  // nearby segments; offer it when the cursor is close to that foot.
   if (on.has("perpendicular") && fromPt) {
+    const segs: Array<[Pt, Pt]> = [];
+    for (const i of ids) segs.push(...entitySegments(entities[i]));
+    const wide = queryIndex(idx, fromPt.x, fromPt.y, Math.max(tol * 40, 1)).filter((i) => visible(entities[i]));
+    for (const i of wide) segs.push(...entitySegments(entities[i]));
     const seen = new Set<string>();
-    for (const [a, b] of referenceSegments) {
+    for (const [a, b] of segs) {
       const key = `${a.x},${a.y},${b.x},${b.y}`;
       if (seen.has(key)) continue;
       seen.add(key);
       const foot = nearestOnSegment(fromPt, a, b);
+      if (!foot) continue;
       consider({ x: foot.x, y: foot.y, kind: "perpendicular" });
     }
   }
-
-  // PARALLEL: project the cursor onto a line through the previous point,
-  // parallel to each nearby LINE / polyline segment.
-  if (on.has("parallel") && fromPt) {
-    const seen = new Set<string>();
-    for (const [a, b] of referenceSegments) {
-      const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
-      if (l2 < 1e-18) continue;
-      const key = `${dx / Math.sqrt(l2)},${dy / Math.sqrt(l2)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const t = ((x - fromPt.x) * dx + (y - fromPt.y) * dy) / l2;
-      consider({ x: fromPt.x + t * dx, y: fromPt.y + t * dy, kind: "parallel" });
-    }
-  }
-
-  // TANGENT: from the previous point, calculate both tangent points to each
-  // visible circle/arc and offer the one the cursor is aiming at.
+  // TANGENT from fromPt to circle/arc
   if (on.has("tangent") && fromPt) {
-    for (const i of referenceIds) {
+    for (const i of ids) {
       const e = entities[i];
       if (e.type !== "CIRCLE" && e.type !== "ARC") continue;
-      const dx = fromPt.x - e.center.x, dy = fromPt.y - e.center.y;
-      const d2 = dx * dx + dy * dy, r2 = e.radius * e.radius;
-      if (d2 <= r2 + 1e-12 || e.radius <= 0) continue;
-      const base = Math.atan2(dy, dx), alpha = Math.acos(Math.min(1, e.radius / Math.sqrt(d2)));
-      for (const angle of [base + alpha, base - alpha]) {
-        const deg = ((angle / DEG) % 360 + 360) % 360;
-        if (e.type === "ARC" && !angleInArc(deg, e.startAngle, e.endAngle)) continue;
-        consider({ x: e.center.x + e.radius * Math.cos(angle), y: e.center.y + e.radius * Math.sin(angle), kind: "tangent" });
+      const cx = e.center.x, cy = e.center.y, r = e.radius;
+      const dx = fromPt.x - cx, dy = fromPt.y - cy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 <= r * r + 1e-12) continue;
+      const d = Math.sqrt(d2);
+      const a = Math.asin(Math.min(1, r / d));
+      const base = Math.atan2(dy, dx);
+      for (const sign of [-1, 1] as const) {
+        const ang = base + sign * (Math.PI / 2 - a);
+        consider({ x: cx + r * Math.cos(ang), y: cy + r * Math.sin(ang), kind: "tangent", entityIndex: i });
+      }
+    }
+  }
+  // PARALLEL: keep new segment parallel to a nearby segment
+  if (on.has("parallel") && fromPt) {
+    for (const i of ids) {
+      for (const [a, b] of entitySegments(entities[i])) {
+        const L = Math.hypot(b.x - a.x, b.y - a.y);
+        if (L < 1e-12) continue;
+        const ux = (b.x - a.x) / L, uy = (b.y - a.y) / L;
+        const t = (x - fromPt.x) * ux + (y - fromPt.y) * uy;
+        consider({ x: fromPt.x + t * ux, y: fromPt.y + t * uy, kind: "parallel", direction: { x: ux, y: uy }, entityIndex: i });
       }
     }
   }
@@ -991,42 +759,14 @@ function segHitsRect(a: Pt, b: Pt, r: BBox): boolean {
 }
 
 /**
- * True when an infinite construction line (or forward-only ray) intersects a
- * selection rectangle. The start point may be far outside the selection box.
- */
-function infiniteLineHitsRect(e: Extract<DxfEntity, { type: "RAY" | "XLINE" }>, rect: BBox): boolean {
-  const dx = e.direction.x, dy = e.direction.y;
-  if (Math.hypot(dx, dy) < 1e-18) return false;
-  let tMin = e.type === "RAY" ? 0 : -Infinity;
-  let tMax = Infinity;
-  const clipAxis = (origin: number, direction: number, min: number, max: number): boolean => {
-    if (Math.abs(direction) < 1e-18) return origin >= min && origin <= max;
-    const a = (min - origin) / direction;
-    const b = (max - origin) / direction;
-    tMin = Math.max(tMin, Math.min(a, b));
-    tMax = Math.min(tMax, Math.max(a, b));
-    return tMin <= tMax;
-  };
-  return clipAxis(e.start.x, dx, rect.minX, rect.maxX) &&
-    clipAxis(e.start.y, dy, rect.minY, rect.maxY) &&
-    tMin <= tMax;
-}
-
-/**
  * Entities picked by a world-space rectangle.
  * "window": entity must lie fully inside. "crossing": entity only has to touch the rectangle.
  */
 export function selectInRect(idx: SpatialIndex, entities: DxfEntity[], rect: BBox, mode: "window" | "crossing", visible: (e: DxfEntity) => boolean = () => true): number[] {
   const out: number[] = [];
-  for (const i of queryIndexBox(idx, entities, rect)) {
+  for (let i = 0; i < entities.length; i++) {
     const b = idx.boxes[i], e = entities[i];
     if (!visible(e)) continue;
-    if (e.type === "RAY" || e.type === "XLINE") {
-      // Infinite construction lines cannot be fully enclosed by a window
-      // selection, but must participate in crossing selection along their path.
-      if (mode === "crossing" && infiniteLineHitsRect(e, rect)) out.push(i);
-      continue;
-    }
     if (mode === "window") { if (boxContains(rect, b)) out.push(i); continue; }
     if (!boxesIntersect(b, rect)) continue;
     const segs = entitySegments(e);
@@ -1094,7 +834,7 @@ export function hatchFamilies(pattern: string | undefined, angle = 0, scale = 1)
   return row.map(([a, sp]) => ({ angle: a + angle, spacing: sp * sc }));
 }
 
-/** Lines of one hatch family covering `box`, anchored at the drawing origin like DWG. Segment = [x1,y1,x2,y2]. */
+/** Lines of one hatch family covering `box`, anchored at the drawing origin like AutoCAD. Segment = [x1,y1,x2,y2]. */
 export function hatchLineSegments(box: BBox, angleDeg: number, spacing: number, maxLines = 4000): Array<[number, number, number, number]> {
   if (!(spacing > 0)) return [];
   const a = angleDeg * DEG, dx = Math.cos(a), dy = Math.sin(a), nx = -dy, ny = dx;
@@ -1114,7 +854,7 @@ export function hatchLineSegments(box: BBox, angleDeg: number, spacing: number, 
  * Each family is one pattern-line definition straight from the file (already
  * transformed into drawing space by the mapper): `angle` in radians, `base`
  * the line's anchor point, `offset` the vector to the next parallel line
- * (perpendicular spacing plus the along-line shift DWG uses) and `dashes`
+ * (perpendicular spacing plus the along-line shift AutoCAD uses) and `dashes`
  * the alternating dash(+)/gap(−) lengths anchored at each line origin.
  * Segment = [x1,y1,x2,y2] in world coordinates.
  */
@@ -1167,7 +907,7 @@ export function hatchPatternLineSegments(
         continue;
       }
       // Dashed family line: dash pattern repeats with period patternLen,
-      // anchored at the line origin (w = 0) like DWG.
+      // anchored at the line origin (w = 0) like AutoCAD.
       const first = Math.floor(wMin / patternLen);
       const last = Math.ceil(wMax / patternLen);
       for (let rep = first; rep <= last; rep++) {
@@ -1313,7 +1053,7 @@ export function quickMeasureParts(e: DxfEntity): Array<{ label: string; value: n
 
 /* ───────────────────────── grip editing ───────────────────────── */
 
-/** One DWG grip hotspot on an entity (unselected: blue, hover: green, hot: red). */
+/** One AutoCAD grip hotspot on an entity (unselected: blue, hover: green, hot: red). */
 export interface Grip {
   x: number;
   y: number;
@@ -1329,7 +1069,7 @@ const gripCircle = (e: Extract<DxfEntity, { type: "CIRCLE" }>): Grip[] => [
 ];
 
 /**
- * DWG grip hotspots for an entity: blue squares that can be dragged to
+ * AutoCAD grip hotspots for an entity: blue squares that can be dragged to
  * stretch (LINE ends, polyline vertices), move (center / insertion), or
  * resize (circle/arc radius, arc angles). Grip count is naturally bounded —
  * callers may cap it for huge selections.
@@ -1422,36 +1162,4 @@ export function applyGripDrag(e: DxfEntity, gi: number, to: Pt): DxfEntity | nul
     default:
       return null;
   }
-}
-
-
-export interface GradientRamp { x0: number; y0: number; x1: number; y1: number; stops: Array<{ o: number; rgb: number }> }
-/**
- * Geometry of an AutoCAD gradient hatch in world space: the ramp runs along the gradient angle across the loops' bounding box
- * (centre +/- half the box's extent projected on that direction). LINEAR is exact; CYLINDER / INVCYLINDER mirror the ramp about
- * the centre; the spherical / hemispherical / curved families are approximated by the linear ramp. Single-colour gradients
- * with only one stop ramp to white by the tint.
- */
-export function gradientRamp(
-  g: { name: string; angle: number; single: boolean; tint: number; stops: Array<{ pos: number; rgb: number }> },
-  box: BBox,
-): GradientRamp | null {
-  if (!g.stops.length || !(box.maxX >= box.minX) || !(box.maxY >= box.minY)) return null;
-  const w = box.maxX - box.minX, h = box.maxY - box.minY;
-  const dx = Math.cos(g.angle), dy = Math.sin(g.angle);
-  const half = (Math.abs(w * dx) + Math.abs(h * dy)) / 2;
-  const cx = (box.minX + box.maxX) / 2, cy = (box.minY + box.maxY) / 2;
-  let stops = g.stops.slice().sort((a, b) => a.pos - b.pos).map((s) => ({ o: s.pos, rgb: s.rgb }));
-  if (stops.length === 1) {
-    const c = stops[0].rgb, t = Math.min(1, Math.max(0, Number.isFinite(g.tint) ? g.tint : 1));
-    const mix = (a: number) => Math.round(a + (255 - a) * (1 - t));
-    stops = [{ o: 0, rgb: c }, { o: 1, rgb: (mix((c >> 16) & 255) << 16) | (mix((c >> 8) & 255) << 8) | mix(c & 255) }];
-  }
-  const nm = g.name.toUpperCase();
-  if (nm === "CYLINDER" || nm === "INVCYLINDER") {
-    const a = nm === "CYLINDER" ? stops[0].rgb : stops[stops.length - 1].rgb;
-    const b = nm === "CYLINDER" ? stops[stops.length - 1].rgb : stops[0].rgb;
-    stops = [{ o: 0, rgb: a }, { o: 0.5, rgb: b }, { o: 1, rgb: a }];
-  }
-  return { x0: cx - dx * half, y0: cy - dy * half, x1: cx + dx * half, y1: cy + dy * half, stops };
 }

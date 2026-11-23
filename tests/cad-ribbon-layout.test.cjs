@@ -40,10 +40,10 @@ t("shell mounts chrome in DWG order: ribbon tabs, panels, drawing tabs, pages", 
 });
 
 // ── 2. Ribbon tabs row content ──
-t("ribbon tabs: Home / Insert / Annotate / Parametric / View / Manage / Output / Express Tools / Collaborate", () => {
+t("ribbon tabs: Home / Tools / Insert / Annotate / Parametric / View / Manage / Output / Express Tools / Collaborate", () => {
   const m = src.match(/const RIBBON_TABS: ReadonlyArray<\{ id: string; label: string \}> = \[([\s\S]*?)\];/);
   assert.ok(m, "RIBBON_TABS definition missing");
-  for (const id of ["home", "insert", "annotate", "parametric", "view", "manage", "output", "express", "collaborate"]) {
+  for (const id of ["home", "tools", "insert", "annotate", "parametric", "view", "manage", "output", "express", "collaborate"]) {
     assert.ok(m[1].includes(`id: "${id}"`), `ribbon tab "${id}" missing`);
   }
   assert.ok(!/id: "(file|data|settings)"/.test(m[1]), "no invented tabs: every tab maps to real panel groups");
@@ -69,10 +69,12 @@ t("A-menu dispatches to the active drawing and offers shell-level file ops", () 
 // ── 3. Ribbon tabs filter the panel groups of the active drawing ──
 t("every ribbon group is tagged with exactly one of the nine tabs", () => {
   const expected = {
-    // Home
-    Clipboard: "home", Select: "home", Draw: "home", "Draw II": "home", Modify: "home", "Modify II": "home",
-    Annotation: "home", Properties: "home", Utilities: "home", History: "home", Layers: "home", Styles: "home",
-    "AI Copilot": "home", "Power Tools": "home",
+    // Home — lean core drafting
+    Clipboard: "home", Select: "home", Draw: "home", Modify: "home",
+    Annotation: "home", Properties: "home", History: "home", Layers: "home", Styles: "home",
+    // Tools — secondary / long overflow from Home
+    "Draw II": "tools", "Modify II": "tools", Utilities: "tools",
+    "AI Copilot": "tools", "Power Tools": "tools",
     // Insert
     Block: "insert", "Open Drawing": "insert", "PDF Import": "insert", Import: "insert", Fields: "insert", Data: "insert",
     // Annotate
@@ -91,7 +93,7 @@ t("every ribbon group is tagged with exactly one of the nine tabs", () => {
     Publish: "collaborate", Share: "collaborate", History: "collaborate", Standards: "collaborate",
   };
   const found = {};
-  const re = /rg\(\s*(?:\n\s*)?"((?:[^"\\]|\\.)+)",([\s\S]*?)"(home|insert|annotate|parametric|view|manage|output|express|collaborate)"\s*\)?/g;
+  const re = /rg\(\s*(?:\n\s*)?"((?:[^"\\]|\\.)+)",([\s\S]*?)"(home|tools|insert|annotate|parametric|view|manage|output|express|collaborate)"\s*\)?/g;
   let m;
   while ((m = re.exec(src)) !== null) found[m[1]] = m[3];
   for (const [label, tab] of Object.entries(expected)) {
@@ -101,7 +103,7 @@ t("every ribbon group is tagged with exactly one of the nine tabs", () => {
   assert.deepStrictEqual(extra, [], "untagged/unexpected ribbon groups");
 });
 t("CSS filters panels per active ribbon tab", () => {
-  for (const id of ["home", "insert", "annotate", "parametric", "view", "manage", "output", "express", "collaborate"]) {
+  for (const id of ["home", "tools", "insert", "annotate", "parametric", "view", "manage", "output", "express", "collaborate"]) {
     assert.ok(
       src.includes(`.cadrb-strip[data-ribbon-tab="${id}"] .cadrg[data-cadtab="${id}"]`),
       `no CSS rule shows panels for tab "${id}"`,

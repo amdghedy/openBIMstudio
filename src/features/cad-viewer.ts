@@ -538,6 +538,7 @@ let clip: CadClip | null = null;
    ═══════════════════════════════════════════════════════════════════════════ */
 const RIBBON_TABS: ReadonlyArray<{ id: string; label: string }> = [
   { id: "home", label: "Home" },
+  { id: "tools", label: "Tools" },
   { id: "insert", label: "Insert" },
   { id: "annotate", label: "Annotate" },
   { id: "parametric", label: "Parametric" },
@@ -1304,6 +1305,7 @@ const CAD_CSS = `
     /* Ribbon tabs filter the panels of the active drawing (drawing workspace tab → panels) */
     .obs-cad-shell .cadrb-strip .cadrg{display:none}
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="home"] .cadrg[data-cadtab="home"],
+    .obs-cad-shell .cadrb-strip[data-ribbon-tab="tools"] .cadrg[data-cadtab="tools"],
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="insert"] .cadrg[data-cadtab="insert"],
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="annotate"] .cadrg[data-cadtab="annotate"],
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="parametric"] .cadrg[data-cadtab="parametric"],
@@ -6342,7 +6344,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           rb("generative", "Agent Bridge", `data-a="agent-bridge"`, "Open the AI Agent Bridge — window API, postMessage, deep links and the local relay that let external AI clients (AlphaCLI / AlphaCode) run orders directly in this engine"),
         "",
         "",
-        "home",
+        "tools",
       ) +
       rg(
         "Select",
@@ -6383,7 +6385,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           tb("ray", "ray", "Ray"),
         "",
         "",
-        "home",
+        "tools",
       ) +
       rg(
         "Modify",
@@ -6417,7 +6419,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           rb("array", "Array Polar", `data-a="array-polar"`, "Create a polar array with centre, item count, sweep and rotation options"),
         "",
         "",
-        "home",
+        "tools",
       ) +
       rg(
         "Annotation",
@@ -6453,7 +6455,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           rb("report", "List", `data-a="list"`, "List properties of the selection (LI / LIST)"),
         "",
         "",
-        "home",
+        "tools",
       ) +
       rg(
         "History",
@@ -6482,29 +6484,29 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ) +
       rg(
         "Power Tools",
-        rb("select-all", "Select All", `data-a="selectall"`, "Select every visible object (SELECTALL)") +
-          rb("clear", "Clear Sel", `data-a="clrsel"`, "Clear the selection set (CLRSEL)") +
-          rb("copy", "Copy By", `data-a="copyby"`, "Duplicate selection by dx,dy (COPYBY)") +
-          rb("move", "Move By", `data-a="moveby"`, "Nudge selection by dx,dy (MOVEBY)") +
-          rb("rotate", "Rotate By", `data-a="rotateby"`, "Rotate selection about its center (ROTATEBY)") +
-          rb("scale", "Scale By", `data-a="scaleby"`, "Scale selection about its center (SCALEBY)") +
-          rb("mirror", "Mirror X", `data-a="mirrorx"`, "Mirror about horizontal through center (MIRRORX)") +
-          rb("mirror", "Mirror Y", `data-a="mirrory"`, "Mirror about vertical through center (MIRRORY)") +
+        rb("select-all", "All", `data-a="selectall"`, "Select every visible object (SELECTALL)") +
+          rb("clear", "Clear", `data-a="clrsel"`, "Clear the selection set (CLRSEL)") +
+          rb("copy", "Copy Δ", `data-a="copyby"`, "Duplicate selection by dx,dy (COPYBY)") +
+          rb("move", "Move Δ", `data-a="moveby"`, "Nudge selection by dx,dy (MOVEBY)") +
+          rb("rotate", "Rotate Δ", `data-a="rotateby"`, "Rotate selection about its center (ROTATEBY)") +
+          rb("scale", "Scale Δ", `data-a="scaleby"`, "Scale selection about its center (SCALEBY)") +
+          rb("mirror", "Mir. X", `data-a="mirrorx"`, "Mirror about horizontal through center (MIRRORX)") +
+          rb("mirror", "Mir. Y", `data-a="mirrory"`, "Mirror about vertical through center (MIRRORY)") +
           rb("align", "Align L", `data-a="alignl"`, "Align left edges (ALIGNL)") +
           rb("align", "Align R", `data-a="alignr"`, "Align right edges (ALIGNR)") +
-          rb("align", "Distribute", `data-a="distribute"`, "Even spacing X or Y (DISTRIBUTE)") +
+          rb("align", "Dist.", `data-a="distribute"`, "Even spacing X or Y (DISTRIBUTE)") +
           rb("area", "BBox", `data-a="bbox"`, "Draw bounding box of selection (BBOX)") +
-          rb("measure", "Length", `data-a="length"`, "Total length of selected linear objects (LENGTH)") +
-          rb("area", "Area Sel", `data-a="areasel"`, "Area of selected closed shapes (AREASEL)") +
-          rb("point", "CenterMark", `data-a="centermark"`, "Center marks on selected circles (CENTERMARK)") +
-          rb("point", "Mid Pts", `data-a="markmid"`, "Points at segment midpoints (MARKMID)") +
-          rb("point", "Int Pts", `data-a="markint"`, "Points at intersections (MARKINT)") +
-          rb("explode", "Xplode PL", `data-a="xplodepl"`, "Explode polylines to lines (XPLODEPL)") +
-          rb("audit", "Purge 0-Len", `data-a="auditzl"`, "Remove zero-length lines (AUDITZL)") +
-          rb("issues", "DWG Help", `data-a="dwghelp"`, "DWG open troubleshooting (DWGHELP)"),
+          rb("measure", "Len", `data-a="length"`, "Total length of selected linear objects (LENGTH)") +
+          rb("area", "Area", `data-a="areasel"`, "Area of selected closed shapes (AREASEL)") +
+          rb("point", "Center", `data-a="centermark"`, "Center marks on selected circles (CENTERMARK)") +
+          rb("point", "Mids", `data-a="markmid"`, "Points at segment midpoints (MARKMID)") +
+          rb("point", "Ints", `data-a="markint"`, "Points at intersections (MARKINT)") +
+          rb("explode", "Xplode", `data-a="xplodepl"`, "Explode polylines to lines (XPLODEPL)") +
+          rb("audit", "0-Len", `data-a="auditzl"`, "Remove zero-length lines (AUDITZL)") +
+          rb("issues", "Help", `data-a="dwghelp"`, "DWG open troubleshooting (DWGHELP)"),
         "",
         "",
-        "home",
+        "tools",
       ) +
       rg(
         "Styles",
