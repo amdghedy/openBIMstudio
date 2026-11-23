@@ -21,14 +21,14 @@
 **Local-first · Zero install · Open standards · IFC · FRAG · BCF · IDS · PDF · drawing · AI-ready**
 
 <p align="center">
-  <a href="https://open-bi-mstudio.vercel.app"><img src="https://img.shields.io/badge/🚀_Live_demo-open--bi--mstudio.vercel.app-00C853?style=for-the-badge" alt="Live demo"></a>
+  <a href="https://openbimstudio.amdghedy.workers.dev"><img src="https://img.shields.io/badge/🚀_Live_demo-openbimstudio.amdghedy.workers.dev-00C853?style=for-the-badge" alt="Live demo"></a>
   &nbsp;
   <a href="https://github.com/amdghedy/openBIMstudio"><img src="https://img.shields.io/badge/⭐_Star_this_repo-181717?style=for-the-badge&logo=github" alt="Star on GitHub"></a>
   &nbsp;
   <a href="https://github.com/amdghedy/openBIMstudio/issues/new/choose"><img src="https://img.shields.io/badge/Issues_&_ideas-open-2088FF?style=for-the-badge" alt="Open an issue"></a>
 </p>
 
-**Canonical project:** [github.com/amdghedy/openBIMstudio](https://github.com/amdghedy/openBIMstudio) · **Live app:** [open-bi-mstudio.vercel.app](https://open-bi-mstudio.vercel.app)
+**Canonical project:** [github.com/amdghedy/openBIMstudio](https://github.com/amdghedy/openBIMstudio) · **Live app:** [openbimstudio.amdghedy.workers.dev](https://openbimstudio.amdghedy.workers.dev)
 
 [Quick start](#quick-start) · [Why OpenBIMStudio](#-why-openbimstudio) · [What you can do](#-what-you-can-do) · [All tools & commands](#tools--commands) · [Interoperability](#-interoperability) · [Documentation](#-documentation) · [Contributing](CONTRIBUTING.md)
 
@@ -542,7 +542,7 @@ OpenBIMStudio aims for broad **openBIM** coverage across authoring, coordination
 OpenBIMStudio is free and MIT-licensed. The fastest way to help is:
 
 1. **[⭐ Star the repository](https://github.com/amdghedy/openBIMstudio)** — improves discoverability on GitHub.
-2. **Share the [live demo](https://open-bi-mstudio.vercel.app)** with BIM / AEC / web colleagues.
+2. **Share the [live demo](https://openbimstudio.amdghedy.workers.dev)** with BIM / AEC / web colleagues.
 3. **[Open an issue](https://github.com/amdghedy/openBIMstudio/issues)** for bugs or ideas.
 4. **[Contribute](CONTRIBUTING.md)** a fix or docs improvement.
 
@@ -553,3 +553,9 @@ Please link back to **https://github.com/amdghedy/openBIMstudio** (this repo is 
 **MIT** — see [LICENSE](LICENSE).
 
 Built around open standards: **IFC · BCF · IDS · COBie** and the wider openBIM community. Contributions, issues, and pull requests are welcome.
+
+### Account hosting
+
+The Cloudflare Worker URL above is the canonical app for Google/email sign-in and cloud projects. The Vercel demo is a separate static workspace without an account API. Its account controls open the main app in a new tab. Browser-local projects/settings are scoped to each site and do not transfer automatically. Export local work from the demo and import it into the main app if needed. Cloud projects remain in the account server.
+
+The Vercel Google-start redirect deliberately drops the popup marker: sign-in completes as a full-page flow on the canonical host so callback, state cookie, session cookie and app share one origin. This is not a cross-origin authentication proxy. Google availability is still subject to the consent screen's approved audience.
