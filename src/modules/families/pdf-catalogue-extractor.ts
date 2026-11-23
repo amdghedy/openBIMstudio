@@ -106,17 +106,15 @@ function parseTableRows(lines: PdfTextLine[], pageNumber: number, mappingOverrid
       const token = line.tokens[index];
       const next = line.tokens[index + 1];
       const sourceHeader = next ? `${token.text} ${next.text}` : token.text;
-      const override = Object.prototype.hasOwnProperty.call(mappingOverrides, sourceHeader)
-        ? mappingOverrides[sourceHeader] ?? undefined : undefined;
-      const combined = override ?? mapCatalogueHeader(sourceHeader);
+      const hasCombinedOverride = Object.prototype.hasOwnProperty.call(mappingOverrides, sourceHeader);
+      const combined = hasCombinedOverride ? mappingOverrides[sourceHeader] ?? undefined : mapCatalogueHeader(sourceHeader);
       if (combined) {
         recognized.push({ x: token.x, key: combined, sourceHeader });
         if (next && (mapCatalogueHeader(sourceHeader) || override)) index++;
         continue;
       }
-      const singleOverride = Object.prototype.hasOwnProperty.call(mappingOverrides, token.text)
-        ? mappingOverrides[token.text] ?? undefined : undefined;
-      const key = singleOverride ?? mapCatalogueHeader(token.text);
+      const hasSingleOverride = Object.prototype.hasOwnProperty.call(mappingOverrides, token.text);
+      const key = hasSingleOverride ? mappingOverrides[token.text] ?? undefined : mapCatalogueHeader(token.text);
       if (key) recognized.push({ x: token.x, key, sourceHeader: token.text });
     }
     if (recognized.some((entry) => entry.key === "model") && recognized.length >= 2) {
