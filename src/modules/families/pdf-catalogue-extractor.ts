@@ -6,11 +6,13 @@
  * model for OCR. No PDF or rendered page is sent to a cloud provider.
  */
 import { assertFileAllowed } from "../../core/file-guard";
-import { mapCatalogueHeader, type CatalogueRow } from "./catalogue-intake";
+import { mapCatalogueHeader, type CatalogueMappingOverrides, type CatalogueRow } from "./catalogue-intake";
 
 export interface PdfCatalogueOptions {
   /** Enable OCR only for pages without selectable text. Requires local Ollama + a vision model. */
   useLocalVisionOcr?: boolean;
+  /** Reviewed source-heading overrides shared with CSV/XLSX mapping UI. */
+  mappingOverrides?: CatalogueMappingOverrides;
   /** Maximum number of pages to inspect. Defaults to 80. */
   maxPages?: number;
   /** Progress callback; current/total are 1-based page counts. */
@@ -23,6 +25,8 @@ export interface PdfCatalogueExtractionResult {
   pageCount: number;
   processedPages: number;
   rows: CatalogueRow[];
+  /** Original selectable-text table headings for mapping/profile reuse. */
+  headers: string[];
   textPages: number[];
   scannedPages: number[];
   ocrPages: number[];
@@ -92,23 +96,28 @@ function groupTextItems(items: any[]): PdfTextLine[] {
   return lines.sort((a, b) => b.y - a.y);
 }
 
-function parseTableRows(lines: PdfTextLine[], pageNumber: number): CatalogueRow[] {
+function parseTableRows(lines: PdfTextLine[], pageNumber: number, mappingOverrides: CatalogueMappingOverrides = {}): { rows: CatalogueRow[]; headers: string[] } {
   const rows: CatalogueRow[] = [];
   let header: PdfTextLine | null = null;
-  let columns: Array<{ x: number; key: string }> = [];
+  let columns: Array<{ x: number; key: string; sourceHeader: string }> = [];
   for (const line of lines) {
-    const recognized: Array<{ x: number; key: string }> = [];
+    const recognized: Array<{ x: number; key: string; sourceHeader: string }> = [];
     for (let index = 0; index < line.tokens.length; index++) {
       const token = line.tokens[index];
       const next = line.tokens[index + 1];
-      const combined = next ? mapCatalogueHeader(`${token.text} ${next.text}`) : undefined;
+      const sourceHeader = next ? `${token.text} ${next.text}` : token.text;
+      const override = Object.prototype.hasOwnProperty.call(mappingOverrides, sourceHeader)
+        ? mappingOverrides[sourceHeader] ?? undefined : undefined;
+      const combined = override ?? mapCatalogueHeader(sourceHeader);
       if (combined) {
-        recognized.push({ x: token.x, key: combined });
-        index++;
+        recognized.push({ x: token.x, key: combined, sourceHeader });
+        if (next && (mapCatalogueHeader(sourceHeader) || override)) index++;
         continue;
       }
-      const key = mapCatalogueHeader(token.text);
-      if (key) recognized.push({ x: token.x, key });
+      const singleOverride = Object.prototype.hasOwnProperty.call(mappingOverrides, token.text)
+        ? mappingOverrides[token.text] ?? undefined : undefined;
+      const key = singleOverride ?? mapCatalogueHeader(token.text);
+      if (key) recognized.push({ x: token.x, key, sourceHeader: token.text });
     }
     if (recognized.some((entry) => entry.key === "model") && recognized.length >= 2) {
       header = line;
@@ -116,7 +125,11 @@ function parseTableRows(lines: PdfTextLine[], pageNumber: number): CatalogueRow[
       break;
     }
   }
-  if (!header || columns.length < 2) return rows;
+  if (!header || columns.length < 2) return { rows, headers: [] };
+  const headers = columns.map((column) => column.sourceHeader);
+  const mappedCounts = new Map<string, number>();
+  for (const column of columns) mappedCounts.set(column.key, (mappedCounts.get(column.key) ?? 0) + 1);
+  const ambiguous = new Set([...mappedCounts].filter(([, count]) => count > 1).map(([key]) => key));
   const boundaries = columns.map((column, index) => ({
     ...column,
     left: index === 0 ? Number.NEGATIVE_INFINITY : (columns[index - 1].x + column.x) / 2,
@@ -124,35 +137,34 @@ function parseTableRows(lines: PdfTextLine[], pageNumber: number): CatalogueRow[
   }));
   for (const line of lines) {
     if (line.y >= header.y - 1) continue;
-    const cells = new Map<string, string[]>();
+    const cells = new Map<number, string[]>();
     if (line.tokens.length === columns.length) {
-      line.tokens.forEach((token, index) => cells.set(columns[index].key, [token.text]));
+      line.tokens.forEach((token, index) => cells.set(index, [token.text]));
     } else {
       for (const token of line.tokens) {
-        const column = boundaries.find((candidate) => token.x >= candidate.left && token.x < candidate.right);
-        if (!column) continue;
-        const bucket = cells.get(column.key) ?? [];
+        const columnIndex = boundaries.findIndex((candidate) => token.x >= candidate.left && token.x < candidate.right);
+        if (columnIndex < 0) continue;
+        const bucket = cells.get(columnIndex) ?? [];
         bucket.push(token.text);
-        cells.set(column.key, bucket);
+        cells.set(columnIndex, bucket);
       }
     }
-    const model = (cells.get("model") ?? []).join(" ").trim();
-    if (!model || /^(model|type|model no\.?|model number)$/i.test(model)) continue;
+    const modelIndex = columns.findIndex((column) => column.key === "model");
+    const model = (cells.get(modelIndex) ?? []).join(" ").trim();
+    if (!model || /^(model|type|model no\\.?|model number)$/i.test(model)) continue;
     const item: CatalogueRow = { model, sourcePage: pageNumber };
-    for (const [key, values] of cells) {
-      if (key === "model") continue;
-      const value = values.join(" ").trim();
-      if (!value) continue;
-      if (["width", "depth", "height", "airflow", "staticPressure", "power", "voltage"].includes(key)) {
+    columns.forEach((column, index) => {
+      if (column.key === "model" || ambiguous.has(column.key)) return;
+      const value = (cells.get(index) ?? []).join(" ").trim();
+      if (!value) return;
+      if (["width", "depth", "height", "airflow", "staticPressure", "power", "voltage"].includes(column.key)) {
         const n = normalizedNumber(value);
-        if (n !== undefined) (item as Record<string, string | number | undefined>)[key] = n;
-      } else {
-        (item as Record<string, string | number | undefined>)[key] = value;
-      }
-    }
+        if (n !== undefined) (item as Record<string, string | number | undefined>)[column.key] = n;
+      } else Object.defineProperty(item, column.key, { value, enumerable: true, configurable: true, writable: true });
+    });
     rows.push(item);
   }
-  return rows;
+  return { rows, headers };
 }
 
 export function parsePdfCatalogueLines(lines: string[], pageNumber = 1): CatalogueRow[] {
@@ -307,7 +319,7 @@ export async function extractPdfCatalogue(
   const maxPages = Math.max(1, Math.min(200, Math.floor(options.maxPages ?? DEFAULT_MAX_PAGES)));
   const processedPages = Math.min(pdf.numPages, maxPages);
   const result: PdfCatalogueExtractionResult = {
-    pageCount: pdf.numPages, processedPages, rows: [], textPages: [], scannedPages: [], ocrPages: [], warnings: [], pageText: [],
+    pageCount: pdf.numPages, processedPages, rows: [], headers: [], textPages: [], scannedPages: [], ocrPages: [], warnings: [], pageText: [],
   };
   if (pdf.numPages > maxPages) result.warnings.push(`PDF contains ${pdf.numPages} pages; only the first ${processedPages} were processed by the configured safety limit.`);
   let totalChars = 0;
@@ -325,7 +337,9 @@ export async function extractPdfCatalogue(
     result.pageText.push({ page: pageNumber, text });
     if (text.trim().length >= 20) {
       result.textPages.push(pageNumber);
-      result.rows.push(...parseTableRows(lines, pageNumber));
+      const extracted = parseTableRows(lines, pageNumber, options.mappingOverrides);
+      result.rows.push(...extracted.rows);
+      result.headers.push(...extracted.headers);
     } else {
       result.scannedPages.push(pageNumber);
       if (options.useLocalVisionOcr) {
@@ -345,6 +359,7 @@ export async function extractPdfCatalogue(
     }
     page.cleanup?.();
   }
+  result.headers = [...new Set(result.headers)];
   // Do not discard repeated model identifiers here: they may represent
   // conflicting catalogue rows or variants. Preserve every extracted row
   // and let the shared QA gate report duplicates before family creation.
