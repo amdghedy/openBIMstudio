@@ -131,6 +131,34 @@ let currentUser: SessionUser | null = null;
 let meRequest: Promise<void> | null = null;
 let googleReady: boolean | null = null;
 
+const CANONICAL_ACCOUNT_ORIGIN = "https://openbimstudio.amdghedy.workers.dev";
+
+/** Only the known static demo needs a handoff; local/dev/other hosts keep their own API. */
+function needsAccountHandoff(hostname: string = location.hostname): boolean {
+  return hostname === "open-bi-mstudio.vercel.app";
+}
+
+function showAccountHandoff(): void {
+  const { body } = dialogShell("Sign in on the main app");
+  const explanation = document.createElement("div");
+  explanation.className = "obs-acct-hint";
+  explanation.textContent = "This Vercel demo has no account server. Google and email sign-in are available on the main Open BIM Studio app. It opens in a new tab; this demo stays open. Browser-local projects and settings do not transfer automatically between these sites. Export any local work here before importing it there.";
+  const link = document.createElement("a");
+  link.className = "obs-acct-google";
+  link.href = CANONICAL_ACCOUNT_ORIGIN + "/api/auth/google/start";
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = "Continue with Google on the main app";
+  const app = document.createElement("a");
+  app.className = "obs-acct-google";
+  app.href = CANONICAL_ACCOUNT_ORIGIN + "/";
+  app.target = "_blank";
+  app.rel = "noopener noreferrer";
+  app.textContent = "Open main app for email sign-in";
+  body.append(explanation, link, app);
+}
+
+
 /**
  * Probe (and cache) whether this deployment has Google OAuth configured.
  * Lets the UI explain — inside the dialog — instead of navigating away to a
@@ -204,6 +232,7 @@ let googleListenerReady = false;
  * to the classic full-page redirect when the popup is blocked.
  */
 function openGoogleOAuth(onDone?: (ok: boolean, message: string) => void): void {
+  if (needsAccountHandoff()) { showAccountHandoff(); return; }
   if (!googleListenerReady) {
     googleListenerReady = true;
     window.addEventListener("message", (e) => {
@@ -242,6 +271,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 /** Ask the server who we are (once at a time — renderTabs can call freely). */
 export function refreshAccountState(): Promise<void> {
+  if (needsAccountHandoff()) { currentUser = null; return Promise.resolve(); }
   if (meRequest) return meRequest;
   meRequest = api<{ user: SessionUser | null }>("/api/auth/me")
     .then((r) => {
@@ -352,6 +382,7 @@ function buildMenu(menu: HTMLElement): void {
     title.textContent = "Account — sign in to sync projects";
     menu.appendChild(title);
     menuItem(menu, "Continue with Google", () => {
+      if (needsAccountHandoff()) { showAccountHandoff(); return; }
       void (async () => {
         if (await googleConfigured()) {
           openGoogleOAuth();
@@ -438,6 +469,7 @@ function field(body: HTMLElement, labelText: string, type: string, autocomplete:
 }
 
 async function openAuthDialog(registerMode: boolean): Promise<void> {
+  if (needsAccountHandoff()) { showAccountHandoff(); return; }
   const { body, close } = dialogShell(registerMode ? "Create your account" : "Sign in");
   let isRegister = registerMode;
 
@@ -925,4 +957,4 @@ export function setupCloudAccount(): void {
     registerCommand({ id: "acct.projects", label: "Cloud — My projects (open from any device)", category: "Account", run: () => void openCloudProjectsDialog() });
     registerCommand({ id: "acct.save", label: "Cloud — Save current project", category: "Account", run: () => void saveCurrentProjectToCloud() });
   } catch { /* command palette deferred */ }
-}
+                }

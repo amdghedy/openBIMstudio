@@ -518,8 +518,36 @@ export function googleSetupPage(request: Request, opts: { reason?: string; statu
   });
 }
 
+const GOOGLE_STATE_COOKIE = "__Host-obs_google_state";
+const GOOGLE_STATE_TTL_MS = 10 * 60 * 1000;
+
+/** A fresh browser-bound OAuth state, scoped to this host and short-lived. */
+export function googleOAuthState(request: Request): string {
+  const mode = new URL(request.url).searchParams.get("popup") === "1" ? "popup" : "app";
+  return `${mode}.${randomB64(32).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}.${Date.now()}`;
+}
+
+export function googleOAuthStateCookie(state: string): string {
+  return `${GOOGLE_STATE_COOKIE}=${state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`;
+}
+
+export function clearGoogleOAuthStateCookie(): string {
+  return `${GOOGLE_STATE_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+}
+
+/** Validate before exchanging any code or linking an account. Returns popup mode. */
+export function validateGoogleOAuthState(request: Request): boolean {
+  const state = new URL(request.url).searchParams.get("state") ?? "";
+  const saved = readCookie(request, GOOGLE_STATE_COOKIE);
+  const match = /^(app|popup)\.([A-Za-z0-9_-]{43})\.(\d{13})$/.exec(state);
+  if (!saved || saved !== state || !match) throw new Error("invalid-oauth-state");
+  const age = Date.now() - Number(match[3]);
+  if (age < 0 || age > GOOGLE_STATE_TTL_MS) throw new Error("expired-oauth-state");
+  return match[1] === "popup";
+}
+
 /** Build the Google consent redirect. Returns null when credentials are missing. */
-export function googleStartUrl(request: Request, env: AuthEnv): string | null {
+export function googleStartUrl(request: Request, env: AuthEnv, state = googleOAuthState(request)): string | null {
   if (!env.GOOGLE_CLIENT_ID) return null;
   const url = new URL(request.url);
   const origin = url.origin;
@@ -535,7 +563,7 @@ export function googleStartUrl(request: Request, env: AuthEnv): string | null {
     scope: "openid email profile",
     access_type: "online",
     prompt: "select_account",
-    state: popup ? "popup" : "app",
+    state,
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 }
@@ -614,7 +642,9 @@ export async function googleCallback(request: Request, env: AuthEnv): Promise<{ 
     headers: { authorization: `Bearer ${accessToken}` },
   });
   if (!infoRes.ok) throw new Error("userinfo-failed");
-  const info = await infoRes.json() as { email?: string; name?: string; sub?: string };
-  if (!info.email) throw new Error("no-email");
+  const info = await infoRes.json() as { email?: string; email_verified?: boolean; name?: string; sub?: string };
+  if (!info.email || !validEmail(info.email)) throw new Error("no-email");
+  if (info.email_verified !== true) throw new Error("unverified-email");
+  if (!info.sub) throw new Error("no-google-subject");
   return { email: info.email, name: info.name ?? info.email.split("@")[0], sub: info.sub };
 }
