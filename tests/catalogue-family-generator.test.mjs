@@ -72,6 +72,10 @@ assert.ok(validateCatalogueRows([{ model: "MISSING" }]).some((e) => e.includes("
 assert.ok(validateCatalogueRows([{ model: "AHU-INCOMPLETE", width: 1200, height: 900 }]).some((e) => e.includes("depth is missing")));
 assert.ok(validateCatalogueRows([{ model: "AHU-ZERO", width: 0, depth: 800, height: 900 }]).some((e) => e.includes("width must be greater than zero")));
 assert.deepEqual(validateCatalogueRows([{ model: "AHU-VALID", width: 1200, depth: 800, height: 900 }]), []);
+assert.ok(validateCatalogueRows([
+  { model: "AHU-DUP", width: 1200, depth: 800, height: 900 },
+  { model: "ahu-dup", width: 1400, depth: 900, height: 1000 },
+]).some((issue) => issue.includes("duplicate model identifier")));
 
 assert.throws(() => buildCatalogueFamilyDefinition([], { name: "Empty" }), /At least one/);
 assert.throws(() => buildCatalogueFamilyDefinition([{ model: "A" }, { model: "a" }], { name: "Duplicate" }), /Duplicate model/);
