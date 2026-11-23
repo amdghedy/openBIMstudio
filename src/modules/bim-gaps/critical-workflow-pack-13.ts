@@ -24,11 +24,17 @@ export function countByType(): Any {
   return map;
 }
 
-export async function renameSelection(name?: string): Promise<number> {
+/** Menu entry: asks for the new name through the form modal, then renames. */
+export async function renameSelectionInteractive(): Promise<number> {
+  const n = await promptLine("Rename selection", "New name for selected elements", "Element");
+  return renameSelection(n ?? undefined);
+}
+
+export function renameSelection(name?: string): number {
   const ids = selIds();
   if (!ids.length) { notify("warn", "Select elements first"); return 0; }
-  const n = name ?? (await promptLine("Rename selection", "New name for selected elements", "Element"));
-  if (n == null || n === "") return 0;
+  if (name == null || name === "") return 0;
+  const n = name;
   let c = 0;
   for (const id of ids) {
     const e = els().find((x) => x.id === id);
@@ -185,7 +191,7 @@ export function setupCriticalWorkflowPack13(): void {
   (ctx.features as Any).workflowPack13 = api;
   const cmds: Array<[string, string, () => void]> = [
     ["gap13-count-type", "Model: Count by type", () => void countByType()],
-    ["gap13-rename", "Edit: Rename selection…", () => void renameSelection()],
+    ["gap13-rename", "Edit: Rename selection…", () => void renameSelectionInteractive()],
     ["gap13-lock", "Edit: Lock selection", () => void lockSelection()],
     ["gap13-unlock", "Edit: Unlock selection", () => void unlockSelection()],
     ["gap13-duplicate", "Edit: Duplicate selection", () => void duplicateSelection()],

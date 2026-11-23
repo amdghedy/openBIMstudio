@@ -27,8 +27,14 @@ export function projectSummary(): Any {
   return report;
 }
 
-export async function elementSearch(query?: string): Promise<number> {
-  const q = (query ?? (await promptLine("Search elements", "Search name / type / id", "")) ?? "").trim().toLowerCase();
+/** Menu entry: asks for the query through the form modal, then searches. */
+export async function elementSearchInteractive(): Promise<number> {
+  const q = await promptLine("Search elements", "Name / type / id", "");
+  return elementSearch(q ?? undefined);
+}
+
+export function elementSearch(query?: string): number {
+  const q = (query ?? "").trim().toLowerCase();
   if (!q) return 0;
   const match = els().filter((e) => {
     const hay = `${e.id} ${e.name || ""} ${e.type || ""} ${e.category || ""}`.toLowerCase();
@@ -152,12 +158,10 @@ export function copySelectedIds(): number {
   if (!ids.length) { notify("warn", "Select elements first"); return 0; }
   const text = ids.join("\n");
   try {
-    void navigator.clipboard.writeText(text).then(
-      () => notify("success", `Copied ${ids.length} id(s)`),
-      () => notify("warn", "Copy failed — clipboard unavailable"),
-    );
+    void navigator.clipboard.writeText(text);
+    notify("success", `Copied ${ids.length} id(s)`);
   } catch {
-    notify("warn", "Copy failed — clipboard unavailable");
+    void promptLine("Copy IDs", "IDs to copy (select all, then Ctrl+C)", text);
   }
   return ids.length;
 }
@@ -170,7 +174,7 @@ export function setupCriticalWorkflowPack14(): void {
   (ctx.features as Any).workflowPack14 = api;
   const cmds: Array<[string, string, () => void]> = [
     ["gap14-summary", "Project: Summary", () => void projectSummary()],
-    ["gap14-search", "Model: Search elements…", () => void elementSearch()],
+    ["gap14-search", "Model: Search elements…", () => void elementSearchInteractive()],
     ["gap14-hide-unlocked", "View: Hide unlocked", () => void hideUnlocked()],
     ["gap14-sel-review", "Review: Select flagged", () => void selectReviewFlagged()],
     ["gap14-grids", "Model: Grid report", () => void gridReport()],
