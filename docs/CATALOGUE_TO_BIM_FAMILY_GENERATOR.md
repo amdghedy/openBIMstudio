@@ -11,6 +11,8 @@ The current experimental delivery adds a BIM Family Generator launcher and local
 - Image-only page detection and optional local OCR through the configured Ollama vision model (LLaVA, Qwen2.5-VL or another image-capable model); no cloud OCR path is used.
 - PDF page-count, file-size and extracted-text safety limits.
 - Quoted CSV fields and header aliases for common manufacturer catalogue columns.
+- Interactive CSV/TSV column mapping review with explainable high/medium/no-match suggestions, manual canonical-field overrides, and an option to preserve a source column without mapping it.
+- Ambiguous duplicate canonical mappings are excluded from parameter assignment until the user resolves the conflict; the importer does not silently choose the first or last matching column. The current interactive mapping editor is available for CSV/TSV; XLSX and PDF still use their extraction adapters and need a later shared mapping-review integration.
 - Product rows and model variants review.
 - Explicit dimension unit selection (mm, cm, m) and conversion to metres for the current family geometry contract.
 - Header-unit normalization for airflow (m³/s and L/s to m³/h), static pressure (kPa to Pa), power (W to kW) and voltage (kV to V).
