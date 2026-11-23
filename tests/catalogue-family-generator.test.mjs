@@ -69,6 +69,9 @@ assert.throws(() => buildCatalogueFamilyDefinition([
 assert.equal(def.parameters.find((p) => p.name === "Airflow").default, 1200);
 assert.equal(validateCatalogueRows(parsed.rows).length, 0);
 assert.ok(validateCatalogueRows([{ model: "MISSING" }]).some((e) => e.includes("Width")));
+assert.ok(validateCatalogueRows([{ model: "AHU-INCOMPLETE", width: 1200, height: 900 }]).some((e) => e.includes("depth is missing")));
+assert.ok(validateCatalogueRows([{ model: "AHU-ZERO", width: 0, depth: 800, height: 900 }]).some((e) => e.includes("width must be greater than zero")));
+assert.deepEqual(validateCatalogueRows([{ model: "AHU-VALID", width: 1200, depth: 800, height: 900 }]), []);
 
 assert.throws(() => buildCatalogueFamilyDefinition([], { name: "Empty" }), /At least one/);
 assert.throws(() => buildCatalogueFamilyDefinition([{ model: "A" }, { model: "a" }], { name: "Duplicate" }), /Duplicate model/);
