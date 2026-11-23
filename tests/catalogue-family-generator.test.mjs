@@ -68,6 +68,14 @@ assert.equal(unitReviewed[0].airflow, 360);
 assert.equal(unitReviewed[0].staticPressure, 2500);
 assert.equal(unitReviewed[0].power, 0.75);
 assert.equal(unitReviewed[0].voltage, 400);
+assert.equal(Object.hasOwn(unitReviewed[0], "__unitNormalization"), false, "normalization metadata must not leak into catalogue records");
+const whitespaceUnits = normalizeCatalogueRowsWithUnits([
+  { model: "UNIT-WHITESPACE", airflow: 10, staticPressure: 1, power: 1000, voltage: 1 },
+], { airflow: " L / s ", staticPressure: " kPa ", power: " W ", voltage: " kV " });
+assert.equal(whitespaceUnits[0].airflow, 36);
+assert.equal(whitespaceUnits[0].staticPressure, 1000);
+assert.equal(whitespaceUnits[0].power, 1);
+assert.equal(whitespaceUnits[0].voltage, 1000);
 assert.throws(() => normalizeCatalogueRowsWithUnits([{ model: "BAD", width: 1 }], { width: "yards" }), /Unsupported width source unit/);
 
 
@@ -92,6 +100,8 @@ assert.equal(def.types.length, 2);
 assert.equal(def.types[1].name, "FAN-500");
 assert.equal(def.types[1].values.Width, 0.5);
 assert.equal(def.geometry.kind, "box");
+assert.equal(def.parameters.find((parameter) => parameter.name === "Description").default, "Pump, inline");
+assert.equal(def.types[0].values.Description, "Pump, inline");
 const scopedGuidFamily = buildCatalogueFamilyDefinition(parsed.rows, {
   name: "Scoped Fan",
   dimensionUnit: "mm",
