@@ -21,7 +21,8 @@ The current experimental delivery adds a BIM Family Generator launcher and local
 - Required positive width/depth/height validation; family creation is blocked while any product type has a missing or non-positive geometry dimension.
 - Duplicate model identifiers are flagged before family creation. Multiple source columns mapping to the same canonical field (for example Width and Overall Width) are reported as ambiguous instead of being silently treated as interchangeable. PDF extraction preserves repeated model rows for review instead of silently discarding later rows.
 - Creation of a native OpenBIMstudio family definition using the existing family service, parameter schema, geometry engine and project persistence.
-- Type parameters for dimensions, manufacturer, product code, airflow, static pressure, power and voltage.
+- Catalogue-generated parameters default to type scope; the UI accepts explicit per-parameter type/instance scope overrides. Instance scope is blocked when product variants contain different values, preventing loss of variant data.
+- Optional shared parameter GUID assignments are accepted from the UI as a JSON mapping, validated as RFC 4122 UUIDs, and rejected when malformed or duplicated. GUIDs are metadata only; no external shared-parameter definition file or cross-platform GUID registry is created by this feature.
 - Explicit parametric box or cylinder geometry profiles when the catalogue provides a supported Geometry Profile / Product Geometry value; cylinder diameter is driven by Width and height by Height.
 - Multiple explicitly numbered MEP ports with validation and coordinate conversion, stored per product FamilyType so variants can carry different port layouts.
 - Explicit catalogue MEP port mapping when the source provides port origin, axis, domain, shape, nominal size, flow direction and system classification; definitions are stored in the existing family connector schema and displayed in the catalogue review table.
@@ -68,8 +69,8 @@ XLSX, CSV/TSV and PDF table readers recognize model/model number/type, manufactu
 ## Next implementation milestones
 
 1. XLSX parser hardening for unusual OOXML layouts, date/number formats and merged headers.
-2. Improve PDF layout reconstruction for rotated tables, merged headers, multi-column brochures and engineering unit inference.
-3. Parameter mapping UI with units, type/instance scope, GUID mapping and source confidence.
-4. Reuse the existing parametric feature tree for detailed product geometry templates.
-5. Extend connector lifecycle synchronization to external placement hosts and add manufacturer drawing evidence with guided parameter/port mapping.
-6. Revit 2020 adapter proof-of-concept, then version-specific adapters and reopen verification.
+6. Improve PDF layout reconstruction for rotated tables, merged headers, multi-column brochures and engineering unit inference.
+7. Parameter mapping UI with per-column units and source confidence.
+8. Reuse the existing parametric feature tree for detailed product geometry templates.
+9. Extend connector lifecycle synchronization to external placement hosts and add manufacturer drawing evidence with guided parameter/port mapping.
+10. Revit 2020 adapter proof-of-concept, then version-specific adapters and reopen verification.
