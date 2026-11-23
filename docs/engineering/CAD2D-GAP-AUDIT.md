@@ -65,3 +65,21 @@ milestone proves otherwise.
   splines display approximately although their weights are preserved in the file. Spline and ellipse editing
   (grip editing of control points) is not part of M1.
 - **Tests**: `tests/native-curves.test.cjs` (7 checks: read, write, affine carry, stale guard, malformed input).
+
+## 7. Phase 4 — deterministic constraint solver (core)
+
+`src/modules/cad-viewer/constraint-solver.ts` (pure): unknowns are point coordinates and radii; 16 constraint types
+(coincident, horizontal, vertical, parallel, perpendicular, tangent line–circle, tangent circle–circle (external/internal),
+concentric, equal length, equal radius, symmetric, fixed, distance, length, radius, angle). Levenberg–Marquardt with
+central-difference Jacobians, sorted-id processing (same input → same output; constraint order irrelevant).
+Diagnostics: status (`solved` / `underconstrained` / `overconstrained` / `conflict` / `diverged` / `invalid`), remaining
+DOF (Jacobian rank), redundant constraint ids, conflicting constraint ids (removal makes the rest converge), residual,
+iterations. On conflict the sketch is returned unchanged. Constraint list (de)serialisation is validated.
+
+Verified (`tests/cad-constraint-solver.test.cjs`, 14): every constraint type, DOF counts, redundancy, conflict detection,
+determinism, invalid input, a 60-link / 122-variable chain (≈65 ms, 6 iterations).
+
+**Not done (honest):** no editor integration yet (no commands, no on-canvas constraint creation, no persistence into the
+DXF file — constraints live only in the model/JSON); arcs are modelled as centre+radius+end points but arc-angle
+consistency is not enforced; no ellipse/spline constraints; analytic Jacobians would be faster for very large sketches;
+no "drag while solving" API yet; solver not benchmarked beyond the chain above.
