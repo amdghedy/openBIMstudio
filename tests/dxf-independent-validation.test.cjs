@@ -44,6 +44,7 @@ if (probe.status !== 0) {
 // 1. Compile the platform's reader + writer with tsc (same pattern as the
 //    other drawing tests): the exact production code paths, no mocks.
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "dxf-indep-"));
+fs.symlinkSync(path.join(root, "node_modules"), path.join(out, "node_modules"), "junction");
 execSync(`npx tsc src/modules/drawings/dxf-reader.ts src/modules/drawings/dxf-writer.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --esModuleInterop`, { cwd: root, stdio: "pipe" });
 const find = (d, n) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) { const r = find(p, n); if (r) return r; } else if (f.name === n) return p; } };
 const { parseDxf } = require(find(out, "dxf-reader.js"));
