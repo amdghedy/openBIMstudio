@@ -89,7 +89,10 @@ function readMappingProfiles(): CatalogueMappingProfile[] {
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.slice(0, 100).map((item) => parseCatalogueMappingProfile(item));
+    return parsed.slice(0, 100).flatMap((item) => {
+      try { return [parseCatalogueMappingProfile(item)]; }
+      catch (error) { console.warn("[catalogue-family] skipping invalid mapping profile:", error); return []; }
+    });
   } catch (error) {
     console.warn("[catalogue-family] mapping profiles could not be loaded:", error);
     return [];
@@ -117,7 +120,7 @@ function saveMappingProfile(): void {
   const name = panel?.querySelector<HTMLInputElement>("[data-profile-name]")?.value.trim() ?? "";
   if (!name) { status("Enter a name for this mapping profile.", "warn"); return; }
   const manufacturer = panel?.querySelector<HTMLInputElement>("[data-manufacturer]")?.value.trim() ?? "";
-  const mappings: CatalogueMappingOverrides = {};
+  const mappings: CatalogueMappingOverrides = Object.create(null) as CatalogueMappingOverrides;
   for (const header of delimitedHeaders) {
     mappings[header] = Object.prototype.hasOwnProperty.call(mappingOverrides, header)
       ? mappingOverrides[header] ?? null
@@ -160,7 +163,7 @@ function exportMappingProfile(): void {
   link.href = url;
   link.download = profile.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + ".catalogue-mapping.json";
   link.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   status("Mapping profile export prepared.", "success");
 }
 async function importMappingProfile(file?: File): Promise<void> {
