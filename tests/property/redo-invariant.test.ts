@@ -65,7 +65,8 @@ fc.assert(
 // yields exactly the model produced by applying only the first n-k ops
 // to a fresh model, and redoing k returns to the post-op state. Unlike
 // (2a)/(2c) this pins undo through an independent oracle, so it also
-// catches a broken undo (see the mutation check in pr-description-pe09.md).
+// catches a broken undo (see the mutation check in
+// docs/engineering/pr-description-pe09.md).
 fc.assert(
   fc.property(
     fc.array(ops, { minLength: 1, maxLength: 40 }),

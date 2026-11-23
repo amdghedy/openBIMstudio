@@ -21,7 +21,7 @@ import {
   ModifyCommandBase,
   type CommandInput, type ElementPatch, type ModifyContext, type PendingChange, type ModifyElement,
 } from "./command";
-import { selfIntersects } from "../solid-kernel/forms";
+import { selfIntersects, selfIntersectsOpen } from "../solid-kernel/forms";
 
 // ── Offset (2C.6) ────────────────────────────────────────────────────────
 
@@ -141,7 +141,17 @@ export function offsetPolyline(
       }
     }
   }
-  return { polyline: out, selfIntersects: selfIntersects(out.map(([x, y]) => ({ u: x, v: y }))) || degenerate, corners };
+  // The self-intersection test must match the profile kind: the
+  // closed-ring test treats the first and last points as joined by a
+  // real segment, so on an OPEN polyline its imaginary closing segment
+  // can cross a real segment — a false positive (see the
+  // selfIntersectsOpen comment in ../solid-kernel/forms.ts, and the
+  // zigzag case in tests/validator-holes.test.cjs). Open profiles use
+  // the open test; closed rings keep the ring test.
+  const crossed = closed
+    ? selfIntersects(out.map(([x, y]) => ({ u: x, v: y })))
+    : selfIntersectsOpen(out.map(([x, y]) => ({ u: x, v: y })));
+  return { polyline: out, selfIntersects: crossed || degenerate, corners };
 }
 
 export class OffsetCommand extends ModifyCommandBase {

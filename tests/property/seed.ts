@@ -1,7 +1,7 @@
 /**
  * Shared deterministic seed for every fast-check property in tests/property/.
  *
- * Issue #98 requires the 10 property invariants to run seeded so a failure
+ * Issue #98 requires the 12 property invariants to run seeded so a failure
  * is reproducible. Every property file passes `seed: PROPERTY_SEED` to
  * `fc.assert`. Override for a single run with `PROPERTY_SEED=<n>`; the
  * default below is the recorded seed for this suite.

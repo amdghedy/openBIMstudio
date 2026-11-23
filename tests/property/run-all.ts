@@ -1,5 +1,5 @@
 /**
- * Run all 10 fast-check property invariants (#98), each at 500 runs with
+ * Run all 12 fast-check property invariants (#98), each at 500 runs with
  * the shared seed from ./seed.ts. Every file runs its fc.assert calls at
  * import time; a failure throws and exits non-zero. Each file is also
  * runnable on its own: `npx tsx tests/property/<name>.test.ts`.
@@ -10,7 +10,9 @@
 await import('./undo-invariant.test.ts');
 await import('./redo-invariant.test.ts');
 await import('./boolean-closure.test.ts');
+await import('./kernel-contact.test.ts');
 await import('./transform-invariant.test.ts');
+await import('./geometry-primitives.test.ts');
 await import('./polygon-validity.test.ts');
 await import('./snapping-invariant.test.ts');
 await import('./serialization-roundtrip.test.ts');

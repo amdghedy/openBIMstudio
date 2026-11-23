@@ -71,15 +71,22 @@ function near(a: number, b: number, tol = 1e-9): boolean {
 }
 
 // (3a) Union: volume is volA + volB - overlap for EVERY pair, and the
-// result is closed (watertight) — except for the zero-volume contact
-// class: two boxes that touch at a face, edge or point but do not overlap
-// share that contact in the output mesh, so the shared edge is used four
-// times and validateMeshDiagnostics reports non-manifold edges. The
-// volume is still exact there; the non-manifold output is a real kernel
-// limitation (merging coincident contact faces), recorded in
-// pr-description-pe09.md — fixing it is kernel-validity work, out of
-// scope for this invariants item. Disjoint pairs (a gap on some axis)
-// are watertight: two separate closed shells in one mesh.
+// result is closed (watertight) — except for the edge-contact class.
+// Measured during the #98 close-out (docs/engineering/pr-description-pe09.md):
+// the general kernel's coplanar pass resolves face and point contact
+// (single-copy skin ownership), so face/point-contact unions are
+// watertight and must assert closed here. Only edge contact — two boxes
+// sharing exactly one edge, zero overlap on two axes — leaves the
+// shared edge used four times in the output mesh, so
+// validateMeshDiagnostics reports non-manifold edges while the volume
+// stays exact. That class is a real kernel limitation (merging
+// coincident contact faces); fixing it is kernel-validity work, out of
+// scope for this invariants item — but it is PINNED here, not skipped:
+// an edge-contact union must show the non-manifold signature (≥ 1
+// non-manifold edge) with exact volume, so silently becoming
+// watertight fails this property and forces the carve-out to be
+// removed. Disjoint pairs (a gap on some axis) are watertight: two
+// separate closed shells in one mesh.
 fc.assert(
   fc.property(boxPair, ({ ax, ay, az, bx, by, bz }) => {
     const a = toBox(ax, ay, az);
@@ -93,7 +100,14 @@ fc.assert(
     );
     const disjoint = perAxis.some((ov) => ov < 0);
     const touching = overlap === 0 && !disjoint;
-    if (!touching && !assertClosed(u, 'union')) return false;
+    // Zero-overlap axes classify the contact: 1 = shared face, 2 =
+    // shared edge, 3 = shared point.
+    const zeroAxes = perAxis.filter((ov) => ov === 0).length;
+    if (touching && zeroAxes === 2) {
+      if (nonManifoldCount(u) < 1) {
+        throw new Error('union: edge-contact pair is unexpectedly watertight — remove the carve-out');
+      }
+    } else if (!assertClosed(u, 'union')) return false;
     const u2 = generalBoolean('union', mesh(b), mesh(a));
     return near(meshVolume(u2), expected);
   }),

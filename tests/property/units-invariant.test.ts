@@ -29,8 +29,8 @@ fc.assert(
 // cubed — parsing "L m" squared equals parsing "L² m²", and likewise
 // for volume. Note the parser only accepts the superscript spellings
 // (m²/m³, as the formatter emits); the ASCII spellings "m2"/"m3" return
-// null — an observed parser wart, recorded in pr-description-pe09.md,
-// not fixed here.
+// null — an observed parser wart, recorded in
+// docs/engineering/pr-description-pe09.md, not fixed here.
 fc.assert(
   fc.property(fc.double({ min: 0.01, max: 1000, noNaN: true, noDefaultInfinity: true }), (L) => {
     const len = units.parseLength(`${L}m`);
@@ -40,6 +40,32 @@ fc.assert(
     const vol = units.parseVolume(`${L * L * L}m³`);
     if (vol === null) return false;
     return relNear(len * len * len, vol);
+  }),
+  { numRuns: PROPERTY_RUNS, seed: PROPERTY_SEED },
+);
+
+// (9f) ASCII rejection, pinned: parseArea/parseVolume return null for
+// the ASCII spellings "m2"/"m3" (with or without a space, and the
+// "mm2"/"mm3" forms), while the superscript forms the formatter emits
+// keep parsing to the same value. A parser change that silently starts
+// accepting — or stops accepting — either spelling fails here.
+fc.assert(
+  fc.property(fc.double({ min: 0.01, max: 1000, noNaN: true, noDefaultInfinity: true }), (v) => {
+    if (units.parseArea(`${v}m2`) !== null) return false;
+    if (units.parseArea(`${v} m2`) !== null) return false;
+    if (units.parseArea(`${v}mm2`) !== null) return false;
+    if (units.parseVolume(`${v}m3`) !== null) return false;
+    if (units.parseVolume(`${v} m3`) !== null) return false;
+    if (units.parseVolume(`${v}mm3`) !== null) return false;
+    const area = units.parseArea(`${v}m²`);
+    if (area === null || !relNear(area, v)) return false;
+    const areaSpaced = units.parseArea(`${v} m²`);
+    if (areaSpaced === null || !relNear(areaSpaced, v)) return false;
+    const vol = units.parseVolume(`${v}m³`);
+    if (vol === null || !relNear(vol, v)) return false;
+    const volSpaced = units.parseVolume(`${v} m³`);
+    if (volSpaced === null || !relNear(volSpaced, v)) return false;
+    return true;
   }),
   { numRuns: PROPERTY_RUNS, seed: PROPERTY_SEED },
 );
