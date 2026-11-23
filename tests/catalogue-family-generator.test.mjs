@@ -79,6 +79,25 @@ assert.equal(def.types.length, 2);
 assert.equal(def.types[1].name, "FAN-500");
 assert.equal(def.types[1].values.Width, 0.5);
 assert.equal(def.geometry.kind, "box");
+const scopedGuidFamily = buildCatalogueFamilyDefinition(parsed.rows, {
+  name: "Scoped Fan",
+  dimensionUnit: "mm",
+  parameterScope: "instance",
+  parameterGuids: { Width: "550e8400-e29b-41d4-a716-446655440000" },
+});
+assert.ok(scopedGuidFamily.parameters.every((parameter) => parameter.scope === "instance"));
+assert.equal(scopedGuidFamily.parameters.find((parameter) => parameter.name === "Width").guid, "550e8400-e29b-41d4-a716-446655440000");
+assert.throws(() => buildCatalogueFamilyDefinition(parsed.rows, {
+  name: "Bad GUID", parameterGuids: { Width: "not-a-guid" },
+}), /valid RFC 4122 UUID/);
+assert.throws(() => buildCatalogueFamilyDefinition(parsed.rows, {
+  name: "Duplicate GUIDs",
+  parameterGuids: {
+    Width: "550e8400-e29b-41d4-a716-446655440000",
+    Depth: "550e8400-e29b-41d4-a716-446655440000",
+  },
+}), /assigned more than once/);
+
 const typePorts = buildCatalogueFamilyDefinition([
   { model: "AHU-A", width: 1000, depth: 800, height: 600,
     "Connector 1 Name": "Supply", "Connector 1 X": 500, "Connector 1 Y": 0, "Connector 1 Z": 300,
