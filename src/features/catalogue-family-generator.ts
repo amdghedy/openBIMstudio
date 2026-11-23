@@ -124,9 +124,9 @@ function buildPanel(): void {
     <header class="cfg-head"><span aria-hidden="true">▦</span><strong>BIM Family Generator</strong><span class="cfg-muted">Catalogue → Parametric BIM</span><button type="button" data-close aria-label="Close">✕</button></header>
     <div class="cfg-body">
       <div class="cfg-card"><strong>01 · Import catalogue</strong><p class="cfg-muted">Local XLSX, CSV, TSV, TXT, JSON and PDF text extraction. Scanned PDF pages can use your configured local Ollama vision model; no cloud OCR is used.</p><label>Catalogue file<input data-file type="file" accept=".xlsx,.csv,.tsv,.txt,.json,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/tab-separated-values,application/json,text/plain,application/pdf"></label><label style="display:flex;grid-template-columns:auto 1fr;align-items:center;gap:8px"><input data-ocr type="checkbox" style="width:auto"> Run local vision OCR on scanned PDF pages (requires a vision-capable Ollama model)</label></div>
-      <div class="cfg-card" data-mapping hidden><strong>03 · Review column mappings</strong><p class="cfg-muted">Auto-recognized headings are mapped automatically. Suggested matches are advisory only; confirm them manually. Ambiguous mappings block affected fields until resolved.</p><div data-mapping-rows></div></div>
+      <div class="cfg-card" data-mapping hidden><strong>02 · Review column mappings</strong><p class="cfg-muted">Auto-recognized headings are mapped automatically. Suggested matches are advisory only; confirm them manually. Ambiguous mappings block affected fields until resolved.</p><div data-mapping-rows></div></div>
       <div class="cfg-card" data-xlsx-selection hidden><strong>Choose worksheet</strong><div class="cfg-grid"><label>Worksheet<select data-sheet></select></label><div style="display:flex;align-items:end"><button type="button" data-import-sheet class="primary">Import selected worksheet</button></div></div><p class="cfg-muted">Choose the worksheet containing the manufacturer product schedule.</p></div>
-      <div class="cfg-card"><strong>02 · Family definition</strong><div class="cfg-grid">
+      <div class="cfg-card"><strong>03 · Family definition</strong><div class="cfg-grid">
         <label>Family name<input data-name value="Manufacturer Equipment"></label>
         <label>Manufacturer<input data-manufacturer placeholder="Manufacturer name"></label>
         <label>Revit / IFC category<select data-category><option value="equipment">Mechanical Equipment</option><option value="generic">Generic Model</option><option value="fitting">Fitting</option></select></label>
@@ -228,8 +228,12 @@ async function readCatalogue(file?: File, selectedSheet?: string): Promise<void>
       parsed = { rows: items.map((item: Any) => ({ ...item, model: String(item.model ?? item.modelNumber ?? item.type ?? "") })), errors: [] };
       if (parsed.rows.some((r) => !r.model.trim())) throw new Error("Every JSON product must have a model, modelNumber or type field.");
     } else {
-      const result = parseDelimitedCatalogue(raw, ext === "tsv" ? "\t" : undefined);
+      delimitedSourceText = raw;
+      delimitedSourceDelimiter = ext === "tsv" ? "\t" : undefined;
+      const result = parseDelimitedCatalogue(raw, delimitedSourceDelimiter, mappingOverrides);
+      delimitedHeaders = result.headers;
       parsed = { rows: result.rows, errors: result.errors };
+      renderMappingReview();
     }
     rows = parsed.rows;
     sourceName = file.name;
