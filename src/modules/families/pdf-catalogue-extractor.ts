@@ -345,13 +345,18 @@ export async function extractPdfCatalogue(
     }
     page.cleanup?.();
   }
-  const seen = new Set<string>();
-  result.rows = result.rows.filter((row) => {
-    const key = row.model.trim().toLowerCase();
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  // Do not discard repeated model identifiers here: they may represent
+  // conflicting catalogue rows or variants. Preserve every extracted row
+  // and let the shared QA gate report duplicates before family creation.
+  const modelCounts = new Map<string, number>();
+  for (const row of result.rows) {
+    const key = row.model.trim().toLocaleLowerCase();
+    if (key) modelCounts.set(key, (modelCounts.get(key) ?? 0) + 1);
+  }
+  const duplicateModels = [...modelCounts.entries()].filter(([, count]) => count > 1).map(([model]) => model);
+  if (duplicateModels.length) {
+    result.warnings.push("Repeated model identifiers were preserved for review: " + duplicateModels.join(", ") + ". Resolve duplicate variants before family creation.");
+  }
   if (!result.rows.length && result.scannedPages.length && !options.useLocalVisionOcr) {
     result.warnings.push("Scanned/image-only pages were detected. Enable local vision OCR and configure a vision-capable Ollama model to extract their product tables.");
   }
