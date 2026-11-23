@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { parseDelimitedCatalogue, buildCatalogueFamilyDefinition, validateCatalogueRows, mapCatalogueHeader, suggestCatalogueMappings } from "../src/modules/families/catalogue-intake.ts";
+import { parseDelimitedCatalogue, buildCatalogueFamilyDefinition, validateCatalogueRows, mapCatalogueHeader, suggestCatalogueMappings, parseCatalogueMappingProfile } from "../src/modules/families/catalogue-intake.ts";
 
 assert.equal(mapCatalogueHeader("Overall Width (mm)"), "width");
 assert.equal(mapCatalogueHeader("Air Flow Rate (m3/h)"), "airflow");
@@ -13,6 +13,22 @@ assert.equal(suggestions[1].suggestedField, "width");
 assert.equal(suggestions[2].suggestedField, "staticPressure");
 assert.equal(suggestions[3].suggestedField, "productCode");
 assert.equal(suggestions[4].suggestedField, null);
+const profile = parseCatalogueMappingProfile({
+  schemaVersion: 1,
+  name: "Example AHU",
+  manufacturer: "Example Manufacturer",
+  mappings: { "Type Ref": "model", "Nominal W": "width", "Unused": null },
+  updatedAt: "2026-11-23T00:00:00.000Z",
+});
+assert.equal(profile.mappings["Nominal W"], "width");
+assert.equal(profile.manufacturer, "Example Manufacturer");
+assert.throws(() => parseCatalogueMappingProfile({
+  schemaVersion: 99, name: "Bad", mappings: {}, updatedAt: "2026-11-23T00:00:00.000Z",
+}), /Unsupported mapping profile schema version/);
+assert.throws(() => parseCatalogueMappingProfile({
+  schemaVersion: 1, name: "Bad", mappings: { Width: "not-a-field" }, updatedAt: "2026-11-23T00:00:00.000Z",
+}), /unsupported target/);
+
 const manuallyMapped = parseDelimitedCatalogue(
   "Type Ref,Nominal W,Overall W,Overall D,Overall H\\nFAN-X,450,999,300,600",
   undefined,
