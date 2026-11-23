@@ -56,6 +56,13 @@ assert.equal(converted.rows[0].airflow, 360);
 assert.equal(converted.rows[0].staticPressure, 2500);
 assert.equal(converted.rows[0].power, 0.75);
 assert.equal(converted.rows[0].voltage, 400);
+const overrideAfterCsvParse = normalizeCatalogueRowsWithUnits(converted.rows.map((row) => ({ ...row })), {
+  airflow: "L/s", staticPressure: "kPa", power: "W", voltage: "kV",
+});
+assert.equal(overrideAfterCsvParse[0].airflow, 360, "unit overrides must use original CSV values, not already-normalized values");
+assert.equal(overrideAfterCsvParse[0].staticPressure, 2500);
+assert.equal(overrideAfterCsvParse[0].power, 0.75);
+assert.equal(overrideAfterCsvParse[0].voltage, 400);
 const convertedM3s = parseDelimitedCatalogue("Model,Airflow (m3/s)\\nUNIT-02,1.2");
 assert.equal(convertedM3s.rows[0].airflow, 4320);
 const unitReviewed = normalizeCatalogueRowsWithUnits([
