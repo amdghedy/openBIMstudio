@@ -193,6 +193,15 @@ async function readCatalogue(file?: File, selectedSheet?: string): Promise<void>
 }
 function createFamily(): void {
   if (!rows.length) { status("Import at least one catalogue product before creating a family.", "warn"); return; }
+  // Do not silently create misleading 1 m fallback geometry from incomplete
+  // catalogue data. Require explicit, positive dimensions for every type.
+  const blockingIssues = validateCatalogueRows(rows);
+  if (blockingIssues.length) {
+    const qa = panel?.querySelector<HTMLElement>("[data-qa]");
+    if (qa) qa.textContent = "Family creation blocked: " + blockingIssues.join(" ");
+    status("Family creation blocked. Correct every missing or non-positive width, depth and height before creating geometry.", "warn");
+    return;
+  }
   const svc = familyService();
   if (typeof svc.create !== "function") { status("The existing family service is not ready. Retry after the BIM authoring engine finishes booting.", "warn"); return; }
   const name = panel?.querySelector<HTMLInputElement>("[data-name]")?.value ?? "";
