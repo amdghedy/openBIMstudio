@@ -812,7 +812,7 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
       "Offline load / model / save / reload and a second IFC import after a rebuild are E2E-proven (offline-first.spec.ts), but only against the locally served production build — the hosted deploy is not part of the proof",
       "Versioned web-ifc WASM lives in a version-keyed cache (obs-webifc-<version>) and survives app rebuilds; a pin move still fetches the new WASM once, and the FIRST IFC import must happen online (the WASM is fetched on demand, not precached)",
       "Install-prompt UX and OS file launch (.obsproj/.ifc double-click) are implemented but not covered by the offline E2E",
-      "Known gap (pre-existing, not fixed here): the icon loader still attempts runtime fetches to third-party CDNs (api.iconify.design / unisvg / simplesvg) — CSP-blocked and harmless offline, but a hole in the no-third-party-runtime-dependency story",
+      "Icon loading is offline: the mdi set used by the shell and the vendor UI ships as a local collection registered at boot (src/features/iconify-offline.ts) — no third-party icon CDN is contacted at runtime",
     ],
     affirmedIn: APP_VERSION,
   },

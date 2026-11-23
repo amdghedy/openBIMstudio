@@ -54,7 +54,8 @@
         "width": 0.4,
         "depth": 0.4,
         "concreteGrade": "C30/37"
-      }
+      },
+      "id": "t_seed-struct-col-001-0"
     },
     {
       "name": "500x500 C35",
@@ -62,7 +63,8 @@
         "width": 0.5,
         "depth": 0.5,
         "concreteGrade": "C35/45"
-      }
+      },
+      "id": "t_seed-struct-col-001-1"
     },
     {
       "name": "600x400 C40",
@@ -70,7 +72,8 @@
         "width": 0.6,
         "depth": 0.4,
         "concreteGrade": "C40/50"
-      }
+      },
+      "id": "t_seed-struct-col-001-2"
     }
   ],
   "geometry": {

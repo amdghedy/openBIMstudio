@@ -74,7 +74,8 @@
         "webThickness": 0.009,
         "flangeThickness": 0.0145,
         "steelGrade": "S355JR"
-      }
+      },
+      "id": "t_seed-struct-beam-001-0"
     },
     {
       "name": "UB 533x210x92",
@@ -84,7 +85,8 @@
         "webThickness": 0.0102,
         "flangeThickness": 0.0156,
         "steelGrade": "S355JR"
-      }
+      },
+      "id": "t_seed-struct-beam-001-1"
     }
   ],
   "geometry": {

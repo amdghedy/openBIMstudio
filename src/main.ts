@@ -1,4 +1,8 @@
 import "./core/webgpu-compat";
+import { setupOfflineIcons } from "./features/iconify-offline";
+// Register the offline mdi collection before any UI mounts, so the vendor
+// iconify runtime never attempts CSP-blocked CDN fetches for icons.
+setupOfflineIcons();
 import { APP_VERSION } from "./version";
 import "./features/usage-boot";
 import { setupManageLinks } from "./features/manage-links";

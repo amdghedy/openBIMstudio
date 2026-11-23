@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.74.0",
   "type": "module",
-  "description": "Open BIM Studio — professional local-first openBIM authoring, federation, coordination, documentation, 4D, 5D, IDS, BCF, automation, AI and linked-model Native Twin reconstruction.",
+  "description": "Open BIM Studio \u2014 professional local-first openBIM authoring, federation, coordination, documentation, 4D, 5D, IDS, BCF, automation, AI and linked-model Native Twin reconstruction.",
   "scripts": {
     "predev": "node scripts/copy-libredwg-wasm.mjs && node scripts/copy-cad-engine-wasm.mjs",
     "dev": "vite",
@@ -76,6 +76,8 @@
     "test:qto-property-filters": "node tests/qto-property-filters.test.cjs",
     "test:file-guard": "node tests/file-guard.test.cjs",
     "test:camera-fitall-bounded": "node tests/camera-fitall-bounded.test.cjs",
+    "test:offline-icons": "node tests/offline-icons.test.cjs",
+    "test:catalog-type-ids": "node tests/catalog-type-ids.test.cjs",
     "test:ifc-type-objects": "node tests/ifc-type-objects.test.cjs",
     "test:dxf-malformed": "node tests/dxf-malformed.test.cjs",
     "test:property-invariants": "node tests/property-invariants.test.cjs",
@@ -422,6 +424,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@iconify-json/mdi": "^1.2.3",
     "@mlightcad/libredwg-web": "^0.8.4",
     "@playwright/test": "^1.57.0",
     "@types/react": "^18.3.12",
