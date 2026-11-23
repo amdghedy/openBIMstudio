@@ -39,7 +39,7 @@
  */
 
 export interface AuthEnv {
-  AUTH: DurableObjectNamespace;
+  AUTH: { idFromName(name: string): unknown; get(id: unknown): { fetch(request: Request): Promise<Response> } };
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   RESEND_API_KEY?: string;
@@ -64,13 +64,16 @@ interface UserRecord {
 }
 
 const COOKIE = "obs_session";
+const RESET_TTL_MS = 30 * 60 * 1000;
+const RATE_WINDOW_MS = 60_000;
+const FORGOT_MAX_PER_MIN = 5;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const enc = new TextEncoder();
 
 function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8", ...headers },
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers },
   });
 }
 
@@ -85,11 +88,11 @@ function b64url(buf: ArrayBuffer | Uint8Array): string {
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function b64urlDecode(s: string): Uint8Array {
+function b64urlDecode(s: string): Uint8Array<ArrayBuffer> {
   const pad = s.length % 4 === 0 ? "" : "=".repeat(4 - (s.length % 4));
   const b64 = s.replace(/-/g, "+").replace(/_/g, "/") + pad;
   const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
+  const out = new Uint8Array(new ArrayBuffer(bin.length));
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
@@ -112,6 +115,11 @@ async function pbkdf2(password: string, saltB64: string): Promise<string> {
     256,
   );
   return b64url(bits);
+}
+
+async function sha256hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", enc.encode(text));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function setCookie(token: string): string {
@@ -228,12 +236,12 @@ export class AuthVault {
     const minute = Math.floor(Date.now() / 60_000);
     const rlKey = `t:${email}:${minute}`;
     const hits = Number((await this.storage.get<number>(rlKey)) ?? 0);
-    if (hits >= 20) return json({ error: "Too many attempts. Wait a minute and try again." }, 429);
+    if (hits >= 10) return json({ error: "Too many attempts. Wait a minute and try again." }, 429);
     await this.storage.put(rlKey, hits + 1);
     const user = await this.storage.get<UserRecord>(`u:${email}`);
     if (!user || !user.salt || !user.hash) return json({ error: "Invalid email or password." }, 401);
     const hash = await pbkdf2(password, user.salt);
-    if (hash !== user.hash) return json({ error: "Invalid email or password." }, 401);
+    if (hash !== user.hash.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")) return json({ error: "Invalid email or password." }, 401);
     const token = await this.signToken(email);
     return json({ user: { email: user.email, name: user.name } }, 200, { "set-cookie": setCookie(token) });
   }
@@ -264,36 +272,41 @@ export class AuthVault {
     const body = await request.json().catch(() => null) as { email?: string } | null;
     const email = (body?.email ?? "").trim().toLowerCase();
     if (!validEmail(email)) return json({ error: "Enter a valid email address." }, 400);
-    const minute = Math.floor(Date.now() / 60_000);
-    const rlKey = `f:${email}:${minute}`;
-    const hits = Number((await this.storage.get<number>(rlKey)) ?? 0);
-    if (hits >= 5) return json({ error: "Too many reset requests. Wait a minute." }, 429);
-    await this.storage.put(rlKey, hits + 1);
+    const minute = Math.floor(Date.now() / RATE_WINDOW_MS);
+    const rateKey = `f:${email}:${minute}`;
+    const attempts = (await this.storage.get<number>(rateKey)) ?? 0;
+    if (attempts >= FORGOT_MAX_PER_MIN) return json({ error: "Too many reset requests. Wait a minute and try again." }, 429);
+    await this.storage.put(rateKey, attempts + 1);
     const user = await this.storage.get<UserRecord>(`u:${email}`);
-    if (!user) return json({ ok: true });
-    const raw = randomB64(32);
-    const digest = b64url(await crypto.subtle.digest("SHA-256", enc.encode(raw)));
-    await this.storage.put(`rt:${digest}`, { e: email, exp: Date.now() + 30 * 60 * 1000 });
-    return json({ ok: true, token: raw });
+    if (!user || user.provider !== "password") return json({ ok: true, hasAccount: false });
+    const token = b64url(crypto.getRandomValues(new Uint8Array(32)));
+    await this.storage.put(`rt:${await sha256hex(token)}`, { e: email, exp: Date.now() + RESET_TTL_MS });
+    return json({ ok: true, hasAccount: true, token });
   }
 
+  /** Consumes a reset token, sets the new password and signs the user in. */
   private async resetPassword(request: Request): Promise<Response> {
     const body = await request.json().catch(() => null) as { token?: string; password?: string } | null;
-    const token = body?.token ?? "";
+    const token = (body?.token ?? "").trim();
     const password = body?.password ?? "";
-    if (!token || password.length < 6) return json({ error: "Invalid reset request." }, 400);
-    const digest = b64url(await crypto.subtle.digest("SHA-256", enc.encode(token)));
-    const rec = await this.storage.get<{ e?: string; exp?: number }>(`rt:${digest}`);
-    if (!rec?.e || typeof rec.exp !== "number" || rec.exp < Date.now()) return json({ error: "Reset link expired or already used." }, 400);
-    await this.storage.delete(`rt:${digest}`);
-    const email = rec.e.toLowerCase();
-    const user = await this.storage.get<UserRecord>(`u:${email}`);
-    if (!user) return json({ error: "Account not found." }, 404);
+    if (!token) return json({ error: "This reset link is missing its code — request a new one." }, 400);
+    if (password.length < 6) return json({ error: "Password must be at least 6 characters." }, 400);
+    const recordKey = `rt:${await sha256hex(token)}`;
+    const record = await this.storage.get<{ e: string; exp: number }>(recordKey);
+    if (!record || typeof record.exp !== "number" || record.exp < Date.now()) {
+      return json({ error: "This reset link has expired or was already used — request a new one." }, 400);
+    }
+    const user = await this.storage.get<UserRecord>(`u:${record.e}`);
+    if (!user) return json({ error: "This account no longer exists." }, 400);
+    // Single-use: burn the token before writing anything else.
+    await this.storage.delete(recordKey);
     const salt = randomB64(16);
-    const hash = await pbkdf2(password, salt);
-    await this.storage.put(`u:${email}`, { ...user, salt, hash, provider: "password" });
-    const session = await this.signToken(email);
-    return json({ ok: true }, 200, { "set-cookie": setCookie(session) });
+    user.salt = salt;
+    user.hash = await pbkdf2(password, salt);
+    user.provider = "password";
+    await this.storage.put(`u:${user.email}`, user);
+    const session = await this.signToken(user.email);
+    return json({ ok: true, user: { email: user.email, name: user.name, provider: user.provider ?? "password" } }, 200, { "set-cookie": setCookie(session) });
   }
 
   private async listProjects(request: Request): Promise<Response> {
@@ -354,14 +367,42 @@ export class AuthVault {
 }
 
 function esc(s: string): string {
-  return s.replace(/&/g, "&").replace(/</g, "<").replace(/>/g, ">").replace(/"/g, """);
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 export function googleStatus(env: AuthEnv): Response {
   return json({ configured: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) });
 }
 
-export function googleStartUrl(request: Request, env: AuthEnv): string | null {
+const GOOGLE_STATE_COOKIE = "__Host-obs_google_state";
+const GOOGLE_STATE_TTL_MS = 10 * 60 * 1000;
+
+/** A fresh browser-bound OAuth state, scoped to this host and short-lived. */
+export function googleOAuthState(request: Request): string {
+  const mode = new URL(request.url).searchParams.get("popup") === "1" ? "popup" : "app";
+  return `${mode}.${b64url(crypto.getRandomValues(new Uint8Array(32)))}.${Date.now()}`;
+}
+
+export function googleOAuthStateCookie(state: string): string {
+  return `${GOOGLE_STATE_COOKIE}=${state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`;
+}
+
+export function clearGoogleOAuthStateCookie(): string {
+  return `${GOOGLE_STATE_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+}
+
+/** Validate before exchanging any code or linking an account. Returns popup mode. */
+export function validateGoogleOAuthState(request: Request): boolean {
+  const state = new URL(request.url).searchParams.get("state") ?? "";
+  const saved = readCookie(request, GOOGLE_STATE_COOKIE);
+  const match = /^(app|popup)\.([A-Za-z0-9_-]{43})\.(\d{13})$/.exec(state);
+  if (!saved || saved !== state || !match) throw new Error("invalid-oauth-state");
+  const age = Date.now() - Number(match[3]);
+  if (age < 0 || age > GOOGLE_STATE_TTL_MS) throw new Error("expired-oauth-state");
+  return match[1] === "popup";
+}
+
+export function googleStartUrl(request: Request, env: AuthEnv, state = googleOAuthState(request)): string | null {
   if (!env.GOOGLE_CLIENT_ID) return null;
   const origin = new URL(request.url).origin;
   const popup = new URL(request.url).searchParams.get("popup") === "1";
@@ -372,7 +413,7 @@ export function googleStartUrl(request: Request, env: AuthEnv): string | null {
     scope: "openid email profile",
     access_type: "online",
     prompt: "select_account",
-    state: popup ? "popup" : "app",
+    state,
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 }
@@ -476,7 +517,9 @@ export async function googleCallback(request: Request, env: AuthEnv): Promise<{ 
     headers: { authorization: `Bearer ${accessToken}` },
   });
   if (!infoRes.ok) throw new Error("userinfo-failed");
-  const info = await infoRes.json() as { email?: string; name?: string; sub?: string };
-  if (!info.email) throw new Error("no-email");
+  const info = await infoRes.json() as { email?: string; email_verified?: boolean; name?: string; sub?: string };
+  if (!info.email || !validEmail(info.email)) throw new Error("no-email");
+  if (info.email_verified !== true) throw new Error("unverified-email");
+  if (!info.sub) throw new Error("no-google-subject");
   return { email: info.email, name: info.name ?? info.email.split("@")[0], sub: info.sub };
-}
+        }
