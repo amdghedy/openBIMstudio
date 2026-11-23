@@ -61,7 +61,7 @@ function groupTextItems(items: any[]): PdfTextLine[] {
     const y = Number(item.transform[5]);
     if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
     const raw = item.str.trim();
-    const cells = raw.split(/\\s{2,}|\\t/).filter(Boolean);
+    const cells = raw.split(/\s{2,}|\t/).filter(Boolean);
     if (cells.length > 1) {
       let offset = 0;
       for (const cell of cells) {
@@ -91,7 +91,7 @@ function groupTextItems(items: any[]): PdfTextLine[] {
   }
   for (const line of lines) {
     line.tokens.sort((a, b) => a.x - b.x);
-    line.text = line.tokens.map((item) => item.text).join(" ").replace(/\\s+/g, " ").trim();
+    line.text = line.tokens.map((item) => item.text).join(" ").replace(/\s+/g, " ").trim();
   }
   return lines.sort((a, b) => b.y - a.y);
 }
@@ -149,7 +149,7 @@ function parseTableRows(lines: PdfTextLine[], pageNumber: number, mappingOverrid
     }
     const modelIndex = columns.findIndex((column) => column.key === "model");
     const model = (cells.get(modelIndex) ?? []).join(" ").trim();
-    if (!model || /^(model|type|model no\\.?|model number)$/i.test(model)) continue;
+    if (!model || /^(model|type|model no\.?|model number)$/i.test(model)) continue;
     const item: CatalogueRow = { model, sourcePage: pageNumber };
     columns.forEach((column, index) => {
       if (column.key === "model" || (column.key && ambiguous.has(column.key))) return;
@@ -168,7 +168,7 @@ function parseTableRows(lines: PdfTextLine[], pageNumber: number, mappingOverrid
 }
 
 export function parsePdfCatalogueLines(lines: string[], pageNumber = 1): CatalogueRow[] {
-  const matrix = lines.map((line) => line.trim().split(/\\s{2,}|\\t/).map((cell) => cell.trim()).filter(Boolean));
+  const matrix = lines.map((line) => line.trim().split(/\s{2,}|\t/).map((cell) => cell.trim()).filter(Boolean));
   const headerIndex = matrix.findIndex((cells) => cells.some((cell) => mapCatalogueHeader(cell) === "model") &&
     cells.filter((cell) => Boolean(mapCatalogueHeader(cell))).length >= 2);
   if (headerIndex < 0) return [];
@@ -239,7 +239,7 @@ async function runLocalOllamaOcr(imageBase64: string, pageNumber: number): Promi
     if (!response.ok) throw new Error(`Local Ollama OCR failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
     const payload = await response.json() as { response?: string };
     const raw = String(payload.response ?? "").trim();
-    const fenced = raw.replace(/^```(?:json)?\\s*/i, "").replace(/\\s*```$/, "");
+    const fenced = raw.replace(/^```(?:json)?\\s*/i, "").replace(/\s*```$/, "");
     const firstBrace = fenced.indexOf("{");
     const lastBrace = fenced.lastIndexOf("}");
     const jsonText = firstBrace >= 0 && lastBrace > firstBrace ? fenced.slice(firstBrace, lastBrace + 1) : fenced;
