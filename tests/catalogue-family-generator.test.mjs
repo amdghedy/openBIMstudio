@@ -1,11 +1,27 @@
 import assert from "node:assert/strict";
-import { parseDelimitedCatalogue, buildCatalogueFamilyDefinition, validateCatalogueRows, mapCatalogueHeader } from "../src/modules/families/catalogue-intake.ts";
+import { parseDelimitedCatalogue, buildCatalogueFamilyDefinition, validateCatalogueRows, mapCatalogueHeader, suggestCatalogueMappings } from "../src/modules/families/catalogue-intake.ts";
 
 assert.equal(mapCatalogueHeader("Overall Width (mm)"), "width");
 assert.equal(mapCatalogueHeader("Air Flow Rate (m3/h)"), "airflow");
 assert.equal(mapCatalogueHeader("ESP (Pa)"), "staticPressure");
 assert.equal(mapCatalogueHeader("Rated Power (kW)"), "power");
 assert.equal(mapCatalogueHeader("Supply Voltage (V)"), "voltage");
+const suggestions = suggestCatalogueMappings(["Type Ref", "Nominal Width (mm)", "External Static Pressure", "Vendor Part Number", "Unrecognized Note"]);
+assert.equal(suggestions[0].suggestedField, "model");
+assert.equal(suggestions[0].confidence, "medium");
+assert.equal(suggestions[1].suggestedField, "width");
+assert.equal(suggestions[2].suggestedField, "staticPressure");
+assert.equal(suggestions[3].suggestedField, "productCode");
+assert.equal(suggestions[4].suggestedField, null);
+const manuallyMapped = parseDelimitedCatalogue(
+  "Type Ref,Nominal W,Overall W,Overall D,Overall H\\nFAN-X,450,999,300,600",
+  undefined,
+  { "Type Ref": "model", "Nominal W": "width", "Overall W": null, "Overall D": "depth", "Overall H": "height" },
+);
+assert.equal(manuallyMapped.errors.length, 0);
+assert.equal(manuallyMapped.rows[0].width, 450);
+assert.equal(manuallyMapped.rows[0].depth, 300);
+
 
 const mapped = parseDelimitedCatalogue("Model,Overall Width (mm),Overall Depth (mm),Overall Height (mm),Air Flow Rate (m3/h)\\nAHU-01,1200,800,650,4200");
 assert.equal(mapped.rows[0].width, 1200);
