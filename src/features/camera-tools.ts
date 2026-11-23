@@ -1147,6 +1147,7 @@ export async function fitToMap(map: OBC.ModelIdMap) {
 export function recoverView(): void {
   try {
     const modelCount = ctx.fragments.list.size;
+    if (modelCount === 0) return; // nothing loaded yet — recovering is a no-op, not a warning
     computeSceneBounds();
     const boxSize = new THREE.Vector3();
     lastSceneBox.getSize(boxSize);
@@ -1164,7 +1165,7 @@ export function recoverView(): void {
     );
 
     if (lastSceneBox.isEmpty()) {
-      console.warn("[camera] recoverView: scene bounds are empty.");
+      console.warn("[camera] recoverView: models present but scene bounds are empty.");
       return;
     }
 

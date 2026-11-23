@@ -140,8 +140,8 @@ export type IfcSettings = {
   maxSizeMB: number;
   /**
    * Soft ceiling for in-browser web-ifc conversion. Files above this are skipped
-   * unless allowUnsafeLargeIfc is true. 698 MB IFCs routinely OOM the tab, so
-   * the default 550 MB still leaves headroom below that danger zone.
+   * unless allowUnsafeLargeIfc is true. Multi-hundred-MB IFCs may still OOM
+   * some devices; users can raise this further in Importer settings.
    */
   browserSafeMaxMB: number;
   /** User opts in to attempt conversion of files above browserSafeMaxMB. */
@@ -168,7 +168,7 @@ const IFC_SETTINGS_KEY = "toc.ifc.settings.v1";
 const defaultIfcSettings: IfcSettings = {
   cdn: "local", customPath: "",
   autoFit: true, keepFragInMemory: true, replaceExisting: false,
-  recenter: false, maxSizeMB: 1500, browserSafeMaxMB: 550, allowUnsafeLargeIfc: false,
+  recenter: false, maxSizeMB: 4000, browserSafeMaxMB: 900, allowUnsafeLargeIfc: true,
   importStallTimeoutMs: IFC_IMPORT_STALL_MS_DEFAULT, importTotalTimeoutMs: 0,
   useCoord: false, coordX: 0, coordY: 0, coordZ: 0,
   positioning: "origin-to-origin",
@@ -179,16 +179,16 @@ try {
   const raw = localStorage.getItem(IFC_SETTINGS_KEY);
   if (raw) {
     ifcSettings = { ...defaultIfcSettings, ...JSON.parse(raw) };
-    if (!Number.isFinite(ifcSettings.browserSafeMaxMB)) ifcSettings.browserSafeMaxMB = 550;
-    // Migrate the previous 120 MB default that blocked normal ~80 MB IFCZIP after unpack.
+    if (!Number.isFinite(ifcSettings.browserSafeMaxMB)) ifcSettings.browserSafeMaxMB = 900;
+    // Migrate older conservative defaults that blocked normal / large IFC+IFCZIP.
     if (ifcSettings.browserSafeMaxMB > 0 && ifcSettings.browserSafeMaxMB <= 120) {
-      ifcSettings.browserSafeMaxMB = 550;
+      ifcSettings.browserSafeMaxMB = 900;
     }
-    // Migrate the previous 350 MB default — the old default value itself is
-    // treated as never-personalized so existing installs get the raised
-    // in-browser conversion/link ceiling (up to 550 MB) too.
-    if (ifcSettings.browserSafeMaxMB === 350) {
-      ifcSettings.browserSafeMaxMB = 550;
+    if (ifcSettings.browserSafeMaxMB === 350 || ifcSettings.browserSafeMaxMB === 550) {
+      ifcSettings.browserSafeMaxMB = 900;
+    }
+    if (!Number.isFinite(ifcSettings.maxSizeMB) || ifcSettings.maxSizeMB < 1500) {
+      ifcSettings.maxSizeMB = 4000;
     }
     if (typeof ifcSettings.allowUnsafeLargeIfc !== "boolean") ifcSettings.allowUnsafeLargeIfc = false;
     // Import timeout bounds: fall back to defaults on garbage, clamp absurd
@@ -1508,7 +1508,7 @@ settingsBox.innerHTML = `
     </label>
     <label style="display:grid;gap:2px">Browser-safe conversion limit (MB)
       <input id="ifcSafeMax" type="number" min="10" style="${inpCss}">
-      <span style="opacity:.65;font-size:10px">Above this, IFC is skipped unless "Allow unsafe large IFC" is on. Default 550 MB — linking files up to 550 MB converts in-browser. ~700 MB models still need offline FRAG.</span>
+      <span style="opacity:.65;font-size:10px">Above this, IFC is skipped unless "Allow unsafe large IFC" is on. Default 900 MB. Very large models may still need IFC→FRAG if the tab runs out of memory.</span>
     </label>
     <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="ifcAllowUnsafe"> Allow unsafe large IFC (may crash the tab)</label>
     <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="ifcAutoHandoff"> Auto convert+link large IFC (skip dialog)</label>
@@ -1524,7 +1524,7 @@ function syncSettingsUI() {
   $("ifcReplace").checked = ifcSettings.replaceExisting;
   $("ifcFit").checked = ifcSettings.autoFit;
   $("ifcMax").value = String(ifcSettings.maxSizeMB);
-  $("ifcSafeMax").value = String(ifcSettings.browserSafeMaxMB ?? 550);
+  $("ifcSafeMax").value = String(ifcSettings.browserSafeMaxMB ?? 900);
   $("ifcAllowUnsafe").checked = !!ifcSettings.allowUnsafeLargeIfc;
   try { $("ifcAutoHandoff").checked = largeIfcAutoHandoff(); } catch { /* */ }
 }
@@ -1544,7 +1544,7 @@ settingsBox.addEventListener("change", (e) => {
     case "ifcReplace": ifcSettings.replaceExisting = el.checked; break;
     case "ifcFit": ifcSettings.autoFit = el.checked; break;
     case "ifcMax": ifcSettings.maxSizeMB = Math.max(1, Number(el.value) || 800); break;
-    case "ifcSafeMax": ifcSettings.browserSafeMaxMB = Math.max(10, Number(el.value) || 550); break;
+    case "ifcSafeMax": ifcSettings.browserSafeMaxMB = Math.max(10, Number(el.value) || 900); break;
     case "ifcAllowUnsafe": ifcSettings.allowUnsafeLargeIfc = el.checked; break;
     case "ifcAutoHandoff": try { localStorage.setItem(LARGE_IFC_AUTO_HANDOFF_KEY, el.checked ? "1" : "0"); } catch { /* */ } break;
   }

@@ -3,6 +3,7 @@
  * scripts/ifc-per-entity-report.mjs — per-entity IFC fidelity for the golden corpus (#106).
  *
  *   node scripts/ifc-per-entity-report.mjs [--corpus <dir>] [--out <dir>] [--check] [--no-webifc]
+ *                                          [--only <fixture-rel>] [--parts-dir <dir>] [--merge]
  *
  * For every `.ifc` (and `.ifczip`, via jszip) under the corpus dir it builds
  * the per-entity import report (src/modules/ifc-semantics/per-entity-report.ts)
@@ -10,6 +11,14 @@
  * summary.json aggregating the whole corpus. With `--check` it regenerates
  * into memory and fails (exit 1) on any drift from the checked-in files —
  * that is the gate; plain runs rewrite the files.
+ *
+ * Memory-bounded mode (used by the drift gate so the suite cannot be
+ * OOM-killed on small CI runners): `--only <fixture-rel>` processes a single
+ * fixture and writes its report plus a summary *part* file;
+ * `--merge` reassembles summary.json from the part files in corpus walk
+ * order. One fixture per process means the WASM reader's peak memory never
+ * accumulates across the corpus. The merged summary is byte-identical to
+ * the in-process one — same assembly code, same key order.
  *
  * A second, independent leg cross-checks each file with web-ifc 0.0.77 (the
  * application's own import parser, Node API): every GlobalId the STEP report
@@ -23,7 +32,7 @@
  * corpus with the same web-ifc availability yields byte-identical files.
  */
 
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import {
   existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync,
   rmSync, statSync, writeFileSync,
@@ -150,6 +159,89 @@ async function initWebIfc() {
 }
 
 /**
+ * Build one fixture's report + its summary entry (the exact body of the
+ * original corpus loop, unchanged). Returns
+ * { outRel, reportJson | null, summaryEntry,
+ *   delta: { totalProducts, reported, totalDefinitions, totals } }.
+ */
+async function processFixture(fx, reporter, web, webAvailable) {
+  const raw = readFileSync(fx.full);
+  let bytes = raw;
+  let fileName = fx.rel;
+  let zipNote = null;
+  if (/\.ifczip$/i.test(fx.rel)) {
+    const unzipped = await unzipFirstIfc(new Uint8Array(raw));
+    if (unzipped.error) {
+      return {
+        outRel: null, reportJson: null,
+        summaryEntry: {
+          file: fx.rel, kind: kindOf(fx.rel), schema: "UNKNOWN", report: null,
+          reason: `ifczip unreadable: ${unzipped.error}`,
+          totalProducts: 0, totals: null, webIfc: null,
+        },
+        delta: { totalProducts: 0, reported: 0, totalDefinitions: 0, totals: zeroTotals() },
+      };
+    }
+    bytes = Buffer.from(unzipped.bytes);
+    fileName = `${fx.rel}!${unzipped.name}`;
+    zipNote = `extracted ${unzipped.name} from ${fx.rel}`;
+  }
+  const report = reporter.buildImportFidelityReport(fileName, new Uint8Array(bytes));
+  if (!report) {
+    return {
+      outRel: null, reportJson: null,
+      summaryEntry: {
+        file: fx.rel, kind: kindOf(fx.rel), schema: "UNKNOWN", report: null,
+        reason: "no product entities readable (not STEP-shaped, empty, or unreadable)",
+        totalProducts: 0, totals: null, webIfc: null,
+      },
+      delta: { totalProducts: 0, reported: 0, totalDefinitions: 0, totals: zeroTotals() },
+    };
+  }
+  const outRel = fx.rel.replace(/\.ifczip$/i, ".ifc") + ".json";
+  const reportJson = reporter.fidelityReportToJson(report);
+
+  let webCheck = null;
+  if (webAvailable) {
+    try {
+      webCheck = await webIfcCrossCheck(web.api, web.W, new Uint8Array(bytes), report.rows);
+    } catch (e) {
+      const raw = String((e && e.message) || e);
+      // The WASM OOB abort surfaces with different messages per Node runtime
+      // ("Aborted(). Build with -sASSERTIONS..." on 22, a V8 trap message on
+      // 24+) — record one canonical label so the drift gate stays
+      // environment-independent.
+      const msg = /memory access out of bounds|^Aborted\(\)/i.test(raw)
+        ? "memory access out of bounds"
+        : raw;
+      webCheck = { opened: false, error: msg };
+    }
+  }
+  const summaryEntry = {
+    file: fx.rel, kind: kindOf(fx.rel), schema: report.schema,
+    report: outRel, ...(zipNote ? { note: zipNote } : {}),
+    totalProducts: report.totalProducts, totals: report.totals,
+    definitions: report.definitions?.total ?? 0,
+    webIfc: webAvailable ? webCheck : { available: false },
+  };
+  return {
+    outRel, reportJson, summaryEntry,
+    delta: {
+      totalProducts: report.totalProducts, reported: 1,
+      totalDefinitions: report.definitions?.total ?? 0, totals: report.totals,
+    },
+  };
+}
+
+function zeroTotals() {
+  return { preserved: 0, transformed: 0, approximated: 0, unsupported: 0, skipped: 0, failed: 0 };
+}
+
+function addTotals(acc, totals) {
+  for (const k of Object.keys(acc)) acc[k] += totals?.[k] ?? 0;
+}
+
+/**
  * Generate the corpus reports. Returns { files: Map<outRel, jsonString>, summary }.
  * `files` keys are paths relative to the out dir; the summary references them.
  */
@@ -162,67 +254,29 @@ export async function generateCorpusReports({ corpusDir, useWebIfc = true } = {}
 
   const files = new Map();
   const summaryFiles = [];
-  const totals = {
-    preserved: 0, transformed: 0, approximated: 0,
-    unsupported: 0, skipped: 0, failed: 0,
-  };
+  const totals = zeroTotals();
   let totalProducts = 0;
   let reported = 0;
   let totalDefinitions = 0;
 
   for (const fx of fixtures) {
-    const raw = readFileSync(fx.full);
-    let bytes = raw;
-    let fileName = fx.rel;
-    let zipNote = null;
-    if (/\.ifczip$/i.test(fx.rel)) {
-      const unzipped = await unzipFirstIfc(new Uint8Array(raw));
-      if (unzipped.error) {
-        summaryFiles.push({
-          file: fx.rel, kind: kindOf(fx.rel), schema: "UNKNOWN", report: null,
-          reason: `ifczip unreadable: ${unzipped.error}`,
-          totalProducts: 0, totals: null, webIfc: null,
-        });
-        continue;
-      }
-      bytes = Buffer.from(unzipped.bytes);
-      fileName = `${fx.rel}!${unzipped.name}`;
-      zipNote = `extracted ${unzipped.name} from ${fx.rel}`;
-    }
-    const report = reporter.buildImportFidelityReport(fileName, new Uint8Array(bytes));
-    if (!report) {
-      summaryFiles.push({
-        file: fx.rel, kind: kindOf(fx.rel), schema: "UNKNOWN", report: null,
-        reason: "no product entities readable (not STEP-shaped, empty, or unreadable)",
-        totalProducts: 0, totals: null, webIfc: null,
-      });
-      continue;
-    }
-    reported++;
-    totalProducts += report.totalProducts;
-    for (const k of Object.keys(totals)) totals[k] += report.totals[k];
-    totalDefinitions += report.definitions?.total ?? 0;
-    const outRel = fx.rel.replace(/\.ifczip$/i, ".ifc") + ".json";
-    files.set(outRel, reporter.fidelityReportToJson(report));
-
-    let webCheck = null;
-    if (webAvailable) {
-      try {
-        webCheck = await webIfcCrossCheck(web.api, web.W, new Uint8Array(bytes), report.rows);
-      } catch (e) {
-        webCheck = { opened: false, error: String((e && e.message) || e) };
-      }
-    }
-    summaryFiles.push({
-      file: fx.rel, kind: kindOf(fx.rel), schema: report.schema,
-      report: outRel, ...(zipNote ? { note: zipNote } : {}),
-      totalProducts: report.totalProducts, totals: report.totals,
-      definitions: report.definitions?.total ?? 0,
-      webIfc: webAvailable ? webCheck : { available: false },
-    });
+    const r = await processFixture(fx, reporter, web, webAvailable);
+    if (r.outRel) files.set(r.outRel, r.reportJson);
+    summaryFiles.push(r.summaryEntry);
+    totalProducts += r.delta.totalProducts;
+    reported += r.delta.reported;
+    totalDefinitions += r.delta.totalDefinitions;
+    addTotals(totals, r.delta.totals);
   }
 
-  const summary = {
+  const summary = assembleSummary({ corpusDir, web, webAvailable, fileCount: fixtures.length, summaryFiles, reported, totalProducts, totalDefinitions, totals });
+  return { files, summary };
+}
+
+/** The summary object — single construction site so every mode is byte-identical. */
+function assembleSummary({ corpusDir, web, webAvailable, fileCount, summaryFiles, reported, totalProducts, totalDefinitions, totals }) {
+  const corpus = resolve(root, corpusDir);
+  return {
     schemaVersion: 1,
     generator: "scripts/ifc-per-entity-report.mjs (per-entity-report v1)",
     corpus: relative(root, corpus).split(sep).join("/"),
@@ -231,11 +285,10 @@ export async function generateCorpusReports({ corpusDir, useWebIfc = true } = {}
       : { available: false, reason: web.reason ?? "web-ifc not installed" },
     files: summaryFiles,
     totals: {
-      files: fixtures.length, reported, unreported: fixtures.length - reported,
+      files: fileCount, reported, unreported: fileCount - reported,
       products: totalProducts, definitions: totalDefinitions, ...totals,
     },
   };
-  return { files, summary };
 }
 
 function summaryJson(summary) {
@@ -250,12 +303,100 @@ export function stripWebIfc(summary) {
   return copy;
 }
 
+/* ── Memory-bounded split mode ───────────────────────────────────────────
+   --only <rel>   process one fixture: write <out>/<report>.json plus
+                  <out>/.parts/<rel>.part.json (summary entry + totals delta
+                  + the run's top-level webIfc object).
+   --merge        reassemble summary.json from the part files in corpus walk
+                  order — byte-identical to the in-process summary.
+   One fixture per process bounds the WASM reader's peak memory; the drift
+   gate spawns these sequentially so a small CI runner cannot be OOM-killed. */
+
+function partPath(partsDir, rel) {
+  return join(partsDir, rel.replaceAll("/", "__") + ".part.json");
+}
+
+async function runOnly(corpusDir, outAbs, onlyRel, useWebIfc) {
+  const reporter = loadReporter();
+  const corpus = resolve(root, corpusDir);
+  const fx = walkIfc(corpus).find((f) => f.rel === onlyRel);
+  if (!fx) { console.error(`--only: no such fixture under the corpus: ${onlyRel}`); process.exit(1); }
+  const web = useWebIfc ? await initWebIfc() : { available: false, reason: "disabled with --no-webifc" };
+  const webAvailable = !!web.api;
+  const r = await processFixture(fx, reporter, web, webAvailable);
+  const partsDir = join(outAbs, ".parts");
+  mkdirSync(partsDir, { recursive: true });
+  if (r.outRel) {
+    const p = join(outAbs, r.outRel);
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, r.reportJson);
+  }
+  writeFileSync(partPath(partsDir, fx.rel), JSON.stringify({
+    summaryEntry: r.summaryEntry,
+    delta: r.delta,
+    webIfc: webAvailable
+      ? { available: true, version: web.version }
+      : { available: false, reason: web.reason ?? "web-ifc not installed" },
+  }, null, 2) + "\n");
+  console.log(`part ${fx.rel}: ${r.outRel ?? "(no report)"}`);
+}
+
+async function runMerge(corpusDir, outAbs, useWebIfc) {
+  const corpus = resolve(root, corpusDir);
+  const fixtures = walkIfc(corpus);
+  const partsDir = join(outAbs, ".parts");
+  const summaryFiles = [];
+  const totals = zeroTotals();
+  let totalProducts = 0;
+  let reported = 0;
+  let totalDefinitions = 0;
+  let webIfcTop = null;
+  for (const fx of fixtures) {
+    const pp = partPath(partsDir, fx.rel);
+    if (!existsSync(pp)) { console.error(`--merge: missing part for ${fx.rel} (run --only first)`); process.exit(1); }
+    const part = JSON.parse(readFileSync(pp, "utf8"));
+    if (!webIfcTop) webIfcTop = part.webIfc;
+    summaryFiles.push(part.summaryEntry);
+    totalProducts += part.delta.totalProducts;
+    reported += part.delta.reported;
+    totalDefinitions += part.delta.totalDefinitions;
+    addTotals(totals, part.delta.totals);
+  }
+  // The top-level webIfc object comes from the part runs (it records whether
+  // the WASM reader actually initialised there); the version string is
+  // re-read locally without initialising the WASM heap.
+  const webForSummary = webIfcTop?.available
+    ? { version: useWebIfc ? webIfcVersion() : undefined, top: webIfcTop }
+    : { top: webIfcTop };
+  const summary = assembleSummary({
+    corpusDir,
+    web: webForSummary.top.available
+      ? { version: webForSummary.version ?? webIfcVersion() }
+      : { reason: webForSummary.top.reason ?? "web-ifc not installed" },
+    webAvailable: !!webForSummary.top.available,
+    fileCount: fixtures.length, summaryFiles, reported, totalProducts, totalDefinitions, totals,
+  });
+  writeFileSync(join(outAbs, "summary.json"), summaryJson(summary));
+  console.log(`merged ${fixtures.length} part(s) into summary.json`);
+}
+
 async function main(argv) {
   const corpusDir = argv.includes("--corpus") ? argv[argv.indexOf("--corpus") + 1] : "tests/fixtures/ifc-corpus";
   const outDir = argv.includes("--out") ? argv[argv.indexOf("--out") + 1] : join(corpusDir, "per-entity-reports");
   const check = argv.includes("--check");
   const useWebIfc = !argv.includes("--no-webifc");
   const outAbs = resolve(root, outDir);
+  const onlyIdx = argv.indexOf("--only");
+  const merge = argv.includes("--merge");
+
+  if (onlyIdx >= 0) {
+    await runOnly(corpusDir, outAbs, argv[onlyIdx + 1], useWebIfc);
+    return;
+  }
+  if (merge) {
+    await runMerge(corpusDir, outAbs, useWebIfc);
+    return;
+  }
 
   const { files, summary } = await generateCorpusReports({ corpusDir, useWebIfc });
 

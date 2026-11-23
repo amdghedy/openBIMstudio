@@ -104,7 +104,11 @@ t("saved view maps to a screen view and stale ones are rejected", () => {
   assert.strictEqual(v.scale, 2); assert.strictEqual(v.cx, 200);
   assert.strictEqual(savedViewToView({ cx: 9e6, cy: 0, height: 100 }, b, 800, 500), null, "centre far outside drawing");
   assert.strictEqual(savedViewToView({ cx: 200, cy: 100, height: 1e7 }, b, 800, 500), null, "absurd height");
-  assert.strictEqual(savedViewToView({ cx: 200, cy: 100, height: 100, twist: 30 }, b, 800, 500), null, "twisted view");
+  // Twisted views are honoured (the file's DVIEW rotation displays via rot),
+  // not discarded — applyTwist=false is the raw-coordinates variant.
+  const tv = savedViewToView({ cx: 200, cy: 100, height: 100, twist: 30 }, b, 800, 500);
+  assert.ok(tv && tv.rot === 30 && tv.scale === 5, "twisted view is honoured via rot");
+  assert.strictEqual(savedViewToView({ cx: 200, cy: 100, height: 100, twist: 30 }, b, 800, 500, false).rot, undefined, "applyTwist=false drops the rotation");
   assert.strictEqual(savedViewToView(undefined, b, 800, 500), null);
 });
 

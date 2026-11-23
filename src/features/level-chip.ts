@@ -16,7 +16,7 @@
 import { openFormModal, promptLine, confirmDialog } from "./form-modal";
 import { ctx } from "../core/context";
 import { levels, type LevelRecord } from "../modules/levels";
-import { registerCommand } from "./command-palette";
+import { registerCommand, unregisterCommand } from "./command-palette";
 
 
 /** Form dialog for a new level; resolves null if cancelled. */
@@ -355,8 +355,19 @@ export function setupLevelChip(): void {
       },
     });
 
+    // Per-level switch commands are re-registered on every levels change.
+    // Unregister first (so a rename replaces the label) and drop ids of
+    // deleted levels — otherwise every refresh would trip the command
+    // palette's duplicate-registration warning and leak stale commands.
+    const registeredLevelCmds = new Set<string>();
     const registerLevelSwitchCommands = () => {
+      const current = new Set<string>();
       for (const lv of levels.list()) {
+        const id = "level.activate." + lv.id;
+        current.add(id);
+        unregisterCommand(id);
+        // The id literal stays inline (not a variable reference) so the
+        // tool-catalog scanner can see this registration statically.
         registerCommand({
           id: "level.activate." + lv.id,
           label: "Level: " + lv.name,
@@ -369,6 +380,11 @@ export function setupLevelChip(): void {
           },
         });
       }
+      for (const id of registeredLevelCmds) {
+        if (!current.has(id)) unregisterCommand(id);
+      }
+      registeredLevelCmds.clear();
+      for (const id of current) registeredLevelCmds.add(id);
     };
     registerLevelSwitchCommands();
     levels.onChange(registerLevelSwitchCommands);

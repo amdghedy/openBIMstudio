@@ -75,16 +75,25 @@ export function fitView(b: BBox, w: number, h: number, margin = 0.06, rot = 0): 
  * View saved in the file (centre + model-space height shown) -> screen view, or null when it is
  * unusable (non-finite, zero size, twisted, or nowhere near the drawing).
  */
-export function savedViewToView(sv: { cx: number; cy: number; height: number; twist?: number } | undefined, b: BBox | null, w: number, h: number): View | null {
+const norm180 = (deg: number): number => {
+  const x = ((deg + 180) % 360 + 360) % 360 - 180;
+  return x === -180 ? 180 : x;
+};
+
+/** The saved model view -> editor View. A non-zero $VIEWTWIST is the DVIEW
+ *  rotation the native app displays the drawing with — mapped onto View.rot
+ *  so the drawing opens exactly as saved (upright for twisted files).
+ *  applyTwist=false restores centre/height only (raw world coordinates). */
+export function savedViewToView(sv: { cx: number; cy: number; height: number; twist?: number } | undefined, b: BBox | null, w: number, h: number, applyTwist = true): View | null {
   if (!sv || !b || !(w > 0) || !(h > 0)) return null;
   if (![sv.cx, sv.cy, sv.height].every(Number.isFinite) || !(sv.height > 0)) return null;
-  if (sv.twist && Math.abs(sv.twist % 360) > 0.01) return null;
   const bw = b.maxX - b.minX, bh = b.maxY - b.minY, pad = Math.max(bw, bh) * 0.25;
   if (sv.cx < b.minX - pad || sv.cx > b.maxX + pad || sv.cy < b.minY - pad || sv.cy > b.maxY + pad) return null;
   // A saved view hundreds of times larger/smaller than the drawing is a stale default, not a real view.
   const dim = Math.max(bh, 1e-9);
   if (sv.height > dim * 20 || sv.height < dim / 5000) return null;
-  return { cx: sv.cx, cy: sv.cy, scale: h / sv.height, w, h };
+  const twist = sv.twist && Math.abs(sv.twist % 360) > 0.01 ? norm180(sv.twist) : 0;
+  return { cx: sv.cx, cy: sv.cy, scale: h / sv.height, w, h, ...(twist && applyTwist ? { rot: twist } : {}) };
 }
 
 /**
@@ -204,7 +213,14 @@ export function zoomAt(v: View, sx: number, sy: number, factor: number, minScale
 }
 
 export function panBy(v: View, dxPx: number, dyPx: number): View {
-  return { ...v, cx: v.cx - dxPx / v.scale, cy: v.cy + dyPx / v.scale, rot: v.rot };
+  // Screen drag -> world motion must un-rotate by the view rotation, or a
+  // rotated view (saved twist / 3DORBIT roll) drifts diagonally while panning.
+  const a = ((v.rot ?? 0) * Math.PI) / 180;
+  const wx = dxPx / v.scale, wy = -dyPx / v.scale; // screen Y is down
+  if (!a) return { ...v, cx: v.cx - wx, cy: v.cy - wy };
+  const c = Math.cos(a), sn = Math.sin(a);
+  const rx = wx * c + wy * sn, ry = -wx * sn + wy * c;
+  return { ...v, cx: v.cx - rx, cy: v.cy - ry };
 }
 
 /** Zoom so the screen rectangle (two corners) fills the view. */
@@ -215,8 +231,12 @@ export function zoomWindow(v: View, a: Pt, b: Pt): View {
 }
 
 export const bboxVisible = (b: BBox, v: View): boolean => {
-  const tl = screenToWorld(v, 0, 0), br = screenToWorld(v, v.w, v.h);
-  return !(b.maxX < tl.x || b.minX > br.x || b.maxY < br.y || b.minY > tl.y);
+  // All four corners: under a view rotation the frustum un-maps to a rotated
+  // quad — two corners alone cull content that is actually on screen.
+  const cs = [screenToWorld(v, 0, 0), screenToWorld(v, v.w, 0), screenToWorld(v, v.w, v.h), screenToWorld(v, 0, v.h)];
+  const tlx = Math.min(...cs.map((p) => p.x)), brx = Math.max(...cs.map((p) => p.x));
+  const tly = Math.min(...cs.map((p) => p.y)), bry = Math.max(...cs.map((p) => p.y));
+  return !(b.maxX < tlx || b.minX > brx || b.maxY < tly || b.minY > bry);
 };
 
 /* ───────────────────────── entity geometry ───────────────────────── */
@@ -230,6 +250,40 @@ export function angleInArc(a: number, s: number, e: number): boolean {
   const sweep = norm360(e - s) || 360;
   return norm360(a - s) <= sweep + 1e-9;
 }
+/** Segment/segment intersection points (DIMBREAK, snap aids). */
+export const segmentIntersections = (a: Pt, b: Pt, c: Pt, d: Pt): Pt[] => {
+  const rx = b.x - a.x, ry = b.y - a.y, sx = d.x - c.x, sy = d.y - c.y;
+  const den = rx * sy - ry * sx;
+  if (Math.abs(den) < 1e-12) return [];
+  const t = ((c.x - a.x) * sy - (c.y - a.y) * sx) / den;
+  const u = ((c.x - a.x) * ry - (c.y - a.y) * rx) / den;
+  if (t < 0 || t > 1 || u < 0 || u > 1) return [];
+  return [{ x: a.x + rx * t, y: a.y + ry * t }];
+};
+
+/** Segment/circle intersection points; with an arc span only crossings that
+ *  lie on the arc (start angle, CCW sweep in degrees) are returned. */
+export const segmentCircleIntersections = (
+  a: Pt, b: Pt, centre: Pt, radius: number, arc?: { startAngle: number; sweepDeg: number },
+): Pt[] => {
+  const rx = b.x - a.x, ry = b.y - a.y;
+  const fx = a.x - centre.x, fy = a.y - centre.y;
+  const A = rx * rx + ry * ry, B = 2 * (fx * rx + fy * ry), C = fx * fx + fy * fy - radius * radius;
+  const disc = B * B - 4 * A * C;
+  if (A < 1e-12 || disc < 0) return [];
+  const out: Pt[] = [];
+  for (const t of [(-B - Math.sqrt(disc)) / (2 * A), (-B + Math.sqrt(disc)) / (2 * A)]) {
+    if (t < 0 || t > 1) continue;
+    const p = { x: a.x + rx * t, y: a.y + ry * t };
+    if (arc) {
+      const ang = norm360(Math.atan2(p.y - centre.y, p.x - centre.x) * 180 / Math.PI - arc.startAngle);
+      if (ang > arc.sweepDeg + 1e-9) continue;
+    }
+    out.push(p);
+  }
+  return out;
+};
+
 export const arcSweepDeg = (s: number, e: number) => norm360(e - s) || 360;
 
 /**
@@ -811,28 +865,78 @@ export function pickEntity(idx: SpatialIndex, entities: DxfEntity[], x: number, 
 
 /* ───────────────────────── snapping ───────────────────────── */
 
-export type SnapKind = "endpoint" | "midpoint" | "center" | "quadrant" | "intersection" | "perpendicular" | "tangent" | "parallel" | "nearest";
-export interface Snap { x: number; y: number; kind: SnapKind }
-export const ALL_SNAPS: SnapKind[] = ["endpoint", "midpoint", "center", "quadrant", "intersection", "perpendicular", "tangent", "parallel", "nearest"];
+/** Legacy + extended CAD object-snap kinds (AutoCAD parity). */
+export type SnapKind =
+  | "endpoint"
+  | "midpoint"
+  | "center"
+  | "quadrant"
+  | "intersection"
+  | "perpendicular"
+  | "nearest"
+  | "extension"
+  | "parallel"
+  | "tangent"
+  | "node"
+  | "insertion"
+  | "apparent"
+  | "geometric-center";
+export interface Snap { x: number; y: number; kind: SnapKind; direction?: { x: number; y: number }; entityIndex?: number }
+export const ALL_SNAPS: SnapKind[] = [
+  "endpoint", "midpoint", "center", "quadrant", "intersection", "perpendicular", "nearest",
+  "extension", "parallel", "tangent", "node", "insertion", "apparent", "geometric-center",
+];
+/** Default modes for new drawings (AutoCAD-like). */
+export const DEFAULT_SNAP_MODES: SnapKind[] = [
+  "endpoint", "midpoint", "center", "intersection", "perpendicular", "extension", "nearest",
+];
 
 function keyPoints(e: DxfEntity): Snap[] {
   switch (e.type) {
-    case "LINE": return [{ ...e.start, kind: "endpoint" }, { ...e.end, kind: "endpoint" }, { x: (e.start.x + e.end.x) / 2, y: (e.start.y + e.end.y) / 2, kind: "midpoint" }];
-    case "CIRCLE": return [{ x: e.center.x, y: e.center.y, kind: "center" }, ...[0, 90, 180, 270].map((q) => ({ ...arcPt(e, q), kind: "quadrant" as const }))];
+    case "LINE": {
+      const out: Snap[] = [
+        { ...e.start, kind: "endpoint" },
+        { ...e.end, kind: "endpoint" },
+        { x: (e.start.x + e.end.x) / 2, y: (e.start.y + e.end.y) / 2, kind: "midpoint" },
+      ];
+      const L = Math.hypot(e.end.x - e.start.x, e.end.y - e.start.y);
+      if (L > 1e-12) {
+        const ux = (e.end.x - e.start.x) / L, uy = (e.end.y - e.start.y) / L;
+        out.push({ x: e.start.x, y: e.start.y, kind: "extension", direction: { x: -ux, y: -uy } });
+        out.push({ x: e.end.x, y: e.end.y, kind: "extension", direction: { x: ux, y: uy } });
+      }
+      return out;
+    }
+    case "CIRCLE": return [
+      { x: e.center.x, y: e.center.y, kind: "center" },
+      { x: e.center.x, y: e.center.y, kind: "geometric-center" },
+      ...[0, 90, 180, 270].map((q) => ({ ...arcPt(e, q), kind: "quadrant" as const })),
+    ];
     case "ARC": {
       const mid = e.startAngle + arcSweepDeg(e.startAngle, e.endAngle) / 2;
-      return [{ x: e.center.x, y: e.center.y, kind: "center" }, { ...arcPt(e, e.startAngle), kind: "endpoint" }, { ...arcPt(e, e.endAngle), kind: "endpoint" }, { ...arcPt(e, mid), kind: "midpoint" }];
+      return [
+        { x: e.center.x, y: e.center.y, kind: "center" },
+        { ...arcPt(e, e.startAngle), kind: "endpoint" },
+        { ...arcPt(e, e.endAngle), kind: "endpoint" },
+        { ...arcPt(e, mid), kind: "midpoint" },
+      ];
     }
     case "LWPOLYLINE": {
       const out: Snap[] = e.points.map((p) => ({ x: p.x, y: p.y, kind: "endpoint" as const }));
       for (const [a, b] of polySegs(e)) out.push({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, kind: "midpoint" });
+      if (e.points.length >= 3) {
+        let sx = 0, sy = 0;
+        for (const p of e.points) { sx += p.x; sy += p.y; }
+        out.push({ x: sx / e.points.length, y: sy / e.points.length, kind: "geometric-center" });
+      }
       return out;
     }
-    case "TEXT": return [{ x: e.position.x, y: e.position.y, kind: "endpoint" }];
-    case "POINT": return [{ x: e.position.x, y: e.position.y, kind: "endpoint" }];
+    case "TEXT": return [{ x: e.position.x, y: e.position.y, kind: "endpoint" }, { x: e.position.x, y: e.position.y, kind: "insertion" }];
+    case "POINT": return [{ x: e.position.x, y: e.position.y, kind: "endpoint" }, { x: e.position.x, y: e.position.y, kind: "node" }];
     case "RAY":
     case "XLINE": return [{ x: e.start.x, y: e.start.y, kind: "endpoint" }];
   }
+  return [];
 }
 
 export function segSegIntersection(a: Pt, b: Pt, c: Pt, d: Pt): Pt | null {
@@ -844,10 +948,13 @@ export function segSegIntersection(a: Pt, b: Pt, c: Pt, d: Pt): Pt | null {
   return { x: a.x + t * r.x, y: a.y + t * r.y };
 }
 
-const TIER: Record<SnapKind, number> = { endpoint: 0, midpoint: 0, center: 0, quadrant: 0, intersection: 1, perpendicular: 1, tangent: 1, parallel: 1, nearest: 2 };
+const TIER: Record<SnapKind, number> = {
+  endpoint: 0, midpoint: 0, center: 0, quadrant: 0, node: 0, insertion: 0, "geometric-center": 0,
+  intersection: 1, apparent: 1, extension: 1, perpendicular: 1, tangent: 1, parallel: 1, nearest: 2,
+};
 
 /**
- * Object snap. Optional `fromPt` enables DWG-style PERPENDICULAR: the foot
+ * Object snap. Optional `fromPt` enables AutoCAD-style PERPENDICULAR: the foot
  * of the perpendicular from `fromPt` onto nearby segments, when that foot is
  * within `tol` of the cursor (so the user is aiming near the true foot).
  */
@@ -881,63 +988,80 @@ export function findSnap(
     if (d > tol) return;
     if (!best || TIER[s.kind] < TIER[best.kind] || (TIER[s.kind] === TIER[best.kind] && d < bd)) { best = s; bd = d; }
   };
-  for (const i of ids) for (const k of keyPoints(entities[i])) consider(k);
-  if (on.has("intersection")) {
+  // Parallel references live near the anchor point, not the cursor — the
+  // cursor may sit far from the entity being paralleled.
+  const referenceIds = on.has("parallel") && fromPt
+    ? queryIndex(idx, fromPt.x, fromPt.y, Math.max(tol * 40, 1)).filter((i) => visible(entities[i]) && !isHatchEntity(entities[i]))
+    : [];
+  for (const i of ids) {
+    for (const k of keyPoints(entities[i])) {
+      if (k.kind === "extension") continue; // projected below
+      consider({ ...k, entityIndex: i });
+    }
+  }
+  if (on.has("intersection") || on.has("apparent")) {
     const segs: Array<[Pt, Pt]> = [];
     for (const i of ids) segs.push(...entitySegments(entities[i]));
-    for (let i = 0; i < segs.length && i < 60; i++) for (let j = i + 1; j < segs.length && j < 60; j++) {
+    for (let i = 0; i < segs.length && i < 80; i++) for (let j = i + 1; j < segs.length && j < 80; j++) {
       const p = segSegIntersection(segs[i][0], segs[i][1], segs[j][0], segs[j][1]);
       if (p) consider({ ...p, kind: "intersection" });
     }
   }
-  // Reference-dependent snaps use a wider search around the previous point.
-  const referenceIds = fromPt
-    ? queryIndex(idx, fromPt.x, fromPt.y, Math.max(tol * 40, 1)).filter((i) => visible(entities[i]) && !isHatchEntity(entities[i]))
-    : [];
-  const referenceSegments: Array<[Pt, Pt]> = [];
-  for (const i of [...new Set([...ids, ...referenceIds])]) referenceSegments.push(...entitySegments(entities[i]));
-
-  // PERPENDICULAR (DWG PERP): foot from the previous point to a segment.
+  // EXTENSION: project cursor onto infinite rays past endpoints
+  if (on.has("extension")) {
+    for (const i of ids) {
+      for (const k of keyPoints(entities[i])) {
+        if (k.kind !== "extension" || !k.direction) continue;
+        const t = (x - k.x) * k.direction.x + (y - k.y) * k.direction.y;
+        if (t < 0) continue;
+        consider({ x: k.x + t * k.direction.x, y: k.y + t * k.direction.y, kind: "extension", direction: k.direction, entityIndex: i });
+      }
+    }
+  }
+  // PERPENDICULAR (AutoCAD PERP): from the previous point drop a foot onto
+  // nearby segments; offer it when the cursor is close to that foot.
   if (on.has("perpendicular") && fromPt) {
+    const segs: Array<[Pt, Pt]> = [];
+    for (const i of ids) segs.push(...entitySegments(entities[i]));
+    const wide = queryIndex(idx, fromPt.x, fromPt.y, Math.max(tol * 40, 1)).filter((i) => visible(entities[i]));
+    for (const i of wide) segs.push(...entitySegments(entities[i]));
     const seen = new Set<string>();
-    for (const [a, b] of referenceSegments) {
+    for (const [a, b] of segs) {
       const key = `${a.x},${a.y},${b.x},${b.y}`;
       if (seen.has(key)) continue;
       seen.add(key);
       const foot = nearestOnSegment(fromPt, a, b);
+      if (!foot) continue;
       consider({ x: foot.x, y: foot.y, kind: "perpendicular" });
     }
   }
-
-  // PARALLEL: project the cursor onto a line through the previous point,
-  // parallel to each nearby LINE / polyline segment.
-  if (on.has("parallel") && fromPt) {
-    const seen = new Set<string>();
-    for (const [a, b] of referenceSegments) {
-      const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
-      if (l2 < 1e-18) continue;
-      const key = `${dx / Math.sqrt(l2)},${dy / Math.sqrt(l2)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const t = ((x - fromPt.x) * dx + (y - fromPt.y) * dy) / l2;
-      consider({ x: fromPt.x + t * dx, y: fromPt.y + t * dy, kind: "parallel" });
-    }
-  }
-
-  // TANGENT: from the previous point, calculate both tangent points to each
-  // visible circle/arc and offer the one the cursor is aiming at.
+  // TANGENT from fromPt to circle/arc
   if (on.has("tangent") && fromPt) {
-    for (const i of referenceIds) {
+    for (const i of ids) {
       const e = entities[i];
       if (e.type !== "CIRCLE" && e.type !== "ARC") continue;
-      const dx = fromPt.x - e.center.x, dy = fromPt.y - e.center.y;
-      const d2 = dx * dx + dy * dy, r2 = e.radius * e.radius;
-      if (d2 <= r2 + 1e-12 || e.radius <= 0) continue;
-      const base = Math.atan2(dy, dx), alpha = Math.acos(Math.min(1, e.radius / Math.sqrt(d2)));
-      for (const angle of [base + alpha, base - alpha]) {
-        const deg = ((angle / DEG) % 360 + 360) % 360;
-        if (e.type === "ARC" && !angleInArc(deg, e.startAngle, e.endAngle)) continue;
-        consider({ x: e.center.x + e.radius * Math.cos(angle), y: e.center.y + e.radius * Math.sin(angle), kind: "tangent" });
+      const cx = e.center.x, cy = e.center.y, r = e.radius;
+      const dx = fromPt.x - cx, dy = fromPt.y - cy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 <= r * r + 1e-12) continue;
+      const d = Math.sqrt(d2);
+      const a = Math.asin(Math.min(1, r / d));
+      const base = Math.atan2(dy, dx);
+      for (const sign of [-1, 1] as const) {
+        const ang = base + sign * (Math.PI / 2 - a);
+        consider({ x: cx + r * Math.cos(ang), y: cy + r * Math.sin(ang), kind: "tangent", entityIndex: i });
+      }
+    }
+  }
+  // PARALLEL: keep new segment parallel to a nearby segment
+  if (on.has("parallel") && fromPt) {
+    for (const i of [...new Set([...ids, ...referenceIds])]) {
+      for (const [a, b] of entitySegments(entities[i])) {
+        const L = Math.hypot(b.x - a.x, b.y - a.y);
+        if (L < 1e-12) continue;
+        const ux = (b.x - a.x) / L, uy = (b.y - a.y) / L;
+        const t = (x - fromPt.x) * ux + (y - fromPt.y) * uy;
+        consider({ x: fromPt.x + t * ux, y: fromPt.y + t * uy, kind: "parallel", direction: { x: ux, y: uy }, entityIndex: i });
       }
     }
   }

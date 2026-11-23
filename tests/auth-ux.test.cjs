@@ -143,7 +143,7 @@ t("cloud-account: sign-in dialog has Forgot password? + remembered chips + Enter
   assert.ok(acct.includes('function rememberedEmails'), "rememberedEmails helper missing");
   assert.ok(acct.includes("function rememberEmail"), "rememberEmail helper missing");
   assert.ok(src(acct, "async function doSubmit", "  submit.onclick").includes("rememberEmail(email)"), "sign-in must remember the email");
-  const enter = src(acct, "emailInput.addEventListener(\"keydown\"", "  body.append(err, submit, forgot, swap, google, note);");
+  const enter = src(acct, "emailInput.addEventListener(\"keydown\"", "  body.append(google, orLine, err, submit, forgot, swap, note);");
   assert.ok(/passInput\.focus\(\)/.test(enter), "Enter on email must move to the password field");
 });
 

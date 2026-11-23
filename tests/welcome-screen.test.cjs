@@ -172,9 +172,9 @@ t("cad-viewer: saving records fresh bytes (DXF via QSAVE, DWG via DWGSAVE)", () 
 });
 
 // ── 4. Three showcase pages, truthful claims only ────────────────────────
-t("showcase: three pages numbered 01/02/03 with distinct accents", () => {
-  assert.ok(home.includes("obs-page--2d") && home.includes("obs-page--3d") && home.includes("obs-page--del"));
-  for (const n of ['num: "01"', 'num: "02"', 'num: "03"']) assert.ok(home.includes(n), `missing ${n}`);
+t("showcase: four pages numbered 01/02/03/04 with distinct accents", () => {
+  assert.ok(home.includes("obs-page--2d") && home.includes("obs-page--fam") && home.includes("obs-page--3d") && home.includes("obs-page--del"));
+  for (const n of ['num: "01"', 'num: "02"', 'num: "03"', 'num: "04"']) assert.ok(home.includes(n), `missing ${n}`);
 });
 
 t(`showcase: command-count claims are true (${N} commands; claimed as a floor so it does not go stale every batch)`, () => {

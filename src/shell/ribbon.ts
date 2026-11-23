@@ -10,6 +10,7 @@ import { getNorthState, onNorthChanged } from "../modules/north/north";
 import * as THREE from "three";
 import { confirmDialog } from "../features/form-modal";
 import { ctx } from "../core/context";
+import { getVisualPreset } from "../features/view-graphics";
 import { onNotify, __dispatchToSubscribers, uiAlert } from "../core/notify";
 import { pickFiles, loadIfcFiles, loadFragFiles } from "../features/importer";
 import {
@@ -2320,7 +2321,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast("Wireframe", "info");
         refreshRibbon();
       }, "Wireframe"), {
-        active: (window as any).__obsViewGraphics?.getPreset?.() === "wireframe",
+        active: getVisualPreset() === "wireframe",
         title: "Wireframe display",
       }),
       b("system", "Hidden Line", safe(async () => {
@@ -2329,7 +2330,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast("Hidden Line", "info");
         refreshRibbon();
       }, "Hidden Line"), {
-        active: (window as any).__obsViewGraphics?.getPreset?.() === "hidden-line",
+        active: getVisualPreset() === "hidden-line",
         title: "Hidden Line — pale faces + edges",
       }),
       b("system", "Shaded", safe(async () => {
@@ -2338,7 +2339,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast("Shaded", "info");
         refreshRibbon();
       }, "Shaded"), {
-        active: (window as any).__obsViewGraphics?.getPreset?.() === "shaded",
+        active: getVisualPreset() === "shaded",
         title: "Shaded display",
       }),
       b("system", "Consistent", safe(async () => {
@@ -2347,7 +2348,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast("Consistent Colors", "info");
         refreshRibbon();
       }, "Consistent Colors"), {
-        active: (window as any).__obsViewGraphics?.getPreset?.() === "consistent-colors",
+        active: getVisualPreset() === "consistent-colors",
         title: "Consistent Colors — flat shading",
       }),
       b("system", "Realistic", safe(async () => {
@@ -2356,7 +2357,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast("Realistic", "info");
         refreshRibbon();
       }, "Realistic"), {
-        active: (window as any).__obsViewGraphics?.getPreset?.() === "realistic",
+        active: getVisualPreset() === "realistic",
         title: "Realistic materials and soft shadows",
       }),
       b("system", "Ray Trace", safe(async () => {
@@ -2365,7 +2366,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast("Ray Trace (enhanced realistic)", "info");
         refreshRibbon();
       }, "Ray Trace"), {
-        active: (window as any).__obsViewGraphics?.getPreset?.() === "ray-trace",
+        active: getVisualPreset() === "ray-trace",
         title: "Ray Trace approximation — stronger tone mapping & shadows",
       }),
       b("tree", "Visibility", safe(() => {

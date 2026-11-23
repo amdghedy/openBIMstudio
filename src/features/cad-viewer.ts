@@ -275,6 +275,16 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "PURGE", aliases: ["PU"], description: "Remove unused named items and empty layers" },
   { name: "AUDIT", aliases: ["AUDIT"], description: "Audit drawing database integrity" },
   { name: "ORTHO", aliases: ["ORTHOMODE", "F8"], description: "Constrain cursor movement horizontally/vertically" },
+  { name: "NEW", aliases: [], description: "Start a new blank drawing (the current one is abandoned — save first)" },
+  { name: "GROUP", aliases: [], description: "Create a named group from the selection (GROUP <name>), list groups (GROUP), or recall a group's selection (GROUP <existing>)" },
+  { name: "LIMITS", aliases: [], description: "Set/report the drawing limits rectangle (LIMITS 0,0 420,297)" },
+  { name: "QDIM", aliases: [], description: "Quick dimension: aligned dimensions on every selected LINE" },
+  { name: "UCSVIEW", aliases: ["UCSV"], description: "Toggle UCS display — ON applies the drawing's saved view rotation (like AutoCAD), OFF shows raw world coordinates" },
+  { name: "DIMSPACE", aliases: [], description: "Even spacing between selected linear/aligned dimensions (DIMSPACE <gap> or DIMSPACE AUTO)" },
+  { name: "DIMBREAK", aliases: [], description: "Break dimension lines where selected geometry crosses them" },
+  { name: "DIMOVERRIDE", aliases: ["DOV"], description: "Per-dimension style overrides — TEXTHEIGHT, ARROWSIZE, PRECISION, COLOR, SCALE, SUFFIX; CLEAR resets" },
+  { name: "DIMDISASSOCIATE", aliases: [], description: "Detach selected dimensions from their geometry" },
+  { name: "HYPERLINK", aliases: [], description: "Attach a URL to selected objects (HYPERLINK <url>), list them, or clear (HYPERLINK REMOVE)" },
   { name: "POLAR", aliases: ["F10"], description: "Toggle angular tracking from the last picked point" },
   { name: "POLARANG", aliases: ["PANG"], description: "Set the polar tracking angle increment in degrees" },
   { name: "OSNAP", aliases: ["F3"], description: "Toggle Object Snaps" },
@@ -538,6 +548,7 @@ let clip: CadClip | null = null;
    ═══════════════════════════════════════════════════════════════════════════ */
 const RIBBON_TABS: ReadonlyArray<{ id: string; label: string }> = [
   { id: "home", label: "Home" },
+  { id: "tools", label: "Tools" },
   { id: "insert", label: "Insert" },
   { id: "annotate", label: "Annotate" },
   { id: "parametric", label: "Parametric" },
@@ -1304,6 +1315,7 @@ const CAD_CSS = `
     /* Ribbon tabs filter the panels of the active drawing (drawing workspace tab → panels) */
     .obs-cad-shell .cadrb-strip .cadrg{display:none}
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="home"] .cadrg[data-cadtab="home"],
+    .obs-cad-shell .cadrb-strip[data-ribbon-tab="tools"] .cadrg[data-cadtab="tools"],
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="insert"] .cadrg[data-cadtab="insert"],
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="annotate"] .cadrg[data-cadtab="annotate"],
     .obs-cad-shell .cadrb-strip[data-ribbon-tab="parametric"] .cadrg[data-cadtab="parametric"],
@@ -1535,7 +1547,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
   /** Registers a record and returns its tagged entities (caller commits). */
   function commitDimRecord(rec: DIM.DimRecord): DxfEntity[] {
-    const style = dimStyleList.find((s) => s.name === rec.styleName) ?? currentDimStyle();
+    const style = dimStyleOf(rec);
     const entities = DIM.buildDimEntities(rec, style, dimTextFor(rec, style));
     if (entities.length) dimRecords.set(rec.id, rec);
     return entities;
@@ -1572,7 +1584,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const extBefore: DxfEntity[] = [];
     const extAfter: DxfEntity[] = [];
     for (const rec of changed) {
-      const style = dimStyleList.find((s) => s.name === rec.styleName) ?? currentDimStyle();
+      const style = dimStyleOf(rec);
       const old = DIM.entitiesOfDim(ents, rec.id);
       if (!old.length || old.some((e) => movedSet.has(e))) continue; // moved manually this commit
       const fresh = DIM.buildDimEntities(rec, style, dimTextFor(rec, style));
@@ -1619,7 +1631,47 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let refTrackSnap: M.Pt | null = null;
 
   let dynOn = true; // Dynamic Input HUD F12
-  let lwtOn = true; // Lineweight display
+  let lwtOn = true;
+  // UCS display toggle — ON by default so drawings open the way the native
+  // CAD app shows them (the file's saved view rotation applied; for
+  // DVIEW-twisted drawings that is what makes them upright). OFF shows raw
+  // world coordinates. Persisted. (Command UCSVIEW; the UCS command itself
+  // places a UCS origin and is untouched.)
+  let ucsActive = true;
+  try {
+    const ucsSaved = localStorage.getItem("obs.cad.ucs");
+    if (ucsSaved != null) ucsActive = ucsSaved === "1";
+  } catch { /* */ }
+  const namedGroups = new Map<string, number[]>(); // GROUP name -> indices into ents (session scope)
+  // Per-dimension style overrides (DIMOVERRIDE) — kept outside DimRecord so
+  // record shapes stay stable; merged wherever a record's style is resolved.
+  const dimOverrides = new Map<string, Partial<DIM.DimStyle>>();
+
+  /** A record's effective style: its named style merged with DIMOVERRIDE. */
+  function dimStyleOf(rec: DIM.DimRecord): DIM.DimStyle {
+    const base = dimStyleList.find((st) => st.name === rec.styleName) ?? currentDimStyle();
+    return { ...base, ...(dimOverrides.get(rec.id) ?? {}) };
+  }
+  let drawingLimits: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
+
+  /** UCS display toggle: apply/remove the drawing's saved view rotation live. */
+  function setUcs(on: boolean): void {
+    ucsActive = on;
+    try { localStorage.setItem("obs.cad.ucs", on ? "1" : "0"); } catch { /* */ }
+    const savedTwist = doc?.savedView?.twist ?? 0;
+    if (layoutI < 0 && (savedTwist || view.rot)) {
+      const next: M.View = { ...view };
+      if (on && savedTwist) next.rot = savedTwist;
+      else delete next.rot;
+      view = next;
+    }
+    tools.querySelector('[data-a=ucsview]')?.classList.toggle("on", ucsActive);
+    updateStatus();
+    draw();
+    logCmd(on
+      ? savedTwist ? `UCS display: ON — saved view rotation of ${savedTwist.toFixed(1)}° applied (as the native app shows this drawing)` : "UCS display: ON — this drawing has no saved view rotation"
+      : savedTwist ? `UCS display: OFF — raw world coordinates shown; the ${savedTwist.toFixed(1)}° saved rotation is not applied` : "UCS display: OFF — raw world coordinates");
+  } // Lineweight display
   let showGrid = true;
   let cleanScreen = false;
 
@@ -2123,7 +2175,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       case "ARC": {
         const p = P(e.center.x, e.center.y);
         const sw = (M.arcSweepDeg(e.startAngle, e.endAngle) * Math.PI) / 180,
-          s = (-e.startAngle * Math.PI) / 180;
+          s = (-e.startAngle * Math.PI) / 180 - ((v.rot ?? 0) * Math.PI) / 180;
         c.arc(p.x, p.y, e.radius * v.scale, s, s - sw, true);
         c.stroke();
         break;
@@ -2163,7 +2215,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         const p = P(e.position.x, e.position.y);
         c.save();
         c.translate(p.x, p.y);
-        c.rotate((-(e.rotation ?? 0) * Math.PI) / 180);
+        c.rotate((-(e.rotation ?? 0) * Math.PI) / 180 - ((v.rot ?? 0) * Math.PI) / 180);
         if (e.backwards) c.scale(-1, 1);
         if (e.upsideDown) c.scale(1, -1);
         c.font = M.textFontCss(e, Math.min(px, 600));
@@ -2231,13 +2283,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   const visibleBox = (v: M.View): M.BBox => {
-    const a = M.screenToWorld(v, 0, 0),
-      b = M.screenToWorld(v, v.w, v.h);
+    // All four corners: under a view rotation the frustum un-maps to a
+    // rotated quad — two corners alone would cull visible content.
+    const cs = [M.screenToWorld(v, 0, 0), M.screenToWorld(v, v.w, 0), M.screenToWorld(v, v.w, v.h), M.screenToWorld(v, 0, v.h)];
     return {
-      minX: Math.min(a.x, b.x),
-      maxX: Math.max(a.x, b.x),
-      minY: Math.min(a.y, b.y),
-      maxY: Math.max(a.y, b.y),
+      minX: Math.min(...cs.map((p) => p.x)),
+      maxX: Math.max(...cs.map((p) => p.x)),
+      minY: Math.min(...cs.map((p) => p.y)),
+      maxY: Math.max(...cs.map((p) => p.y)),
     };
   };
 
@@ -5647,8 +5700,17 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       let restored = restoreDrawingSession(file.name);
       if (!restored && startLayout < 0) {
         // No session of ours: open on the view saved inside the file (what the native app shows).
-        const sv = M.savedViewToView(doc.savedView, modelBounds, view.w, view.h);
-        if (sv) { uprightRot = 0; view = sv; draw(); restored = true; logCmd("Opened on the view saved in the drawing."); }
+        const sv = M.savedViewToView(doc.savedView, modelBounds, view.w, view.h, ucsActive);
+        if (sv) {
+          uprightRot = 0;
+          view = sv;
+          draw();
+          restored = true;
+          const svTwist = doc.savedView?.twist ?? 0;
+          if (svTwist && ucsActive) logCmd(`Opened on the view saved in the drawing (saved rotation ${svTwist.toFixed(1)}° applied — as the native app shows it).`);
+          else if (svTwist) logCmd(`Opened on the saved view's centre and zoom; the drawing carries a saved rotation of ${svTwist.toFixed(1)}° that is NOT applied (UCS display is OFF — run UCSVIEW to apply it).`);
+          else logCmd("Opened on the view saved in the drawing.");
+        }
       }
       if (!restored) {
         // First open: auto-upright only when no saved session
@@ -6342,7 +6404,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           rb("generative", "Agent Bridge", `data-a="agent-bridge"`, "Open the AI Agent Bridge — window API, postMessage, deep links and the local relay that let external AI clients (AlphaCLI / AlphaCode) run orders directly in this engine"),
         "",
         "",
-        "home",
+        "tools",
       ) +
       rg(
         "Select",
@@ -6383,7 +6445,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           tb("ray", "ray", "Ray"),
         "",
         "",
-        "home",
+        "tools",
       ) +
       rg(
         "Modify",
@@ -6417,7 +6479,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           rb("array", "Array Polar", `data-a="array-polar"`, "Create a polar array with centre, item count, sweep and rotation options"),
         "",
         "",
-        "home",
+        "tools",
       ) +
       rg(
         "Annotation",
@@ -6453,7 +6515,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           rb("report", "List", `data-a="list"`, "List properties of the selection (LI / LIST)"),
         "",
         "",
-        "home",
+        "tools",
       ) +
       rg(
         "History",
@@ -6482,29 +6544,29 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ) +
       rg(
         "Power Tools",
-        rb("select-all", "Select All", `data-a="selectall"`, "Select every visible object (SELECTALL)") +
-          rb("clear", "Clear Sel", `data-a="clrsel"`, "Clear the selection set (CLRSEL)") +
-          rb("copy", "Copy By", `data-a="copyby"`, "Duplicate selection by dx,dy (COPYBY)") +
-          rb("move", "Move By", `data-a="moveby"`, "Nudge selection by dx,dy (MOVEBY)") +
-          rb("rotate", "Rotate By", `data-a="rotateby"`, "Rotate selection about its center (ROTATEBY)") +
-          rb("scale", "Scale By", `data-a="scaleby"`, "Scale selection about its center (SCALEBY)") +
-          rb("mirror", "Mirror X", `data-a="mirrorx"`, "Mirror about horizontal through center (MIRRORX)") +
-          rb("mirror", "Mirror Y", `data-a="mirrory"`, "Mirror about vertical through center (MIRRORY)") +
+        rb("select-all", "All", `data-a="selectall"`, "Select every visible object (SELECTALL)") +
+          rb("clear", "Clear", `data-a="clrsel"`, "Clear the selection set (CLRSEL)") +
+          rb("copy", "Copy Δ", `data-a="copyby"`, "Duplicate selection by dx,dy (COPYBY)") +
+          rb("move", "Move Δ", `data-a="moveby"`, "Nudge selection by dx,dy (MOVEBY)") +
+          rb("rotate", "Rotate Δ", `data-a="rotateby"`, "Rotate selection about its center (ROTATEBY)") +
+          rb("scale", "Scale Δ", `data-a="scaleby"`, "Scale selection about its center (SCALEBY)") +
+          rb("mirror", "Mir. X", `data-a="mirrorx"`, "Mirror about horizontal through center (MIRRORX)") +
+          rb("mirror", "Mir. Y", `data-a="mirrory"`, "Mirror about vertical through center (MIRRORY)") +
           rb("align", "Align L", `data-a="alignl"`, "Align left edges (ALIGNL)") +
           rb("align", "Align R", `data-a="alignr"`, "Align right edges (ALIGNR)") +
-          rb("align", "Distribute", `data-a="distribute"`, "Even spacing X or Y (DISTRIBUTE)") +
+          rb("align", "Dist.", `data-a="distribute"`, "Even spacing X or Y (DISTRIBUTE)") +
           rb("area", "BBox", `data-a="bbox"`, "Draw bounding box of selection (BBOX)") +
-          rb("measure", "Length", `data-a="length"`, "Total length of selected linear objects (LENGTH)") +
-          rb("area", "Area Sel", `data-a="areasel"`, "Area of selected closed shapes (AREASEL)") +
-          rb("point", "CenterMark", `data-a="centermark"`, "Center marks on selected circles (CENTERMARK)") +
-          rb("point", "Mid Pts", `data-a="markmid"`, "Points at segment midpoints (MARKMID)") +
-          rb("point", "Int Pts", `data-a="markint"`, "Points at intersections (MARKINT)") +
-          rb("explode", "Xplode PL", `data-a="xplodepl"`, "Explode polylines to lines (XPLODEPL)") +
-          rb("audit", "Purge 0-Len", `data-a="auditzl"`, "Remove zero-length lines (AUDITZL)") +
-          rb("issues", "DWG Help", `data-a="dwghelp"`, "DWG open troubleshooting (DWGHELP)"),
+          rb("measure", "Len", `data-a="length"`, "Total length of selected linear objects (LENGTH)") +
+          rb("area", "Area", `data-a="areasel"`, "Area of selected closed shapes (AREASEL)") +
+          rb("point", "Center", `data-a="centermark"`, "Center marks on selected circles (CENTERMARK)") +
+          rb("point", "Mids", `data-a="markmid"`, "Points at segment midpoints (MARKMID)") +
+          rb("point", "Ints", `data-a="markint"`, "Points at intersections (MARKINT)") +
+          rb("explode", "Xplode", `data-a="xplodepl"`, "Explode polylines to lines (XPLODEPL)") +
+          rb("audit", "0-Len", `data-a="auditzl"`, "Remove zero-length lines (AUDITZL)") +
+          rb("issues", "Help", `data-a="dwghelp"`, "DWG open troubleshooting (DWGHELP)"),
         "",
         "",
-        "home",
+        "tools",
       ) +
       rg(
         "Styles",
@@ -6649,6 +6711,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           rb("origin", "Snap", `data-a="snap"`, "Object snap (F3)", "on") +
           rb("origin", "Snap Modes", `data-a="snap-modes"`, "Configure endpoint, midpoint, center and other object snaps (OSNAPSET)") +
           rb("orthographic", "Ortho", `data-a="ortho"`, "Ortho (F8)") +
+          rb("rotate", "UCS", `data-a="ucsview"`, "UCS display — ON opens drawings as the native app shows them; OFF shows raw world coordinates") +
           rb("dim-angular", "Polar", `data-a="polar"`, "Polar Tracking (F10)") +
           `<label class="cadrb-field"><span>Polar step</span><select data-a="polar-angle">${polarAngleOpts}</select></label>` +
           rb("dim-linear", "DYN", `data-a="dyn"`, "Dynamic Input HUD (F12)", "on") +
@@ -9146,6 +9209,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       <button class="obs-status-btn ${snapOn ? "active" : ""}" data-s="snap" title="Object Snap (F3)">OSNAP</button>
       <button class="obs-status-btn ${orthoOn ? "active" : ""}" data-s="ortho" title="Ortho (F8)">ORTHO</button>
       <button class="obs-status-btn ${polarOn ? "active" : ""}" data-s="polar" title="Polar Tracking (F10)">POLAR</button>
+      <button class="obs-status-btn ${ucsActive ? "active" : ""}" data-s="ucsview" title="UCS display — ON applies the drawing's saved view rotation (like AutoCAD); OFF shows raw world coordinates">UCS</button>
       <button class="obs-status-btn ${otrackOn ? "active" : ""}" data-s="otrack" title="Reference line tracking (axis guides while drawing)">OTRACK</button>
       <button class="obs-status-btn ${dynOn ? "active" : ""}" data-s="dyn" title="Dynamic Input (F12)">DYN</button>
       <button class="obs-status-btn ${lwtOn ? "active" : ""}" data-s="lwt" title="Lineweight">LWT</button>
@@ -9158,6 +9222,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     `;
 
     // Status tray button click listeners
+    // UCS display: delegated — updateStatus() re-renders the tray innerHTML,
+    // so per-button listeners do not survive re-renders.
+    statusEl.addEventListener("click", (ev) => {
+      const t = ev.target as HTMLElement | null;
+      if (t?.closest("[data-s=ucsview]")) setUcs(!ucsActive);
+    });
+    tools.querySelector('[data-a=ucsview]')?.classList.toggle("on", ucsActive);
     statusEl.querySelector("[data-s=grid]")?.addEventListener("click", () => {
       showGrid = !showGrid;
       updateStatus();
@@ -10149,6 +10220,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd("Drawing exported as SVG.");
       return;
     }
+    if (cmd === "UCSVIEW" || cmd === "UCSV") { setUcs(!ucsActive); return; }
+    if (cmd === "NEW") { newDrawing(); return; }
+    if (cmd === "GROUP") { groupCmd(parts.slice(1)); return; }
+    if (cmd === "LIMITS") { limitsCmd(parts.slice(1)); return; }
+    if (cmd === "QDIM") { qdim(); return; }
+    if (cmd === "DIMSPACE") { dimspaceCmd(parts.slice(1)); return; }
+    if (cmd === "DIMBREAK") { dimbreakCmd(); return; }
+    if (cmd === "DIMOVERRIDE" || cmd === "DOV") { dimoverrideCmd(parts.slice(1)); return; }
+    if (cmd === "DIMDISASSOCIATE") { dimdisassociateCmd(); return; }
+    if (cmd === "HYPERLINK") { hyperlinkCmd(parts.slice(1)); return; }
     if (cmd === "ORTHO" || cmd === "ORTHOMODE") {
       orthoOn = !orthoOn;
       updateStatus();
@@ -13258,6 +13339,274 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       status(`Could not import ${f.name}: ${(err as Error).message}`);
       setTimeout(() => status(""), 7000);
     }
+  }
+
+  /** NEW: discard the current document and start an empty one. */
+  function newDrawing(): void {
+    if (!doc) { startBlank(); return; }
+    doc = null;
+    name = "";
+    startBlank();
+    uprightRot = 0;
+    view = M.fitView(modelBounds ?? { minX: 0, minY: 0, maxX: 100, maxY: 100 }, view.w, view.h, 0.06);
+    draw();
+    logCmd("NEW: blank drawing started (the previous drawing was abandoned — use QSAVE/SAVEAS next time to keep changes).");
+  }
+
+  /** GROUP: create/list/recall named selection groups (session scope). */
+  function groupCmd(args: string[]): void {
+    const key = (args[0] ?? "").trim().toUpperCase();
+    if (!key) {
+      if (!namedGroups.size) { logCmd("GROUP: none defined — select objects and run GROUP <name>."); return; }
+      for (const [g, members] of namedGroups) logCmd(`  ${g}: ${members.length} object${members.length === 1 ? "" : "s"}`);
+      return;
+    }
+    const existing = namedGroups.get(key);
+    if (existing) {
+      sel.clear();
+      let n = 0;
+      for (const i of existing) if (ents[i]) { sel.add(i); n++; }
+      draw();
+      logCmd(`GROUP ${key}: selected ${n} object${n === 1 ? "" : "s"}.`);
+      return;
+    }
+    if (!sel.size) { logCmd(`GROUP: nothing selected — select objects first, then GROUP ${key}.`); return; }
+    namedGroups.set(key, [...sel]);
+    logCmd(`GROUP ${key} created with ${sel.size} object${sel.size === 1 ? "" : "s"} — run GROUP ${key} to recall it.`);
+  }
+
+  const parseXY = (sv: string): { x: number; y: number } | null => {
+    const m = /^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/.exec(sv ?? "");
+    return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : null;
+  };
+
+  /** LIMITS: set/report the drawing limits rectangle (grid/plot reference). */
+  function limitsCmd(args: string[]): void {
+    if (!args.length) {
+      if (!drawingLimits) { logCmd("LIMITS: not set — example: LIMITS 0,0 420,297"); return; }
+      logCmd(`LIMITS: ${drawingLimits.minX},${drawingLimits.minY} to ${drawingLimits.maxX},${drawingLimits.maxY} (drawing units)`);
+      return;
+    }
+    const a = parseXY(args[0] ?? ""), b = parseXY(args[1] ?? "");
+    if (!a || !b) { logCmd("LIMITS: give two corners, e.g. LIMITS 0,0 420,297"); return; }
+    drawingLimits = { minX: Math.min(a.x, b.x), minY: Math.min(a.y, b.y), maxX: Math.max(a.x, b.x), maxY: Math.max(a.y, b.y) };
+    logCmd(`LIMITS set: ${drawingLimits.minX},${drawingLimits.minY} to ${drawingLimits.maxX},${drawingLimits.maxY}.`);
+  }
+
+  /** Replaces `before` entities with `after` (same arrays as the modify
+   *  commits use) as ONE undo 'replace' act, then reindexes + redraws. */
+  function applyDimReplace(before: DxfEntity[], after: DxfEntity[]): void {
+    if (!before.length || !after.length) return;
+    const rm = new Set(before);
+    const at = ents.indexOf(before[0]);
+    ents = ents.filter((e) => !rm.has(e));
+    ents.splice(at < 0 ? ents.length : at, 0, ...after);
+    if (modelEnts !== ents) {
+      const at2 = modelEnts.indexOf(before[0]);
+      modelEnts = modelEnts.filter((e) => !rm.has(e));
+      modelEnts.splice(at2 < 0 ? modelEnts.length : at2, 0, ...after);
+    }
+    idx = M.buildIndex(ents, bounds ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 });
+    pushUndoAct({ type: "replace", before, after });
+    markDirty();
+    draw();
+  }
+
+  const selectedDimRecords = (): DIM.DimRecord[] => {
+    const ids = new Set<string>();
+    for (const i of sel) { const id = ents[i]?.meta?.dimId; if (id) ids.add(id); }
+    return [...ids].map((id) => dimRecords.get(id)).filter((r): r is DIM.DimRecord => !!r);
+  };
+
+  /** Rebuilds a record's graphic (style/overrides/geometry may have changed). */
+  function rebuildDim(recId: string): boolean {
+    const rec = dimRecords.get(recId);
+    if (!rec) return false;
+    const old = DIM.entitiesOfDim(ents, recId);
+    const style = dimStyleOf(rec);
+    const fresh = DIM.buildDimEntities(rec, style, dimTextFor(rec, style));
+    if (!old.length || !fresh.length) return false;
+    applyDimReplace(old, fresh);
+    return true;
+  }
+
+  /** A linear/aligned record's dim-line normal (unit) and signed offset. */
+  function dimNormalOf(rec: DIM.DimRecord): { nx: number; ny: number; off: number } {
+    const dx = rec.p2.x - rec.p1.x, dy = rec.p2.y - rec.p1.y;
+    if (rec.mode === "linear") {
+      const ux = Math.abs(dx) >= Math.abs(dy) ? 1 : 0, uy = ux ? 0 : 1;
+      const nx = -uy, ny = ux;
+      return { nx, ny, off: (rec.placement.x - rec.p1.x) * nx + (rec.placement.y - rec.p1.y) * ny };
+    }
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len, ny = dx / len;
+    return { nx, ny, off: (rec.placement.x - rec.p1.x) * nx + (rec.placement.y - rec.p1.y) * ny };
+  }
+
+  /** DIMSPACE: even spacing between selected linear/aligned dimensions. */
+  function dimspaceCmd(args: string[]): void {
+    const arg = (args[0] ?? "").trim().toUpperCase();
+    const recs = selectedDimRecords().filter((r) => r.mode === "linear" || r.mode === "aligned");
+    if (recs.length < 2) { logCmd("DIMSPACE: select at least two linear/aligned dimensions, then DIMSPACE <gap> (or DIMSPACE AUTO)."); return; }
+    const st0 = dimStyleOf(recs[0]);
+    const gap = arg === "AUTO" || !arg ? Math.max(st0.textHeight, st0.arrowSize) * 2.5 : parseFloat(arg);
+    if (!(gap > 0)) { logCmd("DIMSPACE: give a positive gap in drawing units, e.g. DIMSPACE 10."); return; }
+    const ordered = recs.map((r) => ({ r, ...dimNormalOf(r) })).sort((a, b) => a.off - b.off);
+    let prev = ordered[0].off, spaced = 0;
+    for (let k = 1; k < ordered.length; k++) {
+      const { r, nx, ny } = ordered[k];
+      const target = prev + gap;
+      const cur = dimNormalOf(r).off;
+      const moved = { x: r.placement.x + nx * (target - cur), y: r.placement.y + ny * (target - cur) };
+      const rec = { ...r, placement: moved };
+      dimRecords.set(rec.id, rec);
+      if (rebuildDim(rec.id)) spaced++;
+      prev = target;
+    }
+    draw();
+    logCmd(spaced ? `DIMSPACE: spaced ${spaced} dimension${spaced === 1 ? "" : "s"} by ${gap} drawing units.` : "DIMSPACE: nothing to move (dimensions already at that spacing).");
+  }
+
+  /** DIMBREAK: gap-split dimension lines where selected geometry crosses. */
+  function dimbreakCmd(): void {
+    const recs = selectedDimRecords();
+    if (!recs.length) { logCmd("DIMBREAK: select dimensions AND the crossing geometry, then run DIMBREAK."); return; }
+    const breakers = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e && !e.meta?.dimId);
+    if (!breakers.length) { logCmd("DIMBREAK: also select the entities that cross the dimension lines (they keep the break)."); return; }
+    const before: DxfEntity[] = [];
+    const after: DxfEntity[] = [];
+    for (const r0 of recs) {
+      const dimlines = DIM.entitiesOfDim(ents, r0.id).filter((e): e is Extract<DxfEntity, { type: "LINE" }> => e.type === "LINE" && e.meta?.role === "dimline");
+      if (!dimlines.length) continue;
+      const st = dimStyleOf(r0);
+      const gap = Math.max((st.arrowSize || 2.5) * 0.75, 1);
+      for (const seg of dimlines) {
+        const L = Math.hypot(seg.end.x - seg.start.x, seg.end.y - seg.start.y);
+        if (L < 1e-9) continue;
+        const ux = (seg.end.x - seg.start.x) / L, uy = (seg.end.y - seg.start.y) / L;
+        const ts: number[] = [];
+        for (const bk of breakers) {
+          if (bk.type === "LINE") ts.push(...M.segmentIntersections(seg.start, seg.end, bk.start, bk.end).map((p) => (p.x - seg.start.x) * ux + (p.y - seg.start.y) * uy));
+          else if (bk.type === "LWPOLYLINE") {
+            const v = bk.points;
+            for (let i = 0; i + 1 < v.length; i++) ts.push(...M.segmentIntersections(seg.start, seg.end, v[i], v[i + 1]).map((p) => (p.x - seg.start.x) * ux + (p.y - seg.start.y) * uy));
+            if (v.length > 2 && (bk as { closed?: boolean }).closed) ts.push(...M.segmentIntersections(seg.start, seg.end, v[v.length - 1], v[0]).map((p) => (p.x - seg.start.x) * ux + (p.y - seg.start.y) * uy));
+          }
+          else if (bk.type === "CIRCLE") ts.push(...M.segmentCircleIntersections(seg.start, seg.end, bk.center, bk.radius).map((p) => (p.x - seg.start.x) * ux + (p.y - seg.start.y) * uy));
+          else if (bk.type === "ARC") ts.push(...M.segmentCircleIntersections(seg.start, seg.end, bk.center, bk.radius, { startAngle: bk.startAngle, sweepDeg: M.arcSweepDeg(bk.startAngle, bk.endAngle) }).map((p) => (p.x - seg.start.x) * ux + (p.y - seg.start.y) * uy));
+        }
+        const hits = [...ts].filter((t) => t > 0 && t < L).sort((a, b) => a - b).filter((t, i, arr) => i === 0 || t - arr[i - 1] > 1e-6);
+        if (!hits.length) continue;
+        before.push(seg);
+        const gt = Math.min(gap, L / 3);
+        let cur = 0;
+        const mk = (t0: number, t1: number): void => {
+          if (t1 - t0 < 1e-6) return;
+          after.push({ ...seg, start: { x: seg.start.x + ux * t0, y: seg.start.y + uy * t0 }, end: { x: seg.start.x + ux * t1, y: seg.start.y + uy * t1 } });
+        };
+        for (const t of hits) { mk(cur, t - gt); cur = Math.max(cur, t + gt); }
+        mk(cur, L);
+      }
+    }
+    if (before.length) {
+      const gaps = after.length - before.length;
+      applyDimReplace(before, after);
+      logCmd(`DIMBREAK: broke ${before.length} dimension line${before.length === 1 ? "" : "s"} — ${gaps} gap${gaps === 1 ? "" : "s"} created.`);
+    } else logCmd("DIMBREAK: no selected geometry crosses the selected dimension lines.");
+  }
+
+  /** DIMOVERRIDE: per-dimension style overrides (DOV). */
+  function dimoverrideCmd(args: string[]): void {
+    const recs = selectedDimRecords();
+    if (!recs.length) {
+      logCmd("DIMOVERRIDE: select dimensions, then DIMOVERRIDE <property> <value>. Properties: TEXTHEIGHT, ARROWSIZE, PRECISION, COLOR, SCALE, SUFFIX. DIMOVERRIDE CLEAR resets.");
+      return;
+    }
+    const sub = (args[0] ?? "").toUpperCase();
+    const val = args.slice(1).join(" ").trim();
+    const num = (s: string): number | null => { const v = parseFloat(s); return Number.isFinite(v) ? v : null; };
+    let ov: Partial<DIM.DimStyle> | null = null;
+    if (sub === "CLEAR" || sub === "REMOVE") {
+      let n = 0;
+      for (const r of recs) if (dimOverrides.delete(r.id) && rebuildDim(r.id)) n++;
+      logCmd(n ? `DIMOVERRIDE: overrides cleared on ${n} dimension${n === 1 ? "" : "s"}.` : "DIMOVERRIDE: no overrides to clear.");
+      return;
+    }
+    if (sub === "SUFFIX") ov = { suffix: val };
+    else if (sub === "TEXTHEIGHT") { const v = num(val); if (v !== null && v > 0) ov = { textHeight: v }; }
+    else if (sub === "ARROWSIZE") { const v = num(val); if (v !== null && v > 0) ov = { arrowSize: v }; }
+    else if (sub === "SCALE" || sub === "DIMSCALE" || sub === "DIMLFAC") { const v = num(val); if (v !== null && v > 0) ov = { linearScale: v }; }
+    else if (sub === "PRECISION") { const v = num(val); if (v !== null && v >= 0 && v <= 8 && Number.isInteger(v)) ov = { precision: v }; }
+    else if (sub === "COLOR") { const v = num(val); if (v !== null && v >= 1 && v <= 256 && Number.isInteger(v)) ov = { colorAci: v }; }
+    if (!ov) { logCmd("DIMOVERRIDE: unknown property or value — TEXTHEIGHT, ARROWSIZE, PRECISION (0-8), COLOR (ACI 1-256), SCALE, SUFFIX <text>."); return; }
+    for (const r of recs) {
+      dimOverrides.set(r.id, { ...(dimOverrides.get(r.id) ?? {}), ...ov });
+      rebuildDim(r.id);
+    }
+    logCmd(`DIMOVERRIDE: ${sub} = ${val || "(empty)"} applied to ${recs.length} dimension${recs.length === 1 ? "" : "s"}.`);
+  }
+
+  /** DIMDISASSOCIATE: detach selected dimensions from their geometry. */
+  function dimdisassociateCmd(): void {
+    const recs = selectedDimRecords();
+    if (!recs.length) { logCmd("DIMDISASSOCIATE: select dimensions to detach them from their geometry."); return; }
+    for (const r of recs) { dimRecords.delete(r.id); dimOverrides.delete(r.id); }
+    draw();
+    logCmd(`DIMDISASSOCIATE: ${recs.length} dimension${recs.length === 1 ? "" : "s"} detached — they no longer follow geometry (EXPLODE turns them into plain lines/text).`);
+  }
+
+  /** HYPERLINK: attach/list/remove a URL on selected objects. */
+  function hyperlinkCmd(args: string[]): void {
+    if (!sel.size) { logCmd("HYPERLINK: select objects, then HYPERLINK <url> — or HYPERLINK REMOVE to clear."); return; }
+    const arg = (args[0] ?? "").trim();
+    if (!arg) {
+      let n = 0;
+      for (const i of sel) { const e = ents[i]; const h = e?.meta?.hyperlink; if (h) { logCmd(`  ${e.type}: ${h}`); n++; } }
+      logCmd(n ? `${n} hyperlink(s) in the selection.` : "HYPERLINK: none in the selection — HYPERLINK <url> attaches one, HYPERLINK REMOVE clears.");
+      return;
+    }
+    if (arg.toUpperCase() === "REMOVE" || arg.toUpperCase() === "DELETE") {
+      let n = 0;
+      for (const i of sel) {
+        const e = ents[i];
+        if (e?.meta?.hyperlink) { const { hyperlink, ...rest } = e.meta; e.meta = rest; n++; }
+      }
+      markDirty(); draw();
+      logCmd(n ? `HYPERLINK: removed ${n} hyperlink(s).` : "HYPERLINK: none to remove.");
+      return;
+    }
+    let n = 0;
+    for (const i of sel) { const e = ents[i]; if (e) { e.meta = { ...(e.meta ?? {}), hyperlink: arg }; n++; } }
+    markDirty(); draw();
+    logCmd(`HYPERLINK: ${arg} attached to ${n} object(s) — HYPERLINK lists them, HYPERLINK REMOVE clears.`);
+  }
+
+  /** QDIM: quick aligned dimensions on every selected LINE. */
+  function qdim(): void {
+    if (!sel.size) { logCmd("QDIM: select LINEs first, then run QDIM."); return; }
+    const style = currentDimStyle();
+    let made = 0;
+    for (const i of sel) {
+      const e = ents[i];
+      if (!e || e.type !== "LINE") continue;
+      const p1 = { x: e.start.x, y: e.start.y }, p2 = { x: e.end.x, y: e.end.y };
+      const dx = p2.x - p1.x, dy = p2.y - p1.y, len = Math.hypot(dx, dy);
+      if (len < 1e-9) continue;
+      const off = Math.max(len * 0.08, 1);
+      const nx = -dy / len, ny = dx / len;
+      const rec: DIM.DimRecord = {
+        id: `qdim-${dimSeq++}`,
+        styleName: style.name,
+        mode: "aligned",
+        layer: e.layer || "0",
+        p1, p2,
+        placement: { x: (p1.x + p2.x) / 2 + nx * off, y: (p1.y + p2.y) / 2 + ny * off },
+      };
+      const entities = commitDimRecord(rec);
+      if (entities.length) { addEntities(entities); made++; }
+    }
+    draw();
+    logCmd(made ? `QDIM: created ${made} aligned dimension${made === 1 ? "" : "s"}.` : "QDIM: no LINEs in the selection.");
   }
 
   /* ── New Drawing: an empty, immediately drawable document ── */

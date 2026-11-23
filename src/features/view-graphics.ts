@@ -498,11 +498,6 @@ export function setupViewGraphics(): void {
   } catch {
     /* */
   }
-  (window as any).__obsViewGraphics = {
-    setPreset: setVisualPreset,
-    getPreset: getVisualPreset,
-    openOptions: openGraphicDisplayOptions,
-  };
   // Re-apply when models finish loading
   try {
     window.addEventListener("obs:models-changed", () => {

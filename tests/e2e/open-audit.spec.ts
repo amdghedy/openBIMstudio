@@ -69,9 +69,11 @@ const TELEMETRY = [/visits/, /ipapi\.co/, /workers\.dev/, /iconify\.design/, /un
 // request/response URLs (badUrls, asserted at the end) — a 404 on any
 // non-telemetry URL still fails the spec there.
 // The app's telemetry fires console errors in any run here (the visits
-// endpoint 404s on vite preview, ipapi.co has no route out of the VM,
-// and the icon loader still attempts runtime fetches to icon CDNs that
-// are CSP-blocked). Those three sources are proven benign by URL in the
+// endpoint 404s on vite preview, ipapi.co has no route out of the VM).
+// Icons ship as a local mdi collection (src/features/iconify-offline.ts),
+// so no icon-CDN fetches happen anymore; the iconify/unisvg/simplesvg
+// patterns stay in the TELEMETRY excuse list as belt-and-braces. Those
+// sources are proven benign by URL in the
 // response log; any other failed response is still fatal. Bare
 // "Failed to load resource" console messages carry no URL, so they are
 // judged here through the recorded request/response URLs, not the text.
