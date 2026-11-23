@@ -93,7 +93,11 @@ const SYSTEM_LABELS: Record<FabPart["system"], { label: string; color: string }>
 let panel: HTMLDivElement | null = null;
 let visible = false;
 
+let mepFabSetupDone = false;
+
 export function setupMepFabrication(): void {
+  if (mepFabSetupDone) return;
+  mepFabSetupDone = true;
   panel = document.createElement("div");
   panel.id = "obs-mep-fabrication";
   panel.style.cssText =
