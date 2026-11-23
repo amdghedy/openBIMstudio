@@ -143,5 +143,24 @@ t("test is registered in package.json and ci-unit-tests.mjs", () => {
   assert.ok(ciList.includes("test:auth-ux"), "ci-unit-tests.mjs must run test:auth-ux");
 });
 
+t("static demo hands accounts to the canonical host without a session proxy", () => {
+  const vm = require("node:vm");
+  const helper = acct.slice(acct.indexOf("function needsAccountHandoff("), acct.indexOf("function showAccountHandoff("));
+  const js = require("typescript").transpileModule(helper, { compilerOptions: { target: 9 } }).outputText;
+  const context = { location: { hostname: "open-bi-mstudio.vercel.app" } };
+  vm.createContext(context); vm.runInContext(js, context);
+  assert.equal(context.needsAccountHandoff(), true);
+  for (const host of ["localhost", "openbimstudio.amdghedy.workers.dev", "example.vercel.app", "open-bi-mstudio.vercel.app.evil.invalid"]) assert.equal(context.needsAccountHandoff(host), false);
+  const vercel = JSON.parse(read("vercel.json"));
+  const redirect = vercel.redirects.find(r => r.source === "/api/auth/google/start");
+  assert.equal(redirect.destination, "https://openbimstudio.amdghedy.workers.dev/api/auth/google/start");
+  assert.equal(redirect.permanent, false);
+  assert.ok(!redirect.destination.includes("popup"), "cross-origin popup marker must not propagate");
+  assert.ok(acct.includes('if (needsAccountHandoff()) { showAccountHandoff(); return; }'));
+  assert.ok(acct.includes("Browser-local projects and settings do not transfer automatically"));
+  const sw = read("public", "sw.js");
+  assert.ok(sw.indexOf('if (/^\\/api(?:\\/|$)/.test(url.pathname)) return;') < sw.indexOf('if (req.mode === "navigate")'), "API bypass must precede shell handling");
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
