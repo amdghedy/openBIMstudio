@@ -206,7 +206,15 @@ async function processFixture(fx, reporter, web, webAvailable) {
     try {
       webCheck = await webIfcCrossCheck(web.api, web.W, new Uint8Array(bytes), report.rows);
     } catch (e) {
-      webCheck = { opened: false, error: String((e && e.message) || e) };
+      const raw = String((e && e.message) || e);
+      // The WASM OOB abort surfaces with different messages per Node runtime
+      // ("Aborted(). Build with -sASSERTIONS..." on 22, a V8 trap message on
+      // 24+) — record one canonical label so the drift gate stays
+      // environment-independent.
+      const msg = /memory access out of bounds|^Aborted\(\)/i.test(raw)
+        ? "memory access out of bounds"
+        : raw;
+      webCheck = { opened: false, error: msg };
     }
   }
   const summaryEntry = {

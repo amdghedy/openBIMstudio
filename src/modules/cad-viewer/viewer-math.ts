@@ -988,6 +988,11 @@ export function findSnap(
     if (d > tol) return;
     if (!best || TIER[s.kind] < TIER[best.kind] || (TIER[s.kind] === TIER[best.kind] && d < bd)) { best = s; bd = d; }
   };
+  // Parallel references live near the anchor point, not the cursor — the
+  // cursor may sit far from the entity being paralleled.
+  const referenceIds = on.has("parallel") && fromPt
+    ? queryIndex(idx, fromPt.x, fromPt.y, Math.max(tol * 40, 1)).filter((i) => visible(entities[i]) && !isHatchEntity(entities[i]))
+    : [];
   for (const i of ids) {
     for (const k of keyPoints(entities[i])) {
       if (k.kind === "extension") continue; // projected below
@@ -1050,7 +1055,7 @@ export function findSnap(
   }
   // PARALLEL: keep new segment parallel to a nearby segment
   if (on.has("parallel") && fromPt) {
-    for (const i of ids) {
+    for (const i of [...new Set([...ids, ...referenceIds])]) {
       for (const [a, b] of entitySegments(entities[i])) {
         const L = Math.hypot(b.x - a.x, b.y - a.y);
         if (L < 1e-12) continue;
