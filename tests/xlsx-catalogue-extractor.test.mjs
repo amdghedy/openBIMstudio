@@ -24,4 +24,15 @@ assert.equal(result.rows[1].height, 650);
 assert.equal(result.rows[1].manufacturer, undefined);
 assert.equal(result.rows[2].model, "FANscript");
 assert.ok(!/[<>]/.test(result.rows[2].model), "decoded catalogue text must not retain markup delimiters");
+assert.deepEqual(result.headers, ["Model", "Manufacturer", "Width (mm)", "Depth", "Height"]);
+const manuallyMapped = await extractXlsxCatalogue(file, "Products", {
+  "Manufacturer": null,
+  "Width (mm)": "depth",
+  "Depth": null,
+});
+assert.equal(manuallyMapped.rows[0].manufacturer, undefined, "ignored source columns must not populate canonical fields");
+assert.equal(manuallyMapped.rows[0]["Manufacturer"], "Acme & Co", "unmapped source values remain available for review");
+assert.equal(manuallyMapped.rows[0].depth, undefined, "ambiguous duplicate canonical mappings must be blocked");
+assert.ok(manuallyMapped.warnings.some((warning) => warning.includes("Multiple worksheet columns map to \"depth\"")));
+
 console.log("XLSX worksheet selection and catalogue extraction tests passed");
