@@ -75,6 +75,7 @@ export const FEATURE_MATURITY: readonly FeatureMaturityEntry[] = [
     limitations: [
       "PDF selectable-text table extraction and optional scanned-page OCR through a configured local Ollama vision model are implemented; OCR quality depends on the selected model and page rendering, and every extracted value requires engineering review",
       "PDF table reconstruction recognizes a bounded set of column headings and layouts; multi-column brochures, rotated tables, complex merged cells and nonstandard units may need manual correction",
+      "Family creation is blocked unless every type has positive width, depth and height; duplicate model identifiers are flagged before creation. PDF extraction preserves repeated model rows for review rather than silently dropping them.",
       "XLSX imports visible worksheets and reads cached formula results only; formula recalculation, XLSM and legacy XLS are unsupported",
       "Dimensions use the explicitly selected family unit; selected performance units are normalized (airflow m³/s and L/s to m³/h, kPa to Pa, W to kW, kV to V)",
       "Geometry is limited to generic parametric box and cylinder primitives; manufacturer-accurate solids, DWG/DXF/STEP/SAT extraction and drawing-derived geometry are not implemented",
