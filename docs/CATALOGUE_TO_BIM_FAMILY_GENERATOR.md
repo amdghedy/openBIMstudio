@@ -12,6 +12,7 @@ The current experimental delivery adds a BIM Family Generator launcher and local
 - PDF page-count, file-size and extracted-text safety limits.
 - Quoted CSV fields and header aliases for common manufacturer catalogue columns.
 - Interactive CSV/TSV column mapping review with explainable high/medium/no-match suggestions, manual canonical-field overrides, and an option to preserve a source column without mapping it.
+- Reusable mapping profiles stored locally in the browser, with manufacturer labels, validated versioned JSON import/export, and explicit apply/review before parsing. Profiles can be shared between users through exported JSON; browser-local saved profiles are not automatically synchronized across devices or projects.
 - Ambiguous duplicate canonical mappings are excluded from parameter assignment until the user resolves the conflict; the importer does not silently choose the first or last matching column. The current interactive mapping editor is available for CSV/TSV; XLSX and PDF still use their extraction adapters and need a later shared mapping-review integration.
 - Product rows and model variants review.
 - Explicit dimension unit selection (mm, cm, m) and conversion to metres for the current family geometry contract.
