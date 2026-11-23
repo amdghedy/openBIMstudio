@@ -239,8 +239,8 @@ export interface CatalogueFamilyOptions {
   category?: FamilyDefinition["category"];
   dimensionUnit?: "mm" | "cm" | "m";
   ifcEntity?: string;
-  /** Apply a consistent default scope to generated catalogue parameters. */
-  parameterScope?: "type" | "instance";
+  /** Optional per-parameter scope overrides; type scope remains the safe default. */
+  parameterScopes?: Record<string, "type" | "instance">;
   /** Optional pre-existing shared-parameter UUIDs keyed by generated parameter name. */
   parameterGuids?: Record<string, string>;
 }
@@ -272,7 +272,9 @@ export function buildCatalogueFamilyDefinition(
   ];
   const usedGuids = new Set<string>();
   for (const parameter of parameters) {
-    if (options.parameterScope) parameter.scope = options.parameterScope;
+    const requestedScope = options.parameterScopes?.[parameter.name];
+    if (requestedScope && requestedScope !== "type" && requestedScope !== "instance") throw new Error(`Unsupported scope for "${parameter.name}".`);
+    if (requestedScope) parameter.scope = requestedScope;
     const guid = options.parameterGuids?.[parameter.name]?.trim();
     if (guid) {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(guid)) {
@@ -300,6 +302,12 @@ export function buildCatalogueFamilyDefinition(
     },
     connectorDefs: buildCatalogueConnectorDefinitions([r], unit),
   }));
+  for (const parameter of parameters) {
+    if (parameter.scope === "instance") {
+      const values = new Set(types.map((type) => JSON.stringify(type.values[parameter.name])));
+      if (values.size > 1) throw new Error(`Parameter "${parameter.name}" cannot use instance scope because catalogue variants contain different values. Keep it type-scoped or split the catalogue into separate families.`);
+    }
+  }
   const uniqueTypes = new Set(types.map((t) => t.name.toLowerCase()));
   if (uniqueTypes.size !== types.length) throw new Error("Duplicate model names detected. Resolve duplicate catalogue types before creating the family.");
   const geometryProfiles = rows.map((row) => {
