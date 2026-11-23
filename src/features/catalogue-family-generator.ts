@@ -23,6 +23,7 @@ let launch: HTMLButtonElement | null = null;
 let rows: CatalogueRow[] = [];
 let sourceName = "";
 let pendingXlsxFile: File | null = null;
+let pendingPdfFile: File | null = null;
 let delimitedSourceText = "";
 let delimitedSourceDelimiter: string | undefined;
 let delimitedHeaders: string[] = [];
@@ -153,7 +154,8 @@ function applyMappingProfile(): void {
   if (pendingXlsxFile) {
     const sheetName = panel?.querySelector<HTMLSelectElement>("[data-sheet]")?.value;
     if (sheetName) void readCatalogue(pendingXlsxFile, sheetName);
-  } else if (delimitedSourceText) reparseDelimitedSource();
+  } else if (pendingPdfFile) void readCatalogue(pendingPdfFile);
+  else if (delimitedSourceText) reparseDelimitedSource();
   status(`Applied mapping profile "${profile.name}". Review all unmatched headings and QA warnings.`, "success");
 }
 function exportMappingProfile(): void {
@@ -247,11 +249,11 @@ function buildPanel(): void {
   document.body.appendChild(root);
   panel = root;
   root.querySelector("[data-close]")?.addEventListener("click", closeCatalogueFamilyGenerator);
-  root.querySelector("[data-clear]")?.addEventListener("click", () => { rows = []; sourceName = ""; pendingXlsxFile = null; delimitedSourceText = ""; delimitedHeaders = []; mappingOverrides = {}; renderMappingReview(); const chooser = root.querySelector<HTMLElement>("[data-xlsx-selection]"); if (chooser) chooser.hidden = true; renderRows(); const qa = root.querySelector<HTMLElement>("[data-qa]"); if (qa) qa.textContent = "Import a catalogue to run completeness checks."; status("Catalogue cleared."); });
+  root.querySelector("[data-clear]")?.addEventListener("click", () => { rows = []; sourceName = ""; pendingXlsxFile = null; pendingPdfFile = null; delimitedSourceText = ""; delimitedHeaders = []; mappingOverrides = {}; renderMappingReview(); const chooser = root.querySelector<HTMLElement>("[data-xlsx-selection]"); if (chooser) chooser.hidden = true; renderRows(); const qa = root.querySelector<HTMLElement>("[data-qa]"); if (qa) qa.textContent = "Import a catalogue to run completeness checks."; status("Catalogue cleared."); });
   root.querySelector("[data-file]")?.addEventListener("change", (event) => {
     const file = (event.target as HTMLInputElement).files?.[0];
     if (file?.name.toLowerCase().endsWith(".xlsx")) void prepareXlsxWorkbook(file);
-    else { pendingXlsxFile = null; const chooser = root.querySelector<HTMLElement>("[data-xlsx-selection]"); if (chooser) chooser.hidden = true; void readCatalogue(file); }
+    else { pendingXlsxFile = null; pendingPdfFile = file?.name.toLowerCase().endsWith(".pdf") ? file : null; const chooser = root.querySelector<HTMLElement>("[data-xlsx-selection]"); if (chooser) chooser.hidden = true; void readCatalogue(file); }
   });
   root.querySelector("[data-import-sheet]")?.addEventListener("click", () => {
     const sheetName = root.querySelector<HTMLSelectElement>("[data-sheet]")?.value;
@@ -267,7 +269,8 @@ function buildPanel(): void {
     if (pendingXlsxFile) {
       const sheetName = root.querySelector<HTMLSelectElement>("[data-sheet]")?.value;
       if (sheetName) void readCatalogue(pendingXlsxFile, sheetName);
-    } else reparseDelimitedSource();
+    } else if (pendingPdfFile) void readCatalogue(pendingPdfFile);
+    else reparseDelimitedSource();
   });
   root.querySelector("[data-save-profile]")?.addEventListener("click", () => {
     try { saveMappingProfile(); } catch (error) { status(error instanceof Error ? error.message : "Could not save mapping profile.", "warn"); }
@@ -322,11 +325,15 @@ async function readCatalogue(file?: File, selectedSheet?: string): Promise<void>
     }
     if (ext === "pdf") {
       const useLocalVisionOcr = panel?.querySelector<HTMLInputElement>("[data-ocr]")?.checked ?? false;
+      pendingPdfFile = file;
       const result = await extractPdfCatalogue(file, {
         useLocalVisionOcr,
+        mappingOverrides,
         onProgress: (current, total, phase) => status(`${phase === "ocr" ? "Local OCR" : "Reading PDF"}: page ${current} of ${total}…`),
       });
       parsed = { rows: result.rows, errors: result.warnings };
+      delimitedHeaders = result.headers;
+      renderMappingReview();
       if (result.scannedPages.length && !useLocalVisionOcr && !parsed.errors.some((issue) => issue.includes("Scanned/image-only pages"))) parsed.errors.push(`Scanned pages detected: ${result.scannedPages.join(", ")}. Enable local vision OCR to extract them.`);
       if (result.pageCount > result.processedPages) parsed.errors.push(`Only the first ${result.processedPages} of ${result.pageCount} pages were processed.`);
       sourceName = file.name;
@@ -339,6 +346,7 @@ async function readCatalogue(file?: File, selectedSheet?: string): Promise<void>
       return;
     }
     const raw = await file.text();
+    pendingPdfFile = null;
     delimitedSourceText = "";
     delimitedHeaders = [];
     mappingOverrides = {};
