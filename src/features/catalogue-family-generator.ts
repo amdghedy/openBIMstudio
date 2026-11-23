@@ -116,7 +116,7 @@ function renderMappingProfiles(): void {
   if (selected && profiles[Number(selected)]) select.value = selected;
 }
 function saveMappingProfile(): void {
-  if (!delimitedHeaders.length) { status("Import a CSV/TSV catalogue before saving a mapping profile.", "warn"); return; }
+  if (!delimitedHeaders.length) { status("Import a catalogue with identifiable source columns before saving a mapping profile.", "warn"); return; }
   const name = panel?.querySelector<HTMLInputElement>("[data-profile-name]")?.value.trim() ?? "";
   if (!name) { status("Enter a name for this mapping profile.", "warn"); return; }
   const manufacturer = panel?.querySelector<HTMLInputElement>("[data-manufacturer]")?.value.trim() ?? "";
@@ -142,7 +142,7 @@ function applyMappingProfile(): void {
   const select = panel?.querySelector<HTMLSelectElement>("[data-profile-select]");
   const index = Number(select?.value);
   const profile = readMappingProfiles()[index];
-  if (!profile || !delimitedHeaders.length) { status("Select a saved profile and import a CSV/TSV catalogue first.", "warn"); return; }
+  if (!profile || !delimitedHeaders.length) { status("Select a saved profile and import a catalogue with source columns first.", "warn"); return; }
   mappingOverrides = { ...profile.mappings };
   for (const header of Object.keys(mappingOverrides)) {
     if (!delimitedHeaders.includes(header)) delete mappingOverrides[header];
@@ -150,7 +150,10 @@ function applyMappingProfile(): void {
   const manufacturerInput = panel?.querySelector<HTMLInputElement>("[data-manufacturer]");
   if (manufacturerInput && profile.manufacturer) manufacturerInput.value = profile.manufacturer;
   renderMappingReview();
-  reparseDelimitedSource();
+  if (pendingXlsxFile) {
+    const sheetName = panel?.querySelector<HTMLSelectElement>("[data-sheet]")?.value;
+    if (sheetName) void readCatalogue(pendingXlsxFile, sheetName);
+  } else if (delimitedSourceText) reparseDelimitedSource();
   status(`Applied mapping profile "${profile.name}". Review all unmatched headings and QA warnings.`, "success");
 }
 function exportMappingProfile(): void {
@@ -261,7 +264,10 @@ function buildPanel(): void {
     if (target.value === "__auto__") delete mappingOverrides[header];
     else if (target.value === "__ignore__") mappingOverrides[header] = null;
     else mappingOverrides[header] = target.value as CatalogueField;
-    reparseDelimitedSource();
+    if (pendingXlsxFile) {
+      const sheetName = root.querySelector<HTMLSelectElement>("[data-sheet]")?.value;
+      if (sheetName) void readCatalogue(pendingXlsxFile, sheetName);
+    } else reparseDelimitedSource();
   });
   root.querySelector("[data-save-profile]")?.addEventListener("click", () => {
     try { saveMappingProfile(); } catch (error) { status(error instanceof Error ? error.message : "Could not save mapping profile.", "warn"); }
@@ -301,8 +307,10 @@ async function readCatalogue(file?: File, selectedSheet?: string): Promise<void>
   try {
     let parsed: { rows: CatalogueRow[]; errors: string[] };
     if (ext === "xlsx") {
-      const result = await extractXlsxCatalogue(file, selectedSheet);
+      const result = await extractXlsxCatalogue(file, selectedSheet, mappingOverrides);
       parsed = { rows: result.rows, errors: result.warnings };
+      delimitedHeaders = result.headers;
+      renderMappingReview();
       sourceName = file.name + " · " + result.sheetName;
       rows = parsed.rows;
       renderRows();
