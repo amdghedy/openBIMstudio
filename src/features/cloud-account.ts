@@ -84,10 +84,13 @@ const STYLE = `
   font:700 13px system-ui,sans-serif;cursor:pointer}
 .obs-acct-submit:hover{background:#38bdf8}
 .obs-acct-submit[disabled]{opacity:.55;cursor:default}
-.obs-acct-google{height:36px;display:flex;align-items:center;justify-content:center;gap:8px;
-  border-radius:8px;border:1px solid rgba(148,163,184,.35);background:transparent;color:#e2e8f0;
-  font:600 13px system-ui,sans-serif;cursor:pointer}
-.obs-acct-google:hover{background:rgba(148,163,184,.12)}
+.obs-acct-google{height:40px;display:flex;align-items:center;justify-content:center;gap:10px;
+  border-radius:8px;border:1px solid rgba(148,163,184,.4);background:#fff;color:#1f2937;
+  font:700 13px system-ui,sans-serif;cursor:pointer;text-decoration:none;width:100%;box-sizing:border-box}
+.obs-acct-google:hover{background:#f3f4f6;border-color:#9ca3af}
+.obs-acct-google svg{flex:0 0 auto}
+.obs-acct-or{display:flex;align-items:center;gap:10px;color:#64748b;font:11px system-ui;margin:4px 0}
+.obs-acct-or::before,.obs-acct-or::after{content:"";flex:1;height:1px;background:rgba(148,163,184,.25)}
 .obs-acct-swap{background:transparent;border:0;color:#38bdf8;font:12px system-ui;cursor:pointer;
   text-align:center;padding:2px}
 .obs-acct-err{color:#fca5a5;font:12px system-ui;min-height:15px;white-space:pre-wrap}
@@ -348,18 +351,18 @@ function buildMenu(menu: HTMLElement): void {
     title.className = "obs-acct__menu-title";
     title.textContent = "Account — sign in to sync projects";
     menu.appendChild(title);
-    menuItem(menu, "Sign in…", () => void openAuthDialog(false));
-    menuItem(menu, "Create account…", () => void openAuthDialog(true));
     menuItem(menu, "Continue with Google", () => {
       void (async () => {
         if (await googleConfigured()) {
           openGoogleOAuth();
         } else {
-          // Explains inside the dialog instead of navigating to a dead end.
+          window.open("/api/auth/google/start", "_blank", "noopener");
           void openAuthDialog(false);
         }
       })();
     });
+    menuItem(menu, "Sign in with email…", () => void openAuthDialog(false));
+    menuItem(menu, "Create account…", () => void openAuthDialog(true));
   } else {
     const title = document.createElement("div");
     title.className = "obs-acct__menu-title";
@@ -484,8 +487,12 @@ async function openAuthDialog(registerMode: boolean): Promise<void> {
   google.className = "obs-acct-google";
   google.href = "/api/auth/google/start";
   google.innerHTML =
-    `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">` +
-    `<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg><span>Continue with Google</span>`;
+    `<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">` +
+    `<path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>` +
+    `<path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>` +
+    `<path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>` +
+    `<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>` +
+    `</svg><span>Continue with Google</span>`;
   google.addEventListener("click", (e) => {
     e.preventDefault();
     void (async () => {
@@ -565,11 +572,12 @@ async function openAuthDialog(registerMode: boolean): Promise<void> {
     }
   });
 
-  body.append(err, submit, forgot, swap, google, note);
+  const orLine = document.createElement("div");
+  orLine.className = "obs-acct-or";
+  orLine.textContent = "or use email";
+  body.append(google, orLine, err, submit, forgot, swap, note);
   render();
   emailInput.focus();
-  // If Google isn't configured, surface the amber note immediately so the
-  // user knows email sign-in is the working path before clicking anything.
   void googleConfigured().then((ok) => {
     if (!ok && document.contains(google)) showGoogleSetupHint(google);
   });
