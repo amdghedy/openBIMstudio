@@ -554,6 +554,7 @@ function buildMepConnectorsSection(fam: FamilyDefinition, previewState: FamilyCo
   title.style.marginTop = "0";
   wrap.appendChild(title);
 
+  const selectedType = fam.types.find(type => type.id === typeId) ?? null;
   const hint = document.createElement("div");
   hint.textContent = fam.builtIn
     ? "Numbered markers show port origins; arrows show connection axes."
@@ -570,7 +571,6 @@ function buildMepConnectorsSection(fam: FamilyDefinition, previewState: FamilyCo
   status.style.cssText = "font-size:10.5px;line-height:1.45;margin-top:7px;color:#fca5a5;white-space:pre-wrap";
   wrap.appendChild(status);
 
-  const selectedType = fam.types.find(type => type.id === typeId) ?? null;
   const existing = selectedType?.connectorDefs ?? fam.connectorDefs ?? [];
   if (fam.builtIn) {
     const locked = document.createElement("div");
