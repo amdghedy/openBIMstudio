@@ -151,23 +151,60 @@ export function migrateFamilyDefinition(input: unknown): FamilyMigrationResult {
   // earlier version of this migrator did) silently lost 2 of the 56
   // seed-catalog families in the browser. Duplicate ids still throw:
   // an identity collision is genuinely ambiguous.
-  const typeIds = new Set<string>();
   const types = (family.types ?? []) as Array<Record<string, unknown>>;
-  for (let i = 0; i < types.length; i++) {
-    const t = types[i]!;
+  // Validate and reserve all persisted IDs first. A generated ID must never
+  // collide with an ID already stored on another type in this family.
+  const typeIds = new Set<string>();
+  for (const t of types) {
     if (!isRecord(t)) {
       throw new Error(`family migration: family "${String(id)}" has a type entry that is not an object`);
     }
+    if (typeof t.id === "string" && t.id.trim()) {
+      if (typeIds.has(t.id)) {
+        throw new Error(`family migration: family "${String(id)}" has two types with id "${t.id}"`);
+      }
+      typeIds.add(t.id);
+    }
+  }
+
+  // Canonicalize type values so IDs remain stable when catalog entries are
+  // reordered, including same-name types with different parameter values.
+  const canonical = (value: unknown): string => {
+    if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
+    if (isRecord(value)) return "{" + Object.keys(value).sort().map(k =>
+      JSON.stringify(k) + ":" + canonical(value[k])
+    ).join(",") + "}";
+    return JSON.stringify(value) ?? "null";
+  };
+  const occurrences = new Map<string, number>();
+  for (let i = 0; i < types.length; i++) {
+    const t = types[i]!;
     if (typeof t.id !== "string" || !t.id.trim()) {
-      const assigned = `t_${String(id)}-${i}`;
-      warnings.push(`family "${String(id)}": type "${String(t.name ?? i)}" has no id; assigning "${assigned}"`);
+      const rawName = typeof t.name === "string" ? t.name.trim() : "";
+      const normalizedName = rawName.toLocaleLowerCase("en-US").replace(/\\s+/g, " ");
+      const slug = normalizedName
+        .normalize("NFKD")
+        .replace(/[\\u0300-\\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || `type-${i + 1}`;
+      const fingerprint = `${String(id)}\\0${normalizedName}\\0${canonical(t.values ?? {})}`;
+      const occurrence = occurrences.get(fingerprint) ?? 0;
+      occurrences.set(fingerprint, occurrence + 1);
+      const identity = `${fingerprint}\\0${occurrence}`;
+      let h1 = 0x811c9dc5, h2 = 0x9e3779b9;
+      for (let c = 0; c < identity.length; c++) {
+        const code = identity.charCodeAt(c);
+        h1 = Math.imul(h1 ^ code, 0x01000193) >>> 0;
+        h2 = Math.imul(h2 ^ (code + c), 0x85ebca6b) >>> 0;
+      }
+      const baseId = `t_${slug}_${h1.toString(16).padStart(8, "0")}${h2.toString(16).padStart(8, "0")}`;
+      let assigned = baseId, collision = 0;
+      while (typeIds.has(assigned)) assigned = `${baseId}_${++collision}`;
+      warnings.push(`family "${String(id)}": type "${String(t.name ?? i)}" has no id; assigned stable id "${assigned}"`);
       t.id = assigned;
+      typeIds.add(assigned);
       changed = true;
     }
-    if (typeIds.has(t.id as string)) {
-      throw new Error(`family migration: family "${String(id)}" has two types with id "${t.id}"`);
-    }
-    typeIds.add(t.id as string);
     const values: Record<string, unknown> = isRecord(t.values) ? t.values : (t.values = {});
     const stale = Object.keys(values).filter((k) => !paramNames.has(k));
     if (stale.length) {
