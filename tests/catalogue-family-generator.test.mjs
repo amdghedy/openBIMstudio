@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { SharedParameterManager, parseSharedParameterText } from "../src/modules/families/shared-parameters.ts";
 import { parseDelimitedCatalogue, buildCatalogueFamilyDefinition, validateCatalogueRows, mapCatalogueHeader, suggestCatalogueMappings, parseCatalogueMappingProfile, normalizeCatalogueRowsWithUnits } from "../src/modules/families/catalogue-intake.ts";
 
 assert.equal(mapCatalogueHeader("Overall Width (mm)"), "width");
@@ -97,6 +98,19 @@ const scopedGuidFamily = buildCatalogueFamilyDefinition(parsed.rows, {
   parameterScopes: { Manufacturer: "instance" },
   parameterGuids: { Width: "550e8400-e29b-41d4-a716-446655440000" },
 });
+const sharedStore = new Map();
+const sharedManager = new SharedParameterManager({
+  getItem: (key) => sharedStore.get(key) ?? null,
+  setItem: (key, value) => sharedStore.set(key, value),
+});
+sharedManager.import(scopedGuidFamily.parameters.filter((parameter) => parameter.guid).map((parameter) => ({
+  guid: parameter.guid, name: parameter.name, group: parameter.group ?? "General",
+  type: parameter.type, defaultValue: parameter.default, isInstance: parameter.scope === "instance",
+})));
+const revitSharedParameterFile = sharedManager.exportText();
+assert.ok(revitSharedParameterFile.includes("550e8400-e29b-41d4-a716-446655440000"));
+assert.equal(parseSharedParameterText(revitSharedParameterFile)[0].guid, "550e8400-e29b-41d4-a716-446655440000");
+
 assert.equal(scopedGuidFamily.parameters.find((parameter) => parameter.name === "Manufacturer").scope, "instance");
 assert.equal(scopedGuidFamily.parameters.find((parameter) => parameter.name === "Width").scope, "type");
 assert.equal(scopedGuidFamily.parameters.find((parameter) => parameter.name === "Width").guid, "550e8400-e29b-41d4-a716-446655440000");
