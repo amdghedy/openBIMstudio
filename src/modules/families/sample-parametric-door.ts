@@ -340,7 +340,7 @@ export function createParametricDoorFamily(): FamilyDefinition {
         editable: false,
         formula: "= Width * Height",
         group: "Reporting",
-        unit: "m-",
+        unit: "m2",
       },
       {
         name: "Report_LeafArea",
@@ -350,7 +350,7 @@ export function createParametricDoorFamily(): FamilyDefinition {
         editable: false,
         formula: "= if(IsDouble, OpeningWidth * OpeningHeight, PanelWidth * PanelHeight)",
         group: "Reporting",
-        unit: "m-",
+        unit: "m2",
       },
     ],
     geometry,

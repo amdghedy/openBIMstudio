@@ -184,6 +184,7 @@
     "test:parameter-scope": "node tests/parameter-scope.test.cjs",
     "test:parametric-manual-sync": "node tests/parametric-manual-sync.test.cjs",
     "test:formula-engine": "node tests/formula-engine.test.cjs",
+    "test:dimensional-analysis": "node tests/dimensional-analysis.test.cjs",
     "test:snap-freshness": "node tests/snap-freshness.test.cjs",
     "test:orbit-frame": "node tests/orbit-frame.test.cjs",
     "test:view-to-cad": "node tests/view-to-cad.test.cjs",
