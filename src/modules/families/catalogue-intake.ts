@@ -9,6 +9,8 @@
 import type { FamilyDefinition, FamilyParameter, FamilyType } from "./types";
 import { buildCatalogueConnectorDefinitions } from "./catalogue-connector-mapping";
 
+const CATALOGUE_RAW_VALUES = Symbol("catalogueRawValues");
+
 export interface CatalogueRow {
   model: string;
   manufacturer?: string;
@@ -207,6 +209,7 @@ export function parseDelimitedCatalogue(source: string, delimiter?: string, mapp
   for (let r = 1; r < nonEmpty.length; r++) {
     const cells = nonEmpty[r];
     const item: CatalogueRow = { model: cells[modelIndex] ?? "" };
+    const rawNumericValues: Partial<Record<CatalogueField, number>> = {};
     if (!item.model.trim()) { errors.push(`Row ${r + 1}: missing model identifier; row skipped.`); continue; }
     for (let c = 0; c < mapped.length; c++) {
       if (ambiguousIndexes.has(c)) continue;
@@ -218,9 +221,11 @@ export function parseDelimitedCatalogue(source: string, delimiter?: string, mapp
       if (["width", "depth", "height", "airflow", "staticPressure", "power", "voltage"].includes(key)) {
         const n = Number(raw.replace(/,/g, ""));
         if (!Number.isFinite(n) || n < 0) { errors.push(`Row ${r + 1}: invalid numeric value for ${headers[c]}.`); continue; }
+        rawNumericValues[key] = n;
         (item as Record<string, string | number | undefined>)[key] = normalizePerformanceValue(n, headers[c], key);
       } else (item as Record<string, string | number | undefined>)[key] = raw;
     }
+    if (Object.keys(rawNumericValues).length) Object.defineProperty(item, CATALOGUE_RAW_VALUES, { value: rawNumericValues });
     rows.push(item);
   }
   return { headers, rows, errors };
@@ -255,20 +260,23 @@ export function normalizeCatalogueRowsWithUnits(
   const normalizedUnit = (value: string) => value.trim().toLowerCase().replace(/\s+/g, "");
   return rows.map((row) => {
     const next: CatalogueRow = { ...row };
+    const rawValues = (row as CatalogueRow & { [CATALOGUE_RAW_VALUES]?: Partial<Record<CatalogueField, number>> })[CATALOGUE_RAW_VALUES];
     for (const field of ["width", "depth", "height"] as const) {
       const sourceUnit = units[field];
-      if (!sourceUnit || next[field] === undefined) continue;
+      const sourceValue = rawValues?.[field] ?? next[field];
+      if (!sourceUnit || sourceValue === undefined) continue;
       const factor = dimensionToM[normalizedUnit(sourceUnit)];
       if (!factor) throw new Error(`Unsupported ${field} source unit "${sourceUnit}" (use mm, cm, m, in or ft).`);
-      const metres = Number(next[field]) * factor;
+      const metres = Number(sourceValue) * factor;
       next[field] = metres * dimensionFromM[dimensionTarget];
     }
     for (const field of ["airflow", "staticPressure", "power", "voltage"] as const) {
       const sourceUnit = units[field];
-      if (!sourceUnit || next[field] === undefined) continue;
+      const sourceValue = rawValues?.[field] ?? next[field];
+      if (!sourceUnit || sourceValue === undefined) continue;
       const factor = performance[field][normalizedUnit(sourceUnit)];
       if (factor === undefined) throw new Error(`Unsupported ${field} source unit "${sourceUnit}".`);
-      next[field] = Number(next[field]) * factor;
+      next[field] = Number(sourceValue) * factor;
     }
     return next;
   });
