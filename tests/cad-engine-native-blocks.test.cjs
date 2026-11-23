@@ -4,6 +4,7 @@ const fs = require("fs"), os = require("os"), path = require("path"), assert = r
 const root = path.join(__dirname, "..");
 const flag = process.env.TSC_IGNORE_CONFIG ? " --ignoreConfig" : "";
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "engnb-"));
+try { fs.symlinkSync(path.join(__dirname, "..", "node_modules"), path.join(out, "node_modules"), "junction"); } catch { /* zod is a runtime dep of compiled safeLoad (PE-20) */ }
 execSync(`npx tsc src/modules/drawings/acad-engine.ts src/modules/drawings/block-refs.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --esModuleInterop${flag}`, { stdio: "pipe", cwd: root });
 const find = (d, n) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) { const r = find(p, n); if (r) return r; } else if (f.name === n) return p; } };
 const acad = require(find(out, "acad-engine.js")), B = require(find(out, "block-refs.js"));
