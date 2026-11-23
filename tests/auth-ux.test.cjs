@@ -86,6 +86,28 @@ t("index.ts: callback branches popup vs top-level /?signedin=1", () => {
   assert.ok(fn.includes("RESEND_API_KEY?") || worker.includes("RESEND_API_KEY?"), "Env must declare RESEND_API_KEY");
 });
 
+t("index.ts: Google popup and full-page callbacks both set the session cookie", () => {
+  const start = worker.indexOf("        // Popup: tell the opener and close.");
+  const end = worker.indexOf("      } catch (cause)", start);
+  assert.ok(start >= 0 && end > start, "success response branch missing");
+  const respond = new Function("popup", "googlePopupCallbackPage", "setCookie", worker.slice(start, end));
+  const cookie = "obs_session=test-session; Path=/; HttpOnly; Secure; SameSite=Lax";
+  for (const popup of [true, false]) {
+    const response = respond(popup, () => new Response("popup-success", {
+      headers: { "content-type": "text/html; charset=utf-8" },
+    }), cookie);
+    assert.strictEqual(response.headers.get("set-cookie"), cookie,
+      `${popup ? "popup" : "full-page"} success must preserve the AuthVault cookie`);
+    if (popup) {
+      assert.strictEqual(response.status, 200);
+      assert.ok(response.headers.get("content-type").includes("text/html"));
+    } else {
+      assert.strictEqual(response.status, 302);
+      assert.strictEqual(response.headers.get("location"), "/?signedin=1");
+    }
+  }
+});
+
 // ── 3. client: forgot dialog, reset dialog, URL landings ──
 t("cloud-account: forgot dialog requests /api/auth/forgot and shows link or mail message", () => {
   assert.ok(acct.includes('async function openForgotDialog'), "openForgotDialog missing");
