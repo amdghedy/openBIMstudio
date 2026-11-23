@@ -135,7 +135,7 @@ export function suggestCatalogueMappings(headers: string[]): CatalogueMappingSug
     }
     const key = normalizedHeader(sourceHeader);
     const candidates: Array<[RegExp, CatalogueField, string]> = [
-      [/^(?:model|type|unit)(?:id|identifier|number|no)?$/, "model", "Looks like a product or type identifier."],
+      [/^(?:model|type|unit)(?:id|identifier|number|no|ref|reference)?$/, "model", "Looks like a product or type identifier."],
       [/(?:manufacturer|maker|brand|vendor)/, "manufacturer", "Contains a manufacturer or brand term."],
       [/(?:product|item|part)(?:code|number|no|id)/, "productCode", "Looks like a product or part reference."],
       [/(?:width|wide)/, "width", "Contains a width-related term; confirm whether this is overall or nominal width."],
