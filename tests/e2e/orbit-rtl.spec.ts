@@ -59,11 +59,62 @@ test('Arabic locale boots right-to-left without uncaught errors', async ({ page 
   expect(errors, errors.join('\n')).toEqual([]);
 });
 
+/**
+ * Wait until the canvas box stops moving. Selecting an element schedules the
+ * properties palette auto-open 400 ms later (G5), which docks a 320 px flex
+ * column on the left and shifts the centred canvas right by 160 px — every
+ * screen position computed before it settles is stale, and the grip (a
+ * 0.15 m sphere, sub-pixel on screen at this zoom) is missed entirely: the
+ * hover stays empty, the press captures no grip, and the drag never
+ * engages. The wait starts past the 400 ms defer, then requires two
+ * identical reads, so a mid-slide sample cannot pass.
+ */
+async function waitForCanvasSettled(page: import('@playwright/test').Page): Promise<void> {
+  const box = () => page.evaluate(() => {
+    const r = document.querySelector('canvas')!.getBoundingClientRect();
+    return [r.left, r.top, r.width, r.height].map((n) => n.toFixed(1)).join(',');
+  });
+  await page.waitForTimeout(700); // past the 400 ms deferred auto-open (G5) and its slide-in
+  let prev = await box();
+  for (let i = 0; i < 30; i++) {
+    await page.waitForTimeout(300);
+    const cur = await box();
+    if (cur === prev) return;
+    prev = cur;
+  }
+  throw new Error(`canvas box never settled (last ${prev})`);
+}
+
+/**
+ * Enter the platform, tolerating the hero click timing out when the renderer
+ * is starved (loaded VM, software GL): the element is visible and stable
+ * but the click cannot be processed in 30 s — and a click that lands as the
+ * overlay unmounts can time out in Playwright even though entry succeeded.
+ * Same pattern as enterPlatform in import-timeout.spec.ts.
+ */
+async function enterPlatform(page: import('@playwright/test').Page): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await page.locator('#obs-hero-3d').click({ timeout: 60000 });
+      break;
+    } catch (e) {
+      if ((await page.locator('.obs-home.is-open').count()) === 0) break;
+      if (attempt === 1) throw e;
+      await page.waitForTimeout(5000);
+    }
+  }
+  await expect(page.locator('.obs-home.is-open')).toHaveCount(0, { timeout: 15000 });
+}
+
 test('editable grips show an open hand on hover and a closed hand while dragging, and the drag moves the vertex', async ({ page }) => {
+  // Full boot + draw + select + drag under software GL: the 60 s default is
+  // too tight on a loaded VM (boots alone take 25–40 s here). The other heavy
+  // tests in this file set 120 s; this one does the same work and gets it too.
+  test.setTimeout(120000);
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
-  await page.locator('#obs-hero-3d').click({ timeout: 30000 });
+  await enterPlatform(page);
   await page.waitForFunction(() => !!(window as any).__obsAuthoring && !!(window as any).__OBS_CTX__?.world?.camera?.three, null, { timeout: 30000 });
 
   // Draw a slab by clicking four corners on the ground, then Enter, then select it.
@@ -76,7 +127,12 @@ test('editable grips show an open hand on hover and a closed hand while dragging
   await page.evaluate(() => (window as any).__obsAuthoring.setAuthoringTool('select'));
   await page.mouse.move(cx, cy); await page.mouse.click(cx, cy);
 
-  const info = await page.evaluate(() => {
+  // The select click schedules the palette auto-open (400 ms, G5), which
+  // shifts the canvas 160 px: no screen position is trustworthy until the
+  // layout has settled, or the hover and the drag both miss the grip.
+  await waitForCanvasSettled(page);
+
+  const gripPos = () => page.evaluate(() => {
     const a = (window as any).__obsAuthoring, cam = (window as any).__OBS_CTX__.world.camera.three;
     const el = a.getElements().find((e: any) => e.type === 'slab');
     const v = el.params.polygon[0];
@@ -85,21 +141,27 @@ test('editable grips show an open hand on hover and a closed hand while dragging
     const r = document.querySelector('canvas')!.getBoundingClientRect();
     return { id: el.id, v, sx: r.left + (vec.x + 1) / 2 * r.width, sy: r.top + (1 - vec.y) / 2 * r.height };
   });
+  const info = await gripPos();
   const host = () => page.evaluate(() => (document.querySelector('canvas')!.parentElement as HTMLElement).style.cursor);
   await page.mouse.move(info.sx + 40, info.sy + 40); await page.mouse.move(info.sx, info.sy);
   const hostCursor = () => page.evaluate(() => ((window as any).__OBS_CTX__.rightHost as HTMLElement).style.cursor);
   const selected = await page.evaluate(() => (window as any).__obsAuthoring.getSelectedIds());
   expect(await hostCursor(), `open hand over the grip (selected: ${JSON.stringify(selected)}, grip at ${info.sx.toFixed(0)},${info.sy.toFixed(0)})`).toBe('grab');
+  // Re-project immediately before the drag: any layout shift after the hover
+  // (palette, ribbon, toast) moves the sub-pixel grip off the stale point,
+  // and the press captures nothing — the drag never engages.
+  const fresh = await gripPos();
+  await page.mouse.move(fresh.sx, fresh.sy);
   await page.mouse.down();
   const cursors: string[] = [];
   const sample = hostCursor;
-  for (let i = 1; i <= 8; i++) { await page.mouse.move(info.sx + i * 4, info.sy + i * 3); cursors.push(await sample()); }
+  for (let i = 1; i <= 8; i++) { await page.mouse.move(fresh.sx + i * 4, fresh.sy + i * 3); cursors.push(await sample()); }
   const mid = await page.evaluate((id) => (window as any).__obsAuthoring.getElementById(id).params.polygon[0], info.id);
   await page.mouse.up();
   const after = await page.evaluate((id) => (window as any).__obsAuthoring.getElementById(id).params.polygon[0], info.id);
   const moved = Math.hypot(after[0] - info.v[0], after[1] - info.v[1]);
   const poly = await page.evaluate((id) => JSON.stringify((window as any).__obsAuthoring.getElementById(id).params.polygon), info.id);
-  const diag = `polygon ${poly}; cursors during drag: ${JSON.stringify(cursors)}; vertex before ${info.v} mid ${mid} after ${after}; grip screen pos ${info.sx.toFixed(0)},${info.sy.toFixed(0)};`;
+  const diag = `polygon ${poly}; cursors during drag: ${JSON.stringify(cursors)}; vertex before ${info.v} mid ${mid} after ${after}; grip screen pos ${fresh.sx.toFixed(0)},${fresh.sy.toFixed(0)};`;
   expect(cursors.some((c) => c === 'grabbing'), 'grabbing cursor during the drag. ' + diag).toBe(true);
   expect(moved, 'vertex moved. ' + diag).toBeGreaterThan(0.05);
   void host;

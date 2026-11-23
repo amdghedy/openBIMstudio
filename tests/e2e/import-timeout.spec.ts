@@ -18,12 +18,20 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  * the next import starts fresh.
  *
  * The proof uses the real settings path and a real file: localStorage
- * `toc.ifc.settings.v1` sets a 3 s total bound, then the 17.9 MB
+ * `toc.ifc.settings.v1` sets a 1 s total bound, then the 17.9 MB
  * Duplex_MEP fixture is dropped in. At the measured ~1 s/MB conversion
- * rate that file needs far more than 3 s, so the timeout must fire — and
- * the queue must then accept the next file (a small one, which converts
- * inside the same 3 s bound). No mocks: the conversion, the timer, the
- * failure classification and the recovery are all production behaviour.
+ * rate on this VM that file needs far more than 1 s, so the timeout must
+ * fire — and the queue must then accept the next file (a small one, which
+ * converts inside the same 1 s bound). No mocks: the conversion, the
+ * timer, the failure classification and the recovery are all production
+ * behaviour.
+ *
+ * The bound is 1 s, the production minimum (IFC_IMPORT_TOTAL_MS_MIN),
+ * deliberately: on CI runners the 17.9 MB conversion finishes in ~2-4 s —
+ * inside the old 3 s bound — so the timeout never fired and the test
+ * failed at the timedOut assertion on three runs, while passing whenever
+ * the runner was slower. A 1 s bound sits below the fastest legitimate
+ * conversion of a 17.9 MB file, so the timeout fires deterministically.
  *
  * Wall-clock note: the MEP file's pre-conversion STEP passes (interop
  * inventory + per-entity fidelity over 311k records) run before the
@@ -129,9 +137,10 @@ test('IFC import times out instead of wedging the queue, then the queue recovers
   page.on('pageerror', (e) => errors.push(e.message));
 
   // Tiny total bound through the real settings path, applied before the
-  // app module reads its settings (importTotalTimeoutMs: 3000 ms).
+  // app module reads its settings (importTotalTimeoutMs: 1000 ms — the
+  // production minimum; see the header note for why 3 s was not enough).
   await page.addInitScript(() => {
-    localStorage.setItem('toc.ifc.settings.v1', JSON.stringify({ importTotalTimeoutMs: 3000 }));
+    localStorage.setItem('toc.ifc.settings.v1', JSON.stringify({ importTotalTimeoutMs: 1000 }));
   });
   await page.goto('/');
   await expect(page.locator('canvas').first()).toBeVisible({ timeout: 30000 });
@@ -147,14 +156,16 @@ test('IFC import times out instead of wedging the queue, then the queue recovers
   const timedOut = (await phases(page)).find((r: any) => r.file === 'duplex-mep.ifc');
   expect(timedOut).toBeTruthy();
   expect(timedOut.timedOut).toBe(true);
-  expect(timedOut.convertMs).toBeGreaterThanOrEqual(2000);
+  // The recorded time is task start -> timeout, so it includes the
+  // pre-conversion STEP passes on top of the 1 s bound.
+  expect(timedOut.convertMs).toBeGreaterThanOrEqual(1000);
   // Nothing was loaded: the timed-out conversion left no model behind.
   await expect.poll(() => page.evaluate(() => (window as any).__OBS_CTX__.fragments.list.size), { timeout: 10000 }).toBe(0);
 
-  // 2. The queue is not wedged: a small file imports fine under the same 3 s bound.
+  // 2. The queue is not wedged: a small file imports fine under the same 1 s bound.
   // After a timed-out 17.9 MB import the renderer is still cleaning up
   // (WASM re-init after disposeImporter, GC of the 311k-record passes),
-  // so the first small attempt can itself hit the 3 s bound on a loaded
+  // so the first small attempt can itself hit the 1 s bound on a loaded
   // VM even though the file converts in under a second when warm — the
   // queue still processed it (terminal phase record, queue drained), it
   // was just slow. Retry once: the assertion stays strong (the file must
