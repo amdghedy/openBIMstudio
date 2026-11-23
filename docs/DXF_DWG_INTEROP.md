@@ -128,3 +128,13 @@ DWG import/export runs entirely locally; no file content leaves the machine.
    exactly which types and how many.
 5. DXF binary files are read through the acadrust engine path; the pure-TypeScript
    reader covers ASCII DXF.
+
+## Native block references (M2a/M2b)
+
+- Read: `parseDxf(text, { nativeBlocks: true })` and `parseWithAcadEngine(bytes, name, { nativeBlocks: true })` keep
+  INSERT / MINSERT / ATTRIB as references and ATTDEF / nested references in `DxfDocument.blocks`. Default reads still
+  expand blocks (backward compatible). The editor opts in with `NATIVEBLOCKS ON`.
+- Write: BLOCK_RECORD table, BLOCKS section, INSERT (+ ATTRIB + SEQEND), MINSERT group codes 70/71/44/45, ATTDEF.
+- Verified: unit round trips; the real wasm engine on DXF text and two DWG fixtures (counts equal to the expanded
+  read); ezdxf cross-check runs in CI only. Not verified: AutoCAD / BricsCAD / LibreCAD, DWG *write* of references.
+- Known gaps: BYBLOCK inheritance, dynamic blocks, XREF (Phase 2), LibreDWG fallback expands blocks.

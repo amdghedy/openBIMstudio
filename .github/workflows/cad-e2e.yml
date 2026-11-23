@@ -1,0 +1,42 @@
+name: CAD editor browser spec
+
+# Runs the CAD editor browser specs on their own so their evidence does not depend on the (unrelated)
+# unit/quality job finishing green. Nothing here replaces or weakens the blocking smoke job.
+on:
+  pull_request:
+    paths:
+      - 'src/features/cad-viewer.ts'
+      - 'src/modules/drawings/**'
+      - 'src/modules/cad-viewer/**'
+      - 'src/modules/cad-link/**'
+      - 'tests/e2e/cad-*.spec.ts'
+      - '.github/workflows/cad-e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cad-e2e:
+    name: CAD editor browser spec (Chromium)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm i --no-save @playwright/test@1.57.0 && npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npx playwright test --project=chromium tests/e2e/cad-native-blocks.spec.ts tests/e2e/cad-xref.spec.ts tests/e2e/cad-ribbon.spec.ts
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cad-e2e-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore

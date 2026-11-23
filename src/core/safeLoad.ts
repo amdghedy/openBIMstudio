@@ -494,6 +494,28 @@ export const DxfEntitySchema = z.discriminatedUnion("type", [
     runs: z.array(dxfTextRunSchema).max(10_000).optional(),
   }),
   dxfEntityBaseSchema.extend({ type: z.literal("POINT"), position: dxfPointSchema }),
+  // Native block reference (M2a): resolved lazily against `DxfDocument.blocks`.
+  dxfEntityBaseSchema.extend({
+    type: z.literal("INSERT"),
+    // May be empty for a malformed file: the resolver renders nothing for an unknown name.
+    name: z.string().max(256),
+    position: dxfPointSchema,
+    scale: z.object({ x: finiteNumber, y: finiteNumber, z: finiteNumber.optional() }).optional(),
+    rotation: finiteNumber.optional(),
+    columns: z.number().int().min(1).max(100_000).optional(),
+    rows: z.number().int().min(1).max(100_000).optional(),
+    columnSpacing: finiteNumber.optional(),
+    rowSpacing: finiteNumber.optional(),
+    attributes: z.array(z.object({
+      tag: z.string().max(256),
+      value: z.string().max(100_000),
+      position: dxfPointSchema,
+      height: finiteNumber,
+      rotation: finiteNumber.optional(),
+      layer: z.string().max(256).optional(),
+      invisible: z.boolean().optional(),
+    })).max(10_000).optional(),
+  }),
 ]);
 
 const dxfViewportSchema = z.object({
@@ -515,6 +537,16 @@ export const DxfDocumentSchema = z.object({
     name: z.string().max(256),
     entities: z.array(DxfEntitySchema).max(3_000_000),
     viewports: z.array(dxfViewportSchema).max(10_000),
+  })).max(10_000).optional(),
+  blocks: z.record(z.string(), z.object({
+    name: z.string().max(256),
+    base: dxfPointSchema,
+    entities: z.array(DxfEntitySchema).max(3_000_000),
+  })).optional(),
+  xrefs: z.array(z.object({
+    name: z.string().max(256),
+    path: z.string().max(4096),
+    kind: z.enum(["attach", "overlay"]),
   })).max(10_000).optional(),
   linetypes: z.record(z.string(), z.array(finiteNumber).max(10_000)).optional(),
   ltscale: finiteNumber.optional(),

@@ -7,6 +7,65 @@ import type { DxfDocument, DxfEntity, DxfLayer, DxfPoint, DxfViewport } from "./
 import { ensureLinetypes, fontDxfFile, isTrueTypeFont, lineweightToDxf, linetypesInUse } from "./cad-styles";
 import { TEXT_LINE_PITCH } from "../cad-viewer/viewer-math";
 import { nativeIfValid, splineDxfBody, ellipseDxfBody } from "./native-curves";
+import type { DxfAttDef, DxfBlockDef, DxfInsert } from "./dxf-types";
+
+/** INSERT with its ATTRIB records and SEQEND (DXF requires them to directly follow the INSERT). */
+function writeInsert(e: DxfInsert): string {
+  const attrs = e.attributes ?? [];
+  let s = entityHead(e, "INSERT");
+  if (!legacyPrologue) s += pair(100, "AcDbBlockReference");
+  if (attrs.length) s += pair(66, 1);
+  s += pair(2, e.name);
+  s += writePoint([10, 20, 30], e.position);
+  const sc = e.scale;
+  if (sc && (sc.x !== 1 || sc.y !== 1 || (sc.z ?? 1) !== 1)) s += pair(41, sc.x) + pair(42, sc.y) + pair(43, sc.z ?? 1);
+  if (e.rotation) s += pair(50, e.rotation);
+  if ((e.columns ?? 1) > 1 || (e.rows ?? 1) > 1) {
+    s += pair(70, e.columns ?? 1) + pair(71, e.rows ?? 1) + pair(44, e.columnSpacing ?? 0) + pair(45, e.rowSpacing ?? 0);
+  }
+  if (attrs.length) {
+    for (const a of attrs) {
+      let t = pair(0, "ATTRIB");
+      if (!legacyPrologue) t += pair(5, nextHandle()) + pair(100, "AcDbEntity");
+      t += pair(8, a.layer ?? e.layer);
+      if (!legacyPrologue) t += pair(100, "AcDbText");
+      t += writePoint([10, 20, 30], a.position) + pair(40, a.height) + pair(1, a.value);
+      if (a.rotation) t += pair(50, a.rotation);
+      if (!legacyPrologue) t += pair(100, "AcDbAttribute");
+      t += pair(2, a.tag) + pair(70, a.invisible ? 1 : 0);
+      s += t;
+    }
+    s += pair(0, "SEQEND");
+    if (!legacyPrologue) s += pair(5, nextHandle()) + pair(100, "AcDbEntity");
+    s += pair(8, e.layer);
+  }
+  return s;
+}
+
+function writeAttDef(d: DxfAttDef): string {
+  let s = pair(0, "ATTDEF") + pair(5, nextHandle()) + pair(100, "AcDbEntity") + pair(8, d.layer ?? "0") + pair(100, "AcDbText");
+  s += writePoint([10, 20, 30], d.position) + pair(40, d.height) + pair(1, d.defaultValue);
+  if (d.rotation) s += pair(50, d.rotation);
+  s += pair(100, "AcDbAttributeDefinition") + pair(3, d.prompt || d.tag) + pair(2, d.tag);
+  s += pair(70, (d.invisible ? 1 : 0) | (d.constant ? 2 : 0) | (d.verify ? 4 : 0) | (d.preset ? 8 : 0));
+  return s;
+}
+
+function writeBlockDef(b: DxfBlockDef, styleName: (t: Extract<DxfEntity, { type: "TEXT" }>) => string, hatches: boolean): string {
+  let s = pair(0, "BLOCK") + pair(5, nextHandle()) + pair(100, "AcDbEntity") + pair(8, "0");
+  s += pair(100, "AcDbBlockBegin") + pair(2, b.name) + pair(70, b.name.startsWith("*") ? 1 : 0);
+  s += writePoint([10, 20, 30], b.base) + pair(3, b.name) + pair(1, "");
+  for (const d of b.attdefs) s += writeAttDef(d);
+  for (const e of b.entities) s += writeEntity(e, styleName, hatches);
+  s += pair(0, "ENDBLK") + pair(5, nextHandle()) + pair(100, "AcDbEntity") + pair(8, "0") + pair(100, "AcDbBlockEnd");
+  return s;
+}
+
+function blockRecordTable(blocks: DxfBlockDef[]): string {
+  let s = pair(0, "TABLE") + pair(2, "BLOCK_RECORD") + pair(5, nextHandle()) + pair(100, "AcDbSymbolTable") + pair(70, blocks.length);
+  for (const b of blocks) s += pair(0, "BLOCK_RECORD") + pair(5, nextHandle()) + pair(100, "AcDbSymbolTableRecord") + pair(100, "AcDbBlockTableRecord") + pair(2, b.name);
+  return s + pair(0, "ENDTAB");
+}
 
 function pair(code: number, value: string | number): string {
   return `${code}\n${value}\n`;
@@ -282,6 +341,8 @@ function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TE
     s += pair(51, e.endAngle);
   } else if (hatchEntities && e.type === "LWPOLYLINE" && e.hatch && !e.hatch.wipeout && e.hatch.loops.some((l) => l.length >= 3)) {
     s += writeHatch(e);
+  } else if (e.type === "INSERT") {
+    s += writeInsert(e);
   } else if (e.type === "LWPOLYLINE" && !legacyPrologue && nativeIfValid(e)) {
     const n = nativeIfValid(e)!;
     s += entityHead(e, n.kind);
@@ -422,13 +483,16 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
     doc.layers.length > 0
       ? doc.layers
       : [{ name: "0", color: 7 }];
+  const userBlocks = Object.values(doc.blocks ?? {}).filter((b) => !/^\*(model_space|paper_space)/i.test(b.name));
+  // Styles and linetypes used inside block bodies must be declared too.
+  const allEntities = userBlocks.length ? [...doc.entities, ...userBlocks.flatMap((b) => b.entities)] : doc.entities;
   const extents = doc.extents ?? computeExtents(doc.entities);
   handleSeq = 0x100;
   // Linetype definitions: those in the file plus any library linetype the drawing uses.
   const lt = { linetypes: { ...(doc.linetypes ?? {}) }, units: doc.units };
-  ensureLinetypes(lt, linetypesInUse({ layers, entities: doc.entities }));
+  ensureLinetypes(lt, linetypesInUse({ layers, entities: allEntities }));
   const defs = lt.linetypes;
-  const styles = styleTable(doc.entities);
+  const styles = styleTable(allEntities);
 
   let s = "";
   // HEADER
@@ -462,13 +526,23 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
   s += linetypeTable(defs);
   s += layerTable(layers);
   s += styles.table;
+  if (userBlocks.length) s += blockRecordTable(userBlocks);
   s += pair(0, "ENDSEC");
 
-  // BLOCKS: extra sheets (DWG conversion only)
+  // BLOCKS: native block definitions, then extra sheets (DWG conversion only)
   const extraSheets = opts.allLayouts ? (doc.layouts ?? []).slice(1) : [];
-  if (extraSheets.length) {
+  const xrefDecls = (doc.xrefs ?? []).filter((x) => !userBlocks.some((b) => b.name === x.name));
+  if (extraSheets.length || userBlocks.length || xrefDecls.length) {
     s += pair(0, "SECTION");
     s += pair(2, "BLOCKS");
+    // External references: an empty block flagged 4 (xref) / 12 (overlay) carrying the stored path (group 1).
+    for (const x of xrefDecls) {
+      s += pair(0, "BLOCK") + pair(5, nextHandle()) + pair(100, "AcDbEntity") + pair(8, "0");
+      s += pair(100, "AcDbBlockBegin") + pair(2, x.name) + pair(70, x.kind === "overlay" ? 12 : 4);
+      s += pair(10, 0) + pair(20, 0) + pair(30, 0) + pair(3, x.name) + pair(1, x.path);
+      s += pair(0, "ENDBLK") + pair(5, nextHandle()) + pair(100, "AcDbEntity") + pair(8, "0") + pair(100, "AcDbBlockEnd");
+    }
+    for (const b of userBlocks) s += writeBlockDef(b, styles.nameFor, (opts.hatches ?? "hatch") === "hatch");
     legacyPrologue = true; // DWG-converter block contents use the legacy entity form (see above)
     extraSheets.forEach((sheet, i) => {
       const name = `*Paper_Space${i + 1}`;
