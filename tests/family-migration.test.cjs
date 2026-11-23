@@ -247,5 +247,6 @@ t("V18 generated IDs are stable and migration remains idempotent", () => {
   eq(twice.family.types[0].id, once.types[0].id);
   eq(twice.migratedFrom, null);
 });
-\nconsole.log(`\nfamily-migration: ${pass} passed, ${fail} failed`);
+
+console.log(`\nfamily-migration: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
