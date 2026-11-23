@@ -40,11 +40,11 @@ The UI must continue to label these as unavailable/planned until implemented and
 1. Open **BIM Family Generator** using the BFG launcher or Command Palette.
 2. Import an XLSX, PDF, CSV/TSV/TXT or JSON product catalogue. XLSX lets users select a worksheet and retains source sheet/row identifiers; cached cell values are read and formulas are not recalculated.
 3. For a scanned PDF, enable local vision OCR and select a vision-capable Ollama model in AI Settings. PDF page images are sent only to the configured local/private Ollama endpoint.
-5. Review extracted product rows, source-page numbers and QA warnings.
-6. Set the family name, category and source dimension unit.
-7. Correct the source catalogue if required; missing dimensions are never invented.
-8. Create the family. The existing project-scoped Family Store persists it.
-9. Open the existing Parametric Families panel to inspect parameters, types and regenerate geometry.
+4. Review extracted product rows, source-page numbers and QA findings.
+5. Set the family name, category and source dimension unit.
+6. Correct missing, invalid or duplicate values; geometry-critical dimensions must be verified.
+7. Create the family. The existing project-scoped Family Store persists it.
+8. Open the existing Parametric Families panel to inspect parameters, types and regenerate geometry.
 
 ## Supported catalogue columns
 
@@ -55,7 +55,7 @@ XLSX, CSV/TSV and PDF table readers recognize model/model number/type, manufactu
 - Dimensions are converted to metres for the existing family geometry parameter contract.
 - The generated geometry supports explicit box and cylinder parametric primitives only. Cylinder profile treats Width as diameter and Height as axial length. These are generic primitives, not manufacturer-accurate solids.
 - Connector definitions are not inferred from airflow, dimensions or product imagery. Multiple explicitly numbered ports can be imported. Connector definitions are stored per FamilyType when imported from a catalogue, so product variants can carry different port counts and layouts; the existing family-level connector list remains the fallback for types without a type-specific list. The Family Browser connector editor can edit and preview the selected type's layout. The family service exposes `buildConnectors`; the common authoring rebuild resolves the selected type's connector definitions (falling back to family defaults), transforms them through the rendered instance world matrix, and replaces that element's ports in `MepModelLifecycle`. External placement hosts must call `syncPlacementConnectors` after final placement and relevant edits.
-- Missing dimensions use a 1 m preview fallback only; QA explicitly flags the missing source values and users must correct them before relying on the geometry.
+- Missing or non-positive width/depth/height values are blocking QA errors. Family creation rejects the catalogue until every type has verified positive dimensions; no 1 m geometry fallback is generated.
 - Text PDF parsing and page rendering run locally in the browser. Scanned page images are sent only to the user's configured local/private Ollama endpoint when OCR is explicitly enabled; no cloud OCR is used.
 - PDF OCR requires an image-capable Ollama model. A text-only or coding model may fail to return structured extraction data.
 - OCR output is untrusted draft data. Source values, units, model identifiers and page evidence must be checked before family creation.
