@@ -6,7 +6,7 @@
  * existing project-scoped family service. CAD extraction remains unavailable.
  */
 import { ctx } from "../core/context";
-import { buildCatalogueFamilyDefinition, parseDelimitedCatalogue, suggestCatalogueMappings, validateCatalogueRows, type CatalogueField, type CatalogueMappingOverrides, type CatalogueRow } from "../modules/families/catalogue-intake";
+import { buildCatalogueFamilyDefinition, mapCatalogueHeader, parseCatalogueMappingProfile, parseDelimitedCatalogue, suggestCatalogueMappings, validateCatalogueRows, type CatalogueField, type CatalogueMappingOverrides, type CatalogueMappingProfile, type CatalogueRow } from "../modules/families/catalogue-intake";
 import { extractPdfCatalogue } from "../modules/families/pdf-catalogue-extractor";
 import { extractXlsxCatalogue, listXlsxWorksheets } from "../modules/families/xlsx-catalogue-extractor";
 import { z } from "zod";
@@ -27,6 +27,7 @@ let delimitedSourceText = "";
 let delimitedSourceDelimiter: string | undefined;
 let delimitedHeaders: string[] = [];
 let mappingOverrides: CatalogueMappingOverrides = {};
+const MAPPING_PROFILE_KEY = "obs.catalogue-mapping-profiles.v1";
 let styleInstalled = false;
 
 function familyService(): Any {
@@ -66,6 +67,8 @@ function installStyle(): void {
 #obs-catalogue-family .cfg-map-grid { display:grid;grid-template-columns:minmax(150px,1fr) minmax(170px,1fr) minmax(160px,1.2fr);gap:8px;align-items:center;margin:7px 0; }
 #obs-catalogue-family .cfg-map-grid select { padding:7px; }
 #obs-catalogue-family .cfg-map-grid small { color:#91a0b3;font-size:10px; }
+#obs-catalogue-family .cfg-profile-actions { display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-top:10px; }
+#obs-catalogue-family .cfg-profile-actions label { flex:1;min-width:150px; }
 #obs-catalogue-family [data-status] { padding:10px 12px; border-radius:8px; background:#202a37; color:#cbd5e1; }
 #obs-catalogue-family [data-status][data-kind="warn"] { background:#3a2b19; color:#fbbf24; }
 #obs-catalogue-family [data-status][data-kind="success"] { background:#12372f; color:#6ee7b7; }
@@ -79,6 +82,104 @@ const MAPPING_FIELDS: Array<[CatalogueField, string]> = [
   ["height", "Height"], ["airflow", "Airflow"], ["staticPressure", "Static pressure"],
   ["power", "Power"], ["voltage", "Voltage"],
 ];
+
+function readMappingProfiles(): CatalogueMappingProfile[] {
+  try {
+    const raw = localStorage.getItem(MAPPING_PROFILE_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.slice(0, 100).map((item) => parseCatalogueMappingProfile(item));
+  } catch (error) {
+    console.warn("[catalogue-family] mapping profiles could not be loaded:", error);
+    return [];
+  }
+}
+function writeMappingProfiles(profiles: CatalogueMappingProfile[]): void {
+  try {
+    localStorage.setItem(MAPPING_PROFILE_KEY, JSON.stringify(profiles.slice(0, 100)));
+  } catch {
+    throw new Error("Could not save mapping profiles. Browser storage may be unavailable or full; export a profile to keep a portable copy.");
+  }
+}
+function renderMappingProfiles(): void {
+  const select = panel?.querySelector<HTMLSelectElement>("[data-profile-select]");
+  if (!select) return;
+  const selected = select.value;
+  const profiles = readMappingProfiles();
+  select.innerHTML = '<option value="">Choose saved profile…</option>' + profiles
+    .map((profile, index) => `<option value="${index}">${escapeHtml(profile.name)}${profile.manufacturer ? " · " + escapeHtml(profile.manufacturer) : ""}</option>`)
+    .join("");
+  if (selected && profiles[Number(selected)]) select.value = selected;
+}
+function saveMappingProfile(): void {
+  if (!delimitedHeaders.length) { status("Import a CSV/TSV catalogue before saving a mapping profile.", "warn"); return; }
+  const name = panel?.querySelector<HTMLInputElement>("[data-profile-name]")?.value.trim() ?? "";
+  if (!name) { status("Enter a name for this mapping profile.", "warn"); return; }
+  const manufacturer = panel?.querySelector<HTMLInputElement>("[data-manufacturer]")?.value.trim() ?? "";
+  const mappings: CatalogueMappingOverrides = {};
+  for (const header of delimitedHeaders) {
+    mappings[header] = Object.prototype.hasOwnProperty.call(mappingOverrides, header)
+      ? mappingOverrides[header] ?? null
+      : mapCatalogueHeader(header) ?? null;
+  }
+  const profile = parseCatalogueMappingProfile({
+    schemaVersion: 1, name, manufacturer, mappings, updatedAt: new Date().toISOString(),
+  });
+  const profiles = readMappingProfiles();
+  const existing = profiles.findIndex((item) => item.name.toLowerCase() === name.toLowerCase()
+    && (item.manufacturer ?? "").toLowerCase() === manufacturer.toLowerCase());
+  if (existing >= 0) profiles[existing] = profile;
+  else profiles.unshift(profile);
+  writeMappingProfiles(profiles);
+  renderMappingProfiles();
+  status(`Saved mapping profile "${profile.name}" for reuse.`, "success");
+}
+function applyMappingProfile(): void {
+  const select = panel?.querySelector<HTMLSelectElement>("[data-profile-select]");
+  const index = Number(select?.value);
+  const profile = readMappingProfiles()[index];
+  if (!profile || !delimitedHeaders.length) { status("Select a saved profile and import a CSV/TSV catalogue first.", "warn"); return; }
+  mappingOverrides = { ...profile.mappings };
+  for (const header of Object.keys(mappingOverrides)) {
+    if (!delimitedHeaders.includes(header)) delete mappingOverrides[header];
+  }
+  const manufacturerInput = panel?.querySelector<HTMLInputElement>("[data-manufacturer]");
+  if (manufacturerInput && profile.manufacturer) manufacturerInput.value = profile.manufacturer;
+  renderMappingReview();
+  reparseDelimitedSource();
+  status(`Applied mapping profile "${profile.name}". Review all unmatched headings and QA warnings.`, "success");
+}
+function exportMappingProfile(): void {
+  const select = panel?.querySelector<HTMLSelectElement>("[data-profile-select]");
+  const profile = readMappingProfiles()[Number(select?.value)];
+  if (!profile) { status("Select a saved profile to export.", "warn"); return; }
+  const blob = new Blob([JSON.stringify(profile, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = profile.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + ".catalogue-mapping.json";
+  link.click();
+  URL.revokeObjectURL(url);
+  status("Mapping profile export prepared.", "success");
+}
+async function importMappingProfile(file?: File): Promise<void> {
+  if (!file) return;
+  if (file.size > 256 * 1024) { status("Mapping profile exceeds the 256 KB import limit.", "warn"); return; }
+  try {
+    const profile = parseCatalogueMappingProfile(JSON.parse(await file.text()));
+    const profiles = readMappingProfiles();
+    const existing = profiles.findIndex((item) => item.name.toLowerCase() === profile.name.toLowerCase()
+      && (item.manufacturer ?? "").toLowerCase() === (profile.manufacturer ?? "").toLowerCase());
+    if (existing >= 0) profiles[existing] = profile;
+    else profiles.unshift(profile);
+    writeMappingProfiles(profiles);
+    renderMappingProfiles();
+    status(`Imported mapping profile "${profile.name}". Apply it to a catalogue after import.`, "success");
+  } catch (error) {
+    status(error instanceof Error ? error.message : "Could not import mapping profile.", "warn");
+  }
+}
 function renderMappingReview(): void {
   const card = panel?.querySelector<HTMLElement>("[data-mapping]");
   const host = panel?.querySelector<HTMLElement>("[data-mapping-rows]");
@@ -124,7 +225,7 @@ function buildPanel(): void {
     <header class="cfg-head"><span aria-hidden="true">▦</span><strong>BIM Family Generator</strong><span class="cfg-muted">Catalogue → Parametric BIM</span><button type="button" data-close aria-label="Close">✕</button></header>
     <div class="cfg-body">
       <div class="cfg-card"><strong>01 · Import catalogue</strong><p class="cfg-muted">Local XLSX, CSV, TSV, TXT, JSON and PDF text extraction. Scanned PDF pages can use your configured local Ollama vision model; no cloud OCR is used.</p><label>Catalogue file<input data-file type="file" accept=".xlsx,.csv,.tsv,.txt,.json,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/tab-separated-values,application/json,text/plain,application/pdf"></label><label style="display:flex;grid-template-columns:auto 1fr;align-items:center;gap:8px"><input data-ocr type="checkbox" style="width:auto"> Run local vision OCR on scanned PDF pages (requires a vision-capable Ollama model)</label></div>
-      <div class="cfg-card" data-mapping hidden><strong>02 · Review column mappings</strong><p class="cfg-muted">Auto-recognized headings are mapped automatically. Suggested matches are advisory only; confirm them manually. Ambiguous mappings block affected fields until resolved.</p><div data-mapping-rows></div></div>
+      <div class="cfg-card" data-mapping hidden><strong>02 · Review column mappings</strong><p class="cfg-muted">Auto-recognized headings are mapped automatically. Suggested matches are advisory only; confirm them manually. Ambiguous mappings block affected fields until resolved.</p><div data-mapping-rows></div><div class="cfg-profile-actions"><label>Profile name<input data-profile-name placeholder="e.g. Manufacturer AHU catalogue"></label><label>Saved profiles<select data-profile-select><option value="">Choose saved profile…</option></select></label><button type="button" data-save-profile>Save profile</button><button type="button" data-apply-profile>Apply</button><button type="button" data-export-profile>Export JSON</button><label>Import profile JSON<input data-import-profile type="file" accept=".json,application/json"></label></div></div>
       <div class="cfg-card" data-xlsx-selection hidden><strong>Choose worksheet</strong><div class="cfg-grid"><label>Worksheet<select data-sheet></select></label><div style="display:flex;align-items:end"><button type="button" data-import-sheet class="primary">Import selected worksheet</button></div></div><p class="cfg-muted">Choose the worksheet containing the manufacturer product schedule.</p></div>
       <div class="cfg-card"><strong>03 · Family definition</strong><div class="cfg-grid">
         <label>Family name<input data-name value="Manufacturer Equipment"></label>
@@ -159,6 +260,17 @@ function buildPanel(): void {
     else mappingOverrides[header] = target.value as CatalogueField;
     reparseDelimitedSource();
   });
+  root.querySelector("[data-save-profile]")?.addEventListener("click", () => {
+    try { saveMappingProfile(); } catch (error) { status(error instanceof Error ? error.message : "Could not save mapping profile.", "warn"); }
+  });
+  root.querySelector("[data-apply-profile]")?.addEventListener("click", applyMappingProfile);
+  root.querySelector("[data-export-profile]")?.addEventListener("click", exportMappingProfile);
+  root.querySelector("[data-import-profile]")?.addEventListener("change", (event) => {
+    const input = event.target as HTMLInputElement;
+    void importMappingProfile(input.files?.[0]);
+    input.value = "";
+  });
+  renderMappingProfiles();
   root.querySelector("[data-create]")?.addEventListener("click", createFamily);
 }
 async function prepareXlsxWorkbook(file: File): Promise<void> {
