@@ -117,7 +117,9 @@ export function parseDelimitedCatalogue(source: string, delimiter?: string): Cat
 }
 
 function dimensionToMetres(value: number | undefined, sourceUnit: string): number {
-  if (value === undefined) return 1;
+  if (value === undefined || !Number.isFinite(value) || value <= 0) {
+    throw new Error("Width, depth and height must all be supplied as finite positive values before family creation.");
+  }
   const unit = sourceUnit.toLowerCase();
   if (unit === "mm" || unit === "millimetres" || unit === "millimeters") return value / 1000;
   if (unit === "cm" || unit === "centimetres" || unit === "centimeters") return value / 100;
@@ -140,6 +142,10 @@ export function buildCatalogueFamilyDefinition(
   const name = options.name.trim();
   if (!name) throw new Error("Family name is required.");
   const unit = options.dimensionUnit ?? "mm";
+  const validationIssues = validateCatalogueRows(rows);
+  if (validationIssues.length) {
+    throw new Error("Catalogue QA must be resolved before family creation:\n" + validationIssues.map((issue) => "- " + issue).join("\n"));
+  }
   const first = rows[0];
   const parameters: FamilyParameter[] = [
     { name: "Width", type: "length", scope: "type", default: dimensionToMetres(first.width, unit), editable: true, unit: "m", group: "Dimensions" },
@@ -194,19 +200,20 @@ export function buildCatalogueFamilyDefinition(
   };
 }
 
-/** Basic completeness checks; missing catalogue values are warnings, not invented defaults. */
+/** Blocking QA checks for identity, duplicate types and geometry-critical dimensions. */
 export function validateCatalogueRows(rows: CatalogueRow[]): string[] {
   const issues: string[] = [];
   if (!rows.length) return ["No product rows were extracted."];
   const seenModels = new Set<string>();
   rows.forEach((r, i) => {
+    if (!String(r.model ?? "").trim()) issues.push(`Row ${i + 1}: model identifier is required.`);
     const normalizedModel = String(r.model ?? "").trim().toLocaleLowerCase();
     if (normalizedModel && seenModels.has(normalizedModel)) {
       issues.push(`Row ${i + 1} (${r.model}): duplicate model identifier; resolve duplicate variants before family creation.`);
     }
     if (normalizedModel) seenModels.add(normalizedModel);
     for (const key of ["width", "depth", "height"] as const) {
-      if (r[key] === undefined) issues.push(`Row ${i + 1} (${r.model}): ${key} is missing; preview geometry will use a 1 m fallback until corrected.`);
+      if (r[key] === undefined) issues.push(`Row ${i + 1} (${r.model}): ${key} is missing; provide a verified value before family creation.`);
       else if (r[key] <= 0) issues.push(`Row ${i + 1} (${r.model}): ${key} must be greater than zero.`);
     }
   });
