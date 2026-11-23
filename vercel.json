@@ -90,5 +90,12 @@
         }
       ]
     }
+  ],
+  "redirects": [
+    {
+      "source": "/api/auth/google/start",
+      "destination": "https://openbimstudio.amdghedy.workers.dev/",
+      "permanent": false
+    }
   ]
 }
