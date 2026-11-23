@@ -131,6 +131,16 @@ t("V6 a family with no types gains a Default type", () => {
   if (!r.warnings.some((w) => /no types/i.test(w))) throw new Error("expected a no-types warning");
 });
 
+t("V7a shared parameter GUID metadata survives migration and deep cloning", () => {
+  const input = base({ schemaVersion: 2 });
+  input.parameters[0].guid = "550e8400-e29b-41d4-a716-446655440000";
+  const r = migrateFamilyDefinition(input);
+  eq(r.family.parameters[0].guid, input.parameters[0].guid);
+  if (r.family.parameters[0] === input.parameters[0]) throw new Error("parameter metadata must be deep-cloned");
+  const serialized = JSON.parse(JSON.stringify(r.family));
+  eq(serialized.parameters[0].guid, input.parameters[0].guid);
+});
+
 t("V7 an already-current v2 family is returned unchanged (migration is idempotent)", () => {
   const input = base({ schemaVersion: 2 });
   const r1 = migrateFamilyDefinition(input);
