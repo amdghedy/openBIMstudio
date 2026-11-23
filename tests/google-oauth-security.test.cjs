@@ -86,6 +86,9 @@ const asModule = source => 'data:text/javascript;base64,' + Buffer.from(ts.trans
   assert.deepEqual(records.get('u:' + legacy.email), legacy, 'sign-in must not migrate or alter user records');
   const badLogin = await vault.fetch(post('/api/auth/login', { email: legacy.email, password: 'wrong-password' }));
   assert.equal(badLogin.status, 401);
+  const missingLogin = await vault.fetch(post('/api/auth/login', { email: 'missing@example.invalid', password: 'wrong-password' }));
+  assert.equal(missingLogin.status, 401);
+  assert.deepEqual(await missingLogin.json(), await badLogin.json(), 'unknown account and wrong password must use the same response');
   const forgot = await vault.fetch(post('/api/auth/forgot', { email: legacy.email }));
   const reset = await forgot.json();
   assert.equal(reset.hasAccount, true, 'Worker needs hasAccount to send reset email');
