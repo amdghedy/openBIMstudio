@@ -70,7 +70,8 @@ assert.equal(def.parameters.find((p) => p.name === "Airflow").default, 1200);
 assert.equal(validateCatalogueRows(parsed.rows).length, 0);
 assert.ok(validateCatalogueRows([{ model: "MISSING" }]).some((e) => e.includes("Width")));
 assert.ok(validateCatalogueRows([{ model: "AHU-INCOMPLETE", width: 1200, height: 900 }]).some((e) => e.includes("depth is missing")));
-assert.ok(validateCatalogueRows([{ model: "AHU-ZERO", width: 0, depth: 800, height: 900 }]).some((e) => e.includes("width must be greater than zero")));
+assert.ok(validateCatalogueRows([{ model: "AHU-ZERO", width: 0, depth: 800, height: 900 }]).some((e) => e.includes("width must be a finite value greater than zero")));
+assert.ok(validateCatalogueRows([{ model: "AHU-INFINITE", width: Number.POSITIVE_INFINITY, depth: 800, height: 900 }]).some((e) => e.includes("width must be a finite value greater than zero")));
 assert.deepEqual(validateCatalogueRows([{ model: "AHU-VALID", width: 1200, depth: 800, height: 900 }]), []);
 assert.ok(validateCatalogueRows([
   { model: "AHU-DUP", width: 1200, depth: 800, height: 900 },
@@ -81,5 +82,5 @@ assert.throws(() => buildCatalogueFamilyDefinition([], { name: "Empty" }), /At l
 assert.throws(() => buildCatalogueFamilyDefinition([{ model: "NO-WIDTH", depth: 100, height: 100 }], { name: "Incomplete" }), /width is missing/);
 assert.throws(() => buildCatalogueFamilyDefinition([{ model: "ZERO-WIDTH", width: 0, depth: 100, height: 100 }], { name: "Invalid dimensions" }), /width must be greater than zero/);
 assert.throws(() => buildCatalogueFamilyDefinition([{ model: " " , width: 100, depth: 100, height: 100 }], { name: "Missing model" }), /model identifier is required/);
-assert.throws(() => buildCatalogueFamilyDefinition([{ model: "A" }, { model: "a" }], { name: "Duplicate" }), /Duplicate model/);
+assert.throws(() => buildCatalogueFamilyDefinition([{ model: "A" }, { model: "a" }], { name: "Duplicate" }), /duplicate model identifier/);
 console.log("catalogue family generator tests passed");
