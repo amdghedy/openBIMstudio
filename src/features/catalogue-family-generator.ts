@@ -210,9 +210,7 @@ function reparseDelimitedSource(): void {
   const parsed = parseDelimitedCatalogue(delimitedSourceText, delimitedSourceDelimiter, mappingOverrides);
   rows = parsed.rows;
   renderRows();
-  const issues = [...parsed.errors, ...validateCatalogueRows(rows)];
-  const qa = panel?.querySelector<HTMLElement>("[data-qa]");
-  if (qa) qa.textContent = issues.length ? issues.join(" ") : `Mapped and loaded ${rows.length} product type(s). Verify all source values and units before family creation.`;
+  renderQualityDashboard(parsed.errors);
   status(`Catalogue remapped: ${rows.length} product type(s); ${parsed.errors.length} import warning(s).`, parsed.errors.length ? "warn" : "success");
 }
 function renderQualityDashboard(importWarnings: string[] = []): void {
@@ -348,8 +346,6 @@ async function readCatalogue(file?: File, selectedSheet?: string): Promise<void>
       sourceName = file.name + " · " + result.sheetName;
       rows = parsed.rows;
       renderRows();
-      const issues = [...parsed.errors, ...validateCatalogueRows(rows)];
-      const qa = panel?.querySelector<HTMLElement>("[data-qa]");
       renderQualityDashboard(parsed.errors);
       status("XLSX processed: " + rows.length + " product type(s) imported from " + result.sheetName + ".", rows.length ? "success" : "warn");
       return;
@@ -400,8 +396,6 @@ async function readCatalogue(file?: File, selectedSheet?: string): Promise<void>
     rows = parsed.rows;
     sourceName = file.name;
     renderRows();
-    const issues = [...parsed.errors, ...validateCatalogueRows(rows)];
-    const qa = panel?.querySelector<HTMLElement>("[data-qa]");
     renderQualityDashboard(parsed.errors);
     status(`Loaded ${rows.length} product type(s) from ${file.name}.`, rows.length ? "success" : "warn");
   } catch (error) {
