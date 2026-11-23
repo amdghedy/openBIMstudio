@@ -80,6 +80,8 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+  // Account/API responses and OAuth navigations must never become an offline app shell.
+  if (/^\/api(?:\/|$)/.test(url.pathname)) return;
   // local AI proxies and the dev server are never cached
   if (/^\/(ollama|lmstudio|anthropic)\//.test(url.pathname)) return;
 
