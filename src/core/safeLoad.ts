@@ -497,7 +497,8 @@ export const DxfEntitySchema = z.discriminatedUnion("type", [
   // Native block reference (M2a): resolved lazily against `DxfDocument.blocks`.
   dxfEntityBaseSchema.extend({
     type: z.literal("INSERT"),
-    name: z.string().min(1).max(256),
+    // May be empty for a malformed file: the resolver renders nothing for an unknown name.
+    name: z.string().max(256),
     position: dxfPointSchema,
     scale: z.object({ x: finiteNumber, y: finiteNumber, z: finiteNumber.optional() }).optional(),
     rotation: finiteNumber.optional(),
