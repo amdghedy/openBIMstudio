@@ -153,7 +153,7 @@ t("static demo hands accounts to the canonical host without a session proxy", ()
   for (const host of ["localhost", "openbimstudio.amdghedy.workers.dev", "example.vercel.app", "open-bi-mstudio.vercel.app.evil.invalid"]) assert.equal(context.needsAccountHandoff(host), false);
   const vercel = JSON.parse(read("vercel.json"));
   const redirect = vercel.redirects.find(r => r.source === "/api/auth/google/start");
-  assert.equal(redirect.destination, "https://openbimstudio.amdghedy.workers.dev/api/auth/google/start");
+  assert.equal(redirect.destination, "https://openbimstudio.amdghedy.workers.dev/");
   assert.equal(redirect.permanent, false);
   assert.ok(!redirect.destination.includes("popup"), "cross-origin popup marker must not propagate");
   assert.ok(acct.includes('if (needsAccountHandoff()) { showAccountHandoff(); return; }'));
