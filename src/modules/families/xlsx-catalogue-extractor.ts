@@ -141,7 +141,7 @@ export async function extractXlsxCatalogue(file: File | Blob, requestedSheetName
       if (ambiguousIndexes.has(column) || key === "model") return;
       const raw = String(cells[column] ?? "").trim();
       if (!raw) return;
-      if (["width", "depth", "height", "airflow", "staticPressure", "power", "voltage"].includes(key)) {
+      if (key && ["width", "depth", "height", "airflow", "staticPressure", "power", "voltage"].includes(key)) {
         const normalized = raw.replace(/,/g, "").replace(/\s*(mm|cm|m|m³\/h|m3\/h|pa|kpa|kw|w|v|kv)\s*$/i, "").trim();
         const numeric = Number(normalized);
         if (Number.isFinite(numeric) && numeric >= 0) (item as Record<string, string | number | undefined>)[key] = numeric;
