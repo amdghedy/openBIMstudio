@@ -36,4 +36,16 @@ assert.equal(extracted.rows.length, 2);
 assert.equal(extracted.rows[0].model, "FAN-300");
 assert.equal(extracted.rows[1].width, 500);
 assert.equal(extracted.rows[1].sourcePage, 1);
+assert.ok(extracted.headers.includes("Manufacturer"), "selectable PDF table headings are exposed to the shared mapping UI");
+const mappedPdf = await PDFDocument.create();
+const mappedPage = mappedPdf.addPage([595, 842]);
+const mappedFont = await mappedPdf.embedFont(StandardFonts.Helvetica);
+mappedPage.drawText("Model    BrandName    Width    Depth    Height", { x: 40, y: 760, size: 10, font: mappedFont });
+mappedPage.drawText("FAN-MAP    Acme    300    300    450", { x: 40, y: 740, size: 10, font: mappedFont });
+const mappedResult = await extractPdfCatalogue(new Uint8Array(await mappedPdf.save()), {
+  mappingOverrides: { BrandName: "manufacturer" },
+});
+assert.ok(mappedResult.headers.includes("BrandName"));
+assert.equal(mappedResult.rows[0].manufacturer, "Acme", "manual PDF mapping overrides must populate canonical fields");
+
 console.log("PDF catalogue extraction tests passed");
