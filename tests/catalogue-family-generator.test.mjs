@@ -61,10 +61,10 @@ assert.equal(roundFamily.geometry.kind, "cylinder");
 assert.deepEqual(roundFamily.geometry.r, { expr: "Width / 2" });
 assert.equal(roundFamily.types[0].values.Width, 0.3);
 assert.throws(() => buildCatalogueFamilyDefinition([
-  { model: "A", geometryProfile: "box" }, { model: "B", geometryProfile: "cylinder" }
+  { model: "A", width: 100, depth: 100, height: 100, geometryProfile: "box" }, { model: "B", width: 120, depth: 100, height: 100, geometryProfile: "cylinder" }
 ], { name: "Mixed" }), /same explicit geometry profile/);
 assert.throws(() => buildCatalogueFamilyDefinition([
-  { model: "A", geometryProfile: "mesh-import" }
+  { model: "A", width: 100, depth: 100, height: 100, geometryProfile: "mesh-import" }
 ], { name: "Unsupported" }), /Unsupported catalogue geometry profile/);
 assert.equal(def.parameters.find((p) => p.name === "Airflow").default, 1200);
 assert.equal(validateCatalogueRows(parsed.rows).length, 0);
@@ -78,5 +78,8 @@ assert.ok(validateCatalogueRows([
 ]).some((issue) => issue.includes("duplicate model identifier")));
 
 assert.throws(() => buildCatalogueFamilyDefinition([], { name: "Empty" }), /At least one/);
+assert.throws(() => buildCatalogueFamilyDefinition([{ model: "NO-WIDTH", depth: 100, height: 100 }], { name: "Incomplete" }), /width is missing/);
+assert.throws(() => buildCatalogueFamilyDefinition([{ model: "ZERO-WIDTH", width: 0, depth: 100, height: 100 }], { name: "Invalid dimensions" }), /width must be greater than zero/);
+assert.throws(() => buildCatalogueFamilyDefinition([{ model: " " , width: 100, depth: 100, height: 100 }], { name: "Missing model" }), /model identifier is required/);
 assert.throws(() => buildCatalogueFamilyDefinition([{ model: "A" }, { model: "a" }], { name: "Duplicate" }), /Duplicate model/);
 console.log("catalogue family generator tests passed");
