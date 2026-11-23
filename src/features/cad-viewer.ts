@@ -1292,7 +1292,7 @@ const CAD_CSS = `
     .obs-cad-shell .cad-ribbon-tabs{display:flex;align-items:stretch;height:32px;padding:0 8px;background:#0b0d12;border-bottom:1px solid #2a3140;user-select:none;flex:none}
     .obs-cad-shell .cad-appmenu{width:32px;min-width:32px;margin:3px 8px 3px 0;padding:0;display:flex;align-items:center;justify-content:center;border-radius:5px;background:linear-gradient(180deg,#e05252,#b91c1c);border:1px solid #7f1d1d;color:#fff;font:700 15px/1 var(--font-sans,system-ui);cursor:pointer}
     .obs-cad-shell .cad-appmenu:hover{background:linear-gradient(180deg,#ef6a6a,#c52222)}
-    .obs-cad-shell .cad-ribtab{padding:0 14px;background:transparent;border:none;border-bottom:2px solid transparent;border-radius:0;color:#9aa4b2;font:500 12px var(--font-sans,system-ui);cursor:pointer}
+    .obs-cad-shell .cad-ribtab{padding:0 14px;background:transparent;border:none;border-bottom:2px solid transparent;border-radius:0;color:#c6cfda;font:500 12px var(--font-sans,system-ui);cursor:pointer}
     .obs-cad-shell .cad-ribtab:hover{color:#e8eaf0;background:#1b212c}
     .obs-cad-shell.cad-ribbon--min .cadrb-strip{display:none}
     .obs-cad-shell.cad-ribbon--min .cad-ribtab.on{border-bottom-color:transparent}
@@ -1304,7 +1304,7 @@ const CAD_CSS = `
     .obs-cad-fs-chip:hover{opacity:1}
     .obs-cad-shell .cad-ribtab.on{color:#f8fafc;background:#151a23;border-bottom-color:#38bdf8}
     .obs-cad-shell .cad-qat{margin-inline-start:auto;display:flex;align-items:center;gap:1px}
-    .obs-cad-shell .cad-qat button{width:26px;height:26px;padding:0;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;border-radius:4px;color:#9aa4b2;cursor:pointer}
+    .obs-cad-shell .cad-qat button{width:26px;height:26px;padding:0;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;border-radius:4px;color:#c6cfda;cursor:pointer}
     .obs-cad-shell .cad-qat button:hover{background:#1b212c;color:#e8eaf0;border-color:#2a3140}
     .obs-cad-shell .cad-qat button svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.9}
     .obs-cad-shell .cad-qat .qat-flip{display:flex;transform:scaleX(-1)}
@@ -1403,7 +1403,7 @@ const CAD_CSS = `
     .obs-status-btn.active { background: #0284c7; color: #ffffff; border-color: #38bdf8; }
 
     /* MDI file tabs */
-    .obs-cad-shell .cadtab{display:flex;align-items:center;gap:6px;padding:6px 8px 7px;background:#151a23;border:1px solid #2a3140;border-bottom:none;border-radius:6px 6px 0 0;color:#94a3b8;font:500 11px var(--font-sans,system-ui);cursor:pointer;white-space:nowrap;max-width:220px;flex:none}
+    .obs-cad-shell .cadtab{display:flex;align-items:center;gap:6px;padding:6px 8px 7px;background:#151a23;border:1px solid #2a3140;border-bottom:none;border-radius:6px 6px 0 0;color:#c6cfda;font:500 11px var(--font-sans,system-ui);cursor:pointer;white-space:nowrap;max-width:220px;flex:none}
     .obs-cad-shell .cadtab:hover{color:#e8eaf0;background:#1b212c}
     .obs-cad-shell .cadtab.on{background:#212830;color:#f8fafc;border-color:#38bdf8;box-shadow:inset 0 2px 0 #38bdf8}
     .obs-cad-shell .cadtab__name{overflow:hidden;text-overflow:ellipsis}
@@ -5873,15 +5873,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const menu = document.createElement("div");
     menu.className = "obs-cad-context-menu";
     menu.setAttribute("data-obs-ui", "1");
-    menu.style.cssText = "position:fixed;z-index:20000;min-width:245px;max-height:80vh;overflow:auto;padding:5px 0;background:#171d27;color:#e6edf5;border:1px solid #354254;border-radius:7px;box-shadow:0 12px 32px rgba(0,0,0,.48);font:12px 'Segoe UI',system-ui,sans-serif";
+    menu.style.cssText = "position:fixed;z-index:20000;min-width:245px;max-height:80vh;overflow:auto;padding:5px 0;background:#171d27;color:#f2f6fb;border:1px solid #354254;border-radius:7px;box-shadow:0 12px 32px rgba(0,0,0,.48);font:12px 'Segoe UI',system-ui,sans-serif";
     menu.addEventListener("mousedown", (e) => e.stopPropagation());
     const hasSelection = sel.size > 0;
     const addSep = () => { const d=document.createElement("div"); d.style.cssText="height:1px;background:#303b4b;margin:4px 7px"; menu.appendChild(d); };
-    const addLabel = (label: string) => { const d=document.createElement("div"); d.textContent=label; d.style.cssText="padding:5px 11px 3px;color:#8fa0b4;font-size:9px;font-weight:700;letter-spacing:.08em"; menu.appendChild(d); };
+    const addLabel = (label: string) => { const d=document.createElement("div"); d.textContent=label; d.style.cssText="padding:5px 11px 3px;color:#aebccd;font-size:9px;font-weight:700;letter-spacing:.08em"; menu.appendChild(d); };
     const addItem = (label: string, run: () => void, disabled = false, danger = false, shortcut = "") => {
       const b=document.createElement("button"); b.type="button"; b.disabled=disabled; b.textContent=label;
-      b.style.cssText="display:flex;align-items:center;width:100%;gap:18px;padding:7px 11px;border:0;border-radius:0;background:transparent;text-align:start;color:"+(danger?"#f87171":"inherit")+";font:inherit;cursor:"+(disabled?"default":"pointer")+";opacity:"+(disabled?".38":"1");
-      if(shortcut){const k=document.createElement("span");k.textContent=shortcut;k.style.cssText="margin-inline-start:auto;color:#8291a5;font-size:10px";b.appendChild(k);}
+      b.style.cssText="display:flex;align-items:center;width:100%;gap:18px;padding:7px 11px;border:0;border-radius:0;background:transparent;text-align:start;color:"+(danger?"#f87171":"inherit")+";font:inherit;cursor:"+(disabled?"default":"pointer")+";opacity:"+(disabled?".55":"1");
+      if(shortcut){const k=document.createElement("span");k.textContent=shortcut;k.style.cssText="margin-inline-start:auto;color:#a7b5c6;font-size:10px";b.appendChild(k);}
       b.onmouseenter=()=>{if(!disabled)b.style.background="#263447";}; b.onmouseleave=()=>b.style.background="transparent";
       b.onclick=()=>{menu.remove();run();}; menu.appendChild(b);
     };

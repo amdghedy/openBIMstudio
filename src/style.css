@@ -20,10 +20,10 @@
   --border-focus:   #38BDF8;
 
   /* Text */
-  --text-primary:   #E8EAF0;
-  --text-secondary: #A0A6B5;
-  --text-tertiary:  #6B7280;
-  --text-disabled:  #4B5563;
+  --text-primary:   #F2F4F9;
+  --text-secondary: #C6CDDA;
+  --text-tertiary:  #939CAE;
+  --text-disabled:  #5E6879;
   --text-inverse:   #0B0D12;
 
   /* Accents */
@@ -390,7 +390,7 @@ body.obs-fullscreen-peek .obs-ribbon { display: flex !important; }
   align-items: center;
   padding: 0 var(--sp-3);
   font: 500 12px var(--font-sans);
-  color: var(--text-secondary);
+  color: var(--text-primary);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -479,10 +479,10 @@ body.obs-fullscreen-peek .obs-ribbon { display: flex !important; }
   font: 500 9px var(--font-sans);
   letter-spacing: 0.5px;
   text-transform: uppercase;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   padding-top: 3px;
   white-space: nowrap;
-  opacity: 0.65;
+  opacity: 0.9;
   flex: none;
 }
 
@@ -557,7 +557,7 @@ body.obs-fullscreen-peek .obs-ribbon { display: flex !important; }
   white-space: nowrap;
   text-align: center;
   padding: 0 1px;
-  opacity: 0.85;
+  opacity: 1;
 }
 .obs-rb[data-active="1"] .obs-rb__label { color: var(--accent); opacity: 1; }
 .obs-rb:hover .obs-rb__label { opacity: 1; }

@@ -45,7 +45,7 @@ function renderMenuItems(container: HTMLElement, items: MenuItem[]) {
     }
     if (it.type === "label") {
       const d = document.createElement("div");
-      d.style.cssText = "padding:4px 12px 2px;font-size:10px;letter-spacing:.5px;opacity:.55";
+      d.style.cssText = "padding:4px 12px 2px;font-size:10px;letter-spacing:.5px;opacity:.8;color:#c9d2e0";
       d.textContent = it.text;
       container.appendChild(d);
       continue;
@@ -55,12 +55,12 @@ function renderMenuItems(container: HTMLElement, items: MenuItem[]) {
     if (it.type === "action" && it.title) row.title = it.title;
     row.style.cssText =
       "display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;white-space:nowrap;position:relative" +
-      (disabled ? ";opacity:.35;pointer-events:none" : "");
+      (disabled ? ";opacity:.55;pointer-events:none" : "");
     row.innerHTML =
       `<span style="width:18px;text-align:center">${it.icon ?? ""}</span>` +
       `<span style="flex:1${it.type === "action" && it.danger ? ";color:#f87171" : ""}">${it.text}</span>` +
-      (it.type === "action" && it.kbd ? `<span style="opacity:.45;font-size:10px;margin-inline-start:14px">${it.kbd}</span>` : "") +
-      (it.type === "sub" ? `<span style="opacity:.6">▸</span>` : "") +
+      (it.type === "action" && it.kbd ? `<span style="opacity:.65;font-size:10px;margin-inline-start:14px">${it.kbd}</span>` : "") +
+      (it.type === "sub" ? `<span style="opacity:.8">▸</span>` : "") +
       (it.type === "action" && it.checked ? `<span style="color:#22c55e;font-weight:700">✓</span>` : "");
     if (it.type === "action") {
       row.onclick = () => {
