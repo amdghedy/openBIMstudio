@@ -6,6 +6,7 @@
  */
 import { ctx } from "../../core/context";
 import { notify } from "../../core/notify";
+import { promptLine } from "../../features/form-modal";
 
 type Any = Record<string, any>;
 function auth(): Any | null { return (ctx.features as Any)?.authoring ?? null; }
@@ -21,14 +22,13 @@ export function projectSummary(): Any {
     tool: a?.getActiveTool?.() ?? null,
     level: a?.getLevel?.() ?? null,
   };
-  (window as Any).__obsProjectSummary = report;
   console.log("[project-summary]", report);
   notify("info", `Elements ${report.elements} · sel ${report.selected} · levels ${report.levels} · grids ${report.grids}`);
   return report;
 }
 
-export function elementSearch(query?: string): number {
-  const q = (query ?? prompt("Search name / type / id", "") ?? "").trim().toLowerCase();
+export async function elementSearch(query?: string): Promise<number> {
+  const q = (query ?? (await promptLine("Search elements", "Search name / type / id", "")) ?? "").trim().toLowerCase();
   if (!q) return 0;
   const match = els().filter((e) => {
     const hay = `${e.id} ${e.name || ""} ${e.type || ""} ${e.category || ""}`.toLowerCase();
@@ -77,7 +77,6 @@ export function gridReport(): Any {
     count: grids.length,
     names: grids.map((g: Any) => g.name || g.id || g.label).filter(Boolean),
   };
-  (window as Any).__obsGridReport = report;
   console.log("[grids]", report);
   notify("info", report.count ? `Grids: ${report.count} · ${report.names.slice(0, 6).join(", ")}` : "No grids");
   return report;
@@ -101,11 +100,6 @@ export function exportCensusCsv(): void {
 
 export function resetDefaultView(): void {
   try {
-    (window as Any).__obsCameraTools?.recoverView?.();
-    notify("success", "View recovered");
-    return;
-  } catch { /* */ }
-  try {
     const cam = (ctx as Any).camera;
     cam?.setPosition?.(50, 50, 50);
     cam?.lookAt?.(0, 0, 0);
@@ -117,7 +111,7 @@ export function resetDefaultView(): void {
 
 export function toggleWireframeHint(): void {
   try {
-    const vg = (ctx.features as Any)?.viewGraphics || (window as Any).__obsViewGraphics;
+    const vg = (ctx.features as Any)?.viewGraphics;
     if (vg?.toggleWireframe) {
       vg.toggleWireframe();
       notify("success", "Wireframe toggled");
@@ -146,7 +140,6 @@ export function runDiagnosticsDump(): Any {
     href: location.href,
     time: new Date().toISOString(),
   };
-  (window as Any).__obsDiagnostics = report;
   console.log("[diagnostics]", report);
   notify("info", report.memory
     ? `Heap ~${report.memory.usedMB}/${report.memory.totalMB} MB · ${report.elements} elements`
@@ -159,10 +152,12 @@ export function copySelectedIds(): number {
   if (!ids.length) { notify("warn", "Select elements first"); return 0; }
   const text = ids.join("\n");
   try {
-    void navigator.clipboard.writeText(text);
-    notify("success", `Copied ${ids.length} id(s)`);
+    void navigator.clipboard.writeText(text).then(
+      () => notify("success", `Copied ${ids.length} id(s)`),
+      () => notify("warn", "Copy failed — clipboard unavailable"),
+    );
   } catch {
-    prompt("Copy IDs", text);
+    notify("warn", "Copy failed — clipboard unavailable");
   }
   return ids.length;
 }
@@ -172,7 +167,6 @@ export function setupCriticalWorkflowPack14(): void {
     projectSummary, elementSearch, hideUnlocked, selectReviewFlagged, gridReport,
     exportCensusCsv, resetDefaultView, toggleWireframeHint, runDiagnosticsDump, copySelectedIds,
   };
-  (window as Any).__obsWorkflowPack14 = api;
   (ctx.features as Any).workflowPack14 = api;
   const cmds: Array<[string, string, () => void]> = [
     ["gap14-summary", "Project: Summary", () => void projectSummary()],

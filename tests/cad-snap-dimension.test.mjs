@@ -96,9 +96,11 @@ t("extension past endpoint", () => {
 
 t("tangent from external point", () => {
   const ents = [{ type: "CIRCLE", layer: "0", center: { x: 0, y: 0 }, radius: 5 }];
+  // Tangent points from (20, 0) are (1.25, ±4.84); the cursor must sit within
+  // tol of one of them — (5, 5) is 3.75 away, outside the snap aperture.
   const s = snap.findCadSnap({
     entities: ents,
-    x: 5,
+    x: 1.5,
     y: 5,
     tol: 3,
     modes: ["tangent"],

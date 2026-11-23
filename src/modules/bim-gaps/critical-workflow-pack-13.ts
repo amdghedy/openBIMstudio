@@ -5,6 +5,7 @@
  */
 import { ctx } from "../../core/context";
 import { notify } from "../../core/notify";
+import { promptLine } from "../../features/form-modal";
 
 type Any = Record<string, any>;
 function auth(): Any | null { return (ctx.features as Any)?.authoring ?? null; }
@@ -18,16 +19,15 @@ export function countByType(): Any {
     map[t] = (map[t] || 0) + 1;
   }
   const top = Object.entries(map).sort((a, b) => b[1] - a[1]);
-  (window as Any).__obsCountByType = { total: els().length, map, top };
   console.log("[count-by-type]", top);
   notify("info", top.slice(0, 5).map(([k, v]) => `${k}:${v}`).join(" · ") || "No elements");
   return map;
 }
 
-export function renameSelection(name?: string): number {
+export async function renameSelection(name?: string): Promise<number> {
   const ids = selIds();
   if (!ids.length) { notify("warn", "Select elements first"); return 0; }
-  const n = name ?? prompt("New name for selected elements", "Element");
+  const n = name ?? (await promptLine("Rename selection", "New name for selected elements", "Element"));
   if (n == null || n === "") return 0;
   let c = 0;
   for (const id of ids) {
@@ -117,7 +117,6 @@ export function selectionBBoxInfo(): Any | null {
     n++;
   }
   const box = { n, min: [minX, minY, minZ], max: [maxX, maxY, maxZ], size: [maxX - minX, maxY - minY, maxZ - minZ] };
-  (window as Any).__obsSelBBox = box;
   console.log("[sel-bbox]", box);
   notify("info", n ? `BBox size ≈ ${box.size.map((v) => v.toFixed(2)).join(" × ")} m` : "No bbox data");
   return box;
@@ -183,7 +182,6 @@ export function setupCriticalWorkflowPack13(): void {
     countByType, renameSelection, lockSelection, unlockSelection, duplicateSelection,
     selectionBBoxInfo, zoomToSelection, exportSelectionPropertiesJson, markSelectionForReview, clearReviewFlags,
   };
-  (window as Any).__obsWorkflowPack13 = api;
   (ctx.features as Any).workflowPack13 = api;
   const cmds: Array<[string, string, () => void]> = [
     ["gap13-count-type", "Model: Count by type", () => void countByType()],
