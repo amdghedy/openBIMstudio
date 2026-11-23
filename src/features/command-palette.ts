@@ -33,7 +33,7 @@ import { toggleWalkMode, isWalkModeEnabled, getWalkOptions, setWalkOption, toggl
 import { toggleSavedViewsPanel, isSavedViewsPanelVisible } from "./saved-views";
 import {
   setAuthoringTool, getActiveTool,
-  deleteSelectedElement, clearAllElements, getReferenceTracking, setReferenceTracking,
+  clearAllElements, getReferenceTracking, setReferenceTracking,
 } from "./authoring";
 import {
   runElementClashDetection, clearClash,
@@ -401,7 +401,11 @@ function bootstrapCommands(): void {
   registerCommand({ id: "edit.redo", label: "Redo", category: "Edit", kbd: "Ctrl+Y", run: () => void history.redo(), when: () => history.canRedo() });
   registerCommand({ id: "edit.selectAll", label: "Select all elements", category: "Edit", kbd: "Ctrl+A", run: () => void selection.selectAll() });
   registerCommand({ id: "edit.clearSelection", label: "Clear selection", category: "Edit", run: async () => { selection.clear(); await selection.applyToHighlighter(); }, when: () => !selection.isEmpty() });
-  registerCommand({ id: "edit.delete", label: "Delete selected authored elements", category: "Edit", kbd: "Del", run: () => deleteSelectedElement() });
+  // NOTE: edit.delete is registered by the Modify loop below (paletteIds
+  // maps the canonical modify registry's "delete" to this id). A second
+  // literal registration here used to silently overwrite/be overwritten;
+  // the catalog gate fails on duplicate registrations, so it lives in
+  // exactly one place.
   registerCommand({ id: "edit.clearAll", label: "Clear all authored elements", category: "Edit", run: () => clearAllElements() });
 
   // View

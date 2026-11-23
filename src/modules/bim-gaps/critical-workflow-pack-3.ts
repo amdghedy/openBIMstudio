@@ -384,7 +384,6 @@ export function setupCriticalWorkflowPack3(): void {
     ["rg-revision", "Revision: record snapshot", "Documentation", () => void addRevisionNow()],
     ["rg-hide-cat", "Hide selected category", "View", () => void hideSelectedCategory()],
     ["rg-show-all", "Show all categories", "View", () => void showAllCategories()],
-    ["rg-isolate", "Isolate selection", "View", () => void isolateSelection()],
     ["rg-lock", "Lock selection", "Modify", () => void lockSelection(true)],
     ["rg-dup", "Duplicate selection (+1m X)", "Modify", () => void duplicateSelection(1)],
   ];

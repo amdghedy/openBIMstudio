@@ -37,6 +37,33 @@
       "verifiedScenarios": []
     },
     {
+      "id": "advanced.draft2d",
+      "name": "2D Draft Overlay",
+      "discipline": "Advanced",
+      "module": "src/features/critical-gaps-ui.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "advanced.solveConstraints",
+      "name": "Solve Hosted Constraints",
+      "discipline": "Advanced",
+      "module": "src/features/critical-gaps-ui.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "advanced.updateHosts",
+      "name": "Update Hosted Openings",
+      "discipline": "Advanced",
+      "module": "src/features/critical-gaps-ui.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "ai.buildIndex",
       "name": "AI · Build semantic index",
       "discipline": "AI",
@@ -145,6 +172,42 @@
       "verifiedScenarios": []
     },
     {
+      "id": "annotate.autoDimensions",
+      "name": "Auto Dimension Plan",
+      "discipline": "Annotate",
+      "module": "src/modules/auto-dimensions/setup.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "annotate.autoDimensionsPanel",
+      "name": "Auto Dimensions Panel",
+      "discipline": "Annotate",
+      "module": "src/modules/auto-dimensions/setup.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "annotate.clearAutoDims",
+      "name": "Clear Auto Dimensions",
+      "discipline": "Annotate",
+      "module": "src/modules/auto-dimensions/setup.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "annotate.promoteTempDims",
+      "name": "Promote Temporary Dimensions",
+      "discipline": "Annotate",
+      "module": "src/modules/auto-dimensions/setup.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "annotate.revisionCloud",
       "name": "Annotate: Revision Cloud",
       "discipline": "Annotation",
@@ -190,9 +253,135 @@
       "verifiedScenarios": []
     },
     {
+      "id": "authoring.alignX",
+      "name": "Align X",
+      "discipline": "Modify",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.alignZ",
+      "name": "Align Z",
+      "discipline": "Modify",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.createSimilar",
+      "name": "Create Similar",
+      "discipline": "Modify",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "authoring.fragEditPanel",
       "name": "Open Native Twin panel",
       "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.joinWalls",
+      "name": "Join Walls",
+      "discipline": "Modify",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.modify.array",
+      "name": "Array",
+      "discipline": "Modify",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.modify.copy",
+      "name": "Copy",
+      "discipline": "Modify",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.modify.match-props",
+      "name": "Match Properties",
+      "discipline": "Modify",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.modify.mirror",
+      "name": "Mirror",
+      "discipline": "Modify",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.modify.move",
+      "name": "Move",
+      "discipline": "Modify",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.modify.offset",
+      "name": "Offset",
+      "discipline": "Modify",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.modify.paste",
+      "name": "Paste",
+      "discipline": "Modify",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.modify.rotate",
+      "name": "Rotate",
+      "discipline": "Modify",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.modify.scale",
+      "name": "Scale",
+      "discipline": "Modify",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.modify.select-similar",
+      "name": "Select Similar",
+      "discipline": "Modify",
       "module": "src/features/command-palette.ts",
       "status": "unverified",
       "tests": [],
@@ -271,10 +460,712 @@
       "verifiedScenarios": []
     },
     {
+      "id": "authoring.pin",
+      "name": "Pin",
+      "discipline": "Modify",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.splitMidpoint",
+      "name": "Split at Midpoint",
+      "discipline": "Modify",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.air-handler",
+      "name": "Tool: Air Handler",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.beam",
+      "name": "Tool: Beam",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.boiler",
+      "name": "Tool: Boiler",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.brace",
+      "name": "Tool: Brace",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.cable-tray",
+      "name": "Tool: Cable Tray",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.chiller",
+      "name": "Tool: Chiller",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.column",
+      "name": "Tool: Column",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.conduit",
+      "name": "Tool: Conduit",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.damper",
+      "name": "Tool: Damper",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.diffuser",
+      "name": "Tool: Diffuser",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.door",
+      "name": "Tool: Door",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.duct",
+      "name": "Tool: Duct",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.equipment",
+      "name": "Tool: Equipment",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.fan",
+      "name": "Tool: Fan",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.footing",
+      "name": "Tool: Footing",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.furniture",
+      "name": "Tool: Furniture",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.grid",
+      "name": "Tool: Grid",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.level",
+      "name": "Tool: Level",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.lighting-fixture",
+      "name": "Tool: Lighting Fixture",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.mline",
+      "name": "Tool: Mline",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.outlet",
+      "name": "Tool: Outlet",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.panel",
+      "name": "Tool: Panel",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.pile",
+      "name": "Tool: Pile",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.pipe",
+      "name": "Tool: Pipe",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.pump",
+      "name": "Tool: Pump",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.railing",
+      "name": "Tool: Railing",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.ramp",
+      "name": "Tool: Ramp",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.slab",
+      "name": "Tool: Slab",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.sprinkler",
+      "name": "Tool: Sprinkler",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.stairs",
+      "name": "Tool: Stairs",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.strip",
+      "name": "Tool: Strip",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.switch",
+      "name": "Tool: Switch",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.truss",
+      "name": "Tool: Truss",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.valve",
+      "name": "Tool: Valve",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.wall",
+      "name": "Tool: Wall",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.tool.window",
+      "name": "Tool: Window",
+      "discipline": "Authoring",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "authoring.unpin",
+      "name": "Unpin",
+      "discipline": "Modify",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.annotate.dim-aligned",
+      "name": "Aligned Dimension",
+      "discipline": "BIM Annotate",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.annotate.dim-angular",
+      "name": "Angular Dimension",
+      "discipline": "BIM Annotate",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.annotate.dim-baseline",
+      "name": "Baseline Dimension",
+      "discipline": "BIM Annotate",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.annotate.dim-continuous",
+      "name": "Continuous Dimension",
+      "discipline": "BIM Annotate",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.annotate.dim-diameter",
+      "name": "Diameter Dimension",
+      "discipline": "BIM Annotate",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.annotate.dim-linear",
+      "name": "Linear Dimension",
+      "discipline": "BIM Annotate",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.annotate.dim-slope",
+      "name": "Slope Dimension",
+      "discipline": "BIM Annotate",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.annotate.insulation",
+      "name": "Insulation Line",
+      "discipline": "BIM Annotate",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.annotate.material-tag",
+      "name": "Material Tag",
+      "discipline": "BIM Annotate",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.annotate.mline",
+      "name": "Detail Line",
+      "discipline": "BIM Annotate",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.annotate.room-tag",
+      "name": "Room Tag",
+      "discipline": "BIM Annotate",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.annotate.spot-elev",
+      "name": "Spot Elevation",
+      "discipline": "BIM Annotate",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.annotate.tag",
+      "name": "Tag by Category",
+      "discipline": "BIM Annotate",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.annotate.tag-area",
+      "name": "Area Tag",
+      "discipline": "BIM Annotate",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.annotate.tag-multi",
+      "name": "Multi-Category Tag",
+      "discipline": "BIM Annotate",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.annotate.text",
+      "name": "Text Note",
+      "discipline": "BIM Annotate",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "bim.contextualBar.toggle",
       "name": "Toggle Modify Bar (contextual ribbon)",
       "discipline": "BIM Experience",
       "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.global.cancel",
+      "name": "Cancel Current Command",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.global.clearSelection",
+      "name": "Clear Selection",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.global.redo",
+      "name": "Redo",
+      "discipline": "BIM File",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.global.repeat",
+      "name": "Repeat Last Command",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.global.select",
+      "name": "Modify / Select",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.global.selectAll",
+      "name": "Select All",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.global.undo",
+      "name": "Undo",
+      "discipline": "BIM File",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.modify.alignX",
+      "name": "Align — Horizontal",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.modify.alignZ",
+      "name": "Align — Vertical",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.modify.array",
+      "name": "Array",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.modify.copy",
+      "name": "Copy",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.modify.createSimilar",
+      "name": "Create Similar",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.modify.delete",
+      "name": "Delete",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.modify.join",
+      "name": "Join / Heal Walls",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.modify.mirror",
+      "name": "Mirror",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.modify.move",
+      "name": "Move",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.modify.offset",
+      "name": "Offset",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.modify.pin",
+      "name": "Pin",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.modify.rotate",
+      "name": "Rotate",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.modify.split",
+      "name": "Split Element — Midpoint",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.modify.trimExtend",
+      "name": "Trim / Extend to Corner",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.modify.typeProperties",
+      "name": "Type Properties",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.modify.unpin",
+      "name": "Unpin",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
       "status": "unverified",
       "tests": [],
       "verifiedScenarios": []
@@ -289,10 +1180,487 @@
       "verifiedScenarios": []
     },
     {
+      "id": "bim.review.focus",
+      "name": "Zoom to Selection",
+      "discipline": "BIM View",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.review.hide",
+      "name": "Temporary Hide",
+      "discipline": "BIM View",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.review.isolate",
+      "name": "Temporary Isolate",
+      "discipline": "BIM View",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.review.reveal",
+      "name": "Reveal Hidden Elements",
+      "discipline": "BIM View",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.schedule.4d",
+      "name": "4D Simulation",
+      "discipline": "BIM Manage",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.schedule.5d",
+      "name": "5D Cost",
+      "discipline": "BIM Manage",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.schedule.6d",
+      "name": "6D Carbon",
+      "discipline": "BIM Manage",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.schedule.curves",
+      "name": "Cost & Carbon Curves",
+      "discipline": "BIM Manage",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.schedule.importFactors",
+      "name": "Import Carbon Factors (EPD)",
+      "discipline": "BIM Manage",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.schedule.importP6",
+      "name": "Import P6 Schedule",
+      "discipline": "BIM Manage",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.schedule.links",
+      "name": "Link Activities to Elements",
+      "discipline": "BIM Manage",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.selection.filter",
+      "name": "Filter Selection",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.selection.selectAllInstances",
+      "name": "Select All Instances",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.selection.selectPrevious",
+      "name": "Select Previous",
+      "discipline": "BIM Modify",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.tool.beam",
+      "name": "Beam",
+      "discipline": "BIM Structure",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.tool.brace",
+      "name": "Brace",
+      "discipline": "BIM Structure",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.tool.cable-tray",
+      "name": "Cable Tray",
+      "discipline": "BIM Electrical",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.tool.ceiling",
+      "name": "Ceiling",
+      "discipline": "BIM Architecture",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.tool.column",
+      "name": "Structural Column",
+      "discipline": "BIM Structure",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.tool.conduit",
+      "name": "Conduit",
+      "discipline": "BIM Electrical",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.tool.door",
+      "name": "Door",
+      "discipline": "BIM Architecture",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.tool.duct",
+      "name": "Duct",
+      "discipline": "BIM Mechanical",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.tool.equipment",
+      "name": "Mechanical Equipment",
+      "discipline": "BIM Mechanical",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.tool.footing",
+      "name": "Isolated Foundation",
+      "discipline": "BIM Structure",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.tool.grid",
+      "name": "Grid",
+      "discipline": "BIM Architecture",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.tool.level",
+      "name": "Level",
+      "discipline": "BIM Architecture",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.tool.pipe",
+      "name": "Pipe",
+      "discipline": "BIM Plumbing",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.tool.roof",
+      "name": "Roof",
+      "discipline": "BIM Architecture",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.tool.slab",
+      "name": "Floor",
+      "discipline": "BIM Architecture",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.tool.strip",
+      "name": "Wall Foundation",
+      "discipline": "BIM Structure",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.tool.truss",
+      "name": "Truss",
+      "discipline": "BIM Structure",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.tool.wall",
+      "name": "Wall",
+      "discipline": "BIM Architecture",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.tool.window",
+      "name": "Window",
+      "discipline": "BIM Architecture",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.view.fit",
+      "name": "Zoom to Fit",
+      "discipline": "BIM View",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.view.front",
+      "name": "Front Elevation",
+      "discipline": "BIM View",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.view.graphics",
+      "name": "Visibility / Graphics",
+      "discipline": "BIM View",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.view.home",
+      "name": "Default 3D View",
+      "discipline": "BIM View",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.view.ids",
+      "name": "IDS Validation",
+      "discipline": "BIM Manage",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.view.issues",
+      "name": "Issues / BCF",
+      "discipline": "BIM Collaborate",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.view.modelTree",
+      "name": "Model Categories / Browser",
+      "discipline": "BIM View",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.view.ortho",
+      "name": "Orthographic",
+      "discipline": "BIM View",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.view.perspective",
+      "name": "Perspective",
+      "discipline": "BIM View",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.view.plan",
+      "name": "Floor Plan",
+      "discipline": "BIM View",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.view.projectBrowser",
+      "name": "Project Browser",
+      "discipline": "BIM View",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.view.properties",
+      "name": "Properties",
+      "discipline": "BIM View",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.view.schedule",
+      "name": "Schedule / Quantities",
+      "discipline": "BIM View",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.view.sheet",
+      "name": "Sheet",
+      "discipline": "BIM View",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.view.templates",
+      "name": "View Templates",
+      "discipline": "BIM View",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.view.timeline",
+      "name": "Phasing / 4D",
+      "discipline": "BIM View",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "bim.view.top",
+      "name": "Top / Plan Orientation",
+      "discipline": "BIM View",
+      "module": "src/features/bim-experience.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "bim.viewBar.toggle",
       "name": "Toggle View Control Bar",
       "discipline": "BIM Experience",
       "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "cad.line",
+      "name": "CAD Line",
+      "discipline": "Drafting",
+      "module": "src/features/cad-compatibility.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "cad.panel",
+      "name": "CAD Tools Panel",
+      "discipline": "Drafting",
+      "module": "src/features/cad-compatibility.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "cad.pline",
+      "name": "CAD Polyline",
+      "discipline": "Drafting",
+      "module": "src/features/cad-compatibility.ts",
       "status": "unverified",
       "tests": [],
       "verifiedScenarios": []
@@ -426,6 +1794,16 @@
       "verifiedScenarios": []
     },
     {
+      "id": "clash.scenario.*",
+      "name": "Dynamic commands (clash.scenario.*)",
+      "discipline": "Clash scenarios",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "dynamic": true,
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "collab.worksharing",
       "name": "Collaboration: Worksets & Central Model",
       "discipline": "Collaboration",
@@ -439,6 +1817,231 @@
       "name": "KS — Command aliases / keyboard shortcuts",
       "discipline": "App",
       "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.align.x",
+      "name": "Align Selection (X)",
+      "discipline": "Modify",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.align.z",
+      "name": "Align Selection (Z)",
+      "discipline": "Modify",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.commandCenter",
+      "name": "Command Center",
+      "discipline": "Panels",
+      "module": "src/features/bim-command-center.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.createSimilar",
+      "name": "Create Similar",
+      "discipline": "Modify",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.curtainWall",
+      "name": "Place Curtain Wall",
+      "discipline": "Architecture",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.distribute.x",
+      "name": "Distribute Selection (X)",
+      "discipline": "Modify",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.group.create",
+      "name": "Create Group from Selection",
+      "discipline": "Modify",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.inputHelp",
+      "name": "Mouse & Keyboard Help (BIM map)",
+      "discipline": "View",
+      "module": "src/features/bim-input-compatibility.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.isolate",
+      "name": "Temporary Isolate Selected",
+      "discipline": "View",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.match.apply",
+      "name": "Match Properties - Apply",
+      "discipline": "Modify",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.match.pick",
+      "name": "Match Properties - Pick Source",
+      "discipline": "Modify",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.panel.copyMonitor",
+      "name": "Copy / Monitor Panel",
+      "discipline": "Panels",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.panel.groups",
+      "name": "Model Groups Panel",
+      "discipline": "Panels",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.panel.options",
+      "name": "Design Options Panel",
+      "discipline": "Panels",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.panel.phases",
+      "name": "Phasing Panel",
+      "discipline": "Panels",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.panel.rooms",
+      "name": "Rooms & Areas Panel",
+      "discipline": "Panels",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.railing",
+      "name": "Place Railing",
+      "discipline": "Architecture",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.resetTemp",
+      "name": "Reset Temporary Hide/Isolate",
+      "discipline": "View",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.room.create",
+      "name": "Create Room (sample boundary)",
+      "discipline": "Architecture",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.stair.lshape",
+      "name": "Place Stair (L-Shape)",
+      "discipline": "Architecture",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.stair.straight",
+      "name": "Place Stair (Straight)",
+      "discipline": "Architecture",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.stair.ushape",
+      "name": "Place Stair (U-Shape)",
+      "discipline": "Architecture",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.tempHide",
+      "name": "Temporary Hide Selected",
+      "discipline": "View",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.workplane.xy",
+      "name": "Set Work Plane - Floor (XY)",
+      "discipline": "Architecture",
+      "module": "src/features/bim-compatibility-bridge.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "compatibility.workplane.xz",
+      "name": "Set Work Plane - Front (XZ)",
+      "discipline": "Architecture",
+      "module": "src/features/bim-compatibility-bridge.ts",
       "status": "unverified",
       "tests": [],
       "verifiedScenarios": []
@@ -484,6 +2087,33 @@
       "name": "Drafting: 2D Detail Hatch Pattern Selector",
       "discipline": "Drafting",
       "module": "src/features/hatch-panel.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "drawings.exportCad",
+      "name": "Export drawing to DXF",
+      "discipline": "Drafting",
+      "module": "src/features/drawings-panel.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "drawings.import",
+      "name": "Import DXF / DWG",
+      "discipline": "Drafting",
+      "module": "src/features/drawings-panel.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "drawings.panel",
+      "name": "Drawings DXF/DWG Panel",
+      "discipline": "Drafting",
+      "module": "src/features/drawings-panel.ts",
       "status": "unverified",
       "tests": [],
       "verifiedScenarios": []
@@ -768,6 +2398,366 @@
       "verifiedScenarios": []
     },
     {
+      "id": "gap11-catalog",
+      "name": "Tools: Catalog summary",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-11.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap11-census",
+      "name": "Model: Element census",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-11.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap11-export-csv",
+      "name": "Selection: Export CSV",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-11.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap11-family",
+      "name": "Family: Creator engine",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-11.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap11-health",
+      "name": "Model: Health audit",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-11.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap11-ifc-interop",
+      "name": "IFC: Interop report",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-11.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap11-malformed",
+      "name": "QA: Malformed input probes",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-11.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap11-perf-sel",
+      "name": "Perf: Selection probe",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-11.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap11-recovery",
+      "name": "Project: Recovery checkpoints",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-11.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap11-standards",
+      "name": "Standards: Pack list",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-11.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap12-clear-temp",
+      "name": "View: Clear temporary hides",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-12.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap12-hide-cat",
+      "name": "View: Hide selected categories",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-12.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap12-isolate",
+      "name": "View: Isolate selection",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-12.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap12-level-report",
+      "name": "Model: Level report",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-12.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap12-linked",
+      "name": "Model: Linked models summary",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-12.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap12-sel-level",
+      "name": "Select: By active level",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-12.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap12-sel-similar",
+      "name": "Select: Similar by type",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-12.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap12-show-all",
+      "name": "View: Show all elements",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-12.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap12-snapshot",
+      "name": "Project: Recovery snapshot…",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-12.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap12-units",
+      "name": "Project: Units report",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-12.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap13-bbox",
+      "name": "Measure: Selection bbox",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-13.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap13-clear-review",
+      "name": "Review: Clear flags",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-13.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap13-count-type",
+      "name": "Model: Count by type",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-13.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap13-duplicate",
+      "name": "Edit: Duplicate selection",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-13.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap13-lock",
+      "name": "Edit: Lock selection",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-13.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap13-props-json",
+      "name": "Selection: Export properties JSON",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-13.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap13-rename",
+      "name": "Edit: Rename selection…",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-13.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap13-review",
+      "name": "Review: Mark selection",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-13.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap13-unlock",
+      "name": "Edit: Unlock selection",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-13.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap13-zoom",
+      "name": "View: Zoom to selection",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-13.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap14-census-csv",
+      "name": "Model: Export census CSV",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-14.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap14-copy-ids",
+      "name": "Selection: Copy IDs",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-14.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap14-diag",
+      "name": "QA: Diagnostics dump",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-14.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap14-grids",
+      "name": "Model: Grid report",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-14.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap14-hide-unlocked",
+      "name": "View: Hide unlocked",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-14.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap14-reset-view",
+      "name": "View: Reset default camera",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-14.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap14-search",
+      "name": "Model: Search elements…",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-14.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap14-sel-review",
+      "name": "Review: Select flagged",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-14.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap14-summary",
+      "name": "Project: Summary",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-14.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "gap14-wire",
+      "name": "View: Toggle wireframe",
+      "discipline": "Critical gaps",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-14.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "history-model-timeline",
       "name": "History: model timeline",
       "discipline": "History",
@@ -813,11 +2803,12 @@
       "verifiedScenarios": []
     },
     {
-      "id": "level.activate.",
-      "name": "Level: ",
+      "id": "level.activate.*",
+      "name": "Dynamic commands (level.activate.*)",
       "discipline": "Levels",
       "module": "src/features/level-chip.ts",
       "status": "unverified",
+      "dynamic": true,
       "tests": [],
       "verifiedScenarios": []
     },
@@ -993,6 +2984,96 @@
       "verifiedScenarios": []
     },
     {
+      "id": "nav-focus-home",
+      "name": "Focus and set as Home",
+      "discipline": "View",
+      "module": "src/features/viewcube.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "nav-go-home",
+      "name": "Go Home",
+      "discipline": "View",
+      "module": "src/features/viewcube.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "nav-ortho",
+      "name": "Orthographic View",
+      "discipline": "View",
+      "module": "src/features/viewcube.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "nav-persp",
+      "name": "Perspective View",
+      "discipline": "View",
+      "module": "src/features/viewcube.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "nav-pwof",
+      "name": "Perspective with Ortho Faces",
+      "discipline": "View",
+      "module": "src/features/viewcube.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "nav-reset-home",
+      "name": "Reset Home",
+      "discipline": "View",
+      "module": "src/features/viewcube.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "nav-reset-orientation",
+      "name": "Reset orientation",
+      "discipline": "View",
+      "module": "src/features/viewcube.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "nav-set-front",
+      "name": "Set current view as Front",
+      "discipline": "View",
+      "module": "src/features/viewcube.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "nav-set-home",
+      "name": "Set current view as Home",
+      "discipline": "View",
+      "module": "src/features/viewcube.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "nav-set-top",
+      "name": "Set current view as Top",
+      "discipline": "View",
+      "module": "src/features/viewcube.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "north.orient-project",
       "name": "Plan orientation: Project North",
       "discipline": "Tools",
@@ -1020,6 +3101,42 @@
       "verifiedScenarios": []
     },
     {
+      "id": "panel.aiChat.toggle",
+      "name": "Toggle AI Assistant",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.automationPanel.toggle",
+      "name": "Toggle Automation",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.bimObjectStudio.toggle",
+      "name": "Toggle BIM Object Studio",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.bimToolbox.toggle",
+      "name": "Toggle BIM Command Center",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "panel.cde.open",
       "name": "Open Common Data Environment",
       "discipline": "Panels",
@@ -1038,8 +3155,80 @@
       "verifiedScenarios": []
     },
     {
+      "id": "panel.cdePanel.close",
+      "name": "Close Common Data Environment",
+      "discipline": "Panels",
+      "module": "src/features/panel-wiring.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.cdePanel.open",
+      "name": "Open Common Data Environment",
+      "discipline": "Panels",
+      "module": "src/features/panel-wiring.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.cdePanel.toggle",
+      "name": "Toggle Common Data Environment",
+      "discipline": "Panels",
+      "module": "src/features/panel-wiring.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "panel.cost",
       "name": "Toggle Family Browser",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.costPanel.toggle",
+      "name": "Toggle 5D Cost",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.federationPanel.close",
+      "name": "Close Federation",
+      "discipline": "Panels",
+      "module": "src/features/panel-wiring.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.federationPanel.open",
+      "name": "Open Federation",
+      "discipline": "Panels",
+      "module": "src/features/panel-wiring.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.federationPanel.toggle",
+      "name": "Toggle Federation",
+      "discipline": "Panels",
+      "module": "src/features/panel-wiring.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.fragEdit.toggle",
+      "name": "Toggle Native Twin Panel",
       "discipline": "Panels",
       "module": "src/features/command-palette.ts",
       "status": "unverified",
@@ -1056,8 +3245,35 @@
       "verifiedScenarios": []
     },
     {
+      "id": "panel.idsPanel.toggle",
+      "name": "Toggle IDS Validation",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "panel.issues",
       "name": "Toggle Family Browser",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.issuesPanel.toggle",
+      "name": "Toggle Issues / BCF",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.mepColoring.toggle",
+      "name": "Toggle MEP Discipline Colors",
       "discipline": "Panels",
       "module": "src/features/command-palette.ts",
       "status": "unverified",
@@ -1074,8 +3290,44 @@
       "verifiedScenarios": []
     },
     {
+      "id": "panel.modelTreePanel.toggle",
+      "name": "Toggle Model Tree",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "panel.plan",
       "name": "Import P6 schedule (.xer / .xml)",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.planView.toggle",
+      "name": "Toggle Plan View",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.projectBrowser.toggle",
+      "name": "Toggle Project Browser",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.propertyPalette.toggle",
+      "name": "Toggle Properties",
       "discipline": "Panels",
       "module": "src/features/command-palette.ts",
       "status": "unverified",
@@ -1092,8 +3344,35 @@
       "verifiedScenarios": []
     },
     {
+      "id": "panel.savedViewsPanel.toggle",
+      "name": "Toggle Saved Views",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "panel.schedules",
       "name": "Import P6 schedule (.xer / .xml)",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.schedulesPanel.toggle",
+      "name": "Toggle Schedules",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.sheetsPanel.toggle",
+      "name": "Toggle Sheets",
       "discipline": "Panels",
       "module": "src/features/command-palette.ts",
       "status": "unverified",
@@ -1119,8 +3398,53 @@
       "verifiedScenarios": []
     },
     {
+      "id": "panel.standardsPanel.close",
+      "name": "Close Standards",
+      "discipline": "Panels",
+      "module": "src/features/panel-wiring.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.standardsPanel.open",
+      "name": "Open Standards",
+      "discipline": "Panels",
+      "module": "src/features/panel-wiring.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.standardsPanel.toggle",
+      "name": "Toggle Standards",
+      "discipline": "Panels",
+      "module": "src/features/panel-wiring.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.timelinePanel.toggle",
+      "name": "Toggle Timeline",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "panel.tree",
       "name": "panel.tree",
+      "discipline": "Panels",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "panel.walkMode.toggle",
+      "name": "Toggle Walk Mode",
       "discipline": "Panels",
       "module": "src/features/command-palette.ts",
       "status": "unverified",
@@ -1141,6 +3465,15 @@
       "name": "Curtain Grid Editor\\u2026",
       "discipline": "Modeling",
       "module": "src/features/parametric-tools.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "parametric.familyPanel",
+      "name": "Parametric Families Panel",
+      "discipline": "Architecture",
+      "module": "src/features/parametric-family-panel.ts",
       "status": "unverified",
       "tests": [],
       "verifiedScenarios": []
@@ -1263,6 +3596,1023 @@
       "verifiedScenarios": []
     },
     {
+      "id": "rg-align-x",
+      "name": "Align selection to X",
+      "discipline": "Modify",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-2.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-align-z",
+      "name": "Align selection to Z",
+      "discipline": "Modify",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-2.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-area-fill",
+      "name": "Area plan: color fill rooms",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-4.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-auto-run",
+      "name": "Automation: run on-open rules",
+      "discipline": "Automation",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-8.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-auto-seed",
+      "name": "Automation: seed default rules",
+      "discipline": "Automation",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-8.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-autotag",
+      "name": "Tag all doors/windows/rooms",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/critical-workflow-pack.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-bldg-pad",
+      "name": "Building pad from walls",
+      "discipline": "Site",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-4.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-cde-list",
+      "name": "CDE: list providers",
+      "discipline": "Collaboration",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-8.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-ceiling",
+      "name": "Ceiling: draw outline",
+      "discipline": "Architecture",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-ceiling-walls",
+      "name": "Ceiling: create from wall loops",
+      "discipline": "Architecture",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-ceilings-rooms",
+      "name": "Ceiling: place one in every room of this level",
+      "discipline": "Architecture",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-checker",
+      "name": "Model checker: run rules",
+      "discipline": "QA",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-7.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-classify",
+      "name": "Classify: Uniclass by type",
+      "discipline": "Data",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-7.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-cobie",
+      "name": "Export COBie",
+      "discipline": "Exchange",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-3.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-cols-grid",
+      "name": "Columns on grid intersections",
+      "discipline": "Structure",
+      "module": "src/modules/bim-gaps/critical-workflow-pack.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-copymon",
+      "name": "Copy/Monitor: default rules",
+      "discipline": "Collaboration",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-5.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-cost-cat",
+      "name": "Cost: seed catalog",
+      "discipline": "Cost",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-5.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-cost-to",
+      "name": "Cost: run takeoff",
+      "discipline": "Cost",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-5.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-curtain-wall",
+      "name": "Curtain wall: place",
+      "discipline": "Architecture",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-curves",
+      "name": "Model curves: X/Z axes",
+      "discipline": "Architecture",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-8.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-daylight",
+      "name": "Daylight: DF / sDA study",
+      "discipline": "Analysis",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-6.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-design-opt",
+      "name": "Design option: primary",
+      "discipline": "Project",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-4.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-design-option",
+      "name": "Design option: assign selection",
+      "discipline": "Phasing",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-details",
+      "name": "Details: seed catalog",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-6.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-diag",
+      "name": "Diagnostics: health report",
+      "discipline": "QA",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-6.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-door-sch",
+      "name": "Schedule: doors",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/critical-workflow-pack.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-dup",
+      "name": "Duplicate selection (+1m X)",
+      "discipline": "Modify",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-3.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-energy",
+      "name": "Energy: zone heat-loss report",
+      "discipline": "Analysis",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-4.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-export-ifc2x3",
+      "name": "Export: model to IFC2X3 (BIM 2020)",
+      "discipline": "Export",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-export-ifc4",
+      "name": "Export: model to IFC4",
+      "discipline": "Export",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-fab-elbow",
+      "name": "Fabrication: sample elbow",
+      "discipline": "MEP",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-6.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-families",
+      "name": "Families: load built-in catalog",
+      "discipline": "Families",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-6.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-fed-status",
+      "name": "Federation: link status",
+      "discipline": "Collaboration",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-7.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-filled",
+      "name": "Filled region: from room/slab",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-7.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-filter-doors",
+      "name": "View filter: emphasize doors",
+      "discipline": "View",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-4.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-floor-walls",
+      "name": "Floor: create from wall loops",
+      "discipline": "Architecture",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-frame-sel",
+      "name": "Navigate: frame selection",
+      "discipline": "View",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-8.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-gen-grid",
+      "name": "Generative: grid spacing study",
+      "discipline": "Analysis",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-5.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-gis-origin",
+      "name": "GIS: set project origin",
+      "discipline": "Site",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-6.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-grid-bubbles",
+      "name": "Grid bubbles: ensure all",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-4.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-group",
+      "name": "Group selection",
+      "discipline": "Modify",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-5.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-hide",
+      "name": "Visibility: hide selection",
+      "discipline": "Visibility",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-hide-cat",
+      "name": "Hide selected category",
+      "discipline": "View",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-3.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-hierarchy",
+      "name": "Hierarchy: summary report",
+      "discipline": "Data",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-8.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-ifc-export",
+      "name": "Export model IFC4",
+      "discipline": "Exchange",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-2.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-isolate",
+      "name": "Visibility: isolate selection",
+      "discipline": "Visibility",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-issue",
+      "name": "Issue from selection",
+      "discipline": "Project",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-3.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-json-dump",
+      "name": "Export model JSON",
+      "discipline": "Exchange",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-2.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-keynotes",
+      "name": "Keynotes: load sample set",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-3.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-lock",
+      "name": "Lock selection",
+      "discipline": "Modify",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-3.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-lod",
+      "name": "LOD: medium performance",
+      "discipline": "View",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-5.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-lw-print",
+      "name": "Line weights: print preset",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-4.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-mass",
+      "name": "Mass: place building envelope",
+      "discipline": "Architecture",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-7.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-matchline",
+      "name": "Matchline: create ML-1",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-5.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-matchprop",
+      "name": "Match properties (selection)",
+      "discipline": "Modify",
+      "module": "src/modules/bim-gaps/critical-workflow-pack.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-mats",
+      "name": "Materials: ensure library",
+      "discipline": "Materials",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-7.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-mep-net",
+      "name": "MEP: select connected network",
+      "discipline": "MEP",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-7.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-mirror-x",
+      "name": "Mirror selection (X axis)",
+      "discipline": "Modify",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-2.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-model-tree",
+      "name": "Model tree: export JSON",
+      "discipline": "Data",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-7.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-modelcheck",
+      "name": "Model quality check",
+      "discipline": "QA",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-2.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-nl-room",
+      "name": "Model: draw a 4×6 room with a door and two windows",
+      "discipline": "Model",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-8.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-nl-walls",
+      "name": "NL query: select all walls",
+      "discipline": "Query",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-8.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-north",
+      "name": "Project north: set 0°",
+      "discipline": "Site",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-7.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-ortho-walls",
+      "name": "Ortho-align walls/beams",
+      "discipline": "Modify",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-2.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-paint-walls",
+      "name": "Materials: paint all walls",
+      "discipline": "Materials",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-7.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-param-eng",
+      "name": "Parameter engine: smoke test",
+      "discipline": "QA",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-8.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-phase-created",
+      "name": "Phase: set 'phase created' on selection",
+      "discipline": "Phasing",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-phase-demolished",
+      "name": "Phase: set 'phase demolished' on selection",
+      "discipline": "Phasing",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-phases",
+      "name": "Phases: create default set",
+      "discipline": "Project",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-3.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-pin-type",
+      "name": "Pin all of selected type",
+      "discipline": "Modify",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-5.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-pl-doors",
+      "name": "Plan graphics: toggle door and window marks",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-pl-poche",
+      "name": "Plan graphics: toggle wall poche",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-pl-roomlines",
+      "name": "Plan graphics: toggle room boundaries",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-pl-rooms",
+      "name": "Plan graphics: toggle room tags",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-pl-stairs",
+      "name": "Plan graphics: toggle stair symbols",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-plugins",
+      "name": "Plugins: list marketplace",
+      "discipline": "Project",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-6.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-purge",
+      "name": "Purge zero-length elements",
+      "discipline": "QA",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-2.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-rail-stair",
+      "name": "Railing: on last stair",
+      "discipline": "Architecture",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-railing",
+      "name": "Railing: draw path",
+      "discipline": "Architecture",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-ramp",
+      "name": "Ramp: place",
+      "discipline": "Architecture",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-reset-vis",
+      "name": "Visibility: reset temporary hide/isolate",
+      "discipline": "Visibility",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-revision",
+      "name": "Revision: record snapshot",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-3.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-roof",
+      "name": "Roof: draw footprint (gable / shed)",
+      "discipline": "Architecture",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-roof-walls",
+      "name": "Roof: create from wall loops",
+      "discipline": "Architecture",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-room-auto",
+      "name": "Room: place rooms automatically",
+      "discipline": "Rooms",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-room-place",
+      "name": "Room: place (click inside walls)",
+      "discipline": "Rooms",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-select-sim",
+      "name": "Select similar",
+      "discipline": "Modify",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-2.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-shared-p",
+      "name": "Shared parameters: seed",
+      "discipline": "Data",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-8.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-sheet-pack",
+      "name": "Sheets: create standard pack",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/critical-workflow-pack.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-show-all",
+      "name": "Show all categories",
+      "discipline": "View",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-3.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-snap-fine",
+      "name": "Snaps: fine 50mm all modes",
+      "discipline": "Modify",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-6.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-softclash",
+      "name": "Soft clash detection",
+      "discipline": "QA",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-2.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-space",
+      "name": "Space elements evenly",
+      "discipline": "Modify",
+      "module": "src/modules/bim-gaps/critical-workflow-pack.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-split-mid",
+      "name": "Split walls at midpoint",
+      "discipline": "Modify",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-2.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-stairs",
+      "name": "Stairs: straight run",
+      "discipline": "Architecture",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-stairs-l",
+      "name": "Stairs: L-shape (quarter turn)",
+      "discipline": "Architecture",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-stairs-levels",
+      "name": "Stairs: between levels (auto)",
+      "discipline": "Architecture",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-stairs-u",
+      "name": "Stairs: U-shape (half turn)",
+      "discipline": "Architecture",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-status",
+      "name": "BIM gaps: show status",
+      "discipline": "Help",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-sun",
+      "name": "Sun: apply default settings",
+      "discipline": "Environment",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-4.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-takeoff",
+      "name": "Material takeoff",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/critical-workflow-pack.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-topo",
+      "name": "Site: flat toposurface",
+      "discipline": "Site",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-5.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-twin-caps",
+      "name": "Native twin: capability matrix",
+      "discipline": "Data",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-8.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-ungroup",
+      "name": "Ungroup selection",
+      "discipline": "Modify",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-5.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-views-pack",
+      "name": "Views: plans + elevations",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/critical-workflow-pack.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-views-refresh",
+      "name": "Views: regenerate all views and sheets",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-vt-arch",
+      "name": "View template: Architectural",
+      "discipline": "View",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-4.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-wall-ext",
+      "name": "Walls: exterior finish face",
+      "discipline": "Architecture",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-6.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-wall-sch",
+      "name": "Schedule: walls",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/critical-workflow-pack.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-win-sch",
+      "name": "Schedule: windows",
+      "discipline": "Documentation",
+      "module": "src/modules/bim-gaps/critical-workflow-pack.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-worksets",
+      "name": "Worksets: Arch/Struct/MEP pack",
+      "discipline": "Project",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-3.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-ws-lock",
+      "name": "Workshare: lock selection",
+      "discipline": "Collaboration",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-6.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "rg-zoom-ext",
+      "name": "Zoom extents (fit model)",
+      "discipline": "View",
+      "module": "src/modules/bim-gaps/critical-workflow-pack-4.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "rvt.browser",
       "name": "RVT model: open the element browser (search, group, select, hide)",
       "discipline": "File",
@@ -1353,6 +4703,250 @@
       "verifiedScenarios": []
     },
     {
+      "id": "schedule.saved.*",
+      "name": "Dynamic commands (schedule.saved.*)",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "dynamic": true,
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-4d-activity",
+      "name": "Schedule: 4D Activity Schedule",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-beam",
+      "name": "Schedule: Beam Schedule",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-boq-as1181",
+      "name": "Schedule: BOQ · AS 1181 (AU)",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-boq-din276",
+      "name": "Schedule: BOQ · DIN 276 (DE)",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-boq-gbt",
+      "name": "Schedule: BOQ · GB/T 51269 (CN)",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-boq-is1200",
+      "name": "Schedule: BOQ · IS 1200 (IN)",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-boq-jis",
+      "name": "Schedule: BOQ · JIS (JP)",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-boq-masterformat",
+      "name": "Schedule: BOQ · MasterFormat (US)",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-boq-nrm",
+      "name": "Schedule: BOQ · NRM 2 (UK)",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-classification",
+      "name": "Schedule: Classification Takeoff",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-column",
+      "name": "Schedule: Column Schedule",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-cost-summary",
+      "name": "Schedule: Cost Summary",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-door",
+      "name": "Schedule: Door Schedule",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-duct",
+      "name": "Schedule: Duct Schedule",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-electrical",
+      "name": "Schedule: Electrical Schedule",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-footing",
+      "name": "Schedule: Footing Schedule",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-ids-compliance",
+      "name": "Schedule: IDS Compliance Schedule",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-material",
+      "name": "Schedule: Material Takeoff",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-mep",
+      "name": "Schedule: MEP Schedule",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-model-health",
+      "name": "Schedule: Model Health Schedule",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-pipe",
+      "name": "Schedule: Pipe Schedule",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-qto",
+      "name": "Schedule: Quantity Takeoff (All elements)",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-room",
+      "name": "Schedule: Room Schedule",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-slab",
+      "name": "Schedule: Slab Schedule",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-wall",
+      "name": "Schedule: Wall Schedule",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "schedule.template.tpl-window",
+      "name": "Schedule: Window Schedule",
+      "discipline": "Schedules",
+      "module": "src/modules/schedules/schedule-templates.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "schedules-ui",
       "name": "Element Schedule",
       "discipline": "View",
@@ -1371,8 +4965,215 @@
       "verifiedScenarios": []
     },
     {
+      "id": "tool.array",
+      "name": "Tool: Array",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.beam",
+      "name": "Tool: Beam",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.brace",
+      "name": "Tool: Brace",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.cable-tray",
+      "name": "Tool: Cable Tray",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.column",
+      "name": "Tool: Column",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.conduit",
+      "name": "Tool: Conduit",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.copy",
+      "name": "Tool: Copy",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.door",
+      "name": "Tool: Door",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.duct",
+      "name": "Tool: Duct",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.equipment",
+      "name": "Tool: Equipment",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.footing",
+      "name": "Tool: Isolated Footing",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.grid",
+      "name": "Tool: Grid",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.level",
+      "name": "Tool: Level",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.mirror",
+      "name": "Tool: Mirror",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.move",
+      "name": "Tool: Move",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "tool.none",
       "name": "Cancel active tool",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.offset",
+      "name": "Tool: Offset",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.pipe",
+      "name": "Tool: Pipe",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.rotate",
+      "name": "Tool: Rotate",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.slab",
+      "name": "Tool: Slab / Floor",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.strip",
+      "name": "Tool: Strip Footing",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.truss",
+      "name": "Tool: Truss",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.wall",
+      "name": "Tool: Wall",
+      "discipline": "Authoring tools",
+      "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "tool.window",
+      "name": "Tool: Window",
       "discipline": "Authoring tools",
       "module": "src/features/command-palette.ts",
       "status": "unverified",
@@ -1483,6 +5284,33 @@
       "name": "tools.walk.noClip",
       "discipline": "Tools",
       "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.applyArchitecturalTemplate",
+      "name": "Apply Template: Architectural Plan",
+      "discipline": "View",
+      "module": "src/modules/view-templates/setup.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.applyCoordinationTemplate",
+      "name": "Apply Template: Coordination",
+      "discipline": "View",
+      "module": "src/modules/view-templates/setup.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.applyStructuralTemplate",
+      "name": "Apply Template: Structural Plan",
+      "discipline": "View",
+      "module": "src/modules/view-templates/setup.ts",
       "status": "unverified",
       "tests": [],
       "verifiedScenarios": []
@@ -1681,6 +5509,24 @@
       "name": "Top view",
       "discipline": "View",
       "module": "src/features/command-palette.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.viewTemplates",
+      "name": "View Templates…",
+      "discipline": "View",
+      "module": "src/modules/view-templates/setup.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
+      "id": "view.visibilityGraphics",
+      "name": "Visibility/Graphics…",
+      "discipline": "View",
+      "module": "src/modules/view-templates/setup.ts",
       "status": "unverified",
       "tests": [],
       "verifiedScenarios": []
