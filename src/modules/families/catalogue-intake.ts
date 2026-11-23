@@ -29,7 +29,16 @@ export interface CatalogueParseResult {
   errors: string[];
 }
 
-type CatalogueField = "model" | "manufacturer" | "productCode" | "width" | "depth" | "height" | "airflow" | "staticPressure" | "power" | "voltage";
+export type CatalogueField = "model" | "manufacturer" | "productCode" | "width" | "depth" | "height" | "airflow" | "staticPressure" | "power" | "voltage";
+
+export interface CatalogueMappingSuggestion {
+  sourceHeader: string;
+  suggestedField: CatalogueField | null;
+  confidence: "high" | "medium" | "none";
+  reason: string;
+}
+
+export type CatalogueMappingOverrides = Record<string, CatalogueField | null>;
 
 const HEADER_ALIASES: Record<string, CatalogueField> = {
   model: "model", modelnumber: "model", modelno: "model", type: "model", typename: "model",
@@ -67,8 +76,51 @@ export function mapCatalogueHeader(value: string): CatalogueField | undefined {
   return HEADER_ALIASES[normalizedHeader(value)] ?? HEADER_ALIASES[key];
 }
 
+/** Suggest safe, explainable mappings without silently applying uncertain matches. */
+export function suggestCatalogueMappings(headers: string[]): CatalogueMappingSuggestion[] {
+  return headers.map((sourceHeader) => {
+    const direct = mapCatalogueHeader(sourceHeader);
+    if (direct) {
+      return {
+        sourceHeader,
+        suggestedField: direct,
+        confidence: "high" as const,
+        reason: "Recognized manufacturer alias or standard parameter heading.",
+      };
+    }
+    const key = normalizedHeader(sourceHeader);
+    const candidates: Array<[RegExp, CatalogueField, string]> = [
+      [/^(?:model|type|unit)(?:id|identifier|number|no)?$/, "model", "Looks like a product or type identifier."],
+      [/(?:manufacturer|maker|brand|vendor)/, "manufacturer", "Contains a manufacturer or brand term."],
+      [/(?:product|item|part)(?:code|number|no|id)/, "productCode", "Looks like a product or part reference."],
+      [/(?:width|wide)/, "width", "Contains a width-related term; confirm whether this is overall or nominal width."],
+      [/(?:depth|length)/, "depth", "Contains a depth or length-related term; confirm the intended dimension."],
+      [/(?:height|high)/, "height", "Contains a height-related term."],
+      [/(?:air|volume|flow)/, "airflow", "Contains an airflow-related term; verify units."],
+      [/(?:pressure|esp)/, "staticPressure", "Contains a pressure-related term; verify whether it is static pressure."],
+      [/(?:power|watt|kw)/, "power", "Contains an electrical power-related term; verify units."],
+      [/(?:voltage|volt)/, "voltage", "Contains a voltage-related term; verify units."],
+    ];
+    const matches = candidates.filter(([pattern]) => pattern.test(key));
+    if (matches.length === 1) {
+      return {
+        sourceHeader,
+        suggestedField: matches[0][1],
+        confidence: "medium" as const,
+        reason: matches[0][2],
+      };
+    }
+    return {
+      sourceHeader,
+      suggestedField: null,
+      confidence: "none" as const,
+      reason: "No reliable standard mapping found. Keep as an unclassified source field or map manually.",
+    };
+  });
+}
+
 /** RFC-4180-style delimiter parser supporting quoted fields and escaped quotes. */
-export function parseDelimitedCatalogue(source: string, delimiter?: string): CatalogueParseResult {
+export function parseDelimitedCatalogue(source: string, delimiter?: string, mappingOverrides: CatalogueMappingOverrides = {}): CatalogueParseResult {
   const text = String(source ?? "").replace(/^\uFEFF/, "");
   const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
   const sep = delimiter ?? (firstLine.includes("\t") && !firstLine.includes(",") ? "\t" : ",");
@@ -90,7 +142,7 @@ export function parseDelimitedCatalogue(source: string, delimiter?: string): Cat
   const nonEmpty = matrix.filter((r) => r.some((v) => v.trim() !== ""));
   if (nonEmpty.length < 2) return { headers: [], rows: [], errors: ["Catalogue must contain a header row and at least one product row."] };
   const headers = nonEmpty[0].map((h) => h.trim());
-  const mapped = headers.map((h) => mapCatalogueHeader(h));
+  const mapped = headers.map((h) => Object.prototype.hasOwnProperty.call(mappingOverrides, h) ? mappingOverrides[h] ?? undefined : mapCatalogueHeader(h));
   const mappedColumns = new Map<CatalogueField, number[]>();
   mapped.forEach((field, index) => {
     if (!field) return;
@@ -98,9 +150,9 @@ export function parseDelimitedCatalogue(source: string, delimiter?: string): Cat
     indexes.push(index);
     mappedColumns.set(field, indexes);
   });
-  const duplicateMappings = Array.from(mappedColumns.entries())
-    .filter(([, indexes]) => indexes.length > 1)
-    .map(([field, indexes]) => `Multiple columns map to "${field}": ${indexes.map((index) => headers[index]).join(", ")}.`);
+  const duplicateMappingEntries = Array.from(mappedColumns.entries()).filter(([, indexes]) => indexes.length > 1);
+  const duplicateMappings = duplicateMappingEntries.map(([field, indexes]) => `Multiple columns map to "${field}": ${indexes.map((index) => headers[index]).join(", ")}. Choose one source column or assign distinct mappings before import.`);
+  const ambiguousIndexes = new Set(duplicateMappingEntries.flatMap(([, indexes]) => indexes));
   const modelIndex = mapped.indexOf("model");
   if (modelIndex < 0) return { headers, rows: [], errors: ["A Model, Model Number, Type or Type Name column is required."] };
   const errors: string[] = [...duplicateMappings];
@@ -110,6 +162,7 @@ export function parseDelimitedCatalogue(source: string, delimiter?: string): Cat
     const item: CatalogueRow = { model: cells[modelIndex] ?? "" };
     if (!item.model.trim()) { errors.push(`Row ${r + 1}: missing model identifier; row skipped.`); continue; }
     for (let c = 0; c < mapped.length; c++) {
+      if (ambiguousIndexes.has(c)) continue;
       const key = mapped[c];
       if (key === "model") continue;
       const raw = cells[c] ?? "";
