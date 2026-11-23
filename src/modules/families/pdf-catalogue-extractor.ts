@@ -239,7 +239,7 @@ async function runLocalOllamaOcr(imageBase64: string, pageNumber: number): Promi
     if (!response.ok) throw new Error(`Local Ollama OCR failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
     const payload = await response.json() as { response?: string };
     const raw = String(payload.response ?? "").trim();
-    const fenced = raw.replace(/^```(?:json)?\\s*/i, "").replace(/\s*```$/, "");
+    const fenced = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
     const firstBrace = fenced.indexOf("{");
     const lastBrace = fenced.lastIndexOf("}");
     const jsonText = firstBrace >= 0 && lastBrace > firstBrace ? fenced.slice(firstBrace, lastBrace + 1) : fenced;
