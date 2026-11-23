@@ -80,7 +80,7 @@ assert.ok(validateCatalogueRows([
 
 assert.throws(() => buildCatalogueFamilyDefinition([], { name: "Empty" }), /At least one/);
 assert.throws(() => buildCatalogueFamilyDefinition([{ model: "NO-WIDTH", depth: 100, height: 100 }], { name: "Incomplete" }), /width is missing/);
-assert.throws(() => buildCatalogueFamilyDefinition([{ model: "ZERO-WIDTH", width: 0, depth: 100, height: 100 }], { name: "Invalid dimensions" }), /width must be greater than zero/);
+assert.throws(() => buildCatalogueFamilyDefinition([{ model: "ZERO-WIDTH", width: 0, depth: 100, height: 100 }], { name: "Invalid dimensions" }), /width must be a finite value greater than zero/);
 assert.throws(() => buildCatalogueFamilyDefinition([{ model: " " , width: 100, depth: 100, height: 100 }], { name: "Missing model" }), /model identifier is required/);
 assert.throws(() => buildCatalogueFamilyDefinition([{ model: "A" }, { model: "a" }], { name: "Duplicate" }), /duplicate model identifier/);
 console.log("catalogue family generator tests passed");
