@@ -239,9 +239,9 @@ export class AuthVault {
     if (hits >= 10) return json({ error: "Too many attempts. Wait a minute and try again." }, 429);
     await this.storage.put(rlKey, hits + 1);
     const user = await this.storage.get<UserRecord>(`u:${email}`);
-    if (!user || !user.salt || !user.hash) return json({ error: "Invalid email or password." }, 401);
+    if (!user || !user.salt || !user.hash) return json({ error: "Wrong email or password." }, 401);
     const hash = await pbkdf2(password, user.salt);
-    if (hash !== user.hash.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")) return json({ error: "Invalid email or password." }, 401);
+    if (hash !== user.hash.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")) return json({ error: "Wrong email or password." }, 401);
     const token = await this.signToken(email);
     return json({ user: { email: user.email, name: user.name } }, 200, { "set-cookie": setCookie(token) });
   }
@@ -522,4 +522,4 @@ export async function googleCallback(request: Request, env: AuthEnv): Promise<{ 
   if (info.email_verified !== true) throw new Error("unverified-email");
   if (!info.sub) throw new Error("no-google-subject");
   return { email: info.email, name: info.name ?? info.email.split("@")[0], sub: info.sub };
-        }
+  }
