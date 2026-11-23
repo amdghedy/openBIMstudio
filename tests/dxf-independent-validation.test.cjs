@@ -45,6 +45,10 @@ if (probe.status !== 0) {
 //    other drawing tests): the exact production code paths, no mocks.
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "dxf-indep-"));
 execSync(`npx tsc src/modules/drawings/dxf-reader.ts src/modules/drawings/dxf-writer.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --esModuleInterop`, { cwd: root, stdio: "pipe" });
+// dxf-reader imports safeLoad, which requires 'zod' at the top level since
+// PE-20, so the temp out-dir needs the repo's node_modules to resolve it —
+// same pattern as tests/zod-boundaries.test.cjs.
+fs.symlinkSync(path.join(root, "node_modules"), path.join(out, "node_modules"), "junction");
 const find = (d, n) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) { const r = find(p, n); if (r) return r; } else if (f.name === n) return p; } };
 const { parseDxf } = require(find(out, "dxf-reader.js"));
 const { writeDxf } = require(find(out, "dxf-writer.js"));
