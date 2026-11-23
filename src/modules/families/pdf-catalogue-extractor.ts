@@ -101,7 +101,7 @@ function parseTableRows(lines: PdfTextLine[], pageNumber: number, mappingOverrid
   let header: PdfTextLine | null = null;
   let columns: Array<{ x: number; key: CatalogueField | null; sourceHeader: string }> = [];
   for (const line of lines) {
-    const recognized: Array<{ x: number; key: string; sourceHeader: string }> = [];
+    const recognized: Array<{ x: number; key: CatalogueField | null; sourceHeader: string }> = [];
     for (let index = 0; index < line.tokens.length; index++) {
       const token = line.tokens[index];
       const next = line.tokens[index + 1];
