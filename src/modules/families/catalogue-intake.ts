@@ -39,6 +39,51 @@ export interface CatalogueMappingSuggestion {
 }
 
 export type CatalogueMappingOverrides = Record<string, CatalogueField | null>;
+export interface CatalogueMappingProfile {
+  schemaVersion: 1;
+  name: string;
+  manufacturer?: string;
+  mappings: CatalogueMappingOverrides;
+  updatedAt: string;
+}
+
+const CATALOGUE_FIELDS = new Set<CatalogueField>([
+  "model", "manufacturer", "productCode", "width", "depth", "height",
+  "airflow", "staticPressure", "power", "voltage",
+]);
+
+/** Validate imported/shared mapping profiles before they can affect catalogue parsing. */
+export function parseCatalogueMappingProfile(value: unknown): CatalogueMappingProfile {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Mapping profile must be a JSON object.");
+  }
+  const input = value as Record<string, unknown>;
+  if (input.schemaVersion !== 1) throw new Error("Unsupported mapping profile schema version.");
+  const name = typeof input.name === "string" ? input.name.trim() : "";
+  if (!name || name.length > 120) throw new Error("Mapping profile name must contain 1–120 characters.");
+  if (!input.mappings || typeof input.mappings !== "object" || Array.isArray(input.mappings)) {
+    throw new Error("Mapping profile must contain a mappings object.");
+  }
+  const mappings: CatalogueMappingOverrides = {};
+  for (const [header, field] of Object.entries(input.mappings as Record<string, unknown>)) {
+    if (!header.trim() || header.length > 200) throw new Error("Mapping profile contains an invalid source heading.");
+    if (field !== null && (typeof field !== "string" || !CATALOGUE_FIELDS.has(field as CatalogueField))) {
+      throw new Error(`Mapping profile contains an unsupported target for "${header}".`);
+    }
+    mappings[header] = field as CatalogueField | null;
+  }
+  if (Object.keys(mappings).length > 250) throw new Error("Mapping profile exceeds the 250-column safety limit.");
+  const manufacturer = typeof input.manufacturer === "string" ? input.manufacturer.trim().slice(0, 120) : undefined;
+  return {
+    schemaVersion: 1,
+    name,
+    manufacturer: manufacturer || undefined,
+    mappings,
+    updatedAt: typeof input.updatedAt === "string" && !Number.isNaN(Date.parse(input.updatedAt))
+      ? input.updatedAt : new Date(0).toISOString(),
+  };
+}
+
 
 const HEADER_ALIASES: Record<string, CatalogueField> = {
   model: "model", modelnumber: "model", modelno: "model", type: "model", typename: "model",
