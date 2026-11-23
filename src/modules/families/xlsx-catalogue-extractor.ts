@@ -4,7 +4,7 @@
  * Values are read from cached OOXML cell data; formulas are not recalculated.
  */
 import JSZip from "jszip";
-import { mapCatalogueHeader, type CatalogueRow } from "./catalogue-intake";
+import { mapCatalogueHeader, type CatalogueMappingOverrides, type CatalogueRow } from "./catalogue-intake";
 
 const MAX_BYTES = 40 * 1024 * 1024;
 const MAX_ROWS = 10_000;
@@ -78,6 +78,8 @@ async function openWorkbook(file: File | Blob) {
 }
 
 export interface XlsxCatalogueResult {
+  /** Original worksheet headings, retained for the shared mapping editor/profile workflow. */
+  headers: string[];
   rows: CatalogueRow[];
   sheetName: string;
   warnings: string[];
@@ -89,7 +91,7 @@ export async function listXlsxWorksheets(file: File | Blob): Promise<string[]> {
 }
 
 /** Extract product rows from the explicitly selected worksheet. */
-export async function extractXlsxCatalogue(file: File | Blob, requestedSheetName?: string): Promise<XlsxCatalogueResult> {
+export async function extractXlsxCatalogue(file: File | Blob, requestedSheetName?: string, mappingOverrides: CatalogueMappingOverrides = {}): Promise<XlsxCatalogueResult> {
   const { zip, sheets } = await openWorkbook(file);
   const sheet = requestedSheetName ? sheets.find((item) => item.name === requestedSheetName) : sheets[0];
   if (!sheet) throw new Error("The selected worksheet was not found in this workbook. Select a worksheet again.");
@@ -115,11 +117,20 @@ export async function extractXlsxCatalogue(file: File | Blob, requestedSheetName
   }
   const headerIndex = matrix.findIndex((row) => row.some((value) => mapCatalogueHeader(value ?? "") === "model"));
   if (headerIndex < 0) throw new Error("No Model, Model Number, Type or Type Name header was found in worksheet " + sheet.name + ".");
-  const headers = matrix[headerIndex].map((value) => mapCatalogueHeader(value ?? ""));
+  const sourceHeaders = matrix[headerIndex].map((value) => String(value ?? "").trim());
+  const headers = sourceHeaders.map((header) => Object.prototype.hasOwnProperty.call(mappingOverrides, header)
+    ? mappingOverrides[header] ?? undefined : mapCatalogueHeader(header));
   const modelIndex = headers.indexOf("model");
   const warnings: string[] = [];
-  const duplicateFields = headers.filter((key, index) => Boolean(key) && headers.indexOf(key) !== index);
-  if (duplicateFields.length) warnings.push("Duplicate mapped columns detected (" + [...new Set(duplicateFields)].join(", ") + "); the first matching column is used.");
+  const indexesByField = new Map<string, number[]>();
+  headers.forEach((key, index) => { if (key) indexesByField.set(key, [...(indexesByField.get(key) ?? []), index]); });
+  const ambiguousIndexes = new Set<number>();
+  for (const [field, indexes] of indexesByField) {
+    if (indexes.length > 1) {
+      indexes.forEach((index) => ambiguousIndexes.add(index));
+      warnings.push("Multiple worksheet columns map to \"" + field + "\": " + indexes.map((index) => sourceHeaders[index]).join(", ") + ". Resolve the mapping before family creation.");
+    }
+  }
   const rows: CatalogueRow[] = [];
   for (let index = headerIndex + 1; index < matrix.length; index++) {
     const cells = matrix[index];
@@ -127,7 +138,7 @@ export async function extractXlsxCatalogue(file: File | Blob, requestedSheetName
     if (!model) continue;
     const item: CatalogueRow = { model, sourceSheet: sheet.name, sourceRow: sourceRows[index] };
     headers.forEach((key, column) => {
-      if (!key || key === "model") return;
+      if (ambiguousIndexes.has(column) || key === "model") return;
       const raw = String(cells[column] ?? "").trim();
       if (!raw) return;
       if (["width", "depth", "height", "airflow", "staticPressure", "power", "voltage"].includes(key)) {
@@ -135,10 +146,11 @@ export async function extractXlsxCatalogue(file: File | Blob, requestedSheetName
         const numeric = Number(normalized);
         if (Number.isFinite(numeric) && numeric >= 0) (item as Record<string, string | number | undefined>)[key] = numeric;
         else warnings.push("Worksheet row " + sourceRows[index] + ": invalid numeric value in " + key + "; value omitted.");
-      } else (item as Record<string, string | number | undefined>)[key] = raw;
+      } else if (key) (item as Record<string, string | number | undefined>)[key] = raw;
+      else Object.defineProperty(item, sourceHeaders[column], { value: raw, enumerable: true, configurable: true, writable: true });
     });
     rows.push(item);
   }
   if (!rows.length) throw new Error("No product rows were found below the catalogue header in worksheet " + sheet.name + ".");
-  return { rows, sheetName: sheet.name, warnings: [...new Set(warnings)], sourceRowCount: matrix.length - headerIndex - 1 };
+  return { headers: sourceHeaders, rows, sheetName: sheet.name, warnings: [...new Set(warnings)], sourceRowCount: matrix.length - headerIndex - 1 };
 }
