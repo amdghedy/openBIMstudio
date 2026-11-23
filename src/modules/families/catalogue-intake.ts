@@ -225,7 +225,7 @@ export function parseDelimitedCatalogue(source: string, delimiter?: string, mapp
         (item as Record<string, string | number | undefined>)[key] = normalizePerformanceValue(n, headers[c], key);
       } else (item as Record<string, string | number | undefined>)[key] = raw;
     }
-    if (Object.keys(rawNumericValues).length) Object.defineProperty(item, CATALOGUE_RAW_VALUES, { value: rawNumericValues });
+    if (Object.keys(rawNumericValues).length) Object.defineProperty(item, CATALOGUE_RAW_VALUES, { value: rawNumericValues, enumerable: true });
     rows.push(item);
   }
   return { headers, rows, errors };
