@@ -48,6 +48,7 @@ assert.ok(invalid.errors.some((e) => e.includes("Model")));
 
 const ambiguous = parseDelimitedCatalogue("Model,Width,Overall Width,Depth,Height\\nAHU-01,1200,1250,800,650");
 assert.ok(ambiguous.errors.some((e) => e.includes('Multiple columns map to "width"')));
+assert.equal(ambiguous.rows[0].width, undefined, "ambiguous values must not silently overwrite one another");
 
 const def = buildCatalogueFamilyDefinition(parsed.rows, { name: "Acme Fan", dimensionUnit: "mm" });
 assert.equal(def.types.length, 2);
