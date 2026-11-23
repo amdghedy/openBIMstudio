@@ -2,7 +2,7 @@
 
 ## Current delivery status
 
-The current experimental delivery adds a BIM Family Generator launcher and local catalogue intake workflow integrated with the existing project-scoped family service.
+The current experimental delivery adds a BIM Family Generator launcher and local catalogue intake workflow integrated with the existing project-scoped family service.\n\n**Status update (2026-11-23):** XLSX imports now retain original worksheet headings and participate in the same interactive mapping review and browser-local mapping profile save/apply workflow as CSV/TSV. XLSX duplicate canonical mappings are blocked instead of silently using the first source column. Code and regression assertions are committed to the feature branch; tests have not yet been executed.
 
 **Currently implemented**
 - XLSX (selectable worksheet), CSV, TSV, TXT-delimited and JSON product catalogue intake (40 MB per-file limit).
@@ -14,7 +14,7 @@ The current experimental delivery adds a BIM Family Generator launcher and local
 - Interactive CSV/TSV column mapping review with explainable high/medium/no-match suggestions, manual canonical-field overrides, and an option to preserve a source column without mapping it.
 - Reusable mapping profiles stored locally in the browser, with manufacturer labels, validated versioned JSON import/export, and explicit apply/review before parsing. Profiles can be shared between users through exported JSON; browser-local saved profiles are not automatically synchronized across devices or projects.
 - Imported profile validation limits profile size and column count, rejects unsupported fields/schema versions, and isolates invalid saved entries. Unmapped source headings are stored as own data properties so hostile names such as `__proto__` cannot mutate object prototypes.
-- Ambiguous duplicate canonical mappings are excluded from parameter assignment until the user resolves the conflict; the importer does not silently choose the first or last matching column. The current interactive mapping editor is available for CSV/TSV; XLSX and PDF still use their extraction adapters and need a later shared mapping-review integration.
+- Ambiguous duplicate canonical mappings are excluded from parameter assignment until the user resolves the conflict; the importer does not silently choose the first or last matching column. The interactive mapping editor and saved-profile application now support CSV/TSV and XLSX. PDF extraction still does not expose a complete original-header mapping model and remains outside the shared mapping editor/profile flow.
 - Product rows and model variants review.
 - Explicit dimension unit selection (mm, cm, m) and conversion to metres for the current family geometry contract.
 - Header-unit normalization for airflow (m³/s and L/s to m³/h), static pressure (kPa to Pa), power (W to kW) and voltage (kV to V).
