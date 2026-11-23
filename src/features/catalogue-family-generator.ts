@@ -6,7 +6,7 @@
  * existing project-scoped family service. CAD extraction remains unavailable.
  */
 import { ctx } from "../core/context";
-import { buildCatalogueFamilyDefinition, parseDelimitedCatalogue, validateCatalogueRows, type CatalogueRow } from "../modules/families/catalogue-intake";
+import { buildCatalogueFamilyDefinition, parseDelimitedCatalogue, suggestCatalogueMappings, validateCatalogueRows, type CatalogueField, type CatalogueMappingOverrides, type CatalogueRow } from "../modules/families/catalogue-intake";
 import { extractPdfCatalogue } from "../modules/families/pdf-catalogue-extractor";
 import { extractXlsxCatalogue, listXlsxWorksheets } from "../modules/families/xlsx-catalogue-extractor";
 import { z } from "zod";
@@ -23,6 +23,10 @@ let launch: HTMLButtonElement | null = null;
 let rows: CatalogueRow[] = [];
 let sourceName = "";
 let pendingXlsxFile: File | null = null;
+let delimitedSourceText = "";
+let delimitedSourceDelimiter: string | undefined;
+let delimitedHeaders: string[] = [];
+let mappingOverrides: CatalogueMappingOverrides = {};
 let styleInstalled = false;
 
 function familyService(): Any {
@@ -59,12 +63,47 @@ function installStyle(): void {
 #obs-catalogue-family th,#obs-catalogue-family td { text-align:left; padding:7px 9px; border-bottom:1px solid #303746; white-space:nowrap; }
 #obs-catalogue-family th { color:#9caec2; position:sticky; top:0; background:#191f29; }
 #obs-catalogue-family .cfg-muted { color:#91a0b3; font-size:12px; }
+#obs-catalogue-family .cfg-map-grid { display:grid;grid-template-columns:minmax(150px,1fr) minmax(170px,1fr) minmax(160px,1.2fr);gap:8px;align-items:center;margin:7px 0; }
+#obs-catalogue-family .cfg-map-grid select { padding:7px; }
+#obs-catalogue-family .cfg-map-grid small { color:#91a0b3;font-size:10px; }
 #obs-catalogue-family [data-status] { padding:10px 12px; border-radius:8px; background:#202a37; color:#cbd5e1; }
 #obs-catalogue-family [data-status][data-kind="warn"] { background:#3a2b19; color:#fbbf24; }
 #obs-catalogue-family [data-status][data-kind="success"] { background:#12372f; color:#6ee7b7; }
 @media(max-width:650px){#obs-catalogue-family{inset:2vh 2vw;width:96vw}#obs-catalogue-family .cfg-grid{grid-template-columns:1fr}}
   `;
   document.head.appendChild(style);
+}
+const MAPPING_FIELDS: Array<[CatalogueField, string]> = [
+  ["model", "Model / Type identifier"], ["manufacturer", "Manufacturer / Brand"],
+  ["productCode", "Product code / SKU"], ["width", "Width"], ["depth", "Depth / Length"],
+  ["height", "Height"], ["airflow", "Airflow"], ["staticPressure", "Static pressure"],
+  ["power", "Power"], ["voltage", "Voltage"],
+];
+function renderMappingReview(): void {
+  const card = panel?.querySelector<HTMLElement>("[data-mapping]");
+  const host = panel?.querySelector<HTMLElement>("[data-mapping-rows]");
+  if (!card || !host) return;
+  if (!delimitedHeaders.length) { card.hidden = true; host.innerHTML = ""; return; }
+  card.hidden = false;
+  const suggestions = suggestCatalogueMappings(delimitedHeaders);
+  host.innerHTML = suggestions.map((suggestion) => {
+    const hasOverride = Object.prototype.hasOwnProperty.call(mappingOverrides, suggestion.sourceHeader);
+    const current = hasOverride ? (mappingOverrides[suggestion.sourceHeader] ?? "__ignore__") : "__auto__";
+    const suggestionText = suggestion.suggestedField
+      ? suggestion.suggestedField + " · " + suggestion.confidence + " confidence"
+      : "No reliable match";
+    return `<div class="cfg-map-grid"><span title="${escapeHtml(suggestion.sourceHeader)}">${escapeHtml(suggestion.sourceHeader)}</span><label><select data-mapping-header="${escapeHtml(suggestion.sourceHeader)}"><option value="__auto__" ${current === "__auto__" ? "selected" : ""}>Automatic mapping</option><option value="__ignore__" ${current === "__ignore__" ? "selected" : ""}>Keep as source field</option>${MAPPING_FIELDS.map(([field,label]) => `<option value="${field}" ${current === field ? "selected" : ""}>${label}</option>`).join("")}</select></label><small>${escapeHtml(suggestion.reason)} · ${escapeHtml(suggestionText)}</small></div>`;
+  }).join("");
+}
+function reparseDelimitedSource(): void {
+  if (!delimitedSourceText) return;
+  const parsed = parseDelimitedCatalogue(delimitedSourceText, delimitedSourceDelimiter, mappingOverrides);
+  rows = parsed.rows;
+  renderRows();
+  const issues = [...parsed.errors, ...validateCatalogueRows(rows)];
+  const qa = panel?.querySelector<HTMLElement>("[data-qa]");
+  if (qa) qa.textContent = issues.length ? issues.join(" ") : `Mapped and loaded ${rows.length} product type(s). Verify all source values and units before family creation.`;
+  status(`Catalogue remapped: ${rows.length} product type(s); ${parsed.errors.length} import warning(s).`, parsed.errors.length ? "warn" : "success");
 }
 function renderRows(): void {
   const host = panel?.querySelector<HTMLElement>("[data-rows]");
@@ -85,6 +124,7 @@ function buildPanel(): void {
     <header class="cfg-head"><span aria-hidden="true">▦</span><strong>BIM Family Generator</strong><span class="cfg-muted">Catalogue → Parametric BIM</span><button type="button" data-close aria-label="Close">✕</button></header>
     <div class="cfg-body">
       <div class="cfg-card"><strong>01 · Import catalogue</strong><p class="cfg-muted">Local XLSX, CSV, TSV, TXT, JSON and PDF text extraction. Scanned PDF pages can use your configured local Ollama vision model; no cloud OCR is used.</p><label>Catalogue file<input data-file type="file" accept=".xlsx,.csv,.tsv,.txt,.json,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/tab-separated-values,application/json,text/plain,application/pdf"></label><label style="display:flex;grid-template-columns:auto 1fr;align-items:center;gap:8px"><input data-ocr type="checkbox" style="width:auto"> Run local vision OCR on scanned PDF pages (requires a vision-capable Ollama model)</label></div>
+      <div class="cfg-card" data-mapping hidden><strong>03 · Review column mappings</strong><p class="cfg-muted">Auto-recognized headings are mapped automatically. Suggested matches are advisory only; confirm them manually. Ambiguous mappings block affected fields until resolved.</p><div data-mapping-rows></div></div>
       <div class="cfg-card" data-xlsx-selection hidden><strong>Choose worksheet</strong><div class="cfg-grid"><label>Worksheet<select data-sheet></select></label><div style="display:flex;align-items:end"><button type="button" data-import-sheet class="primary">Import selected worksheet</button></div></div><p class="cfg-muted">Choose the worksheet containing the manufacturer product schedule.</p></div>
       <div class="cfg-card"><strong>02 · Family definition</strong><div class="cfg-grid">
         <label>Family name<input data-name value="Manufacturer Equipment"></label>
@@ -92,15 +132,15 @@ function buildPanel(): void {
         <label>Revit / IFC category<select data-category><option value="equipment">Mechanical Equipment</option><option value="generic">Generic Model</option><option value="fitting">Fitting</option></select></label>
         <label>Dimension unit<select data-unit><option value="mm">Millimetres (mm)</option><option value="cm">Centimetres (cm)</option><option value="m">Metres (m)</option></select></label>
       </div></div>
-      <div class="cfg-card"><strong>03 · Extracted product types</strong><div data-rows><p class="cfg-muted">No product rows loaded yet.</p></div></div>
-      <div class="cfg-card"><strong>04 · Quality review</strong><div data-qa class="cfg-muted">Import a catalogue to run completeness checks.</div></div>
+      <div class="cfg-card"><strong>04 · Extracted product types</strong><div data-rows><p class="cfg-muted">No product rows loaded yet.</p></div></div>
+      <div class="cfg-card"><strong>05 · Quality review</strong><div data-qa class="cfg-muted">Import a catalogue to run completeness checks.</div></div>
       <div data-status role="status" aria-live="polite">Ready. Files are processed locally in this browser.</div>
       <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button type="button" data-clear>Clear</button><button type="button" class="primary" data-create>Create parametric family</button></div>
     </div>`;
   document.body.appendChild(root);
   panel = root;
   root.querySelector("[data-close]")?.addEventListener("click", closeCatalogueFamilyGenerator);
-  root.querySelector("[data-clear]")?.addEventListener("click", () => { rows = []; sourceName = ""; pendingXlsxFile = null; const chooser = root.querySelector<HTMLElement>("[data-xlsx-selection]"); if (chooser) chooser.hidden = true; renderRows(); const qa = root.querySelector<HTMLElement>("[data-qa]"); if (qa) qa.textContent = "Import a catalogue to run completeness checks."; status("Catalogue cleared."); });
+  root.querySelector("[data-clear]")?.addEventListener("click", () => { rows = []; sourceName = ""; pendingXlsxFile = null; delimitedSourceText = ""; delimitedHeaders = []; mappingOverrides = {}; renderMappingReview(); const chooser = root.querySelector<HTMLElement>("[data-xlsx-selection]"); if (chooser) chooser.hidden = true; renderRows(); const qa = root.querySelector<HTMLElement>("[data-qa]"); if (qa) qa.textContent = "Import a catalogue to run completeness checks."; status("Catalogue cleared."); });
   root.querySelector("[data-file]")?.addEventListener("change", (event) => {
     const file = (event.target as HTMLInputElement).files?.[0];
     if (file?.name.toLowerCase().endsWith(".xlsx")) void prepareXlsxWorkbook(file);
@@ -109,6 +149,15 @@ function buildPanel(): void {
   root.querySelector("[data-import-sheet]")?.addEventListener("click", () => {
     const sheetName = root.querySelector<HTMLSelectElement>("[data-sheet]")?.value;
     if (pendingXlsxFile && sheetName) void readCatalogue(pendingXlsxFile, sheetName);
+  });
+  root.querySelector("[data-mapping-rows]")?.addEventListener("change", (event) => {
+    const target = event.target as HTMLSelectElement;
+    const header = target.dataset.mappingHeader;
+    if (!header) return;
+    if (target.value === "__auto__") delete mappingOverrides[header];
+    else if (target.value === "__ignore__") mappingOverrides[header] = null;
+    else mappingOverrides[header] = target.value as CatalogueField;
+    reparseDelimitedSource();
   });
   root.querySelector("[data-create]")?.addEventListener("click", createFamily);
 }
@@ -167,6 +216,10 @@ async function readCatalogue(file?: File, selectedSheet?: string): Promise<void>
       return;
     }
     const raw = await file.text();
+    delimitedSourceText = "";
+    delimitedHeaders = [];
+    mappingOverrides = {};
+    renderMappingReview();
     if (ext === "json") {
       const loaded = safeLoad("catalogue JSON", raw, CatalogueJsonSchema, 40 * 1024 * 1024,
         { maxDepth: 32, maxNodes: 250_000 });
