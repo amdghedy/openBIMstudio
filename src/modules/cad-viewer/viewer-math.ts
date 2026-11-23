@@ -755,6 +755,32 @@ export function buildIndex(entities: DxfEntity[], bounds: BBox, targetCells = 25
   return idx;
 }
 
+/**
+ * Incrementally index entities appended at the end of the list (`entities[from..]`), O(added) instead of
+ * O(total). Returns false — leaving the index untouched — when any new entity falls outside the index frame
+ * (the caller then rebuilds). Deletions/modifications shift indices and always need a rebuild.
+ */
+export function indexAppend(idx: SpatialIndex, entities: DxfEntity[], from: number): boolean {
+  if (idx.boxes.length !== from) return false;
+  const maxX = idx.minX + (idx.cols - 1) * idx.cell, maxY = idx.minY + (idx.rows - 1) * idx.cell;
+  const added: { i: number; b: BBox }[] = [];
+  for (let i = from; i < entities.length; i++) {
+    const b = entityBBox(entities[i]!);
+    if (!(b.minX >= idx.minX && b.minY >= idx.minY && b.maxX <= maxX && b.maxY <= maxY)) return false;
+    added.push({ i, b });
+  }
+  for (const { i, b } of added) {
+    const e = entities[i]!;
+    idx.boxes[i] = b;
+    if (e.type === "RAY" || e.type === "XLINE") idx.infinite.push(i);
+    const c0 = Math.floor((b.minX - idx.minX) / idx.cell), c1 = Math.floor((b.maxX - idx.minX) / idx.cell);
+    const r0 = Math.floor((b.minY - idx.minY) / idx.cell), r1 = Math.floor((b.maxY - idx.minY) / idx.cell);
+    if ((c1 - c0 + 1) * (r1 - r0 + 1) > 64) { idx.big.push(i); continue; }
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const k = r * idx.cols + c; const a2 = idx.cells.get(k); if (a2) a2.push(i); else idx.cells.set(k, [i]); }
+  }
+  return true;
+}
+
 /** Entity indices whose bounding box could be within `radius` of (x, y). */
 export function queryIndex(idx: SpatialIndex, x: number, y: number, radius: number): number[] {
   const infinite = new Set(idx.infinite);
