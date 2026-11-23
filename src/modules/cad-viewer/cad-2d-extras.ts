@@ -135,3 +135,15 @@ export function verticesToPoints(entities: DxfEntity[], indices: number[], layer
   }
   return out;
 }
+
+/**
+ * Entities the reader could not model (DXF/DWG types outside the supported set). They are NOT written back, so a
+ * save drops them; this describes that loss ("3 MLINE, 2 3DSOLID") or returns "" when nothing was dropped.
+ */
+export function describeUnsavedSkipped(skipped: Record<string, number> | undefined): string {
+  const parts = Object.entries(skipped ?? {})
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    .map(([t, n]) => `${n} ${t}`);
+  return parts.join(", ");
+}
