@@ -6,7 +6,7 @@
  * model for OCR. No PDF or rendered page is sent to a cloud provider.
  */
 import { assertFileAllowed } from "../../core/file-guard";
-import { mapCatalogueHeader, type CatalogueMappingOverrides, type CatalogueRow } from "./catalogue-intake";
+import { mapCatalogueHeader, type CatalogueField, type CatalogueMappingOverrides, type CatalogueRow } from "./catalogue-intake";
 
 export interface PdfCatalogueOptions {
   /** Enable OCR only for pages without selectable text. Requires local Ollama + a vision model. */
@@ -99,7 +99,7 @@ function groupTextItems(items: any[]): PdfTextLine[] {
 function parseTableRows(lines: PdfTextLine[], pageNumber: number, mappingOverrides: CatalogueMappingOverrides = {}): { rows: CatalogueRow[]; headers: string[] } {
   const rows: CatalogueRow[] = [];
   let header: PdfTextLine | null = null;
-  let columns: Array<{ x: number; key: string; sourceHeader: string }> = [];
+  let columns: Array<{ x: number; key: CatalogueField | null; sourceHeader: string }> = [];
   for (const line of lines) {
     const recognized: Array<{ x: number; key: string; sourceHeader: string }> = [];
     for (let index = 0; index < line.tokens.length; index++) {
@@ -110,14 +110,14 @@ function parseTableRows(lines: PdfTextLine[], pageNumber: number, mappingOverrid
       const combined = hasCombinedOverride ? mappingOverrides[sourceHeader] ?? undefined : mapCatalogueHeader(sourceHeader);
       if (combined) {
         recognized.push({ x: token.x, key: combined, sourceHeader });
-        if (next && (mapCatalogueHeader(sourceHeader) || override)) index++;
+        if (next && (mapCatalogueHeader(sourceHeader) || Object.prototype.hasOwnProperty.call(mappingOverrides, sourceHeader))) index++;
         continue;
       }
       const hasSingleOverride = Object.prototype.hasOwnProperty.call(mappingOverrides, token.text);
       const key = hasSingleOverride ? mappingOverrides[token.text] ?? undefined : mapCatalogueHeader(token.text);
-      if (key) recognized.push({ x: token.x, key, sourceHeader: token.text });
+      recognized.push({ x: token.x, key: key ?? null, sourceHeader: token.text });
     }
-    if (recognized.some((entry) => entry.key === "model") && recognized.length >= 2) {
+    if (recognized.some((entry) => entry.key === "model") && recognized.filter((entry) => entry.key).length >= 2) {
       header = line;
       columns = recognized.sort((a, b) => a.x - b.x);
       break;
@@ -126,7 +126,7 @@ function parseTableRows(lines: PdfTextLine[], pageNumber: number, mappingOverrid
   if (!header || columns.length < 2) return { rows, headers: [] };
   const headers = columns.map((column) => column.sourceHeader);
   const mappedCounts = new Map<string, number>();
-  for (const column of columns) mappedCounts.set(column.key, (mappedCounts.get(column.key) ?? 0) + 1);
+  for (const column of columns) if (column.key) mappedCounts.set(column.key, (mappedCounts.get(column.key) ?? 0) + 1);
   const ambiguous = new Set([...mappedCounts].filter(([, count]) => count > 1).map(([key]) => key));
   const boundaries = columns.map((column, index) => ({
     ...column,
@@ -152,10 +152,12 @@ function parseTableRows(lines: PdfTextLine[], pageNumber: number, mappingOverrid
     if (!model || /^(model|type|model no\\.?|model number)$/i.test(model)) continue;
     const item: CatalogueRow = { model, sourcePage: pageNumber };
     columns.forEach((column, index) => {
-      if (column.key === "model" || ambiguous.has(column.key)) return;
+      if (column.key === "model" || (column.key && ambiguous.has(column.key))) return;
       const value = (cells.get(index) ?? []).join(" ").trim();
       if (!value) return;
-      if (["width", "depth", "height", "airflow", "staticPressure", "power", "voltage"].includes(column.key)) {
+      if (!column.key) {
+        Object.defineProperty(item, column.sourceHeader, { value, enumerable: true, configurable: true, writable: true });
+      } else if (["width", "depth", "height", "airflow", "staticPressure", "power", "voltage"].includes(column.key)) {
         const n = normalizedNumber(value);
         if (n !== undefined) (item as Record<string, string | number | undefined>)[column.key] = n;
       } else Object.defineProperty(item, column.key, { value, enumerable: true, configurable: true, writable: true });
