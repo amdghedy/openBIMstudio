@@ -239,6 +239,10 @@ export interface CatalogueFamilyOptions {
   category?: FamilyDefinition["category"];
   dimensionUnit?: "mm" | "cm" | "m";
   ifcEntity?: string;
+  /** Apply a consistent default scope to generated catalogue parameters. */
+  parameterScope?: "type" | "instance";
+  /** Optional pre-existing shared-parameter UUIDs keyed by generated parameter name. */
+  parameterGuids?: Record<string, string>;
 }
 
 /** Convert reviewed catalogue rows into the platform's existing family schema. */
@@ -266,6 +270,20 @@ export function buildCatalogueFamilyDefinition(
     { name: "Power", type: "number", scope: "type", default: first.power ?? 0, editable: true, unit: "kW", group: "Electrical" },
     { name: "Voltage", type: "number", scope: "type", default: first.voltage ?? 0, editable: true, unit: "V", group: "Electrical" },
   ];
+  const usedGuids = new Set<string>();
+  for (const parameter of parameters) {
+    if (options.parameterScope) parameter.scope = options.parameterScope;
+    const guid = options.parameterGuids?.[parameter.name]?.trim();
+    if (guid) {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(guid)) {
+        throw new Error(`Shared parameter GUID for "${parameter.name}" is not a valid RFC 4122 UUID.`);
+      }
+      const normalized = guid.toLowerCase();
+      if (usedGuids.has(normalized)) throw new Error(`Shared parameter GUID "${guid}" is assigned more than once.`);
+      usedGuids.add(normalized);
+      parameter.guid = normalized;
+    }
+  }
   const types: FamilyType[] = rows.map((r, index) => ({
     id: `catalogue-type-${index + 1}`,
     name: r.model.trim(),
