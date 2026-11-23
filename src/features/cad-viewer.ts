@@ -4151,12 +4151,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   /** Batched add: pushes all entities with a single undo action. */
   function addEntities(list: DxfEntity[]): void {
     if (!list.length) return;
+    const firstNew = ents.length;
     for (const e of list) ents.push(e);
     if (modelEnts !== ents) for (const e of list) modelEnts.push(e);
     let b: M.BBox | null = null;
     for (const e of list) b = b ? M.unionBBox(b, M.entityBBox(e)) : M.entityBBox(e);
     if (b) bounds = M.unionBBox(bounds ?? b, b);
-    idx = M.buildIndex(ents, bounds ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 });
+    // Appends go into the existing index (O(added)); a full rebuild only when something leaves its frame.
+    if (!(idx && M.indexAppend(idx, ents, firstNew))) idx = M.buildIndex(ents, bounds ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 });
     pushUndoAct({ type: "add", entities: list });
     markDirty();
     redoStack.length = 0;
