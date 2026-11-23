@@ -6,7 +6,7 @@
  * existing project-scoped family service. CAD extraction remains unavailable.
  */
 import { ctx } from "../core/context";
-import { buildCatalogueFamilyDefinition, mapCatalogueHeader, parseCatalogueMappingProfile, parseDelimitedCatalogue, suggestCatalogueMappings, validateCatalogueRows, type CatalogueField, type CatalogueMappingOverrides, type CatalogueMappingProfile, type CatalogueRow } from "../modules/families/catalogue-intake";
+import { buildCatalogueFamilyDefinition, mapCatalogueHeader, parseCatalogueMappingProfile, parseDelimitedCatalogue, suggestCatalogueMappings, validateCatalogueRows, normalizeCatalogueRowsWithUnits, type CatalogueColumnUnitOverrides, type CatalogueField, type CatalogueMappingOverrides, type CatalogueMappingProfile, type CatalogueRow } from "../modules/families/catalogue-intake";
 import { extractPdfCatalogue } from "../modules/families/pdf-catalogue-extractor";
 import { extractXlsxCatalogue, listXlsxWorksheets } from "../modules/families/xlsx-catalogue-extractor";
 import { z } from "zod";
@@ -240,7 +240,7 @@ function buildPanel(): void {
         <label>Manufacturer<input data-manufacturer placeholder="Manufacturer name"></label>
         <label>Revit / IFC category<select data-category><option value="equipment">Mechanical Equipment</option><option value="generic">Generic Model</option><option value="fitting">Fitting</option></select></label>
         <label>Dimension unit<select data-unit><option value="mm">Millimetres (mm)</option><option value="cm">Centimetres (cm)</option><option value="m">Metres (m)</option></select></label>
-      </div><label>Parameter scope overrides (optional JSON object; default is type scope)<textarea data-parameter-scopes rows="2" placeholder='{"Manufacturer":"instance"}'></textarea><label>Shared parameter GUIDs (optional JSON object: parameter name → existing UUID)<textarea data-parameter-guids rows="3" placeholder='{"Width":"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"}'></textarea><p class="cfg-muted">Only enter GUIDs issued by your approved shared-parameter standard. Blank values remain platform-local parameters; GUIDs are validated and duplicates are blocked.</p></div>
+      </div><label>Engineering source units per mapped column (optional JSON object; target dimensions use the selected family unit; performance targets are m³/h, Pa, kW and V)<textarea data-column-units rows="3" placeholder='{"width":"in","airflow":"L/s","staticPressure":"kPa","power":"W","voltage":"kV"}'></textarea><p class="cfg-muted">Supported: dimensions mm/cm/m/in/ft; airflow m³/h, m³/s, L/s, L/min; pressure Pa/kPa/bar; power W/kW; voltage V/kV. Only set a unit when it differs from the importer's detected/default unit.</p><label>Parameter scope overrides (optional JSON object; default is type scope)<textarea data-parameter-scopes rows="2" placeholder='{"Manufacturer":"instance"}'></textarea><label>Shared parameter GUIDs (optional JSON object: parameter name → existing UUID)<textarea data-parameter-guids rows="3" placeholder='{"Width":"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"}'></textarea><p class="cfg-muted">Only enter GUIDs issued by your approved shared-parameter standard. Blank values remain platform-local parameters; GUIDs are validated and duplicates are blocked.</p></div>
       <div class="cfg-card"><strong>04 · Extracted product types</strong><div data-rows><p class="cfg-muted">No product rows loaded yet.</p></div></div>
       <div class="cfg-card"><strong>05 · Quality review</strong><div data-qa class="cfg-muted">Import a catalogue to run completeness checks.</div></div>
       <div data-status role="status" aria-live="polite">Ready. Files are processed locally in this browser.</div>
@@ -418,7 +418,19 @@ function createFamily(): void {
         return [key, value];
       }));
     }
-    const definition = buildCatalogueFamilyDefinition(reviewedRows, { name, category, dimensionUnit: unit, parameterScopes, parameterGuids });
+    const unitText = panel?.querySelector<HTMLTextAreaElement>("[data-column-units]")?.value.trim() ?? "";
+    let columnUnits: CatalogueColumnUnitOverrides = {};
+    if (unitText) {
+      const parsedUnits: unknown = JSON.parse(unitText);
+      if (!parsedUnits || typeof parsedUnits !== "object" || Array.isArray(parsedUnits)) throw new Error("Engineering unit overrides must be a JSON object keyed by canonical mapped column.");
+      const allowed = new Set(["width", "depth", "height", "airflow", "staticPressure", "power", "voltage"]);
+      for (const [key, value] of Object.entries(parsedUnits as Record<string, unknown>)) {
+        if (!allowed.has(key) || typeof value !== "string") throw new Error("Invalid engineering unit override for " + key + ".");
+        columnUnits[key as keyof CatalogueColumnUnitOverrides] = value;
+      }
+    }
+    const normalizedRows = normalizeCatalogueRowsWithUnits(reviewedRows, columnUnits, unit);
+    const definition = buildCatalogueFamilyDefinition(normalizedRows, { name, category, dimensionUnit: unit, parameterScopes, parameterGuids });
     const family = svc.create(definition);
     if (!family?.id) throw new Error("Family service did not return a saved family ID.");
     status(`Created "${family.name}" with ${family.types.length} type(s) in the existing project family library. Geometry is currently a dimension-driven bounding-box template; detailed product geometry and native RFA export are later phases.`, "success");
