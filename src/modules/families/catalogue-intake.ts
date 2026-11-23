@@ -252,7 +252,7 @@ export function normalizeCatalogueRowsWithUnits(
     power: { kw: 1, w: 0.001 },
     voltage: { v: 1, kv: 1000 },
   };
-  const normalizedUnit = (value: string) => value.trim().toLowerCase().replace(/\\s+/g, "");
+  const normalizedUnit = (value: string) => value.trim().toLowerCase().replace(/\s+/g, "");
   return rows.map((row, rowIndex) => {
     const next: CatalogueRow = { ...row };
     for (const field of ["width", "depth", "height"] as const) {
@@ -270,9 +270,6 @@ export function normalizeCatalogueRowsWithUnits(
       if (factor === undefined) throw new Error(`Unsupported ${field} source unit "${sourceUnit}".`);
       next[field] = Number(next[field]) * factor;
     }
-    Object.defineProperty(next, "__unitNormalization", {
-      value: { ...units, dimensionTarget, row: rowIndex + 1 }, enumerable: true, configurable: true,
-    });
     return next;
   });
 }
