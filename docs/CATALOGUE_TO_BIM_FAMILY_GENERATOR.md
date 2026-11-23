@@ -14,7 +14,8 @@ The current experimental delivery adds a BIM Family Generator launcher and local
 - Product rows and model variants review.
 - Explicit dimension unit selection (mm, cm, m) and conversion to metres for the current family geometry contract.
 - Header-unit normalization for airflow (m³/s and L/s to m³/h), static pressure (kPa to Pa), power (W to kW) and voltage (kV to V).
-- Required-dimension completeness warnings.
+- Required positive width/depth/height validation; family creation is blocked while any product type has a missing or non-positive geometry dimension.
+- Duplicate model identifiers are flagged before family creation. PDF extraction preserves repeated model rows for review instead of silently discarding later rows.
 - Creation of a native OpenBIMstudio family definition using the existing family service, parameter schema, geometry engine and project persistence.
 - Type parameters for dimensions, manufacturer, product code, airflow, static pressure, power and voltage.
 - Explicit parametric box or cylinder geometry profiles when the catalogue provides a supported Geometry Profile / Product Geometry value; cylinder diameter is driven by Width and height by Height.
