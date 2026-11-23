@@ -124,6 +124,22 @@ check("checked-in summary.json matches regeneration", () => {
   assert.ok(existsSync(p), "missing checked-in report: summary.json");
   const checked = JSON.parse(readFileSync(p, "utf8"));
   const fresh = JSON.parse(JSON.stringify(summary));
+  // The web-ifc OOB abort message differs per Node runtime ("Aborted(). Build
+  // with -sASSERTIONS..." on 22, a V8 trap message on 24+). Canonicalize both
+  // sides to one label before comparing — the semantic fact is that the WASM
+  // reader aborted, not which wording the runtime used.
+  const canon = (node) => {
+    if (Array.isArray(node)) { node.forEach(canon); return node; }
+    if (node && typeof node === "object") {
+      if (node.opened === false && typeof node.error === "string"
+          && /memory access out of bounds|^Aborted\(\)/i.test(node.error)) {
+        node.error = "wasm-abort";
+      }
+      Object.values(node).forEach(canon);
+    }
+    return node;
+  };
+  canon(checked); canon(fresh);
   if (summary.webIfc.available) {
     assert.deepStrictEqual(checked, fresh, "summary.json drifted");
   } else {
