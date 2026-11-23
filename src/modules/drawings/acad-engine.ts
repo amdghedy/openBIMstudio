@@ -92,15 +92,93 @@ export async function acadEngineAvailable(): Promise<boolean> {
   return (await loadAcadEngine()) !== null;
 }
 
-/** Engine identity string for diagnostics ("acadrust bridge 0.1.0"). */
+/** Engine identity string for diagnostics, enriched with the wasm staleness
+ * attestation when the manifest is available (PE-12): the raw wasm identity
+ * plus rustSourceHash, builtAt and the wasm sha256, e.g.
+ * {"engine":"acadrust","bridge":"0.1.0","dwgRead":"failsafe",
+ *  "rustSourceHash":"…","builtAt":"…","wasmSha256":"…",
+ *  "manifestWasmSha256":"…","wasmMatchesManifest":true}.
+ * Falls back to the raw wasm identity when no manifest can be loaded
+ * (Node tests, offline) — never nulls the diagnostics because of it. */
 export async function acadEngineVersion(): Promise<string | null> {
   const inst = await loadAcadEngine();
   if (!inst) return null;
   try {
-    return readFrame(inst, inst.exports.obim_engine_version());
+    return engineIdentity(inst, await loadCadEngineManifest());
   } catch {
     return null;
   }
+}
+
+/** Where the wasm staleness manifest is served from (mirrors public/cad-engine/). */
+export const CAD_ENGINE_MANIFEST_URL = "/cad-engine/obim-cad-engine.manifest.json";
+
+/** The manifest attestation for the checked-in wasm (see scripts/generate-cad-engine-manifest.mjs). */
+export interface CadEngineManifest {
+  format: string;
+  wasmFile: string;
+  wasmSha256: string;
+  rustSourceHash: string;
+  bridgeVersion: string;
+  builtAt: string;
+}
+
+let manifestPromise: Promise<CadEngineManifest | null> | null = null;
+
+/**
+ * Best-effort load of the manifest attestation. Browser only: Node has no
+ * fetch base for a root-relative URL, so this returns null outside a browser
+ * (callers pass the manifest explicitly there). Never throws — a missing
+ * manifest must not break engine loading; it only means the identity string
+ * carries no source hash / build stamp.
+ */
+export function loadCadEngineManifest(): Promise<CadEngineManifest | null> {
+  if (!manifestPromise) {
+    manifestPromise = (async () => {
+      try {
+        if (typeof globalThis.location?.href !== "string") return null;
+        const res = await fetch(CAD_ENGINE_MANIFEST_URL, { cache: "no-cache" });
+        if (!res.ok) return null;
+        const m = (await res.json()) as CadEngineManifest;
+        if (typeof m?.rustSourceHash !== "string" || typeof m?.builtAt !== "string") return null;
+        return m;
+      } catch {
+        return null;
+      }
+    })();
+  }
+  return manifestPromise;
+}
+
+/**
+ * Enrich a raw wasm identity JSON string with the manifest attestation.
+ * `actualWasmSha256` is the sha256 of the wasm bytes actually loaded, when
+ * the caller computed it (Node tests do; the browser loader does not hash
+ * fetched bytes, so there it stays null = "not verified at runtime" and
+ * wasmSha256 reports the manifest's attested hash). Never throws: on any
+ * malformed input the raw identity is returned unchanged.
+ */
+export function enrichEngineIdentity(
+  rawIdentity: string,
+  manifest: CadEngineManifest | null,
+  actualWasmSha256?: string,
+): string {
+  if (!manifest) return rawIdentity;
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(rawIdentity) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return rawIdentity;
+  } catch {
+    return rawIdentity;
+  }
+  return JSON.stringify({
+    ...parsed,
+    rustSourceHash: manifest.rustSourceHash,
+    builtAt: manifest.builtAt,
+    wasmSha256: actualWasmSha256 ?? manifest.wasmSha256,
+    manifestWasmSha256: manifest.wasmSha256,
+    wasmMatchesManifest: actualWasmSha256 ? actualWasmSha256 === manifest.wasmSha256 : null,
+  });
 }
 
 /**
@@ -116,7 +194,7 @@ export async function loadAcadEngine(): Promise<AcadInstance | null> {
       // Older engine than this app expects (a cached copy from before a redeploy): fetch it again, bypassing every cache.
       const fresh = await instantiateEngine(await fetchEngineBytes(true));
       if (fresh && (engineIsCurrent(fresh) || !first)) return fresh;
-      if (first) console.warn(`[acad-engine] loaded engine lacks the expected capabilities even after a cache-busting reload (reports ${engineIdentity(first)}; need dwgRead=${REQUIRED_ENGINE_DWG_READ})`);
+      if (first) console.warn(`[acad-engine] loaded engine lacks the expected capabilities even after a cache-busting reload (reports ${engineIdentity(first, await loadCadEngineManifest())}; need dwgRead=${REQUIRED_ENGINE_DWG_READ})`);
       return first ?? fresh;
     })();
     instancePromise.catch(() => {
@@ -129,9 +207,19 @@ export async function loadAcadEngine(): Promise<AcadInstance | null> {
 /** The engine must report the capabilities this app relies on (DWG reads in failsafe mode). */
 export const REQUIRED_ENGINE_DWG_READ = "failsafe";
 
-/** The engine's self-reported identity JSON (for diagnostics), or why it could not be read. */
-export function engineIdentity(inst: AcadInstance): string {
-  try { return readFrame(inst, inst.exports.obim_engine_version()); } catch (e) { return `unreadable: ${(e as Error)?.message ?? e}`; }
+/**
+ * The engine's self-reported identity JSON (for diagnostics), or why it could
+ * not be read. With a manifest (and, when known, the sha256 of the wasm bytes
+ * actually loaded) the returned string is enriched with the PE-12 staleness
+ * attestation: rustSourceHash, builtAt, wasmSha256, manifestWasmSha256 and
+ * wasmMatchesManifest. Without a manifest the raw wasm identity is returned.
+ */
+export function engineIdentity(
+  inst: AcadInstance,
+  manifest?: CadEngineManifest | null,
+  actualWasmSha256?: string,
+): string {
+  try { return enrichEngineIdentity(readFrame(inst, inst.exports.obim_engine_version()), manifest ?? null, actualWasmSha256); } catch (e) { return `unreadable: ${(e as Error)?.message ?? e}`; }
 }
 
 function engineIsCurrent(inst: AcadInstance): boolean {
