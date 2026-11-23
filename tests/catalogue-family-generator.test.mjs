@@ -30,6 +30,9 @@ assert.equal(quoted.rows[0].description, "Pump, inline");
 const invalid = parseDelimitedCatalogue("Manufacturer,Width\nAcme,300");
 assert.ok(invalid.errors.some((e) => e.includes("Model")));
 
+const ambiguous = parseDelimitedCatalogue("Model,Width,Overall Width,Depth,Height\\nAHU-01,1200,1250,800,650");
+assert.ok(ambiguous.errors.some((e) => e.includes('Multiple columns map to "width"')));
+
 const def = buildCatalogueFamilyDefinition(parsed.rows, { name: "Acme Fan", dimensionUnit: "mm" });
 assert.equal(def.types.length, 2);
 assert.equal(def.types[1].name, "FAN-500");
