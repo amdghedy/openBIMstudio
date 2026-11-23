@@ -2,7 +2,9 @@
 
 ## Current delivery status
 
-The current experimental delivery adds a BIM Family Generator launcher and local catalogue intake workflow integrated with the existing project-scoped family service.\n\n**Status update (2026-11-23):** XLSX imports now retain original worksheet headings and participate in the same interactive mapping review and browser-local mapping profile save/apply workflow as CSV/TSV. XLSX duplicate canonical mappings are blocked instead of silently using the first source column. Code and regression assertions are committed to the feature branch; tests have not yet been executed.
+The current experimental delivery adds a BIM Family Generator launcher and local catalogue intake workflow integrated with the existing project-scoped family service.
+
+**Status update (2026-11-23):** CSV/TSV, XLSX and selectable-text PDF tables share the mapping review and browser-local mapping profile workflow. Per-column unit overrides, a row-level QA dashboard, and GUID registration with the shared-parameter manager are also implemented on this feature branch. Regression assertions have been added but have not yet been executed.
 
 **Currently implemented**
 - XLSX (selectable worksheet), CSV, TSV, TXT-delimited and JSON product catalogue intake (40 MB per-file limit).
@@ -11,11 +13,12 @@ The current experimental delivery adds a BIM Family Generator launcher and local
 - Image-only page detection and optional local OCR through the configured Ollama vision model (LLaVA, Qwen2.5-VL or another image-capable model); no cloud OCR path is used.
 - PDF page-count, file-size and extracted-text safety limits.
 - Quoted CSV fields and header aliases for common manufacturer catalogue columns.
-- Interactive CSV/TSV column mapping review with explainable high/medium/no-match suggestions, manual canonical-field overrides, and an option to preserve a source column without mapping it.
+- Interactive CSV/TSV/XLSX/selectable-text PDF column mapping review with explainable suggestions, manual canonical-field overrides, source-column exclusion and reusable browser-local mapping profiles.
 - Reusable mapping profiles stored locally in the browser, with manufacturer labels, validated versioned JSON import/export, and explicit apply/review before parsing. Profiles can be shared between users through exported JSON; browser-local saved profiles are not automatically synchronized across devices or projects.
 - Imported profile validation limits profile size and column count, rejects unsupported fields/schema versions, and isolates invalid saved entries. Unmapped source headings are stored as own data properties so hostile names such as `__proto__` cannot mutate object prototypes.
 - Ambiguous duplicate canonical mappings are excluded from parameter assignment until the user resolves the conflict; the importer does not silently choose the first or last matching column. The interactive mapping editor and saved-profile application support CSV/TSV, XLSX and selectable-text PDF table headings. PDF layout reconstruction remains heuristic; scanned OCR rows do not provide a complete source-column mapping model.
-- Product rows and model variants review.\n- Row-level QA dashboard with completeness percentage, blocking issue counts, import warnings, duplicate model checks, dimension validation, and source sheet/row or PDF page provenance.
+- Product rows and model variants review.
+- Row-level QA dashboard with completeness percentage, blocking issue counts, import warnings, duplicate model checks, dimension validation, and source sheet/row or PDF page provenance.
 - Explicit dimension unit selection (mm, cm, m) and conversion to metres for the current family geometry contract, plus optional per-column unit overrides before family creation.
 - Header-unit normalization for airflow (m³/s and L/s to m³/h), static pressure (kPa to Pa), power (W to kW) and voltage (kV to V). Explicit per-canonical-column source-unit overrides support dimensions (mm/cm/m/in/ft), airflow (m³/h, m³/s, L/s, L/min), pressure (Pa/kPa/bar), power (W/kW) and voltage (V/kV), with normalization before family creation.
 - Required positive width/depth/height validation; family creation is blocked while any product type has a missing or non-positive geometry dimension.
@@ -28,7 +31,8 @@ The current experimental delivery adds a BIM Family Generator launcher and local
 - Explicit catalogue MEP port mapping when the source provides port origin, axis, domain, shape, nominal size, flow direction and system classification; definitions are stored in the existing family connector schema and displayed in the catalogue review table.
 
 **Not implemented yet**
-- Team-shared mapping profile library with authenticated team/project authorization, versioning and conflict resolution. Current profiles remain browser-local with JSON import/export; the existing collaboration server identity model is not sufficient to safely expose a shared library.\n- High-fidelity OCR of all catalogue layouts; the current local vision path is experimental and requires a vision-capable Ollama model.
+- Team-shared mapping profile library with authenticated team/project authorization, versioning and conflict resolution. Current profiles remain browser-local with JSON import/export; the existing collaboration server identity model is not sufficient to safely expose a shared library.
+- High-fidelity OCR of all catalogue layouts; the current local vision path is experimental and requires a vision-capable Ollama model.
 - OCR of pages containing selectable text but nonstandard or unrecognized table structures.
 - Formula recalculation, macro-enabled XLSM and legacy XLS workbook parsing. XLSX imports visible worksheets only and reads cached formula results.
 - DWG/DXF/STEP/SAT geometry extraction.
@@ -66,11 +70,12 @@ XLSX, CSV/TSV and PDF table readers recognize model/model number/type, manufactu
 - OCR output is untrusted draft data. Source values, units, model identifiers and page evidence must be checked before family creation.
 - Native RFA generation requires a separate Windows Revit API adapter and a real Revit installation. Browser mesh export is not RFA export.
 
-## Next implementation milestones
+## Remaining implementation and verification milestones
 
-1. XLSX parser hardening for unusual OOXML layouts, date/number formats and merged headers.
-6. Improve PDF layout reconstruction for rotated tables, merged headers, multi-column brochures and engineering unit inference.
-7. Parameter mapping UI with per-column units and source confidence.
-8. Reuse the existing parametric feature tree for detailed product geometry templates.
-9. Extend connector lifecycle synchronization to external placement hosts and add manufacturer drawing evidence with guided parameter/port mapping.
-10. Revit 2020 adapter proof-of-concept, then version-specific adapters and reopen verification.
+1. Implement team-shared mapping profiles only after trustworthy per-user/team identity and project-role authorization are available.
+2. Execute the new catalogue, PDF, unit conversion, GUID and migration tests; resolve any failures.
+3. Add browser-level tests for the complete import → map → normalize → QA → create workflow.
+4. Verify Revit shared-parameter binding and TXT import/export in a real compatible authoring host.
+5. Harden XLSX parsing for unusual OOXML layouts, date/number formats and merged headers.
+6. Improve PDF reconstruction for rotated tables, merged headers and multi-column brochures.
+7. Reuse the parametric feature tree for detailed product geometry templates and verify connector lifecycle integration with external placement hosts.
