@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { parseDelimitedCatalogue, buildCatalogueFamilyDefinition, validateCatalogueRows, mapCatalogueHeader, suggestCatalogueMappings, parseCatalogueMappingProfile } from "../src/modules/families/catalogue-intake.ts";
+import { parseDelimitedCatalogue, buildCatalogueFamilyDefinition, validateCatalogueRows, mapCatalogueHeader, suggestCatalogueMappings, parseCatalogueMappingProfile, normalizeCatalogueRowsWithUnits } from "../src/modules/families/catalogue-intake.ts";
 
 assert.equal(mapCatalogueHeader("Overall Width (mm)"), "width");
 assert.equal(mapCatalogueHeader("Air Flow Rate (m3/h)"), "airflow");
@@ -57,6 +57,18 @@ assert.equal(converted.rows[0].power, 0.75);
 assert.equal(converted.rows[0].voltage, 400);
 const convertedM3s = parseDelimitedCatalogue("Model,Airflow (m3/s)\\nUNIT-02,1.2");
 assert.equal(convertedM3s.rows[0].airflow, 4320);
+const unitReviewed = normalizeCatalogueRowsWithUnits([
+  { model: "UNIT-OVERRIDE", width: 10, depth: 2, height: 3, airflow: 100, staticPressure: 2.5, power: 750, voltage: 0.4 },
+], { width: "in", depth: "ft", height: "cm", airflow: "L/s", staticPressure: "kPa", power: "W", voltage: "kV" }, "mm");
+assert.ok(Math.abs(unitReviewed[0].width - 254) < 1e-9);
+assert.ok(Math.abs(unitReviewed[0].depth - 609.6) < 1e-9);
+assert.ok(Math.abs(unitReviewed[0].height - 30) < 1e-9);
+assert.equal(unitReviewed[0].airflow, 360);
+assert.equal(unitReviewed[0].staticPressure, 2500);
+assert.equal(unitReviewed[0].power, 0.75);
+assert.equal(unitReviewed[0].voltage, 400);
+assert.throws(() => normalizeCatalogueRowsWithUnits([{ model: "BAD", width: 1 }], { width: "yards" }), /Unsupported width source unit/);
+
 
 const parsed = parseDelimitedCatalogue('Model,Manufacturer,Width,Depth,Height,Airflow\nFAN-300,Acme,300,300,450,1200\nFAN-500,Acme,500,500,650,2500');
 assert.equal(parsed.rows.length, 2);
