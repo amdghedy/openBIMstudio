@@ -214,6 +214,36 @@ function reparseDelimitedSource(): void {
   if (qa) qa.textContent = issues.length ? issues.join(" ") : `Mapped and loaded ${rows.length} product type(s). Verify all source values and units before family creation.`;
   status(`Catalogue remapped: ${rows.length} product type(s); ${parsed.errors.length} import warning(s).`, parsed.errors.length ? "warn" : "success");
 }
+function renderQualityDashboard(importWarnings: string[] = []): void {
+  const host = panel?.querySelector<HTMLElement>("[data-qa]");
+  if (!host) return;
+  const required = ["width", "depth", "height"] as const;
+  const duplicateModels = new Set<string>();
+  const seen = new Set<string>();
+  const rowIssues: Array<{ row: CatalogueRow; index: number; message: string; severity: "blocking" | "advisory" }> = [];
+  let complete = 0;
+  rows.forEach((row, index) => {
+    const model = String(row.model ?? "").trim().toLowerCase();
+    if (!model) rowIssues.push({ row, index, message: "Missing model identifier", severity: "blocking" });
+    else if (seen.has(model)) { duplicateModels.add(model); rowIssues.push({ row, index, message: "Duplicate model identifier", severity: "blocking" }); }
+    seen.add(model);
+    const missing = required.filter((key) => row[key] === undefined || !Number.isFinite(row[key]) || Number(row[key]) <= 0);
+    if (missing.length) for (const key of missing) rowIssues.push({ row, index, message: "Invalid or missing " + key, severity: "blocking" });
+    if (!missing.length && model) complete++;
+    if (!row.sourceRow && !row.sourcePage) rowIssues.push({ row, index, message: "No source row/page provenance recorded", severity: "advisory" });
+  });
+  const blocking = rowIssues.filter((issue) => issue.severity === "blocking").length;
+  const completeness = rows.length ? Math.round(complete / rows.length * 100) : 0;
+  const warningHtml = importWarnings.map((warning) => '<li>' + escapeHtml(warning) + '</li>').join("");
+  const issueHtml = rowIssues.slice(0, 100).map((issue) => {
+    const source = issue.row.sourcePage ? "PDF page " + issue.row.sourcePage : issue.row.sourceSheet ? issue.row.sourceSheet + " row " + (issue.row.sourceRow ?? "?") : "row " + (issue.row.sourceRow ?? issue.index + 2);
+    return '<tr><td>' + (issue.severity === "blocking" ? "BLOCK" : "REVIEW") + '</td><td>' + escapeHtml(issue.row.model || "—") + '</td><td>' + escapeHtml(issue.message) + '</td><td>' + escapeHtml(source) + '</td></tr>';
+  }).join("");
+  host.innerHTML = '<div class="cfg-grid"><div><strong>' + rows.length + '</strong><div class="cfg-muted">Product types</div></div><div><strong>' + completeness + '%</strong><div class="cfg-muted">Geometry complete</div></div><div><strong>' + blocking + '</strong><div class="cfg-muted">Blocking issues</div></div><div><strong>' + importWarnings.length + '</strong><div class="cfg-muted">Import warnings</div></div></div>' +
+    (warningHtml ? '<details open><summary>Import warnings (' + importWarnings.length + ')</summary><ul>' + warningHtml + '</ul></details>' : '') +
+    (issueHtml ? '<div class="cfg-table-wrap"><table><thead><tr><th>Severity</th><th>Model</th><th>Issue</th><th>Source</th></tr></thead><tbody>' + issueHtml + '</tbody></table></div>' : '<p class="cfg-muted">No row-level QA issues found. Engineering review of source values and units is still required.</p>') +
+    (blocking ? '<p class="cfg-muted">Family creation is blocked until all blocking issues are corrected.</p>' : '<p class="cfg-muted">Automated checks passed; verify engineering values against the manufacturer source.</p>');
+}
 function renderRows(): void {
   const host = panel?.querySelector<HTMLElement>("[data-rows]");
   if (!host) return;
@@ -319,7 +349,7 @@ async function readCatalogue(file?: File, selectedSheet?: string): Promise<void>
       renderRows();
       const issues = [...parsed.errors, ...validateCatalogueRows(rows)];
       const qa = panel?.querySelector<HTMLElement>("[data-qa]");
-      if (qa) qa.textContent = issues.length ? issues.join(" ") : "Imported " + rows.length + " product type(s) from worksheet " + result.sheetName + ". Source row numbers are retained. Verify source values and units before family creation.";
+      renderQualityDashboard(parsed.errors);
       status("XLSX processed: " + rows.length + " product type(s) imported from " + result.sheetName + ".", rows.length ? "success" : "warn");
       return;
     }
@@ -341,7 +371,7 @@ async function readCatalogue(file?: File, selectedSheet?: string): Promise<void>
       renderRows();
       const issues = [...parsed.errors, ...validateCatalogueRows(rows)];
       const qa = panel?.querySelector<HTMLElement>("[data-qa]");
-      if (qa) qa.textContent = issues.length ? issues.join(" ") : `Extracted ${rows.length} product type(s) from ${result.textPages.length} text page(s) and ${result.ocrPages.length} OCR page(s). Verify all source values and units.`;
+      renderQualityDashboard(parsed.errors);
       status(`PDF processed: ${result.processedPages}/${result.pageCount} pages; ${rows.length} product type(s) extracted; ${result.scannedPages.length} scanned page(s).`, rows.length ? "success" : "warn");
       return;
     }
@@ -371,7 +401,7 @@ async function readCatalogue(file?: File, selectedSheet?: string): Promise<void>
     renderRows();
     const issues = [...parsed.errors, ...validateCatalogueRows(rows)];
     const qa = panel?.querySelector<HTMLElement>("[data-qa]");
-    if (qa) qa.textContent = issues.length ? issues.join(" ") : "Required dimensions are present in every product row. Source values still require engineering verification.";
+    renderQualityDashboard(parsed.errors);
     status(`Loaded ${rows.length} product type(s) from ${file.name}.`, rows.length ? "success" : "warn");
   } catch (error) {
     rows = [];
