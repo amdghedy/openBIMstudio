@@ -1,5 +1,5 @@
 import { handleLinkedInRequest, LinkedInVault, type LinkedInEnv } from "./linkedin";
-import { AuthVault, googleStartUrl, googleCallback, googleSetupPage, googleStatus, googlePopupCallbackPage, sendResetEmail } from "./auth";
+import { AuthVault, googleStartUrl, googleOAuthState, googleOAuthStateCookie, clearGoogleOAuthStateCookie, validateGoogleOAuthState, googleCallback, googleSetupPage, googleStatus, googlePopupCallbackPage, sendResetEmail } from "./auth";
 
 /**
  * Open BIM Studio edge worker.
@@ -206,15 +206,22 @@ export default {
       return googleStatus(env);
     }
     if (url.pathname === "/api/auth/google/start") {
-      const start = googleStartUrl(request, env);
+      const state = googleOAuthState(request);
+      const start = googleStartUrl(request, env, state);
       // Not configured: a styled explanation page instead of raw JSON — this is
       // a top-level browser navigation, the user would otherwise see JSON.
       if (!start) return googleSetupPage(request);
-      return Response.redirect(start, 302);
+      return new Response(null, { status: 302, headers: { location: start, "set-cookie": googleOAuthStateCookie(state), "cache-control": "no-store" } });
     }
     if (url.pathname === "/api/auth/google/callback") {
-      const popup = new URL(request.url).searchParams.get("state") === "popup";
+      let popup = false;
+      const finish = (response: Response): Response => {
+        response.headers.append("set-cookie", clearGoogleOAuthStateCookie());
+        response.headers.set("cache-control", "no-store");
+        return response;
+      };
       try {
+        popup = validateGoogleOAuthState(request);
         const info = await googleCallback(request, env);
         const stub = env.AUTH.get(env.AUTH.idFromName("global"));
         const upsert = await stub.fetch(new Request("https://do/api/auth/google-upsert", {
@@ -225,25 +232,23 @@ export default {
         const setCookie = upsert.headers.get("set-cookie") ?? "";
         if (!upsert.ok) {
           const reason = "Google sign-in could not create the account (vault unavailable).";
-          return popup
+          return finish(popup
             ? googlePopupCallbackPage(false, reason)
-            : googleSetupPage(request, { reason, status: 502 });
+            : googleSetupPage(request, { reason, status: 502 }));
         }
         // Popup: tell the opener and close. Top-level: land with ?signedin=1 so
         // the app greets the returning user and remembers the account.
-        // Cookie MUST be set on the popup HTML response or the opener sees
-        // Google success but /api/auth/me stays null ("session did not stick").
-        return popup
-          ? (setCookie
-              ? googlePopupCallbackPage(true, "", setCookie)
-              : googlePopupCallbackPage(true))
-          : new Response(null, { status: 302, headers: { location: "/?signedin=1", "set-cookie": setCookie } });
+        if (popup) {
+          const response = googlePopupCallbackPage(true, "", setCookie);
+          return finish(response);
+        }
+        return finish(new Response(null, { status: 302, headers: { location: "/?signedin=1", "set-cookie": setCookie } }));
       } catch (cause) {
         const code = cause instanceof Error ? cause.message : "error";
-        if (code === "google-not-configured") return popup ? googlePopupCallbackPage(false, "Google sign-in is not configured on this deployment.") : googleSetupPage(request);
+        if (code === "google-not-configured") return finish(popup ? googlePopupCallbackPage(false, "Google sign-in is not configured on this deployment.") : googleSetupPage(request));
         console.warn("[auth] google callback failed:", cause);
         const reason = `Google sign-in failed (${code}). Please try again.`;
-        return popup ? googlePopupCallbackPage(false, reason) : googleSetupPage(request, { reason, status: 502 });
+        return finish(popup ? googlePopupCallbackPage(false, reason) : googleSetupPage(request, { reason, status: 502 }));
       }
     }
     if (url.pathname === "/api/auth/forgot" && request.method === "POST") {
