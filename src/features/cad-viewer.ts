@@ -9951,7 +9951,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd("LAYOUTS:\n  Model (" + modelEnts.length + " ents)\n" + list);
       return;
     }
-    if (cmd === "XREF" || cmd === "XR" || cmd === "XATTACH") {
+    if (cmd === "XREF" || cmd === "XR") {
       void attachXrefInteractive();
       return;
     }
