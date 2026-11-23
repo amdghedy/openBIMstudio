@@ -26,6 +26,8 @@ export type ParameterScope = "instance" | "type";
 
 export interface FamilyParameter {
   name: string;
+  /** Stable shared-parameter identity (RFC 4122 UUID) when supplied by the authoring standard. */
+  guid?: string;
   /** Human-readable label for the UI. Falls back to `name` when absent. */
   label?: string;
   type: ParameterType;
