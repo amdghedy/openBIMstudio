@@ -214,7 +214,7 @@ export function validateCatalogueRows(rows: CatalogueRow[]): string[] {
     if (normalizedModel) seenModels.add(normalizedModel);
     for (const key of ["width", "depth", "height"] as const) {
       if (r[key] === undefined) issues.push(`Row ${i + 1} (${r.model}): ${key} is missing; provide a verified value before family creation.`);
-      else if (r[key] <= 0) issues.push(`Row ${i + 1} (${r.model}): ${key} must be greater than zero.`);
+      else if (!Number.isFinite(r[key]) || r[key] <= 0) issues.push(`Row ${i + 1} (${r.model}): ${key} must be a finite value greater than zero.`);
     }
   });
   return issues;
