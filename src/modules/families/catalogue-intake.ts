@@ -13,6 +13,7 @@ export interface CatalogueRow {
   model: string;
   manufacturer?: string;
   productCode?: string;
+  description?: string;
   width?: number;
   depth?: number;
   height?: number;
@@ -29,7 +30,7 @@ export interface CatalogueParseResult {
   errors: string[];
 }
 
-export type CatalogueField = "model" | "manufacturer" | "productCode" | "width" | "depth" | "height" | "airflow" | "staticPressure" | "power" | "voltage";
+export type CatalogueField = "model" | "manufacturer" | "productCode" | "description" | "width" | "depth" | "height" | "airflow" | "staticPressure" | "power" | "voltage";
 
 export interface CatalogueMappingSuggestion {
   sourceHeader: string;
@@ -48,7 +49,7 @@ export interface CatalogueMappingProfile {
 }
 
 const CATALOGUE_FIELDS = new Set<CatalogueField>([
-  "model", "manufacturer", "productCode", "width", "depth", "height",
+  "model", "manufacturer", "productCode", "description", "width", "depth", "height",
   "airflow", "staticPressure", "power", "voltage",
 ]);
 
@@ -89,6 +90,7 @@ const HEADER_ALIASES: Record<string, CatalogueField> = {
   model: "model", modelnumber: "model", modelno: "model", type: "model", typename: "model",
   manufacturer: "manufacturer", brand: "manufacturer",
   productcode: "productCode", itemcode: "productCode", sku: "productCode",
+  description: "description", productdescription: "description",
   width: "width", w: "width", overallwidth: "width", overallw: "width", depth: "depth", d: "depth", overalldepth: "depth", length: "depth",
   height: "height", h: "height", overallheight: "height", overallh: "height",
   airflow: "airflow", airflowrate: "airflow", airvolume: "airflow", volumeflow: "airflow", volumeflowrate: "airflow", flow: "airflow",
@@ -306,6 +308,7 @@ export function buildCatalogueFamilyDefinition(
     { name: "Height", type: "length", scope: "type", default: dimensionToMetres(first.height, unit), editable: true, unit: "m", group: "Dimensions" },
     { name: "Manufacturer", type: "text", scope: "type", default: first.manufacturer ?? "", editable: true, group: "Identity" },
     { name: "ProductCode", type: "text", scope: "type", default: first.productCode ?? "", editable: true, group: "Identity" },
+    { name: "Description", type: "text", scope: "type", default: first.description ?? "", editable: true, group: "Identity" },
     { name: "Airflow", type: "number", scope: "type", default: first.airflow ?? 0, editable: true, unit: "m³/h", group: "Performance" },
     { name: "StaticPressure", type: "number", scope: "type", default: first.staticPressure ?? 0, editable: true, unit: "Pa", group: "Performance" },
     { name: "Power", type: "number", scope: "type", default: first.power ?? 0, editable: true, unit: "kW", group: "Electrical" },
@@ -336,6 +339,7 @@ export function buildCatalogueFamilyDefinition(
       Height: dimensionToMetres(r.height, unit),
       Manufacturer: r.manufacturer ?? first.manufacturer ?? "",
       ProductCode: r.productCode ?? "",
+      Description: r.description ?? first.description ?? "",
       Airflow: r.airflow ?? 0,
       StaticPressure: r.staticPressure ?? 0,
       Power: r.power ?? 0,
