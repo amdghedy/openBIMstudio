@@ -205,5 +205,48 @@ t("V12 a parameter with no type and no usable default throws", () => {
   assert.throws(() => migrateFamilyDefinition(input), /no type/);
 });
 
+
+t("V15 missing type IDs remain stable when uniquely named types are reordered", () => {
+  const input = base({ schemaVersion: 2, types: [
+    { name: "400x400 C30", values: { width: 0.4 } },
+    { name: "500x500 C35", values: { width: 0.5 } },
+    { name: "600x400 C40", values: { width: 0.6 } },
+  ] });
+  const first = migrateFamilyDefinition(input).family.types;
+  const reordered = migrateFamilyDefinition({ ...input, types: [...input.types].reverse() }).family.types;
+  const ids = new Map(first.map((x) => [x.name, x.id]));
+  for (const x of reordered) eq(x.id, ids.get(x.name), `ID changed for ${x.name}`);
+});
+
+t("V16 existing type IDs are preserved while missing IDs are generated", () => {
+  const input = base({ schemaVersion: 2, types: [
+    { id: "legacy-stable-id", name: "Existing", values: {} },
+    { name: "New type", values: {} },
+  ] });
+  const r = migrateFamilyDefinition(input);
+  eq(r.family.types[0].id, "legacy-stable-id");
+  if (!r.family.types[1].id) throw new Error("missing ID was not generated");
+});
+
+t("V17 same-name types with different values receive distinct stable IDs", () => {
+  const input = base({ schemaVersion: 2, types: [
+    { name: "400 x 400", values: { width: 0.4 } },
+    { name: "400   x   400", values: { width: 0.5 } },
+  ] });
+  const first = migrateFamilyDefinition(input).family.types;
+  const reordered = migrateFamilyDefinition({ ...input, types: [...input.types].reverse() }).family.types;
+  const ids = new Map(first.map((x) => [x.values.width, x.id]));
+  for (const x of reordered) eq(x.id, ids.get(x.values.width));
+  if (first[0].id === first[1].id) throw new Error("same-name types collided");
+});
+
+t("V18 generated IDs are stable and migration remains idempotent", () => {
+  const input = base({ schemaVersion: 2, types: [{ name: "UB 457x191x67", values: {} }] });
+  const once = migrateFamilyDefinition(input).family;
+  const twice = migrateFamilyDefinition(once);
+  eq(twice.family.types[0].id, once.types[0].id);
+  eq(twice.migratedFrom, null);
+});
+
 console.log(`\nfamily-migration: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
