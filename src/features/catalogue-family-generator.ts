@@ -33,7 +33,7 @@ const MAPPING_PROFILE_KEY = "obs.catalogue-mapping-profiles.v1";
 let styleInstalled = false;
 
 function familyService(): Any {
-  return (window as Any).__obsFamilyParametric ?? (window as Any).__obsFamily ?? (ctx.features as Any)?.family ?? {};
+  return (ctx.features as Any)?.family ?? {};
 }
 function escapeHtml(value: unknown): string {
   const entities: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
@@ -63,7 +63,7 @@ function installStyle(): void {
 #obs-catalogue-family .cfg-card { padding:13px; border:1px solid #303746; border-radius:10px; background:#191f29; }
 #obs-catalogue-family .cfg-table-wrap { overflow:auto; max-height:260px; }
 #obs-catalogue-family table { border-collapse:collapse; width:100%; font-size:12px; }
-#obs-catalogue-family th,#obs-catalogue-family td { text-align:left; padding:7px 9px; border-bottom:1px solid #303746; white-space:nowrap; }
+#obs-catalogue-family th,#obs-catalogue-family td { text-align:start; padding:7px 9px; border-bottom:1px solid #303746; white-space:nowrap; }
 #obs-catalogue-family th { color:#9caec2; position:sticky; top:0; background:#191f29; }
 #obs-catalogue-family .cfg-muted { color:#91a0b3; font-size:12px; }
 #obs-catalogue-family .cfg-map-grid { display:grid;grid-template-columns:minmax(150px,1fr) minmax(170px,1fr) minmax(160px,1.2fr);gap:8px;align-items:center;margin:7px 0; }
