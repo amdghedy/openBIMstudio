@@ -91,9 +91,19 @@ export function parseDelimitedCatalogue(source: string, delimiter?: string): Cat
   if (nonEmpty.length < 2) return { headers: [], rows: [], errors: ["Catalogue must contain a header row and at least one product row."] };
   const headers = nonEmpty[0].map((h) => h.trim());
   const mapped = headers.map((h) => mapCatalogueHeader(h));
+  const mappedColumns = new Map<CatalogueField, number[]>();
+  mapped.forEach((field, index) => {
+    if (!field) return;
+    const indexes = mappedColumns.get(field) ?? [];
+    indexes.push(index);
+    mappedColumns.set(field, indexes);
+  });
+  const duplicateMappings = Array.from(mappedColumns.entries())
+    .filter(([, indexes]) => indexes.length > 1)
+    .map(([field, indexes]) => `Multiple columns map to "${field}": ${indexes.map((index) => headers[index]).join(", ")}.`);
   const modelIndex = mapped.indexOf("model");
   if (modelIndex < 0) return { headers, rows: [], errors: ["A Model, Model Number, Type or Type Name column is required."] };
-  const errors: string[] = [];
+  const errors: string[] = [...duplicateMappings];
   const rows: CatalogueRow[] = [];
   for (let r = 1; r < nonEmpty.length; r++) {
     const cells = nonEmpty[r];
