@@ -271,13 +271,13 @@ for (const key of Object.keys(compiled)) {
 }
 
 /* ── 1. Registration into the real command palette (the dead-channel fix) ── */
-t("packs 3–7 register their commands into the real palette (11+10+10+10+10 = 51)", () => {
+t("packs 3–7 register their commands into the real palette (10+10+10+10+10 = 50; rg-isolate is registered once, by the boot visibility trio, since #102)", () => {
   for (const key of ["p3", "p4", "p5", "p6", "p7"]) {
     const setup = packs[key][`setupCriticalWorkflowPack${key.slice(1)}`];
     assert(typeof setup === "function", `${key}: setup export missing`);
     setup();
   }
-  assert(registered.length === 51, `expected 51 commands, got ${registered.length}`);
+  assert(registered.length === 50, `expected 50 commands, got ${registered.length}`);
 });
 
 t("every registered command has label, category and a runnable function", () => {
