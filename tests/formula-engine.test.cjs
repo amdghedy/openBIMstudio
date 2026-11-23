@@ -51,6 +51,7 @@ const assert = require("node:assert");
 
 const root = path.resolve(__dirname, "..");
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "fe-"));
+fs.symlinkSync(path.join(root, "node_modules"), path.join(out, "node_modules"), "junction");
 execSync(
   `npx tsc src/modules/families/formula-engine.ts src/modules/families/safe-expr.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --ignoreDeprecations 5.0`,
   { cwd: root, stdio: "inherit" },

@@ -79,11 +79,17 @@ const OLD_MARKUPS_LOADER = `
     assert.deepStrictEqual(audit.scanSource("const copy = JSON.parse(JSON.stringify(x));", "x.ts"), []);
     assert.deepStrictEqual(audit.scanSource("const p = JSON.parse(localStorage.getItem('k') || '{}');", "x.ts"), []);
   });
-  t("audit script exits 0 on the current tree (all 8 required boundaries wired)", () => {
+  t("audit script exits 0 on the current tree (all 17 required boundaries wired)", () => {
     const run = spawnSync(process.execPath, [path.join(root, "scripts/check-safe-load-coverage.mjs")], { encoding: "utf8" });
     assert.strictEqual(run.status, 0, run.stdout + run.stderr);
-    assert.match(run.stdout, /8 required boundaries/);
+    assert.match(run.stdout, /17 required boundaries/);
     assert.match(run.stdout, /cad-viewer\.ts: validated boundary wired/);
+    // PE-20: the new DXF / IFC / BCF / formula boundaries are enforced too.
+    assert.match(run.stdout, /dxf-reader\.ts: validated boundary wired/);
+    assert.match(run.stdout, /step-preflight\.ts: validated boundary wired/);
+    assert.match(run.stdout, /bcf\.ts: validated boundary wired/);
+    assert.match(run.stdout, /formula-engine\.ts: validated boundary wired/);
+    assert.match(run.stdout, /schema ProjectElementSchema defined/);
   });
 
   console.log(`=== Result: ${pass} passed, 0 failed ===`);

@@ -1,4 +1,5 @@
-import { preflightStep } from "../modules/ifc-semantics/step-preflight";
+import { preflightStep, parseStepHeader } from "../modules/ifc-semantics/step-preflight";
+import { assertValidStepPreflightResult, assertValidStepFileHeader } from "../core/safeLoad";
 import { assertFileAllowed, guardSize, guardZipDirectory } from "../core/file-guard";
 import { getCachedFrag, setCachedFrag, hashFileKey } from "./rvt-trust-gates";
 /**
@@ -1295,7 +1296,16 @@ async function runTask(t: ImportTask) {
       // Bounded structural check BEFORE the WASM parser: corrupt STEP can make web-ifc spin for minutes.
       assertFileAllowed("ifc", t.file.name, bytes.length);
       const pre = preflightStep(bytes);
+      // PE-20: the preflight result itself is schema-gated before its
+      // fields are trusted, and the STEP header must carry a schema
+      // identity before the bytes reach the WASM parser.
+      assertValidStepPreflightResult(pre, t.file.name);
       if (!pre.ok) throw new Error(`This file is not a valid IFC (STEP) file: ${pre.reason}${pre.line ? ` (line ${pre.line})` : ""}. It was not opened.`);
+      const header = parseStepHeader(bytes);
+      if (!header.ok) throw new Error(`This file is not a valid IFC (STEP) file: ${header.error}. It was not opened.`);
+      // PE-20: the parsed header is Zod-validated at the load path (the
+      // preflight module itself stays dependency-free for the fuzz harness).
+      assertValidStepFileHeader(header.value, t.file.name);
       t.schema = detectSchema(bytes);
       // Per-entity interop report: one linear scan of the STEP instance table,
       // plus the per-entity fidelity pass (#106) attached to the same report.
@@ -1716,7 +1726,13 @@ export async function convertIfcToFragBytes(
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
   const pre = preflightStep(bytes);
+  // PE-20: same preflight-result + header gates as the queued import path.
+  assertValidStepPreflightResult(pre, file.name);
   if (!pre.ok) throw new Error(`This file is not a valid IFC (STEP) file: ${pre.reason}${pre.line ? ` (line ${pre.line})` : ""}. It was not opened.`);
+  const header = parseStepHeader(bytes);
+  if (!header.ok) throw new Error(`This file is not a valid IFC (STEP) file: ${header.error}. It was not opened.`);
+  // PE-20: same Zod header gate as the queued import path.
+  assertValidStepFileHeader(header.value, file.name);
   const schema = detectSchema(bytes);
 
   onProgress(8, "checking WASM…");

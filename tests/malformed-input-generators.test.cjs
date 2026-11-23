@@ -83,6 +83,7 @@ t("generator: --count clamps to the 100-case cap", () => {
 
 /* ── 2. Compile the real modules under test ───────────────────────────── */
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "obs-malformed-mod-"));
+fs.symlinkSync(path.join(root, "node_modules"), path.join(out, "node_modules"), "junction");
 execSync(
   "npx tsc src/modules/ifc-semantics/step-preflight.ts src/core/file-guard.ts " +
     "src/modules/issues/bcf-markup.ts src/modules/drawings/dxf-reader.ts " +

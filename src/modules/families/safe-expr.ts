@@ -8,6 +8,8 @@
  * no access to globals. `^` is accepted as a power alias for `**` (families-engine compat:
  * the old hand-rolled formula parser used `^`).
  */
+import { FormulaExpressionSchema, validateWithSchema, type SchemaCheck } from "../../core/safeLoad";
+
 export type Scope = Record<string, unknown>;
 export type FnTable = Record<string, (...args: any[]) => unknown>;
 
@@ -146,6 +148,44 @@ export function evaluateExpression(source: string, scope: Scope, fns: FnTable): 
   const result = ternary();
   if (peek().t !== "end") throw new Error(`Unexpected "${peek().v}"`);
   return result;
+}
+
+/**
+ * Validate a formula expression BEFORE it is evaluated (PE-20).
+ *
+ * Two checks, in order: the expression text itself against
+ * `FormulaExpressionSchema` (non-empty, ≤ 2000 chars — the same bound the
+ * tokenizer enforces), then every identifier against the allowed names
+ * (declared parameters + seed values + builtin functions + `true`/`false`),
+ * using the evaluator's own tokenizer so the check and the evaluator can
+ * never disagree about what an identifier is. Never throws: a bad
+ * expression is a value (`{ok:false, issues}`), so callers can record it
+ * as a per-parameter error instead of crashing the evaluation pass.
+ * Identifiers inside string literals are `str` tokens, not `id` tokens,
+ * so text such as `"width"` is never mistaken for a reference.
+ */
+export function validateFormulaExpression(
+  source: string,
+  allowedNames: ReadonlySet<string>,
+): SchemaCheck {
+  const shape = validateWithSchema(FormulaExpressionSchema, source);
+  if (!shape.ok) return { ok: false, issues: shape.issues ?? [] };
+  let toks: Tok[];
+  try {
+    toks = tokenize(source);
+  } catch (e) {
+    return { ok: false, issues: [e instanceof Error ? e.message : "Invalid formula"] };
+  }
+  const unknown = new Set<string>();
+  for (const t of toks) {
+    if (t.t === "id" && t.v !== "true" && t.v !== "false" && !allowedNames.has(t.v)) {
+      unknown.add(t.v);
+    }
+  }
+  if (unknown.size) {
+    return { ok: false, issues: [...unknown].sort().map((n) => `Unknown name "${n}"`) };
+  }
+  return { ok: true };
 }
 
 /**

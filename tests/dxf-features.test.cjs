@@ -1,5 +1,6 @@
 const {execSync}=require("child_process");const fs=require("fs"),os=require("os"),path=require("path"),assert=require("assert");
 const out=fs.mkdtempSync(path.join(os.tmpdir(),"dxf-"));
+fs.symlinkSync(path.join(__dirname,"..","node_modules"),path.join(out,"node_modules"),"junction");
 execSync(`npx tsc src/modules/drawings/dxf-reader.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck`,{stdio:"inherit"});
 const find=(d,n)=>{for(const f of fs.readdirSync(d,{withFileTypes:true})){const p=path.join(d,f.name);if(f.isDirectory()){const r=find(p,n);if(r)return r}else if(f.name===n)return p}};
 const {parseDxf}=require(find(out,"dxf-reader.js"));

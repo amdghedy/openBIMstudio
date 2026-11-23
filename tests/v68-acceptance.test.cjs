@@ -21,6 +21,7 @@ function near(a, b, tol = 1e-9) { if (!(Math.abs(a - b) <= tol)) throw new Error
 
 const root = path.resolve(__dirname, "..");
 const tmpOut = fs.mkdtempSync(path.join(os.tmpdir(), "obs-v68-acc-"));
+fs.symlinkSync(path.join(root, "node_modules"), path.join(tmpOut, "node_modules"), "junction"); // zod is a runtime dep of compiled safeLoad (PE-20)
 fs.writeFileSync(path.join(tmpOut, "package.json"), '{"type": "commonjs"}');
 execSync(
   "npx tsc --rootDir src --outDir " + JSON.stringify(tmpOut) +

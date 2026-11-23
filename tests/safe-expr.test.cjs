@@ -1,7 +1,8 @@
 const { execSync } = require("child_process"); const fs=require("fs"); const os=require("os"); const path=require("path");
 const out=fs.mkdtempSync(path.join(os.tmpdir(),"se-"));
+fs.symlinkSync(path.join(__dirname,"..","node_modules"),path.join(out,"node_modules"),"junction");
 execSync(`npx tsc src/modules/families/safe-expr.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --ignoreDeprecations 5.0`,{stdio:"inherit"});
-const m=require(require("fs").readdirSync(out,{recursive:true,withFileTypes:true}).filter(d=>d.isFile()&&d.name.endsWith(".js")).map(d=>path.join(d.path||out,d.name)).find(f=>f.endsWith("safe-expr.js")));
+const m=require(require("fs").readdirSync(out,{recursive:true,withFileTypes:true}).filter(d=>d.isFile()&&d.name.endsWith(".js")).map(d=>path.join(d.parentPath||d.path||out,d.name)).find(f=>f.endsWith("safe-expr.js")));
 let pass=0,fail=0;const ok=(n,c)=>{try{if(!c)throw new Error("assert");pass++;console.log("  PASS",n)}catch(e){fail++;console.log("  FAIL",n,e.message)}};
 ok("number",m.safeEval("1+2*3")===7);
 ok("paren",m.safeEval("(1+2)*3")===9);

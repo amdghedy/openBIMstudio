@@ -15,6 +15,7 @@ const { execSync } = require("child_process");
 const fs = require("fs"), os = require("os"), path = require("path"), assert = require("assert");
 const root = path.join(__dirname, "..");
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "cad-visibility-"));
+fs.symlinkSync(path.join(root, "node_modules"), path.join(out, "node_modules"), "junction"); // zod is a runtime dep of compiled safeLoad (PE-20)
 // Pure DXF modules compiled headlessly (same pattern as cad-save.test.cjs).
 // The alias resolver is NOT compiled here: command-aliases.ts reaches
 // form-modal.ts and the @thatopen context, which cannot resolve outside the

@@ -12,6 +12,7 @@ const assert = require("assert");
 
 const root = path.resolve(__dirname, "..");
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "obs-cadlink-test-"));
+fs.symlinkSync(path.join(root, "node_modules"), path.join(out, "node_modules"), "junction");
 fs.writeFileSync(path.join(out, "package.json"), '{"type":"commonjs"}');
 execSync(
   `npx tsc --rootDir src --outDir "${out}" --module commonjs --target ES2022 --moduleResolution node --lib es2022,dom --skipLibCheck --noCheck ` +
