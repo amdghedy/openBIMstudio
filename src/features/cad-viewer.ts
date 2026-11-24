@@ -6761,7 +6761,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         "Reference",
         rb("file", "Attach", `data-a="xr-attach"`, "Attach an external DWG/DXF as a separate reference — not merged into this drawing (XATTACH)") +
           rb("folder", "Overlay", `data-a="xr-overlay"`, "Attach as an overlay: shown here, not carried into drawings that reference this one (XOVERLAY)") +
-          rb("list", "Status", `data-a="xr-status"`, "List every reference with its status, path and unit conversion (XSTATUS)") +
+          rb("schedule", "Status", `data-a="xr-status"`, "List every reference with its status, path and unit conversion (XSTATUS)") +
           rb("import", "Reload", `data-a="xr-reload"`, "Re-read reference files from disk (XRELOAD)") +
           rb("delete", "Detach", `data-a="xr-detach"`, "Detach a reference (XDETACHN)"),
         "",
