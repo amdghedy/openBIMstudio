@@ -78,7 +78,21 @@ test('2D editor: a pick tool hits the line where it is actually drawn', async ({
     }
     xs.sort((a, b) => a - b); ys.sort((a, b) => a - b);
     const m = (a: number[]) => a[Math.floor(a.length / 2)] ?? -1;
-    return { n: xs.length, px: m(xs), py: m(ys), w, h, left: r.left, top: r.top, cw: r.width, ch: r.height };
+    // ASCII map (80x24) of what differs from the background, for diagnosing layout problems from CI logs.
+    const rows: string[] = [];
+    for (let gy = 0; gy < 24; gy++) {
+      let row = '';
+      for (let gx = 0; gx < 80; gx++) {
+        let hit = 0;
+        for (let y = Math.floor((gy * h) / 24); y < Math.floor(((gy + 1) * h) / 24); y += 2) for (let x = Math.floor((gx * w) / 80); x < Math.floor(((gx + 1) * w) / 80); x += 2) {
+          const i = (y * w + x) * 4;
+          if (Math.abs(d[i] - bgR) + Math.abs(d[i + 1] - bgG) + Math.abs(d[i + 2] - bgB) > 300) hit++;
+        }
+        row += hit > 2 ? '#' : hit ? '.' : ' ';
+      }
+      rows.push(row);
+    }
+    return { n: xs.length, px: m(xs), py: m(ys), w, h, left: r.left, top: r.top, cw: r.width, ch: r.height, map: rows.join('\n') };
   });
   expect(info.n, 'no bright pixels: the line is not drawn at all ' + JSON.stringify(info)).toBeGreaterThan(20);
   const sx = info.left + (info.px / info.w) * info.cw, sy = info.top + (info.py / info.h) * info.ch;
@@ -86,5 +100,5 @@ test('2D editor: a pick tool hits the line where it is actually drawn', async ({
   await page.mouse.move(sx, sy);
   await page.mouse.click(sx, sy);
   const text = await hist();
-  expect(text.includes('recorded as constraint #1') || text.includes('constraint applied'), 'pick missed the drawn line ' + JSON.stringify({ info, sx, sy }) + '\n' + text.slice(-400)).toBe(true);
+  expect(text.includes('recorded as constraint #1') || text.includes('constraint applied'), 'pick missed the drawn line ' + JSON.stringify({ ...info, map: undefined, sx, sy }) + '\nCANVAS MAP\n' + info.map + '\n' + text.slice(-400)).toBe(true);
 });
