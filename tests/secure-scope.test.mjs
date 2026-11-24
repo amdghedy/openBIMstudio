@@ -73,10 +73,24 @@ await t("AI provider never adopts a legacy key inside an account", () => {
 });
 await t("account switch / sign-out never reload silently over open work", () => {
   assert.ok(acct.includes("function confirmScopeSwitch"));
-  assert.ok(acct.includes("projectIsDirty()"));
+  assert.ok(acct.includes("anyUnsavedWork()"));
+  assert.ok(!/performance\.now\(\) - pageLoadedAt/.test(acct), "no time-based shortcut over unsaved work");
+  assert.ok(read("src/features/cad-viewer.ts").includes("registerDirtyCheck(() => tabs.some((t) => t.engine.isDirty()))"), "2D drawings must report unsaved work");
   assert.ok(acct.includes('window.confirm("Sign out?'));
   assert.ok(acct.includes("justLanded = true"));
   assert.ok(acct.includes("accountScopeDiffers("));
+});
+await t("declined reload fails closed: lock, no cloud calls, no sync, escape hatches", () => {
+  assert.ok(acct.includes("lockForIdentityMismatch(email)"));
+  const lock = acct.slice(acct.indexOf("function lockForIdentityMismatch"), acct.indexOf("/** Ask the server who we are"));
+  assert.ok(lock.includes("identityLocked = true") && lock.includes("stopUserStateSync()"));
+  assert.ok(lock.includes("position:fixed;inset:0"), "full-page blocker");
+  assert.ok(lock.includes("/api/auth/logout"), "can sign the new account out and keep working");
+  assert.ok(acct.includes('identityLocked && !path.startsWith("/api/auth/")'), "api must refuse non-auth calls while locked");
+  const me = acct.slice(acct.indexOf("export function refreshAccountState"), acct.indexOf("function ensureStyle"));
+  const iDecl = me.indexOf("lockForIdentityMismatch(email)"), iSync = me.indexOf("await startUserStateSync(email)");
+  assert.ok(iDecl > 0 && iDecl < iSync, "a declined switch must never reach startUserStateSync");
+  assert.ok(me.includes("!scopeDeclined"), "declined session-end prompt is not repeated");
 });
 console.log(`${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);
