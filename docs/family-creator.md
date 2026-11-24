@@ -72,4 +72,15 @@ EXPRESS validation returned 0 messages, and the geometry bbox was
 - Tests: `tests/family-creator-pdf.test.cjs` (unit, real pdf.js) and the
   second case of `tests/e2e/family-creator-ui.spec.ts` (browser, not a CI gate).
 - Shapes: box, cabinet with door, table with four legs, open shelving. Picked from the product name, or by the user in the Shape list. Each is plain data (templates.ts), drives both the engine geometry and the IFC.
-- Still to come: OCR, images, URL, vision model, more shapes and per-part visibility.
+- OCR (on this device): a picture (PNG, JPEG, WebP, BMP) or a scanned PDF
+  (no text layer, first 6 pages, rendered by pdf.js) is read with Tesseract as
+  WebAssembly. Pinned: tesseract.js 7.0.0 (Apache-2.0), tesseract.js-core 7.0.0
+  (Apache-2.0), @tesseract.js-data/eng 1.0.0 (package MIT; model files are
+  tesseract-ocr tessdata_best_int, Apache-2.0). `scripts/sync-ocr-assets.mjs`
+  copies the worker, three LSTM engine builds and `eng.traineddata.gz` into
+  `public/ocr/` (generated, git-ignored, about 14 MB, loaded only when OCR is
+  used). Nothing is fetched from another origin: the browser test records every
+  request. The panel labels OCR results "check the numbers", keeps page and
+  line, and the parts come from a ready-made shape, not from tracing the drawing.
+- Still to come: URL intake, a local vision model (licence must be read first),
+  more shapes, per-part visibility, other OCR languages.
