@@ -17,6 +17,8 @@ export interface ProductSpec {
   depthM: number;
   heightM: number;
   templateId?: "box" | "cabinet";
+  /** Overrides for the template's own parameters, in metres (e.g. PlinthHeight). */
+  params?: Record<string, number>;
   /** Where the size came from, kept for the Sources view. */
   sources?: Array<{ label: string; valueM: number; page: number; line: number; sourceText: string }>;
 }
@@ -35,8 +37,17 @@ export function validateSpec(spec: ProductSpec): SpecProblem[] {
     else if (v < MIN_M || v > MAX_M) out.push({ field: k, message: `Outside ${MIN_M} to ${MAX_M} m` });
   }
   const tpl = templateFor(spec);
-  if (tpl.id === "cabinet" && spec.heightM <= 0.1 + 0.05) {
-    out.push({ field: "heightM", message: "Too short for a cabinet plinth and door" });
+  for (const [k, v] of Object.entries(spec.params ?? {})) {
+    const tp = tpl.params.find((x) => x.name === k && x.formula === undefined);
+    if (!tp) { out.push({ field: `params.${k}`, message: "Unknown or derived parameter" }); continue; }
+    if (typeof v !== "number" || !Number.isFinite(v)) { out.push({ field: `params.${k}`, message: "Not a number" }); continue; }
+    if ((tp.min !== undefined && v < tp.min) || (tp.max !== undefined && v > tp.max)) {
+      out.push({ field: `params.${k}`, message: `Outside ${tp.min} to ${tp.max} m` });
+    }
+  }
+  if (tpl.id === "cabinet" && typeof spec.heightM === "number") {
+    const plinth = spec.params?.PlinthHeight ?? tpl.params.find((x) => x.name === "PlinthHeight")!.default;
+    if (spec.heightM <= plinth + 0.05) out.push({ field: "heightM", message: "Too short for the plinth and door" });
   }
   return out;
 }
@@ -70,7 +81,7 @@ export function buildFamilyFromSpec(spec: ProductSpec): FamilyDefinition {
   const problems = validateSpec(spec);
   if (problems.length) throw new Error(`Invalid product spec: ${problems.map((p) => `${p.field}: ${p.message}`).join("; ")}`);
   const tpl = templateFor(spec);
-  const id = `creator-${slug(spec.name)}-${hash(JSON.stringify([spec.name, spec.model, spec.widthM, spec.depthM, spec.heightM, tpl.id]))}`;
+  const id = `creator-${slug(spec.name)}-${hash(JSON.stringify([spec.name, spec.model, spec.widthM, spec.depthM, spec.heightM, tpl.id, spec.params ?? null]))}`;
 
   const dim = (name: string, label: string, value: number): FamilyParameter => ({
     name, label, type: "length", scope: "type", default: value, editable: true,
@@ -84,12 +95,13 @@ export function buildFamilyFromSpec(spec: ProductSpec): FamilyDefinition {
   const typeValues: Record<string, number> = { Width: spec.widthM, Depth: spec.depthM, Height: spec.heightM };
   for (const tp of tpl.params) {
     const derived = tp.formula !== undefined;
+    const value = !derived && spec.params && tp.name in spec.params ? spec.params[tp.name] : tp.default;
     parameters.push({
       name: tp.name, label: tp.label, type: "length", scope: "type",
-      default: tp.default, editable: !derived, min: tp.min, max: tp.max, step: 0.005, unit: "m",
+      default: value, editable: !derived, min: tp.min, max: tp.max, step: 0.005, unit: "m",
       group: derived ? "Derived" : "Parts", ...(derived ? { formula: tp.formula } : {}),
     });
-    if (!derived) typeValues[tp.name] = tp.default;
+    if (!derived) typeValues[tp.name] = value;
   }
 
   const geometry: FamilyGeometrySpec = { kind: "composed", parts: tpl.parts.map(partSpec) };
