@@ -270,6 +270,7 @@
     "test:modeling-depth": "node tests/modeling-depth.test.cjs",
     "test:auth-ux": "node tests/auth-ux.test.cjs",
     "test:user-state": "node tests/user-state.test.mjs",
+    "test:local-scope": "node tests/local-scope.test.mjs",
     "server": "node server/index.mjs",
     "verify": "node scripts/verify-input-focus.mjs",
     "test:v68-core": "node tests/v68-engine-core.test.cjs",
