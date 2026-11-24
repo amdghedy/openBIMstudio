@@ -159,6 +159,19 @@
     "glbSaved": "Saved {file}.",
     "glbFailed": "Could not write the GLB: {message}",
     "glbNoGeometry": "There is no geometry to export yet.",
+    "parts": {
+      "title": "Parts",
+      "showAll": "Show all parts",
+      "exportTitle": "What the IFC and GLB downloads contain",
+      "exportAll": "All parts, including any switched off here",
+      "exportShown": "Only the parts that are switched on",
+      "scopeAll": "All {n} parts are on. The IFC and GLB contain all {n} parts.",
+      "scopePreviewOnly": "Switched-off parts are hidden here only. The IFC and GLB still contain all {n} parts.",
+      "scopeShown": "The IFC and GLB leave out the switched-off parts and contain {shown} of {n} parts.",
+      "countsNote": "The door, drawer and shelf counts and sizes stored in the file still describe the whole family.",
+      "omitted": "{omitted} of {n} parts were left out.",
+      "allHidden": "Every part is switched off, so there is nothing to export. Switch at least one part on."
+    },
     "lib": {
       "reopenTitle": "Reopen a family made here",
       "open": "Open",
