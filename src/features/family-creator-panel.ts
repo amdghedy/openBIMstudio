@@ -16,6 +16,7 @@ import { templateFor, type ProductSpec } from "../modules/families/creator/build
 import { TEMPLATES } from "../modules/families/creator/templates";
 import { resolveParts } from "../modules/families/creator/layout";
 import { extractPdfPages, renderPdfPages, MAX_OCR_PAGES } from "../modules/families/creator/pdf-text";
+import { fetchSheetFromUrl } from "../modules/families/creator/url-intake";
 import { recognizeImage, tidyOcrText } from "../modules/families/creator/ocr";
 import { createPreview3D, type Preview3D } from "./family-creator-preview";
 import { renderThreeViews } from "../modules/families/creator/preview-svg";
@@ -24,8 +25,8 @@ import type { FamilyDefinition } from "../modules/families/types";
 let panel: HTMLElement | null = null;
 let visible = false;
 
-interface FormState { name: string; manufacturer: string; model: string; text: string; pages: string[]; fromOcr: boolean; templateId: string; fileName: string; fileNote: string; wMm: string; dMm: string; hMm: string }
-const form: FormState = { name: "", manufacturer: "", model: "", text: "", pages: [], fromOcr: false, templateId: "", fileName: "", fileNote: "", wMm: "", dMm: "", hMm: "" };
+interface FormState { name: string; manufacturer: string; model: string; text: string; pages: string[]; fromOcr: boolean; templateId: string; fileName: string; fileNote: string; url: string; urlConsent: boolean; urlNote: string; wMm: string; dMm: string; hMm: string }
+const form: FormState = { name: "", manufacturer: "", model: "", text: "", pages: [], fromOcr: false, templateId: "", fileName: "", fileNote: "", url: "", urlConsent: false, urlNote: "", wMm: "", dMm: "", hMm: "" };
 let result: CreatorResult | null = null;
 let liveStatus: CreatorStatus | null = null;
 let notice = "";
@@ -150,6 +151,15 @@ async function loadFile(file: File) {
   render();
 }
 
+async function loadFromUrl() {
+  const consent = form.urlConsent;
+  form.urlConsent = false; // consent is per use
+  const r = await fetchSheetFromUrl(form.url, consent);
+  if (r.ok === false) { form.urlNote = t("familyCreator.url.err." + r.key); render(); return; }
+  form.urlNote = t("familyCreator.url.done", { host: r.host });
+  await loadFile(r.file);
+}
+
 function chips(s: CreatorStatus): string {
   const icon: Record<string, string> = { pending: "\u25CB", running: "\u2026", done: "\u2713", failed: "\u2717" };
   const color: Record<string, string> = { pending: "#64748b", running: "#f59e0b", done: "#22c55e", failed: "#ef4444" };
@@ -229,6 +239,9 @@ function render() {
       <input class="obs-fc-in" data-f="name" placeholder="${esc(t("familyCreator.name"))}" value="${esc(form.name)}">
       <div style="display:flex;gap:6px"><input class="obs-fc-in" data-f="manufacturer" placeholder="${esc(t("familyCreator.manufacturer"))}" value="${esc(form.manufacturer)}"><input class="obs-fc-in" data-f="model" placeholder="${esc(t("familyCreator.model"))}" value="${esc(form.model)}"></div>
       <div style="display:flex;gap:6px;align-items:center;margin:3px 0"><label class="obs-fc-btn" style="cursor:pointer">${esc(t("familyCreator.file.choose"))}<input type="file" accept=".pdf,.txt,.png,.jpg,.jpeg,.webp,.bmp,application/pdf,text/plain,image/png,image/jpeg,image/webp,image/bmp" data-fc="file" style="display:none"></label><span class="obs-fc-detail" data-fc="file-note">${esc(form.fileNote)}</span></div>
+      <div data-fc="url-box" style="margin:6px 0"><div style="display:flex;gap:6px"><input class="obs-fc-in" data-f="url" type="url" dir="ltr" placeholder="${esc(t("familyCreator.url.placeholder"))}" value="${esc(form.url)}"><button type="button" class="obs-fc-btn" data-act="fetch-url"${form.urlConsent && form.url.trim() ? "" : " disabled"}>${esc(t("familyCreator.url.fetch"))}</button></div>
+        <label class="obs-fc-detail" style="display:flex;gap:6px;align-items:flex-start;margin-top:3px"><input type="checkbox" data-fc="url-consent"${form.urlConsent ? " checked" : ""}><span>${esc(t("familyCreator.url.consent"))}</span></label>
+        <div class="obs-fc-detail" data-fc="url-note">${esc(form.urlNote)}</div></div>
       <textarea class="obs-fc-in" data-f="text" rows="4" placeholder="${esc(t("familyCreator.textPlaceholder"))}">${esc(form.text)}</textarea>
       <label class="obs-fc-detail" style="display:block;margin-top:4px">${esc(t("familyCreator.shape"))}
         <select class="obs-fc-in" data-f="templateId"><option value="">${esc(t("familyCreator.shapeAuto"))}</option>${TPL_IDS.map((id) => `<option value="${id}"${form.templateId === id ? " selected" : ""}>${esc(TEMPLATES[id].label)}</option>`).join("")}</select></label>
@@ -252,6 +265,15 @@ function render() {
     const f = (ev.target as HTMLInputElement).files?.[0];
     if (f) void loadFile(f);
   });
+  panel.querySelector<HTMLInputElement>('[data-fc="url-consent"]')?.addEventListener("change", (ev) => {
+    form.urlConsent = (ev.target as HTMLInputElement).checked;
+    const b = panel?.querySelector<HTMLButtonElement>('[data-act="fetch-url"]');
+    if (b) b.disabled = !(form.urlConsent && form.url.trim());
+  });
+  panel.querySelector<HTMLInputElement>('[data-f="url"]')?.addEventListener("input", () => {
+    const b = panel?.querySelector<HTMLButtonElement>('[data-act="fetch-url"]');
+    if (b) b.disabled = !(form.urlConsent && form.url.trim());
+  });
   const slot = panel.querySelector<HTMLElement>('[data-fc-slot="preview3d"]');
   if (slot && preview) slot.appendChild(preview.el);
   panel.querySelector('[data-act="fit"]')?.addEventListener("click", () => preview?.fit());
@@ -273,6 +295,7 @@ function editParam(name: string, valueM: number) {
 function act(a: string) {
   if (a === "close") setVisible(false);
   else if (a === "create") run();
+  else if (a === "fetch-url") { if (form.urlConsent && form.url.trim()) void loadFromUrl(); }
   else if (a === "fit") preview?.fit();
   else if (a === "add" && result?.family) {
     const f = result.family;
