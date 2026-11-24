@@ -154,6 +154,11 @@
     "sourceCheck": "Check the order (width x depth x height) against the sheet.",
     "add": "Add to family library",
     "ifcDownload": "Download IFC2X3",
+    "glbDownload": "Download GLB",
+    "glbNote": "GLB is for other 3D viewers. It holds the shapes, part names and the parameter values as plain extra data. It has no IFC information, and Revit 2020 does not open it.",
+    "glbSaved": "Saved {file}.",
+    "glbFailed": "Could not write the GLB: {message}",
+    "glbNoGeometry": "There is no geometry to export yet.",
     "added": "Added \"{name}\" to the family library.",
     "saved": "Saved {file}. Not yet checked in Revit.",
     "file": {
