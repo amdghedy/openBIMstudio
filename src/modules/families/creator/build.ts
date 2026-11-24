@@ -6,7 +6,7 @@
 // user edits it in OpenBIMStudio like any other family.
 
 import type { FamilyDefinition, FamilyGeometrySpec, FamilyParameter } from "../types";
-import { chooseTemplate, TEMPLATES, type PartTemplate, type TemplatePart } from "./templates";
+import { chooseTemplate, expandTemplate, TEMPLATES, type PartTemplate, type TemplatePart } from "./templates";
 
 export interface ProductSpec {
   name: string;
@@ -20,7 +20,7 @@ export interface ProductSpec {
   /** Overrides for the template's own parameters, in metres (e.g. PlinthHeight). */
   params?: Record<string, number>;
   /** Where the size came from, kept for the Sources view. */
-  sources?: Array<{ label: string; valueM: number; page: number; line: number; sourceText: string }>;
+  sources?: Array<{ label: string; valueM: number; page: number; line: number; sourceText: string; kind?: "count" }>;
 }
 
 export interface SpecProblem { field: string; message: string }
@@ -41,8 +41,9 @@ export function validateSpec(spec: ProductSpec): SpecProblem[] {
     const tp = tpl.params.find((x) => x.name === k && x.formula === undefined);
     if (!tp) { out.push({ field: `params.${k}`, message: "Unknown or derived parameter" }); continue; }
     if (typeof v !== "number" || !Number.isFinite(v)) { out.push({ field: `params.${k}`, message: "Not a number" }); continue; }
+    if (tp.integer && !Number.isInteger(v)) { out.push({ field: `params.${k}`, message: "Must be a whole number" }); continue; }
     if ((tp.min !== undefined && v < tp.min) || (tp.max !== undefined && v > tp.max)) {
-      out.push({ field: `params.${k}`, message: `Outside ${tp.min} to ${tp.max} m` });
+      out.push({ field: `params.${k}`, message: `Outside ${tp.min} to ${tp.max}${tp.integer ? "" : " m"}` });
     }
   }
   if (tpl.id === "cabinet" && typeof spec.heightM === "number") {
@@ -62,8 +63,8 @@ export function validateSpec(spec: ProductSpec): SpecProblem[] {
 }
 
 export function templateFor(spec: ProductSpec): PartTemplate {
-  if (spec.templateId && TEMPLATES[spec.templateId]) return TEMPLATES[spec.templateId];
-  return chooseTemplate(`${spec.name} ${spec.model ?? ""}`);
+  const base = spec.templateId && TEMPLATES[spec.templateId] ? TEMPLATES[spec.templateId] : chooseTemplate(`${spec.name} ${spec.model ?? ""}`);
+  return expandTemplate(base, spec.params);
 }
 
 function slug(s: string): string {
@@ -106,8 +107,8 @@ export function buildFamilyFromSpec(spec: ProductSpec): FamilyDefinition {
     const derived = tp.formula !== undefined;
     const value = !derived && spec.params && tp.name in spec.params ? spec.params[tp.name] : tp.default;
     parameters.push({
-      name: tp.name, label: tp.label, type: "length", scope: "type",
-      default: value, editable: !derived, min: tp.min, max: tp.max, step: 0.005, unit: "m",
+      name: tp.name, label: tp.label, type: tp.integer ? "integer" : "length", scope: "type",
+      default: value, editable: !derived, min: tp.min, max: tp.max, step: tp.integer ? 1 : 0.005, ...(tp.integer ? {} : { unit: "m" }),
       group: derived ? "Derived" : "Parts", ...(derived ? { formula: tp.formula } : {}),
     });
     if (!derived) typeValues[tp.name] = value;
