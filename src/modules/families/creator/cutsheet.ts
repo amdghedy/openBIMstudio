@@ -16,6 +16,8 @@ export interface DimensionCandidate {
   line: number;
   /** The exact source line the value came from. */
   sourceText: string;
+  /** "count" when valueM holds a whole number (a count), not metres. */
+  kind?: "count";
 }
 
 export interface OverallSize {
@@ -99,4 +101,41 @@ export function pickOverallSize(pages: string[]): OverallSize | null {
   const w = pick("width"), d = pick("depth"), h = pick("height");
   if (!w || !d || !h) return null;
   return { widthM: w.valueM, depthM: d.valueM, heightM: h.valueM, how: "labelled", sources: [w, d, h] };
+}
+
+/** Extra, optional values a sheet can carry, mapped to template parameter names. */
+export interface ExtraParam { name: string; value: number; candidate: DimensionCandidate }
+
+const EXTRA_LENGTHS: Array<{ name: string; label: string; re: RegExp }> = [
+  { name: "PlinthHeight", label: "Plinth height", re: /^(plinth|kick plate|kickplate)( height)?$/i },
+  { name: "DoorThickness", label: "Door thickness", re: /^door thickness$/i },
+  { name: "LegSize", label: "Leg size", re: /^leg (size|width|thickness)$/i },
+  { name: "TopThickness", label: "Top thickness", re: /^(table ?top|top|worktop) thickness$/i },
+  { name: "PanelThickness", label: "Panel thickness", re: /^(panel|board|shelf|side) thickness$/i },
+];
+
+/**
+ * Labelled extras like "Plinth height: 100 mm" or "Middle shelves: 3".
+ * A name that appears with two different values is dropped, not guessed.
+ * A plain "Shelves: 4" is ignored on purpose: sheets differ on whether the
+ * top and bottom count. The caller decides which names the template has.
+ */
+export function pickExtras(pages: string[]): ExtraParam[] {
+  const found = new Map<string, ExtraParam[]>();
+  const add = (e: ExtraParam) => found.set(e.name, [...(found.get(e.name) ?? []), e]);
+  for (const c of findLabelled(pages)) {
+    for (const x of EXTRA_LENGTHS) {
+      if (x.re.test(c.label)) add({ name: x.name, value: c.valueM, candidate: { ...c, label: x.label } });
+    }
+  }
+  const cnt = /^\s*(middle|intermediate|adjustable|inner) shelves\s*[:=\-]?\s*(\d{1,2})\s*$/i;
+  pages.forEach((text, p) => String(text).split(/\r?\n/).forEach((line, i) => {
+    const m = cnt.exec(line);
+    if (m) add({ name: "MidShelves", value: Number(m[2]), candidate: { label: "Middle shelves", valueM: Number(m[2]), page: p + 1, line: i + 1, sourceText: line.trim(), kind: "count" } });
+  }));
+  const out: ExtraParam[] = [];
+  for (const list of found.values()) {
+    if (list.every((e) => Math.abs(e.value - list[0].value) < 1e-9)) out.push(list[0]);
+  }
+  return out;
 }
