@@ -20,7 +20,17 @@ import { writeIfc2x3 } from "./ifc2x3";
 export type StageState = "pending" | "running" | "done" | "failed";
 export type StageId = "intake" | "family" | "engine" | "ifc";
 
-export interface PipelineStage { id: StageId; label: string; state: StageState; detail?: string }
+export interface PipelineStage {
+  id: StageId;
+  /** English label, for logs and tests. The panel shows labelKey through i18n. */
+  label: string;
+  labelKey: string;
+  state: StageState;
+  detail?: string;
+  /** i18n key and values for `detail`, so the UI can translate it. */
+  detailKey?: string;
+  detailVars?: Record<string, string | number>;
+}
 
 export interface CreatorStatus {
   stages: PipelineStage[];
@@ -76,7 +86,7 @@ function freshStatus(): CreatorStatus {
     ["ifc", "Write and check IFC2X3"],
   ];
   return {
-    stages: labels.map(([id, label]) => ({ id, label, state: "pending" as StageState })),
+    stages: labels.map(([id, label]) => ({ id, label, labelKey: `familyCreator.stage.${id}`, state: "pending" as StageState })),
     completed: 0, total: labels.length, progress: 0, platformReady: false,
     exports: { ifc2x3: { state: "not-built" } },
     revit: { state: "unverified", note: REVIT_NOTE },
@@ -125,14 +135,17 @@ export function runCreator(
   const result: CreatorResult = { status };
   const push = () => { refresh(status); onUpdate?.(JSON.parse(JSON.stringify(status))); };
   const stage = (id: StageId) => status.stages.find((x) => x.id === id) as PipelineStage;
-  const fail = (id: StageId, detail: string): CreatorResult => {
+  const fail = (id: StageId, detail: string, key = "familyCreator.detail.failed", vars?: Record<string, string | number>): CreatorResult => {
     stage(id).state = "failed"; stage(id).detail = detail;
+    stage(id).detailKey = key; stage(id).detailVars = vars ?? { message: detail };
     if (id === "ifc") status.exports.ifc2x3 = { state: "failed", detail };
     push();
     return result;
   };
   const start = (id: StageId) => { stage(id).state = "running"; push(); };
-  const pass = (id: StageId, detail: string) => { stage(id).state = "done"; stage(id).detail = detail; push(); };
+  const pass = (id: StageId, detail: string, key?: string, vars?: Record<string, string | number>) => {
+    stage(id).state = "done"; stage(id).detail = detail; stage(id).detailKey = key; stage(id).detailVars = vars; push();
+  };
 
   // 1. intake
   start("intake");
@@ -141,7 +154,7 @@ export function runCreator(
     spec = input.spec;
   } else {
     const size = pickOverallSize(input.pages ?? []);
-    if (!size) return fail("intake", "No single clear overall size (width x depth x height) found. Ask the user to confirm one.");
+    if (!size) return fail("intake", "No clear overall size (width x depth x height) found in the text. Enter the size yourself.", "familyCreator.detail.noSize", {});
     result.size = size;
     spec = {
       name: input.name, manufacturer: input.manufacturer, model: input.model,
@@ -152,14 +165,17 @@ export function runCreator(
   const problems = validateSpec(spec);
   if (problems.length) return fail("intake", problems.map((p) => `${p.field}: ${p.message}`).join("; "));
   result.spec = spec;
-  pass("intake", `${spec.widthM} x ${spec.depthM} x ${spec.heightM} m`);
+  const mmr = (v: number) => Math.round(v * 1000 * 100) / 100;
+  pass("intake", `${mmr(spec.widthM)} x ${mmr(spec.depthM)} x ${mmr(spec.heightM)} mm (W x D x H)`, "familyCreator.detail.size",
+    { w: mmr(spec.widthM), d: mmr(spec.depthM), h: mmr(spec.heightM) });
 
   // 2. family
   start("family");
   let family: FamilyDefinition;
   try { family = buildFamilyFromSpec(spec); } catch (e) { return fail("family", (e as Error).message); }
   result.family = family;
-  pass("family", `${family.parameters.length} parameters, ${family.types.length} type`);
+  pass("family", `${family.parameters.length} parameters, ${family.types.length} type`, "familyCreator.detail.familyOk",
+    { n: family.parameters.length });
 
   // 3. engine
   start("engine");
@@ -176,7 +192,10 @@ export function runCreator(
     if (Math.abs(size[i] - want[i]) > TOL) return fail("engine", `Built ${names[i]} ${size[i]} m does not match ${want[i]} m`);
   }
   if (Math.abs(bb[1]) > TOL) return fail("engine", `Base is at ${bb[1]} m, expected 0`);
-  pass("engine", `bounding box ${size[0].toFixed(3)} x ${size[1].toFixed(3)} x ${size[2].toFixed(3)} m (W x H x D)`);
+  // The engine is Y-up: size is [X, Y, Z] = [width, height, depth]. Users see width x depth x height everywhere.
+  const mmr2 = (v: number) => Math.round(v * 1000 * 100) / 100;
+  const [bw, bh, bd] = [mmr2(size[0]), mmr2(size[1]), mmr2(size[2])];
+  pass("engine", `${bw} x ${bd} x ${bh} mm (W x D x H)`, "familyCreator.detail.engineOk", { w: bw, d: bd, h: bh });
 
   // 4. ifc
   start("ifc");
@@ -197,6 +216,6 @@ export function runCreator(
   if (bad.length) return fail("ifc", bad.join("; "));
   result.ifcText = out.text;
   status.exports.ifc2x3 = { state: "structure-checked", detail: `${out.entityCount} entities, ${parts.length} solids` };
-  pass("ifc", `${out.entityCount} entities`);
+  pass("ifc", `${out.entityCount} entities`, "familyCreator.detail.ifcOk", { n: out.entityCount });
   return result;
 }
