@@ -200,6 +200,7 @@ export class AuthVault {
       if (path === "/api/auth/register" && request.method === "POST") return this.register(request);
       if (path === "/api/auth/login" && request.method === "POST") return this.login(request);
       if (path === "/api/auth/me" && request.method === "GET") return this.me(request);
+      if (path === "/api/auth/fetch-slot" && request.method === "POST") return this.fetchSlot(request);
       if (path === "/api/auth/logout" && request.method === "POST") return json({ ok: true }, 200, { "set-cookie": clearCookie() });
       if (path === "/api/auth/google-upsert" && request.method === "POST") return this.googleUpsert(request);
       if (path === "/api/auth/forgot" && request.method === "POST") return this.forgotPassword(request);
@@ -300,6 +301,19 @@ export class AuthVault {
     if (hash !== user.hash) return json({ error: "Wrong email or password." }, 401);
     const token = await this.signToken(email);
     return json({ ok: true, user: publicUser(user) }, 200, { "set-cookie": sessionCookie(token) });
+  }
+
+  /** Durable per-user slot for the cut-sheet link fetch: 6 per rolling minute. Only ever counts the caller's own session. */
+  private async fetchSlot(request: Request): Promise<Response> {
+    const user = await this.readSession(request);
+    if (!user) return json({ ok: false, reason: "signin" }, 401);
+    const key = `rl:fetch-sheet:${user.email}`;
+    const now = Date.now();
+    const recent = ((await this.storage.get<number[]>(key)) || []).filter((t) => now - t < 60_000);
+    if (recent.length >= 6) return json({ ok: false, reason: "limited" }, 429);
+    recent.push(now);
+    await this.storage.put(key, recent);
+    return json({ ok: true });
   }
 
   private async me(request: Request): Promise<Response> {
