@@ -11,7 +11,7 @@ import * as THREE from "three";
 import { t } from "../core/i18n";
 import { buildParametricFamily } from "../modules/families/parametric-engine";
 import { familyStore } from "../modules/families/store";
-import { runCreator, type CreatorResult, type CreatorStatus } from "../modules/families/creator/pipeline";
+import { runCreator, writeCreatorIfc, checkIfcStructure, type CreatorResult, type CreatorStatus } from "../modules/families/creator/pipeline";
 import { templateFor, type ProductSpec } from "../modules/families/creator/build";
 import { TEMPLATES } from "../modules/families/creator/templates";
 import { resolveParts } from "../modules/families/creator/layout";
@@ -30,6 +30,9 @@ const form: FormState = { name: "", manufacturer: "", model: "", text: "", pages
 let result: CreatorResult | null = null;
 let liveStatus: CreatorStatus | null = null;
 let notice = "";
+/** Parts the user has switched off in the preview and views, by name. Whether exports leave them out is a separate, visible choice. */
+const hiddenParts = new Set<string>();
+let exportShownOnly = false;
 /** The library family the current result was added to or reopened from, and its type. */
 let libId: string | null = null;
 let libTypeId: string | null = null;
@@ -85,12 +88,41 @@ function run(spec?: ProductSpec) {
   render();
 }
 
+
+interface PartView { parts: ReturnType<typeof resolveParts>; params: Record<string, number> | null }
+function currentParts(): PartView | null {
+  if (!result?.family || !result.spec) return null;
+  try {
+    const built = deps.buildInEngine(result.family, result.family.types[0]);
+    const params = built.params as Record<string, number>;
+    return { parts: resolveParts(templateFor(result.spec), params), params };
+  } catch { return null; }
+}
+/** The preview nodes in part order, only when each node sits at its part's centre; otherwise null and parts cannot be switched. */
+function partNodes(obj: THREE.Object3D, parts: ReturnType<typeof resolveParts>): THREE.Object3D[] | null {
+  if (parts.length !== obj.children.length) return null;
+  for (let i = 0; i < parts.length; i++) {
+    const k = obj.children[i], q = parts[i];
+    if (Math.hypot(k.position.x - q.cx, k.position.y - q.cy, k.position.z - q.cz) >= 1e-6) return null;
+  }
+  return [...obj.children];
+}
+function pruneHidden(parts: ReturnType<typeof resolveParts>) {
+  const names = new Set(parts.map((q) => q.name));
+  for (const n of [...hiddenParts]) if (!names.has(n)) hiddenParts.delete(n);
+}
+
 function updatePreview(fit: boolean) {
   if (!previewTried) { previewTried = true; preview = createPreview3D(); }
   if (!preview) return;
   let obj: THREE.Object3D | null = null;
   if (result?.family && result.status.platformReady) {
     try { obj = deps.buildInEngine(result.family, result.family.types[0]).object ?? null; } catch { obj = null; }
+  }
+  if (obj && result?.spec) {
+    const pv = currentParts();
+    const nodes = pv ? partNodes(obj, pv.parts) : null;
+    if (pv && nodes) { pruneHidden(pv.parts); nodes.forEach((k, i) => { k.visible = !hiddenParts.has(pv.parts[i].name); }); }
   }
   preview.setObject(obj, fit || previewFit);
   previewFit = !obj;
@@ -212,8 +244,11 @@ function resultHtml(r: CreatorResult): string {
     try {
       const built = deps.buildInEngine(r.family, r.family.types[0]);
       const parts = resolveParts(tpl, built.params);
-      html += `<div class="obs-fc-sec"><div class="obs-fc-h">${esc(t("familyCreator.views"))}</div><div data-fc="views">${renderThreeViews(parts, { w: r.spec.widthM, d: r.spec.depthM, h: r.spec.heightM }, { front: t("familyCreator.front"), side: t("familyCreator.side"), top: t("familyCreator.top") })}</div>` +
+      pruneHidden(parts);
+      const shownParts = parts.filter((q) => !hiddenParts.has(q.name));
+      html += `<div class="obs-fc-sec"><div class="obs-fc-h">${esc(t("familyCreator.views"))}</div><div data-fc="views">${renderThreeViews(shownParts, { w: r.spec.widthM, d: r.spec.depthM, h: r.spec.heightM }, { front: t("familyCreator.front"), side: t("familyCreator.side"), top: t("familyCreator.top") })}</div>` +
         `<div class="obs-fc-detail"><bdi>${esc(t("familyCreator.partsLine", { n: parts.length, names: parts.map((p) => p.name).join(", ") }))}</bdi></div></div>`;
+      html += partsHtml(parts);
     } catch (e) { html += `<div class="obs-fc-detail">${esc(t("familyCreator.viewsUnavailable", { message: (e as Error).message }))}</div>`; }
   }
   if (r.warnings?.length) {
@@ -235,6 +270,22 @@ function resultHtml(r: CreatorResult): string {
     html += libraryHtml();
   }
   return html;
+}
+
+
+function partsHtml(parts: ReturnType<typeof resolveParts>): string {
+  const nHidden = parts.filter((q) => hiddenParts.has(q.name)).length;
+  const boxes = parts.map((q) => `<label class="obs-fc-part" style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" data-part="${esc(q.name)}"${hiddenParts.has(q.name) ? "" : " checked"}> <bdi>${esc(q.name)}</bdi></label>`).join("");
+  const scope = nHidden === 0 ? t("familyCreator.parts.scopeAll", { n: parts.length })
+    : exportShownOnly ? t("familyCreator.parts.scopeShown", { shown: parts.length - nHidden, n: parts.length })
+      : t("familyCreator.parts.scopePreviewOnly", { n: parts.length });
+  return `<div class="obs-fc-sec" data-fc="parts"><div class="obs-fc-h">${esc(t("familyCreator.parts.title"))}</div>` +
+    `<div class="obs-fc-parts" style="display:flex;flex-wrap:wrap;gap:4px 12px">${boxes}</div>` +
+    `<div style="margin-top:4px"><button type="button" class="obs-fc-btn" data-act="show-all-parts"${nHidden ? "" : " disabled"}>${esc(t("familyCreator.parts.showAll"))}</button></div>` +
+    `<div class="obs-fc-detail" style="margin-top:6px">${esc(t("familyCreator.parts.exportTitle"))}</div>` +
+    `<label class="obs-fc-part" style="display:flex;align-items:center;gap:4px"><input type="radio" name="fc-export-scope" data-scope="all"${exportShownOnly ? "" : " checked"}> ${esc(t("familyCreator.parts.exportAll"))}</label>` +
+    `<label class="obs-fc-part" style="display:flex;align-items:center;gap:4px"><input type="radio" name="fc-export-scope" data-scope="shown"${exportShownOnly ? " checked" : ""}> ${esc(t("familyCreator.parts.exportShown"))}</label>` +
+    `<div class="obs-fc-detail" data-fc="export-scope">${esc(scope)}${nHidden && exportShownOnly ? " " + esc(t("familyCreator.parts.countsNote")) : ""}</div></div>`;
 }
 
 function render() {
@@ -293,6 +344,14 @@ function render() {
   const slot = panel.querySelector<HTMLElement>('[data-fc-slot="preview3d"]');
   if (slot && preview) slot.appendChild(preview.el);
   panel.querySelector('[data-act="fit"]')?.addEventListener("click", () => preview?.fit());
+  panel.querySelectorAll<HTMLInputElement>("input[data-part]").forEach((el) => el.addEventListener("change", () => {
+    const n = el.dataset.part as string;
+    if (el.checked) hiddenParts.delete(n); else hiddenParts.add(n);
+    updatePreview(false); render();
+  }));
+  panel.querySelectorAll<HTMLInputElement>("input[data-scope]").forEach((el) => el.addEventListener("change", () => {
+    exportShownOnly = el.dataset.scope === "shown"; render();
+  }));
   panel.querySelectorAll<HTMLInputElement>("[data-param]").forEach((el) => {
     el.addEventListener("change", () => editParam(el.dataset.param as string, el.dataset.int === "1" ? Number(el.value) : Number(el.value) / 1000));
   });
@@ -327,6 +386,13 @@ async function downloadGlb() {
         if (Math.hypot(k.position.x - q.cx, k.position.y - q.cy, k.position.z - q.cz) < 1e-6) k.name = q.name;
       });
     }
+    let omitted = 0;
+    if (exportShownOnly && hiddenParts.size && parts.length === obj.children.length) {
+      const drop = obj.children.filter((_k, i) => hiddenParts.has(parts[i].name));
+      if (drop.length === parts.length) throw new Error(t("familyCreator.parts.allHidden"));
+      drop.forEach((k) => obj.remove(k));
+      omitted = drop.length;
+    }
     const { GLTFExporter } = await import("three/examples/jsm/exporters/GLTFExporter.js");
     const buf = await new GLTFExporter().parseAsync(obj, { binary: true });
     const blob = new Blob([buf as ArrayBuffer], { type: "model/gltf-binary" });
@@ -336,7 +402,7 @@ async function downloadGlb() {
     link.href = url; link.download = file;
     document.body.appendChild(link); link.click(); link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
-    notice = t("familyCreator.glbSaved", { file });
+    notice = t("familyCreator.glbSaved", { file }) + (omitted ? " " + t("familyCreator.parts.omitted", { omitted, n: parts.length }) : "");
   } catch (e) {
     notice = t("familyCreator.glbFailed", { message: (e as Error).message });
   }
@@ -443,16 +509,28 @@ function act(a: string) {
   } else if (a === "reopen") reopenSelected();
   else if (a === "save-lib") saveToLibrary();
   else if (a === "add-size") addSize();
+  else if (a === "show-all-parts") { hiddenParts.clear(); updatePreview(false); render(); }
   else if (a === "glb" && result?.family && result.spec) void downloadGlb();
   else if (a === "ifc" && result?.ifcText && result.spec) {
-    const blob = new Blob([result.ifcText], { type: "application/octet-stream" });
+    let text = result.ifcText, omittedNote = "";
+    const pv = exportShownOnly && hiddenParts.size ? currentParts() : null;
+    if (pv && result.family) {
+      const keep = pv.parts.filter((q) => !hiddenParts.has(q.name));
+      if (!keep.length) { notice = t("familyCreator.parts.allHidden"); render(); return; }
+      const out = writeCreatorIfc(result.family, result.spec, pv.params ?? {}, keep);
+      const bad = checkIfcStructure(out.text, keep.length);
+      if (bad.length) { notice = t("familyCreator.glbFailed", { message: bad.join("; ") }); render(); return; }
+      text = out.text;
+      omittedNote = " " + t("familyCreator.parts.omitted", { omitted: pv.parts.length - keep.length, n: pv.parts.length });
+    }
+    const blob = new Blob([text], { type: "application/octet-stream" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     lastIfcName = `${result.spec.name.replace(/[^A-Za-z0-9._-]+/g, "_")}.ifc`;
     link.href = url; link.download = lastIfcName;
     document.body.appendChild(link); link.click(); link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
-    notice = t("familyCreator.saved", { file: lastIfcName });
+    notice = t("familyCreator.saved", { file: lastIfcName }) + omittedNote;
     render();
   }
 }
