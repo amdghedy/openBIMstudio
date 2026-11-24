@@ -30,7 +30,7 @@ jobs:
       - run: npm ci
       - run: npm i --no-save @playwright/test@1.57.0 && npx playwright install --with-deps chromium
       - run: npm run build
-      - run: npx playwright test --project=chromium tests/e2e/cad-native-blocks.spec.ts tests/e2e/cad-xref.spec.ts tests/e2e/cad-ribbon.spec.ts
+      - run: npx playwright test --project=chromium tests/e2e/cad-native-blocks.spec.ts tests/e2e/cad-xref.spec.ts tests/e2e/cad-constraints.spec.ts tests/e2e/cad-ribbon.spec.ts
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4

@@ -87,6 +87,7 @@
     "test:cad-2d-extras": "node tests/cad-2d-extras.test.cjs",
     "test:native-curves": "node tests/native-curves.test.cjs",
     "test:cad-constraint-solver": "node tests/cad-constraint-solver.test.cjs",
+    "test:cad-constraint-bridge": "node tests/cad-constraint-bridge.test.cjs",
     "test:cad-index-append": "node tests/cad-index-append.test.cjs",
     "test:cad-block-refs": "node tests/cad-block-refs.test.cjs",
     "test:cad-block-edit": "node tests/cad-block-edit.test.cjs",
