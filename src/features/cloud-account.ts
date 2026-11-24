@@ -33,7 +33,7 @@
  */
 import { ctx } from "../core/context";
 import { registerCommand } from "./command-palette";
-import { startUserStateSync, flushUserState, stopUserStateSync } from "./user-state";
+import { startUserStateSync, signOutRestoreGuest, stopUserStateSync } from "./user-state";
 import { getCurrentProject, saveProject } from "../modules/projects/projects";
 import * as store from "../modules/projects/store";
 import { buildProjectFile, suggestedFileName } from "../modules/projects/project-file";
@@ -410,12 +410,15 @@ function buildMenu(menu: HTMLElement): void {
     menuItem(menu, "My cloud projects…", () => void openCloudProjectsDialog());
     menuItem(menu, "Sign out", async () => {
       try {
-        await flushUserState();
+        // Sync + back up this account's settings BEFORE the session ends (needs the cookie).
+        const restore = signOutRestoreGuest();
+        const changed = await restore;
         await api("/api/auth/logout", { method: "POST" });
         stopUserStateSync();
         currentUser = null;
         remountAll();
         toast("success", "Signed out. Projects stay on this device.");
+        if (changed) setTimeout(() => location.reload(), 400);
       } catch (err) {
         toast("error", err instanceof Error ? err.message : "Sign out failed.");
       }
