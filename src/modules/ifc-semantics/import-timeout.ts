@@ -24,9 +24,12 @@
  *   silent minutes means the conversion is stuck, not slow.
  * - Total bound: the whole conversion may not exceed
  *   `min(totalCapMs, max(totalFloorMs, totalPerMbMs * sizeMB))`
- *   (defaults: 5 min floor, 30 s per MB, 30 min ceiling). A 2.3 MB file
- *   gets 5 min (120x its measured 2.5 s); a 350 MB file — the largest the
- *   browser will attempt — gets 30 min (at the measured rate it needs ~6).
+ *   (defaults: 5 min floor, 30 s per MB, 120 min ceiling). A 2.3 MB file
+ *   gets 5 min (120x its measured 2.5 s); a 2,300 MB file — the largest
+ *   the browser will attempt by default — gets 120 min (at the measured
+ *   rate it needs ~38). The cap was raised from 30 min when the link
+ *   ceiling went to 2.3 GB: at the measured rate a legitimate 2.3 GB
+ *   conversion outlives 30 min, so the old cap would false-fail it.
  *
  * Honest limit, stated in the importer too: web-ifc runs single-threaded
  * in this app (see `getImporter()` — `forceSingleThread=true`), so a
@@ -42,7 +45,7 @@
 export const IFC_IMPORT_STALL_MS_DEFAULT = 120_000;
 export const IFC_IMPORT_TOTAL_FLOOR_MS_DEFAULT = 300_000;
 export const IFC_IMPORT_TOTAL_PER_MB_MS_DEFAULT = 30_000;
-export const IFC_IMPORT_TOTAL_CAP_MS_DEFAULT = 1_800_000;
+export const IFC_IMPORT_TOTAL_CAP_MS_DEFAULT = 7_200_000;
 /** Below this a stall bound is a misconfiguration, not a bound. */
 export const IFC_IMPORT_STALL_MS_MIN = 10_000;
 /** Below this a total override is a misconfiguration, not a bound. */

@@ -66,7 +66,7 @@ Per-format size ceilings (`FILE_LIMITS`, `src/core/file-guard.ts`):
 
 | Kind | Limit | Kind | Limit |
 |---|---|---|---|
-| ifc | 1.5 GB | frag | 1.5 GB |
+| ifc | 4 GB | frag | 4 GB |
 | dxf | 512 MB | geojson | 20 MB |
 | dwg | 256 MB | shapefile | 256 MB |
 | bcf | 256 MB | mesh | 200 MB |
@@ -87,7 +87,8 @@ Per-format size ceilings (`FILE_LIMITS`, `src/core/file-guard.ts`):
   defence in depth), then `preflightStep(bytes)` before web-ifc. Browser-safe
   limit (`ifcSettings.browserSafeMaxMB`) and hard limit
   (`ifcSettings.maxSizeMB`) are checked before the read.
-- **Size limit:** 1.5 GB guard; browser-safe limit lower by settings.
+- **Size limit:** 4 GB guard; in-browser conversion ceiling lower by
+  settings (default 2300 MB — the "link IFC up to 2.3 GB" contract).
 - **Complexity limit:** STEP preflight (bounded structural check).
 - **Parser:** web-ifc WASM, in a worker (`getImporter().process`).
 - **Isolation:** worker; FRAG cache hit returns before parsing (the file
@@ -109,13 +110,13 @@ Per-format size ceilings (`FILE_LIMITS`, `src/core/file-guard.ts`):
   this PR to `expandIfcSources`; the universal-importer branch had *no*
   guard at all and is now guarded identically), then
   `guardZipDirectory(bytes)` before JSZip inflates anything.
-- **Size limit:** 1.5 GB archive; ZIP audit: 20,000 entries, 1 GB/entry,
-  3 GB total extracted, ratio 1000, ZIP64 rejected.
+- **Size limit:** 4 GB archive; ZIP audit: 20,000 entries, 4 GB/entry,
+  4 GB total extracted, ratio 1000, ZIP64 rejected.
 - **Complexity limit:** entry count + total extracted size + ratio.
 - **Parser:** JSZip (`loadAsync`), then the B1 IFC path per entry.
 - **Isolation:** main thread for the audit (no inflation); entries are
   extracted one at a time and each extracted `.ifc` is re-checked against
-  the 1.5 GB limit before it is handed to `loadIfcFiles`.
+  the 4 GB limit before it is handed to `loadIfcFiles`.
 - **Error behaviour:** `Failed to unpack "name": <reason>`; nothing is
   imported.
 - **Regression test:** `tests/file-import-boundaries.test.cjs` (crafted
@@ -132,7 +133,8 @@ Per-format size ceilings (`FILE_LIMITS`, `src/core/file-guard.ts`):
 - **Validation:** `assertFileAllowed("frag", name, file.size)` before the
   read (added by this PR); empty files rejected; a 0-drawable model is
   disposed again after load.
-- **Size limit:** 1.5 GB.
+- **Size limit:** 4 GB (shares the IFC bound — a FRAG converted from a
+  2.3 GB IFC can exceed the old 1.5 GB ceiling).
 - **Complexity limit:** none beyond the parser (see residual).
 - **Parser:** fragments core (`ctx.fragments.core.load`).
 - **Isolation:** main thread (fragments API); render loop paused during load.

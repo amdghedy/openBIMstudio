@@ -24,9 +24,9 @@ t("bounds: small file gets the 5 min floor (2.3 MB measured at 2.5 s)", () => {
 t("bounds: 20 MB scales at 30 s/MB", () => {
   assert.strictEqual(computeImportTimeoutMs(20).totalMs, 600_000);
 });
-t("bounds: 350 MB (largest the browser attempts) hits the 30 min ceiling", () => {
-  assert.strictEqual(computeImportTimeoutMs(350).totalMs, 1_800_000);
-  assert.strictEqual(computeImportTimeoutMs(1000).totalMs, 1_800_000);
+t("bounds: 2,300 MB (largest the browser attempts) hits the 120 min ceiling", () => {
+  assert.strictEqual(computeImportTimeoutMs(2300).totalMs, 7_200_000);
+  assert.strictEqual(computeImportTimeoutMs(1000).totalMs, 7_200_000);
 });
 t("bounds: NaN/negative size degrades to the floor, never to 0", () => {
   assert.strictEqual(computeImportTimeoutMs(NaN).totalMs, 300_000);

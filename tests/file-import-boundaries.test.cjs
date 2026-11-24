@@ -41,7 +41,7 @@ const u8 = (s) => new Uint8Array(Buffer.from(s, "latin1"));
 // ── A. Shared guard: new per-format limits ──────────────────────────────
 console.log("=== A. file-guard limits ===");
 t("new kinds have the documented limits and reject over-limit/empty files", () => {
-  const expect = { frag: 1536 * 1024 * 1024, geojson: 20 * 1024 * 1024, shapefile: 256 * 1024 * 1024,
+  const expect = { frag: 4096 * 1024 * 1024, geojson: 20 * 1024 * 1024, shapefile: 256 * 1024 * 1024,
     mesh: 200 * 1024 * 1024, solid: 200 * 1024 * 1024, landxml: 5 * 1024 * 1024,
     factors: 5 * 1024 * 1024, "type-catalog": 5 * 1024 * 1024 };
   for (const [k, v] of Object.entries(expect)) {

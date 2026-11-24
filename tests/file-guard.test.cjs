@@ -73,7 +73,8 @@ t("ZIP: normal archive accepted", () => assert.ok(G.guardZipDirectory(zip([{ nam
 for (const name of ["../evil.txt", "a/../../evil", "/abs/path", "C:\\x", "a\\b", "a\0b"]) t(`ZIP: unsafe path rejected: ${JSON.stringify(name)}`, () => assert.ok(!G.guardZipDirectory(zip([{ name }])).ok));
 t("ZIP: bomb ratio, huge entry, too many entries, no directory, truncation, ZIP64", () => {
   assert.ok(!G.guardZipDirectory(zip([{ name: "b", comp: 10, raw: 100_000_000 }])).ok);
-  assert.ok(!G.guardZipDirectory(zip([{ name: "b", comp: 3_000_000_000 / 2, raw: 3_000_000_000 }])).ok);
+  assert.ok(!G.guardZipDirectory(zip([{ name: "b", comp: 4_294_967_295 / 2, raw: 4_294_967_295 }])).ok); // uint32-max entry: above the 4095 MiB/entry bound
+  assert.ok(!G.guardZipDirectory(zip([{ name: "a", comp: 2_200_000_000, raw: 2_200_000_000 }, { name: "b", comp: 2_200_000_000, raw: 2_200_000_000 }])).ok); // 2 × 2.05 GiB entries pass the per-entry bound but blow the 4096 MiB total
   assert.ok(!G.guardZipDirectory(zip([{ name: "a" }], { entries: 30000 })).ok);
   assert.ok(!G.guardZipDirectory(u8("PK\u0003\u0004 not really a zip at all, long enough to scan....")).ok);
   assert.ok(!G.guardZipDirectory(zip([{ name: "a" }]).subarray(0, 40)).ok);

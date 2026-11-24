@@ -141,8 +141,12 @@ export type IfcSettings = {
   maxSizeMB: number;
   /**
    * Soft ceiling for in-browser web-ifc conversion. Files above this are skipped
-   * unless allowUnsafeLargeIfc is true. Multi-hundred-MB IFCs may still OOM
-   * some devices; users can raise this further in Importer settings.
+   * unless allowUnsafeLargeIfc is true. The default 2300 MB is the user-facing
+   * "link IFC up to 2.3 GB / IFCZIP up to 700 MB" contract.
+   * Multi-hundred-MB IFCs may still OOM some devices —
+   * the ceiling is the attempt bound, not a success promise;
+   * for models that survive, Convert & link once (FRAG cache) or offline .frag is the reliable path.
+   * Users can raise this further in Importer settings.
    */
   browserSafeMaxMB: number;
   /** User opts in to attempt conversion of files above browserSafeMaxMB. */
@@ -155,7 +159,7 @@ export type IfcSettings = {
   importStallTimeoutMs: number;
   /**
    * Browser conversion total bound in ms. 0 (default) means auto-scaled from
-   * the file size: 5 min floor, 30 s per MB, 30 min ceiling. An explicit
+   * the file size: 5 min floor, 30 s per MB, 120 min ceiling. An explicit
    * value overrides the auto-scaling (clamped to a 1 s minimum).
    */
   importTotalTimeoutMs: number;
@@ -169,7 +173,7 @@ const IFC_SETTINGS_KEY = "toc.ifc.settings.v1";
 const defaultIfcSettings: IfcSettings = {
   cdn: "local", customPath: "",
   autoFit: true, keepFragInMemory: true, replaceExisting: false,
-  recenter: false, maxSizeMB: 4000, browserSafeMaxMB: 900, allowUnsafeLargeIfc: true,
+  recenter: false, maxSizeMB: 4000, browserSafeMaxMB: 2300, allowUnsafeLargeIfc: true,
   importStallTimeoutMs: IFC_IMPORT_STALL_MS_DEFAULT, importTotalTimeoutMs: 0,
   useCoord: false, coordX: 0, coordY: 0, coordZ: 0,
   positioning: "origin-to-origin",
@@ -180,13 +184,18 @@ try {
   const raw = localStorage.getItem(IFC_SETTINGS_KEY);
   if (raw) {
     ifcSettings = { ...defaultIfcSettings, ...JSON.parse(raw) };
-    if (!Number.isFinite(ifcSettings.browserSafeMaxMB)) ifcSettings.browserSafeMaxMB = 900;
+    if (!Number.isFinite(ifcSettings.browserSafeMaxMB)) ifcSettings.browserSafeMaxMB = 2300;
     // Migrate older conservative defaults that blocked normal / large IFC+IFCZIP.
     if (ifcSettings.browserSafeMaxMB > 0 && ifcSettings.browserSafeMaxMB <= 120) {
-      ifcSettings.browserSafeMaxMB = 900;
+      ifcSettings.browserSafeMaxMB = 2300;
     }
     if (ifcSettings.browserSafeMaxMB === 350 || ifcSettings.browserSafeMaxMB === 550) {
-      ifcSettings.browserSafeMaxMB = 900;
+      ifcSettings.browserSafeMaxMB = 2300;
+    }
+    // Migrate the previous 900 MB default (shipped before the 2.3 GB round) —
+    // same never-personalized treatment as the 350/550 fingerprints above.
+    if (ifcSettings.browserSafeMaxMB === 900) {
+      ifcSettings.browserSafeMaxMB = 2300;
     }
     if (!Number.isFinite(ifcSettings.maxSizeMB) || ifcSettings.maxSizeMB < 1500) {
       ifcSettings.maxSizeMB = 4000;
@@ -1275,7 +1284,10 @@ async function runTask(t: ImportTask) {
       }
       return;
     }
-    if (!fragBytes && t.sizeMB > 200 && ifcSettings.allowUnsafeLargeIfc) {
+    if (!fragBytes && t.sizeMB > 200) {
+      // Fires regardless of allowUnsafeLargeIfc: the default path attempts
+      // large conversions, and the user must see the honest crash risk
+      // before the tab is committed.
       t.phase = `⚠️ ${t.sizeMB.toFixed(0)} MB — high risk of tab crash`;
       refreshTaskRow(t);
     }
@@ -1518,7 +1530,7 @@ settingsBox.innerHTML = `
     </label>
     <label style="display:grid;gap:2px">Browser-safe conversion limit (MB)
       <input id="ifcSafeMax" type="number" min="10" style="${inpCss}">
-      <span style="opacity:.65;font-size:10px">Above this, IFC is skipped unless "Allow unsafe large IFC" is on. Default 900 MB. Very large models may still need IFC→FRAG if the tab runs out of memory.</span>
+      <span style="opacity:.65;font-size:10px">Above this, IFC is skipped unless "Allow unsafe large IFC" is on. Default 2300 MB — linking IFC up to 2.3 GB and IFCZIP up to 700 MB converts in-browser. Honest caveat: conversion above ~700 MB risks running out of memory (tab crash) — for those, Convert &amp; link once (FRAG cache) or offline .frag is the reliable path.</span>
     </label>
     <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="ifcAllowUnsafe"> Allow unsafe large IFC (may crash the tab)</label>
     <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="ifcAutoHandoff"> Auto convert+link large IFC (skip dialog)</label>
@@ -1534,7 +1546,7 @@ function syncSettingsUI() {
   $("ifcReplace").checked = ifcSettings.replaceExisting;
   $("ifcFit").checked = ifcSettings.autoFit;
   $("ifcMax").value = String(ifcSettings.maxSizeMB);
-  $("ifcSafeMax").value = String(ifcSettings.browserSafeMaxMB ?? 900);
+  $("ifcSafeMax").value = String(ifcSettings.browserSafeMaxMB ?? 2300);
   $("ifcAllowUnsafe").checked = !!ifcSettings.allowUnsafeLargeIfc;
   try { $("ifcAutoHandoff").checked = largeIfcAutoHandoff(); } catch { /* */ }
 }
@@ -1553,8 +1565,8 @@ settingsBox.addEventListener("change", (e) => {
     case "ifcKeep": ifcSettings.keepFragInMemory = el.checked; break;
     case "ifcReplace": ifcSettings.replaceExisting = el.checked; break;
     case "ifcFit": ifcSettings.autoFit = el.checked; break;
-    case "ifcMax": ifcSettings.maxSizeMB = Math.max(1, Number(el.value) || 800); break;
-    case "ifcSafeMax": ifcSettings.browserSafeMaxMB = Math.max(10, Number(el.value) || 900); break;
+    case "ifcMax": ifcSettings.maxSizeMB = Math.max(1, Number(el.value) || 4000); break;
+    case "ifcSafeMax": ifcSettings.browserSafeMaxMB = Math.max(10, Number(el.value) || 2300); break;
     case "ifcAllowUnsafe": ifcSettings.allowUnsafeLargeIfc = el.checked; break;
     case "ifcAutoHandoff": try { localStorage.setItem(LARGE_IFC_AUTO_HANDOFF_KEY, el.checked ? "1" : "0"); } catch { /* */ } break;
   }
