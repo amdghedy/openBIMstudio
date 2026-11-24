@@ -4021,10 +4021,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   /* ── drawing workspace Drafting Engine ── */
   function addDraftEntity(e: DxfEntity): void {
+    const wasEmpty = ents.length === 0;
     ents.push(e);
     if (layoutI < 0) modelEnts.push(e);
     const eb = M.entityBBox(e);
-    bounds = bounds ? M.unionBBox(bounds, eb) : eb;
+    bounds = M.extendBounds(bounds, wasEmpty, eb);
     idx = M.buildIndex(ents, bounds);
     pushUndoAct({ type: "add", entities: [e] });
     markDirty();
@@ -4403,11 +4404,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   function addEntities(list: DxfEntity[]): void {
     if (!list.length) return;
     const firstNew = ents.length;
+    const wasEmpty = firstNew === 0;
     for (const e of list) ents.push(e);
     if (modelEnts !== ents) for (const e of list) modelEnts.push(e);
     let b: M.BBox | null = null;
     for (const e of list) b = b ? M.unionBBox(b, M.entityBBox(e)) : M.entityBBox(e);
-    if (b) bounds = M.unionBBox(bounds ?? b, b);
+    if (b) bounds = M.extendBounds(bounds, wasEmpty, b);
     // Appends go into the existing index (O(added)); a full rebuild only when something leaves its frame.
     if (!(idx && M.indexAppend(idx, ents, firstNew))) idx = M.buildIndex(ents, bounds ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 });
     pushUndoAct({ type: "add", entities: list });

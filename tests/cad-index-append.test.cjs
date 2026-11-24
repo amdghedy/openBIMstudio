@@ -37,4 +37,10 @@ t("rays stay in the infinite list; large entities go to the big list", () => {
   ents.push({ type: "LINE", layer: "0", start: { x: 1, y: 1 }, end: { x: 990, y: 990 } });
   assert.strictEqual(M.indexAppend(idx, ents, 10), true); assert.ok(idx.big.includes(10));
 });
+t("extendBounds: first geometry replaces the blank-drawing placeholder, later geometry unions", () => {
+  const ph = { minX: 0, minY: 0, maxX: 100, maxY: 100 }, a = { minX: 0, minY: 0, maxX: 10, maxY: 4 }, b = { minX: 20, minY: -5, maxX: 30, maxY: 1 };
+  assert.deepStrictEqual(M.extendBounds(ph, true, a), a);
+  assert.deepStrictEqual(M.extendBounds(null, false, a), a);
+  assert.deepStrictEqual(M.extendBounds(a, false, b), { minX: 0, minY: -5, maxX: 30, maxY: 4 });
+});
 console.log(`\ncad-index-append: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

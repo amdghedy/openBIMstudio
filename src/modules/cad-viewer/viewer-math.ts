@@ -43,6 +43,15 @@ export const screenToWorld = (v: View, sx: number, sy: number): Pt => {
   return invRotPair(v, x, y);
 };
 
+/**
+ * Bounds after adding geometry `added`. A blank drawing carries a placeholder frame (0,0)-(100,100) so the canvas has
+ * something to show; the first real geometry must REPLACE it, otherwise ZOOM EXTENTS fits the placeholder and a small
+ * drawing is drawn tiny in a corner (and off-screen for picks).
+ */
+export function extendBounds(current: BBox | null, wasEmpty: boolean, added: BBox): BBox {
+  return wasEmpty || !current ? added : unionBBox(current, added);
+}
+
 export function fitView(b: BBox, w: number, h: number, margin = 0.06, rot = 0): View {
   const a = (rot * Math.PI) / 180;
   const c = Math.cos(a), s = Math.sin(a);
