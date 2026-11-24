@@ -12,7 +12,7 @@
 
 import type { FamilyDefinition, FamilyType } from "../types";
 import { readStep } from "../../ifc-semantics/step-reader";
-import { pickExtras, pickOverallSize, type OverallSize } from "./cutsheet";
+import { readExtras, pickOverallSize, type OverallSize } from "./cutsheet";
 import { buildFamilyFromSpec, templateFor, validateSpec, type ProductSpec } from "./build";
 import { resolveParts } from "./layout";
 import { writeIfc2x3 } from "./ifc2x3";
@@ -76,7 +76,11 @@ export interface CreatorResult {
   size?: OverallSize;
   family?: FamilyDefinition;
   ifcText?: string;
+  /** Sheet values that were NOT used, with the reason. Shown to the user. */
+  warnings?: CreatorWarning[];
 }
+
+export interface CreatorWarning { key: string; vars: Record<string, string | number> }
 
 const REVIT_NOTE = "Not verified in Revit. Open the IFC in Revit 2020 and record the result.";
 
@@ -168,12 +172,22 @@ export function runCreator(
     const tplx = templateFor(spec);
     const params: Record<string, number> = {};
     const used = [];
-    for (const e of pickExtras(input.pages ?? [])) {
+    const warnings: CreatorWarning[] = [];
+    const where = (c: { page: number; line: number; sourceText: string }) => ({ page: c.page, line: c.line, text: c.sourceText });
+    const rd = readExtras(input.pages ?? []);
+    for (const e of rd.found) {
       const tp = tplx.params.find((x) => x.name === e.name && x.formula === undefined);
-      if (!tp || (tp.integer && !Number.isInteger(e.value))) continue;
-      if ((tp.min !== undefined && e.value < tp.min) || (tp.max !== undefined && e.value > tp.max)) continue;
+      if (!tp) { warnings.push({ key: "familyCreator.warn.notUsed", vars: { label: e.candidate.label, shape: tplx.label, ...where(e.candidate) } }); continue; }
+      if ((tp.integer && !Number.isInteger(e.value)) || (tp.min !== undefined && e.value < tp.min) || (tp.max !== undefined && e.value > tp.max)) {
+        const shown = e.candidate.kind === "count" ? String(e.value) : `${Math.round(e.value * 1000)} mm`;
+        warnings.push({ key: "familyCreator.warn.outOfRange", vars: { label: e.candidate.label, value: shown, ...where(e.candidate) } });
+        continue;
+      }
       params[e.name] = e.value; used.push(e.candidate);
     }
+    for (const c of rd.conflicts) warnings.push({ key: "familyCreator.warn.conflict", vars: { label: c.label, ...where(c.candidates[0]), other: c.candidates.map((x) => `${x.page}:${x.line}`).join(", ") } });
+    for (const c of rd.ambiguous) warnings.push({ key: "familyCreator.warn.ambiguous", vars: { label: c.label, ...where(c) } });
+    result.warnings = warnings;
     if (used.length) { spec = { ...spec, params, sources: [...size.sources, ...used] }; }
   }
   const problems = validateSpec(spec);
