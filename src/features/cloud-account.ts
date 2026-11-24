@@ -35,6 +35,7 @@ import { ctx } from "../core/context";
 import { registerCommand } from "./command-palette";
 import { startUserStateSync, signOutRestoreGuest, stopUserStateSync, endStaleAccountScope, accountScopeDiffers } from "./user-state";
 import { importUnassignedLocalFiles, hasUnassignedLocalFiles } from "./local-import";
+import { confirmDialog } from "./form-modal";
 import { anyUnsavedWork, registerDirtyCheck } from "../core/dirty-registry";
 import { getCurrentProject, saveProject, isDirty as projectIsDirty } from "../modules/projects/projects";
 import * as store from "../modules/projects/store";
@@ -284,9 +285,10 @@ registerDirtyCheck(() => projectIsDirty());
  * the user decides, and declining locks the page rather than leaving it usable
  * under the wrong identity.
  */
-function confirmScopeSwitch(what: string): boolean {
+async function confirmScopeSwitch(what: string): Promise<boolean> {
   if (justLanded || !anyUnsavedWork()) return true;
-  return window.confirm(
+  return confirmDialog(
+    "Switch account?",
     `${what}\n\nThis reloads the app to switch your local files and settings. ` +
     `Unsaved changes in open projects or drawings would be lost, so save them first.\n\nReload now?`,
   );
@@ -346,7 +348,7 @@ export function refreshAccountState(): Promise<void> {
         const email = r.user.email.trim().toLowerCase();
         if (syncedFor === email) return; // already synced in this page load; never reload mid-session
         // Tie local preferences and local file lists to this account (see user-state.ts).
-        if (accountScopeDiffers(email) && !confirmScopeSwitch(`You are signed in as ${email}.`)) {
+        if (accountScopeDiffers(email) && !(await confirmScopeSwitch(`You are signed in as ${email}.`))) {
           lockForIdentityMismatch(email);
           return;
         }
@@ -357,7 +359,7 @@ export function refreshAccountState(): Promise<void> {
         syncedFor = null;
         // The server says nobody is signed in: leave any previous account's local scope.
         if (accountScopeDiffers(null) && !scopeDeclined) {
-          if (confirmScopeSwitch("Your session has ended.")) { if (endStaleAccountScope()) location.reload(); }
+          if (await confirmScopeSwitch("Your session has ended.")) { if (endStaleAccountScope()) location.reload(); }
           else { scopeDeclined = true; toast("info", "Session ended. Cloud sync is off. Save your work, then reload to return to your device's own files."); }
         }
       }
@@ -488,7 +490,7 @@ function buildMenu(menu: HTMLElement): void {
     menuItem(menu, "Copy this device's earlier local files into this account…", () => void (async () => {
       try {
         if (!(await hasUnassignedLocalFiles())) { toast("info", "No earlier local files were found on this device."); return; }
-        if (!window.confirm("Copy the local projects and drawings that were on this device before accounts into your account's local lists?\n\nThe originals stay where they are (visible when signed out). Nothing is deleted or overwritten.")) return;
+        if (!(await confirmDialog("Copy earlier local files?", "Copy the local projects and drawings that were on this device before accounts into your account's local lists?\n\nThe originals stay where they are (visible when signed out). Nothing is deleted or overwritten."))) return;
         const n = await importUnassignedLocalFiles();
         toast("success", n ? `Copied ${n} item(s) into this account. Reloading…` : "Everything was already copied.");
         if (n) setTimeout(() => location.reload(), 600);
@@ -498,7 +500,7 @@ function buildMenu(menu: HTMLElement): void {
     })());
     menuItem(menu, "Sign out", async () => {
       try {
-        if (!window.confirm("Sign out?\n\nThis reloads the app to switch back to this device's own files and settings. Unsaved changes in open projects or drawings would be lost, so save them first.")) return;
+        if (!(await confirmDialog("Sign out?", "Sign out?\n\nThis reloads the app to switch back to this device's own files and settings. Unsaved changes in open projects or drawings would be lost, so save them first."))) return;
         // Sync + back up this account's settings BEFORE the session ends (needs the cookie).
         const restore = signOutRestoreGuest();
         const changed = await restore;
