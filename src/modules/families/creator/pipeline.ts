@@ -107,6 +107,26 @@ function refresh(s: CreatorStatus): void {
 }
 
 /** Structure check on written IFC text. Returns problems, empty when clean. */
+/**
+ * The IFC2X3 text for a family at one set of resolved parameters. `parts` may be a subset of the
+ * template's parts (the user's export choice); the length and count properties still describe the
+ * whole family, so a caller that leaves parts out must say so.
+ */
+export function writeCreatorIfc(family: FamilyDefinition, spec: ProductSpec, params: Record<string, any>, parts: ReturnType<typeof resolveParts>) {
+  const lengthParams: Record<string, number> = {};
+  const countParams: Record<string, number> = {};
+  for (const p of family.parameters) {
+    const v = params[p.name];
+    if (p.type === "length" && typeof v === "number") lengthParams[p.name] = v;
+    else if (p.type === "integer" && typeof v === "number") countParams[p.name] = v;
+  }
+  return writeIfc2x3({
+    name: spec.name, manufacturer: spec.manufacturer, model: spec.model,
+    entity: family.ifcEntity === "IfcFurnishingElement" ? "IfcFurnishingElement" : "IfcBuildingElementProxy",
+    parts, lengthParams, countParams,
+  });
+}
+
 export function checkIfcStructure(text: string, expectedParts: number): string[] {
   const problems: string[] = [];
   const file = readStep(text);
@@ -236,18 +256,7 @@ export function runCreator(
   const tpl = templateFor(spec);
   let parts;
   try { parts = resolveParts(tpl, built.params); } catch (e) { return fail("ifc", (e as Error).message); }
-  const lengthParams: Record<string, number> = {};
-  const countParams: Record<string, number> = {};
-  for (const p of family.parameters) {
-    const v = built.params[p.name];
-    if (p.type === "length" && typeof v === "number") lengthParams[p.name] = v;
-    else if (p.type === "integer" && typeof v === "number") countParams[p.name] = v;
-  }
-  const out = writeIfc2x3({
-    name: spec.name, manufacturer: spec.manufacturer, model: spec.model,
-    entity: family.ifcEntity === "IfcFurnishingElement" ? "IfcFurnishingElement" : "IfcBuildingElementProxy",
-    parts, lengthParams, countParams,
-  });
+  const out = writeCreatorIfc(family, spec, built.params, parts);
   const bad = checkIfcStructure(out.text, parts.length);
   if (bad.length) return fail("ifc", bad.join("; "));
   result.ifcText = out.text;
