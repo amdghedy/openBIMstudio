@@ -225,7 +225,9 @@ function resultHtml(r: CreatorResult): string {
   }
   if (s.platformReady) {
     html += `<div class="obs-fc-sec"><button type="button" class="obs-fc-btn" data-act="add">${esc(t("familyCreator.add"))}</button> ` +
-      (r.ifcText ? `<button type="button" class="obs-fc-btn" data-act="ifc">${esc(t("familyCreator.ifcDownload"))}</button>` : "") + `</div>`;
+      (r.ifcText ? `<button type="button" class="obs-fc-btn" data-act="ifc">${esc(t("familyCreator.ifcDownload"))}</button>` : "") +
+      (r.ifcText && preview ? `<button type="button" class="obs-fc-btn" data-act="glb">${esc(t("familyCreator.glbDownload"))}</button>` : "") + `</div>` +
+      (r.ifcText && preview ? `<div class="obs-fc-detail" data-fc="glb-note">${esc(t("familyCreator.glbNote"))}</div>` : "");
   }
   return html;
 }
@@ -296,6 +298,37 @@ function editParam(name: string, valueM: number) {
   run(spec);
 }
 
+/** GLB of the same engine geometry as the preview. Metres, Y up, one named node per part. A viewer format only. */
+async function downloadGlb() {
+  if (!result?.family || !result.spec) return;
+  try {
+    const built = deps.buildInEngine(result.family, result.family.types[0]);
+    const obj = built.object;
+    if (!obj) throw new Error(t("familyCreator.glbNoGeometry"));
+    // Name each part node, but only where the node sits exactly at the part's centre. Otherwise leave it unnamed.
+    const parts = resolveParts(templateFor(result.spec), built.params as Record<string, number>);
+    if (parts.length === obj.children.length) {
+      obj.children.forEach((k, i) => {
+        const q = parts[i];
+        if (Math.hypot(k.position.x - q.cx, k.position.y - q.cy, k.position.z - q.cz) < 1e-6) k.name = q.name;
+      });
+    }
+    const { GLTFExporter } = await import("three/examples/jsm/exporters/GLTFExporter.js");
+    const buf = await new GLTFExporter().parseAsync(obj, { binary: true });
+    const blob = new Blob([buf as ArrayBuffer], { type: "model/gltf-binary" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const file = `${result.spec.name.replace(/[^A-Za-z0-9._-]+/g, "_")}.glb`;
+    link.href = url; link.download = file;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    notice = t("familyCreator.glbSaved", { file });
+  } catch (e) {
+    notice = t("familyCreator.glbFailed", { message: (e as Error).message });
+  }
+  render();
+}
+
 function act(a: string) {
   if (a === "close") setVisible(false);
   else if (a === "create") run();
@@ -309,7 +342,8 @@ function act(a: string) {
     } as Parameters<typeof familyStore.create>[0]);
     notice = t("familyCreator.added", { name: f.name });
     render();
-  } else if (a === "ifc" && result?.ifcText && result.spec) {
+  } else if (a === "glb" && result?.family && result.spec) void downloadGlb();
+  else if (a === "ifc" && result?.ifcText && result.spec) {
     const blob = new Blob([result.ifcText], { type: "application/octet-stream" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
