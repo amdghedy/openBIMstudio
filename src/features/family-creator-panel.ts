@@ -142,7 +142,7 @@ function resultHtml(r: CreatorResult): string {
           : `${mmv} mm <span class="obs-fc-detail">${esc(t("familyCreator.formula"))}</span>`) + `</td></tr>`;
     }).join("");
     html += `<div class="obs-fc-sec"><div class="obs-fc-h">${esc(t("familyCreator.params", { template: tpl.label }))}</div><table class="obs-fc-tbl">${rows}</table></div>`;
-    html += `<div class="obs-fc-sec"><div class="obs-fc-h">${esc(t("familyCreator.preview3d"))} <button type="button" class="obs-fc-btn" data-act="fit" style="float:right">${esc(t("familyCreator.fit"))}</button></div>` +
+    html += `<div class="obs-fc-sec"><div class="obs-fc-h" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>${esc(t("familyCreator.preview3d"))}</span> <button type="button" class="obs-fc-btn" data-act="fit">${esc(t("familyCreator.fit"))}</button></div>` +
       (preview ? `<div data-fc-slot="preview3d"></div><div class="obs-fc-detail">${esc(t("familyCreator.preview3dHelp"))}</div>` : `<div class="obs-fc-detail" data-fc="no3d">${esc(t("familyCreator.preview3dUnavailable"))}</div>`) + `</div>`;
     // Views from the engine-resolved parts.
     try {
