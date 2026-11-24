@@ -29,26 +29,19 @@ test('2D editor: constraints are recorded and solvable from the ribbon', async (
   await page.locator('[data-a=gc-list]').first().click();
   await expect.poll(hist).toContain('GCLIST: no recorded constraints');
 
-  // HORIZONTAL on the line (pick at the canvas centre, where the zoomed-to-extents line passes).
-  await run('HORIZONTAL');
-  const cv = page.locator('[data-r=cv]').first();
-  const box = (await cv.boundingBox())!;
-  await page.waitForTimeout(600); // let ZOOM E settle
-  // Where exactly the extents put the line depends on layout, so scan a grid until a pick lands on it.
-  const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
-  outer: for (let dy = 0; dy <= 160; dy += 20) {
-    for (const sy of dy === 0 ? [1] : [1, -1]) {
-      for (let dx = -240; dx <= 240; dx += 20) {
-        await page.mouse.move(cx + dx, cy + sy * dy);
-        await page.mouse.click(cx + dx, cy + sy * dy);
-        if ((await hist()).includes('recorded as constraint #1')) break outer;
-      }
-    }
-  }
-  await expect.poll(hist, { timeout: 10000 }).toContain('recorded as constraint #1');
+  // Keyboard-driven path: select the line, record HORIZONTAL + LEN 10 (a 10 x 4 diagonal must become 10 x 0).
+  await run('SELECTALL');
+  await run('GCADD H');
+  await expect.poll(hist, { timeout: 10000 }).toContain('GCADD: recorded 1 horizontal');
+  await run('GCADD LEN 10');
+  await expect.poll(hist, { timeout: 10000 }).toContain('GCADD: recorded 1 length');
+  // Horizontal AND vertical AND length 10 on one line cannot hold: refused and reported, not silently applied.
+  await run('GCADD V');
+  await expect.poll(hist, { timeout: 10000 }).toContain('GCADD: not recorded.');
 
   await page.locator('[data-a=gc-list]').first().click();
   await expect.poll(hist).toMatch(/#1 horizontal — ok/);
+  await expect.poll(hist).toMatch(/#2 length = 10 — ok/);
   await page.locator('[data-a=gc-solve]').first().click();
   await expect.poll(hist).toContain('GCSOLVE:');
   expect(errors, errors.join('\n')).toEqual([]);
