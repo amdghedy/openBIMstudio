@@ -111,6 +111,7 @@ const EXTRA_LENGTHS: Array<{ name: string; label: string; re: RegExp }> = [
   { name: "DoorThickness", label: "Door thickness", re: /^door thickness$/i },
   { name: "LegSize", label: "Leg size", re: /^leg (size|width|thickness)$/i },
   { name: "TopThickness", label: "Top thickness", re: /^(table ?top|top|worktop) thickness$/i },
+  { name: "DrawerHeight", label: "Drawer front height", re: /^drawer( front)? height$/i },
   { name: "PanelThickness", label: "Panel thickness", re: /^(panel|board|shelf|side) thickness$/i },
 ];
 
@@ -137,9 +138,16 @@ export function readExtras(pages: string[]): ExtrasReading {
     }
   }
   const cnt = /^\s*(middle|intermediate|adjustable|inner) shelves\s*[:=\-]?\s*(\d{1,2})\s*$/i;
+  const doorsDrawers = /^\s*(number of )?(doors|drawers)\s*[:=\-]?\s*(\d{1,2})\s*$/i;
   const plain = /^\s*(number of )?shelves\s*[:=\-]?\s*(\d{1,2})\s*$/i;
   const ambiguous: DimensionCandidate[] = [];
   pages.forEach((text, p) => String(text).split(/\r?\n/).forEach((line, i) => {
+    const dd = doorsDrawers.exec(line);
+    if (dd) {
+      const label = dd[2][0].toUpperCase() + dd[2].slice(1).toLowerCase();
+      add({ name: label, value: Number(dd[3]), candidate: { label, valueM: Number(dd[3]), page: p + 1, line: i + 1, sourceText: line.trim(), kind: "count" } });
+      return;
+    }
     const m = cnt.exec(line);
     if (m) add({ name: "MidShelves", value: Number(m[2]), candidate: { label: "Middle shelves", valueM: Number(m[2]), page: p + 1, line: i + 1, sourceText: line.trim(), kind: "count" } });
     else if (plain.test(line)) ambiguous.push({ label: "Shelves", valueM: Number(plain.exec(line)![2]), page: p + 1, line: i + 1, sourceText: line.trim(), kind: "count" });
