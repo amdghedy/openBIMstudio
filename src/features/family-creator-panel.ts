@@ -289,6 +289,10 @@ function editParam(name: string, valueM: number) {
   else if (name === "Depth") spec.depthM = valueM;
   else if (name === "Height") spec.heightM = valueM;
   else spec.params![name] = valueM;
+  // A value the user changed is no longer "from the sheet": drop its source line so the tag and the list stay true.
+  const tp = templateFor(spec).params;
+  const label = tp.find((x) => x.name === name)?.label;
+  if (spec.sources) spec.sources = spec.sources.filter((x) => label ? x.label !== label : tp.some((q) => q.label === x.label));
   run(spec);
 }
 
