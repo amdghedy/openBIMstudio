@@ -46,3 +46,28 @@ test('2D editor: constraints are recorded and solvable from the ribbon', async (
   await expect.poll(hist).toContain('GCSOLVE:');
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+// Regression: a blank drawing starts with a placeholder frame (0,0)-(100,100). ZOOM EXTENTS after adding a small
+// line used to fit that frame instead of the line, so the line sat tiny off-centre and every pick said "0 found".
+test('2D editor: ZOOM EXTENTS fits the first geometry of a blank drawing, so a centre click picks it', async ({ page }) => {
+  test.setTimeout(150000);
+  await page.goto('/');
+  await page.locator('#obs-hero-3d').click({ timeout: 30000 });
+  await expect.poll(() => page.evaluate(() => !!(window as any).__OBS_CTX__), { timeout: 30000 }).toBe(true);
+  await openPaletteWith(page, 'Drawing Editor');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.obs-cad-shell, .obs-cad-viewer').first()).toBeVisible({ timeout: 30000 });
+  const cmd = page.locator('[data-r=cmd]').first();
+  const run = async (c: string) => { await cmd.fill(c); await cmd.press('Enter'); };
+  const hist = async () => page.locator('[data-r=cmdhist]').first().innerText();
+  await page.locator('[data-r=importfile]').first().setInputFiles({ name: 'one.dxf', mimeType: 'text/plain', buffer: Buffer.from(one) });
+  await expect.poll(async () => { await run('CENSUS'); return /LINE=1/.test(await hist()); }, { timeout: 15000 }).toBe(true);
+  await run('ZOOM E');
+  await page.waitForTimeout(600);
+  await run('HORIZONTAL');
+  const box = (await page.locator('[data-r=cv]').first().boundingBox())!;
+  const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.click(cx, cy);
+  await expect.poll(hist, { timeout: 10000 }).toContain('recorded as constraint #1');
+});
