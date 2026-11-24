@@ -390,5 +390,22 @@ t("creatorSpec survives migration and a JSON save/load, is not aliased, and each
   }
 });
 
+
+t("writeCreatorIfc with a subset of parts: only those solids, same family properties, structure still valid", () => {
+  const L = require(find("layout.js", "creator"));
+  const sheet = P.runCreator({ name: "Sideboard", pages: ["Overall size: 1600 x 500 x 900 mm\nDoors: 3\nDrawers: 2"] }, deps);
+  const built = deps.buildInEngine(sheet.family, sheet.family.types[0]);
+  const parts = L.resolveParts(B.templateFor(sheet.spec), built.params);
+  const keep = parts.filter((q) => !/^(Handle|Drawer pull)/.test(q.name));
+  const full = P.writeCreatorIfc(sheet.family, sheet.spec, built.params, parts);
+  const sub = P.writeCreatorIfc(sheet.family, sheet.spec, built.params, keep);
+  assert.strictEqual(ifcExtents(full.text).n, 12);
+  assert.strictEqual(ifcExtents(sub.text).n, 7);
+  assert.strictEqual(full.text, sheet.ifcText, "the full export is byte-identical to what the pipeline wrote");
+  assert.deepStrictEqual(P.checkIfcStructure(sub.text, 7), []);
+  assert.ok(/IFCPROPERTYSINGLEVALUE\('Doors',\$,IFCINTEGER\(3\)/.test(sub.text), "count properties still describe the whole family");
+  near(ifcExtents(sub.text).size[0], 1.6, 1e-4);
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
