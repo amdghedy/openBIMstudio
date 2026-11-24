@@ -238,7 +238,7 @@ function ensurePanel(): HTMLElement {
   panel.className = "obs-side-panel obs-fc-panel";
   panel.setAttribute("data-testid", "family-creator-panel");
   panel.style.cssText =
-    "position:fixed;top:48px;right:12px;width:380px;max-height:calc(100vh - 80px);" +
+    "position:fixed;top:48px;right:12px;width:min(380px,calc(100vw - 24px));box-sizing:border-box;max-height:calc(100vh - 80px);" +
     "background:#1e2430;color:#e2e8f0;border:1px solid #334155;border-radius:10px;" +
     "box-shadow:0 12px 40px rgba(0,0,0,.45);z-index:8000;display:none;overflow:auto;" +
     "font:13px/1.4 system-ui,sans-serif;";
