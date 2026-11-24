@@ -141,6 +141,17 @@ t("cloud-account: full-page Google OAuth with server status pre-check and rememb
   assert.ok(dlg.includes("openGoogleOAuth((ok) =>"), "dialog google button must call openGoogleOAuth");
 });
 
+// ── 4b. Cloudflare routing: browser navigations to /api must reach the Worker ──
+t("wrangler.jsonc: assets.run_worker_first routes /api/* to the Worker (Google sign-in is a full-page navigation)", () => {
+  const raw = fs.readFileSync(path.join(__dirname, "..", "wrangler.jsonc"), "utf8");
+  const json = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, "").replace(/,(\s*[}\]])/g, "$1"));
+  const assets = json.assets || {};
+  assert.strictEqual(assets.not_found_handling, "single-page-application", "SPA fallback must stay for app routes");
+  const rwf = assets.run_worker_first;
+  assert.ok(Array.isArray(rwf) && rwf.includes("/api/*"), "assets.run_worker_first must include /api/* or browsers get index.html for /api/auth/google/start and /callback");
+  assert.ok(!rwf.some((p) => p === "/*" || p === "/"), "run_worker_first must stay scoped to /api/* so static assets stay free");
+});
+
 // ── 5. CI registration ──
 t("test is registered in package.json and ci-unit-tests.mjs", () => {
   assert.ok(pkg.scripts["test:auth-ux"], "package.json script test:auth-ux missing");
