@@ -251,5 +251,51 @@ t("T10 table and shelf templates: chosen by name or by the user, engine and IFC 
   assert.strictEqual(bad.status.stages[0].state, "failed");
 });
 
+t("T11 shelving count is real geometry: N middle shelves, evenly spaced, IFC and engine follow, bad counts refused", () => {
+  const spec = (n) => ({ name: "Wall shelving", pages: ["Overall size: 900 x 300 x 1800 mm"], spec: { name: "Wall shelving", widthM: 0.9, depthM: 0.3, heightM: 1.8, templateId: "shelf", params: n === undefined ? undefined : { MidShelves: n } } });
+  for (const [n, parts] of [[0, 5], [1, 6], [3, 8], [12, 17]]) {
+    const r = P.runCreator(spec(n), deps);
+    assert.deepStrictEqual(r.status.stages.map((x) => x.state), ["done", "done", "done", "done"], "n=" + n);
+    const x = ifcExtents(r.ifcText);
+    assert.strictEqual(x.n, parts, "solids for n=" + n);
+    near(x.size[0], 0.9, 1e-6); near(x.size[1], 0.3, 1e-6); near(x.size[2], 1.8, 1e-6);
+  }
+  // Three shelves: centres at 20/2 mm + k * (1800 - 20) / 4 mm, so equal gaps of 445 mm.
+  const r3 = P.runCreator(spec(3), deps);
+  const centres = [...r3.ifcText.matchAll(/IFCEXTRUDEDAREASOLID/g)].length;
+  assert.strictEqual(centres, 8);
+  const mids = ["mid-1", "mid-2", "mid-3"];
+  const T = require(find("templates.js", "creator")), L = require(find("layout.js", "creator"));
+  const tpl = T.expandTemplate(T.SHELF_TEMPLATE, { MidShelves: 3 });
+  assert.deepStrictEqual(tpl.parts.filter((p) => p.id.startsWith("mid-")).map((p) => p.id), mids);
+  const built = deps.buildInEngine(r3.family, r3.family.types[0]);
+  const ys = L.resolveParts(tpl, built.params).filter((p) => p.id.startsWith("mid-")).map((p) => p.cy);
+  near(ys[0], 0.01 + 1 * 1.78 / 4, 1e-9); near(ys[1], 0.01 + 2 * 1.78 / 4, 1e-9); near(ys[2], 0.01 + 3 * 1.78 / 4, 1e-9);
+  assert.ok(r3.family.parameters.find((p) => p.name === "MidShelves").type === "integer");
+  // Bad counts are refused with a reason; the cabinet and box are unchanged.
+  for (const bad of [2.5, -1, 13]) assert.strictEqual(P.runCreator(spec(bad), deps).status.stages[0].state, "failed", "count " + bad);
+  assert.strictEqual(P.runCreator({ name: "Display Cabinet", pages: PAGES }, deps).status.stages.every((x) => x.state === "done"), true);
+});
+
+t("T12 labelled extras from the sheet set template parameters, with page and line; conflicts and unknown names are ignored", () => {
+  const sheet = (extra) => ["Wall shelving WS-9\nOverall size: 900 x 300 x 1800 mm\n" + extra];
+  const r = P.runCreator({ name: "Wall shelving", pages: sheet("Middle shelves: 3\nPanel thickness: 25 mm\nPlinth height: 100 mm") }, deps);
+  assert.deepStrictEqual(r.status.stages.map((x) => x.state), ["done", "done", "done", "done"]);
+  assert.strictEqual(r.spec.templateId, undefined);
+  assert.strictEqual(r.family.parameters.find((p) => p.name === "MidShelves").default, 3);
+  near(r.family.parameters.find((p) => p.name === "PanelThickness").default, 0.025);
+  assert.strictEqual(ifcExtents(r.ifcText).n, 8);
+  const srcs = r.spec.sources.map((s) => s.label + "@" + s.page + ":" + s.line);
+  assert.ok(srcs.includes("Middle shelves@1:3") && srcs.includes("Panel thickness@1:4"), srcs.join());
+  assert.ok(!srcs.some((x) => x.startsWith("Plinth")), "plinth is not a shelving parameter, so it is ignored");
+  // Cabinet takes the plinth height from the sheet.
+  const c = P.runCreator({ name: "Display Cabinet", pages: ["Overall size: 1200 x 700 x 2000 mm\nPlinth height: 150 mm"] }, deps);
+  near(c.family.parameters.find((p) => p.name === "PlinthHeight").default, 0.15);
+  // Two different values for the same name: not guessed. Plain "Shelves: 4" is not applied. Out of range ignored.
+  const bad = P.runCreator({ name: "Wall shelving", pages: sheet("Middle shelves: 3\nMiddle shelves: 4\nShelves: 4\nPanel thickness: 900 mm") }, deps);
+  assert.strictEqual(bad.family.parameters.find((p) => p.name === "MidShelves").default, 1);
+  near(bad.family.parameters.find((p) => p.name === "PanelThickness").default, 0.02);
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
