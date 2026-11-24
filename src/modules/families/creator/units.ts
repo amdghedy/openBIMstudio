@@ -24,6 +24,12 @@ function parseFraction(s: string): number | null {
  * caller never guesses.
  */
 export function parseLength(text: string, defaultUnit: LengthUnit = "mm"): number | null {
+  const v = parseLengthRaw(text, defaultUnit);
+  // Drop binary float noise such as 0.7000000000000001 (nanometre precision).
+  return v === null ? null : Math.round(v * 1e9) / 1e9;
+}
+
+function parseLengthRaw(text: string, defaultUnit: LengthUnit): number | null {
   const s = String(text ?? "").trim().replace(/[\u2032\u2019]/g, "'").replace(/[\u2033\u201D]/g, '"');
   if (!s) return null;
 
