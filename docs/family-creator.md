@@ -82,5 +82,6 @@ EXPRESS validation returned 0 messages, and the geometry bbox was
   used). Nothing is fetched from another origin: the browser test records every
   request. The panel labels OCR results "check the numbers", keeps page and
   line, and the parts come from a ready-made shape, not from tracing the drawing.
+- Counts: a template can repeat a part for an integer parameter. Open shelving has "Middle shelves" (0 to 12, default 1): each count writes that many equally spaced shelves into the engine geometry and the IFC, and changing it re-runs the whole pipeline.
 - Still to come: URL intake, a local vision model (licence must be read first),
   more shapes, per-part visibility, other OCR languages.
