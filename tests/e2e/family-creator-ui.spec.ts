@@ -203,3 +203,31 @@ test("family creator: PDF text intake and interactive 3D preview", async ({ page
 
   expect(errors).toEqual([]);
 });
+
+test("family creator: table and shelving shapes", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+  await enterAuthoring(page);
+  await openCreator(page);
+  const panel = page.getByTestId("family-creator-panel");
+  await panel.locator('[data-f="name"]').fill("Dining table");
+  await panel.locator('[data-f="text"]').fill("Overall size: 1800 x 900 x 750 mm");
+  await panel.getByRole("button", { name: "Create family" }).click();
+  await expect(panel).toContainText("Table with four legs"); // chosen from the name
+  await expect(panel).toContainText("5 parts");
+  const canvas = panel.locator('canvas[data-fc3d="canvas"]');
+  await expect.poll(async () => (await canvas.getAttribute("data-size")) ?? "").toBe("1800,900,750");
+  await panel.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  await shot(page, "20-table.png");
+
+  // The user picks the shape: same size, different parts.
+  await panel.locator('[data-f="templateId"]').selectOption("shelf");
+  await panel.locator('[data-f="text"]').fill("Overall size: 900 x 300 x 1800 mm");
+  await panel.getByRole("button", { name: "Create family" }).click();
+  await expect(panel).toContainText("Open shelving");
+  await expect(panel).toContainText("6 parts");
+  await expect.poll(async () => (await canvas.getAttribute("data-size")) ?? "").toBe("900,300,1800");
+  await panel.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  await shot(page, "21-shelf.png");
+  expect(errors).toEqual([]);
+});
