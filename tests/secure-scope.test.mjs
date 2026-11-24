@@ -76,7 +76,7 @@ await t("account switch / sign-out never reload silently over open work", () => 
   assert.ok(acct.includes("anyUnsavedWork()"));
   assert.ok(!/performance\.now\(\) - pageLoadedAt/.test(acct), "no time-based shortcut over unsaved work");
   assert.ok(read("src/features/cad-viewer.ts").includes("registerDirtyCheck(() => tabs.some((t) => t.engine.isDirty()))"), "2D drawings must report unsaved work");
-  assert.ok(acct.includes('window.confirm("Sign out?'));
+  assert.ok(acct.includes('confirmDialog("Sign out?'));
   assert.ok(acct.includes("justLanded = true"));
   assert.ok(acct.includes("accountScopeDiffers("));
 });
