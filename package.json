@@ -271,6 +271,7 @@
     "test:auth-ux": "node tests/auth-ux.test.cjs",
     "test:user-state": "node tests/user-state.test.mjs",
     "test:local-scope": "node tests/local-scope.test.mjs",
+    "test:secure-scope": "node tests/secure-scope.test.mjs",
     "server": "node server/index.mjs",
     "verify": "node scripts/verify-input-focus.mjs",
     "test:v68-core": "node tests/v68-engine-core.test.cjs",
