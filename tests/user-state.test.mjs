@@ -118,6 +118,103 @@ await t("callback rejects unverified Google email", async () => {
   } finally { globalThis.fetch = realFetch; }
 });
 
+// ── client behaviour: account switching, backups, failures (real user-state.ts, fake browser) ──
+function makeBrowser(serverByUser) {
+  const store = new Map(), session = new Map();
+  const ls = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => void store.set(k, String(v)), removeItem: (k) => void store.delete(k) };
+  const ss = { getItem: (k) => (session.has(k) ? session.get(k) : null), setItem: (k, v) => void session.set(k, String(v)), removeItem: (k) => void session.delete(k) };
+  const net = { up: true, puts: [], user: null };
+  globalThis.localStorage = ls; globalThis.sessionStorage = ss;
+  globalThis.window = { addEventListener() {} };
+  globalThis.setInterval = () => 0; globalThis.clearInterval = () => {};
+  globalThis.fetch = async (url, init = {}) => {
+    if (!net.up) throw new Error("offline");
+    if (init.method === "PUT") {
+      const prefs = JSON.parse(init.body).prefs; net.puts.push({ user: net.user, prefs });
+      serverByUser[net.user] = { prefs }; return new Response("{}");
+    }
+    return new Response(JSON.stringify({ state: serverByUser[net.user] ?? null }));
+  };
+  return { store, session, net };
+}
+let n = 0;
+const fresh = async () => import(path.join(root, "src", "features", "user-state.ts") + `?v=${++n}`);
+const prefsOf = (store) => Object.fromEntries([...store].filter(([k]) => ["obs.theme.mode", "obs.locale", "obs.projects.lastId"].includes(k)));
+
+await t("guest -> A -> B -> A: every set of preferences returns, local files/recents untouched", async () => {
+  const server = {};
+  const b = makeBrowser(server);
+  const localFiles = { "obs.projects.docs": "guest-and-A-local-project-list", "obs.drawings.history": "recent-drawings", "obs.xref.cache": "x" };
+  for (const [k, v] of Object.entries(localFiles)) b.store.set(k, v);
+  b.store.set("obs.theme.mode", "light"); b.store.set("obs.projects.lastId", "proj-guest");
+  let m = await fresh();
+  b.net.user = "a@x.com";
+  await m.startUserStateSync("a@x.com");                       // guest signs in as A: seeds A from guest prefs
+  assert.equal(server["a@x.com"].prefs["obs.theme.mode"], "light");
+  assert.equal(JSON.parse(b.store.get("obs.acct.backup.__guest__"))["obs.theme.mode"], "light", "guest copy kept");
+  b.store.set("obs.theme.mode", "dark"); b.store.set("obs.locale", "ar"); b.store.set("obs.projects.lastId", "proj-A");
+  await m.flushUserState();                                     // A's edits (same session) are uploaded
+  assert.equal(server["a@x.com"].prefs["obs.locale"], "ar");
+
+  m = await fresh(); b.net.user = "b@x.com";                    // B arrives on the same browser
+  const reloadB = await m.startUserStateSync("b@x.com");
+  assert.equal(reloadB, true);
+  assert.deepEqual(prefsOf(b.store), {}, "B does not see A's preferences or last project");
+  assert.equal(JSON.parse(b.store.get("obs.acct.backup.a@x.com"))["obs.projects.lastId"], "proj-A", "A's keys backed up, not deleted");
+  b.store.set("obs.theme.mode", "blue"); await m.flushUserState();
+  assert.equal(server["b@x.com"].prefs["obs.theme.mode"], "blue");
+  assert.equal(server["a@x.com"].prefs["obs.theme.mode"], "dark", "B's changes never reach A");
+
+  m = await fresh(); b.net.user = "a@x.com";                    // A returns
+  await m.startUserStateSync("a@x.com");
+  assert.deepEqual(prefsOf(b.store), { "obs.theme.mode": "dark", "obs.locale": "ar", "obs.projects.lastId": "proj-A" });
+  for (const [k, v] of Object.entries(localFiles)) assert.equal(b.store.get(k), v, k + " (local files/recents) untouched");
+});
+await t("sign-out returns the browser to the original guest preferences (and keeps the account backup)", async () => {
+  const server = {};
+  const b = makeBrowser(server);
+  b.store.set("obs.theme.mode", "light");
+  let m = await fresh(); b.net.user = "a@x.com";
+  await m.startUserStateSync("a@x.com");
+  b.store.set("obs.theme.mode", "dark");
+  const changed = await m.signOutRestoreGuest();
+  assert.equal(changed, true);
+  assert.equal(b.store.get("obs.theme.mode"), "light", "guest preference restored");
+  assert.equal(server["a@x.com"].prefs["obs.theme.mode"], "dark", "account settings were synced before sign-out");
+  assert.equal(JSON.parse(b.store.get("obs.acct.backup.a@x.com"))["obs.theme.mode"], "dark");
+});
+await t("sync failure never applies or uploads another account's state", async () => {
+  const server = { "b@x.com": { prefs: { "obs.theme.mode": "blue" } } };
+  const b = makeBrowser(server);
+  b.store.set("obs.acct.owner", "a@x.com"); b.store.set("obs.theme.mode", "dark"); b.store.set("obs.projects.lastId", "proj-A");
+  b.net.up = false;
+  let m = await fresh(); b.net.user = "b@x.com";
+  await m.startUserStateSync("b@x.com");
+  assert.deepEqual(prefsOf(b.store), {}, "A's state is gone from B's session even though the server is unreachable");
+  assert.equal(b.net.puts.length, 0, "nothing uploaded while offline");
+  assert.equal(JSON.parse(b.store.get("obs.acct.backup.a@x.com"))["obs.theme.mode"], "dark");
+  // A comes back while still offline: only A's own backup is applied
+  m = await fresh(); b.net.user = "a@x.com";
+  await m.startUserStateSync("a@x.com");
+  assert.equal(b.store.get("obs.theme.mode"), "dark");
+  assert.equal(b.net.puts.length, 0);
+});
+await t("a failed read never overwrites the saved server settings with local ones", async () => {
+  const server = { "a@x.com": { prefs: { "obs.theme.mode": "dark" } } };
+  const b = makeBrowser(server);
+  b.store.set("obs.theme.mode", "light");     // guest prefs
+  b.net.up = false;
+  const m = await fresh(); b.net.user = "a@x.com";
+  await m.startUserStateSync("a@x.com");
+  b.net.up = true; await m.flushUserState();
+  assert.equal(b.net.puts.length, 0, "no upload after a failed read");
+  assert.equal(server["a@x.com"].prefs["obs.theme.mode"], "dark", "saved account settings intact");
+});
+await t("user-state never touches IndexedDB or local file stores", () => {
+  const u = read("src", "features", "user-state.ts").replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.ok(!/indexedDB/.test(u));
+});
+
 // ── client + worker wiring drift guards ──
 await t("worker routes /api/user/* to the vault and checks state in the callback", () => {
   const w = read("worker", "index.ts");
@@ -137,7 +234,8 @@ await t("user switch backs up before clearing; account wires sync + flush on sig
   assert.ok(u.indexOf("BACKUP_PREFIX + owner") < u.indexOf("clearPrefs();"), "backup must precede clear");
   const a = read("src", "features", "cloud-account.ts");
   assert.ok(a.includes("startUserStateSync(r.user.email)"));
-  assert.ok(a.includes("await flushUserState()"));
+  assert.ok(a.includes("signOutRestoreGuest()"));
+  assert.ok(a.indexOf("signOutRestoreGuest()") < a.indexOf('api("/api/auth/logout"'), "sync must happen before the session ends");
 });
 
 console.log(`\nuser-state: ${pass} passed, ${fail} failed`);
