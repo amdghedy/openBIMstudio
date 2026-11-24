@@ -212,6 +212,19 @@ function makeWorker({ build = "testbuild1", webIfcVersion = "0.0.77", precache =
     assert.ok(cached && cached.body === "cached-shell", "offline navigation did not serve the cached shell");
   });
 
+  await t("/api navigations (Google sign-in redirect) bypass the worker and never get the cached shell", async () => {
+    const w = makeWorker();
+    const shell = await w.caches.open("obs-testbuild1");
+    await shell.put("/", new FakeResponse("cached-shell"));
+    for (const path of ["/api/auth/google/start", "/api/auth/google/callback?code=x&state=y", "/api/auth/me"]) {
+      const res = await w.dispatchFetch(new FakeRequest(ORIGIN + path, { mode: "navigate" }));
+      assert.strictEqual(res, null, path + " was intercepted by the service worker");
+    }
+    assert.strictEqual(w.fetchCalls.filter((u) => u.includes("/api/")).length, 0, "worker fetched an /api URL itself");
+    const home = await w.dispatchFetch(new FakeRequest(ORIGIN + "/", { mode: "navigate" }));
+    assert.ok(home && home.body.startsWith("bytes:"), "home navigation must still be handled network-first");
+  });
+
   await t("hashed /assets/ stay cache-first in the per-build cache", async () => {
     const online = makeWorker();
     const first = await online.dispatchFetch(new FakeRequest(ORIGIN + "/assets/app-abc.js"));

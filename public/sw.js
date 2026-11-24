@@ -82,6 +82,11 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   // local AI proxies and the dev server are never cached
   if (/^\/(ollama|lmstudio|anthropic)\//.test(url.pathname)) return;
+  // Auth and other API routes are never handled here. A top-level navigation to
+  // /api/auth/google/start answers with a redirect to Google; the app-shell branch
+  // below cannot cache a redirect, throws, and would serve the cached home page
+  // instead, so Google sign-in never leaves the app. Let the browser own /api.
+  if (url.pathname.startsWith("/api/")) return;
 
   if (req.mode === "navigate") {
     // app shell: always fresh from the network (cache:"reload" bypasses the HTTP
