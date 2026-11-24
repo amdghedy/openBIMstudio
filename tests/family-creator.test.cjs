@@ -320,6 +320,9 @@ t("T13 cabinet doors and drawers are real counted geometry: engine and IFC follo
     const eb = new THREE.Box3().setFromObject(b.object);
     near(eb.max.x - eb.min.x, 1.2, 1e-6); near(eb.max.y - eb.min.y, 2.0, 1e-6); near(eb.max.z - eb.min.z, 0.5, 1e-6);
   }
+  // Counts are written to the property set as whole numbers.
+  const two = P.runCreator(mk({ Doors: 2, Drawers: 3 }), deps);
+  assert.ok(two.ifcText.includes("IFCPROPERTYSINGLEVALUE('Doors',$,IFCINTEGER(2),$)") && two.ifcText.includes("IFCPROPERTYSINGLEVALUE('Drawers',$,IFCINTEGER(3),$)"));
   // Default stays a single door, as before.
   const def = P.runCreator(mk({}), deps);
   assert.strictEqual(ifcExtents(def.ifcText).n, 4);
@@ -340,6 +343,9 @@ t("T13 cabinet doors and drawers are real counted geometry: engine and IFC follo
   const tall = (p) => P.runCreator({ name: "Storage Cabinet", spec: { name: "Storage Cabinet", widthM: 1.2, depthM: 0.5, heightM: 0.9, templateId: "cabinet", params: p } }, deps);
   assert.strictEqual(tall({ Drawers: 5, Doors: 0 }).status.stages[0].state, "failed", "five drawers do not fit in 0.8 m");
   assert.strictEqual(tall({ Drawers: 4, Doors: 1 }).status.stages[0].state, "failed", "no room left for the door");
+  assert.match(tall({ Drawers: 5, Doors: 0 }).status.stages[0].detail, /^Drawers: /, "refusal names the parameter, not params.Drawers");
+  assert.ok(!/params\./.test(tall({ Drawers: 5, Doors: 0 }).status.stages[0].detail));
+  assert.match(P.runCreator(mk({ PlinthHeight: 5 }), deps).status.stages[0].detail, /^Plinth height: /);
   assert.strictEqual(tall({ Drawers: 4, Doors: 0 }).status.stages[0].state, "done", "drawers alone may fill the body");
   // From a sheet: counts and the drawer height are read with page and line; the name picks the cabinet.
   const sheet = P.runCreator({ name: "Kitchen sideboard", pages: ["Overall size: 1600 x 500 x 900 mm\nDoors: 2\nDrawers: 2\nDrawer height: 150 mm"] }, deps);
