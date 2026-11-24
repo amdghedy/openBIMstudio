@@ -1,4 +1,4 @@
-# Free family creator (slices 1 and 2, partial)
+# Free family creator (slices 1 to 3, partial)
 
 OpenBIMStudio is the family creator and engine. Revit is the destination.
 Everything here uses free tools only: no paid APIs, no cloud calls.
@@ -41,7 +41,7 @@ to family library, and Download IFC2X3. Browser spec:
   Only a run in Revit can change that, and a person records it.
 - IFC import is geometry and properties, not a native editable Revit family.
   The family stays parametric inside OpenBIMStudio.
-- No image or URL intake, no vision model, no PDF file reader yet. Those are later slices.
+- Scanned PDFs (no text layer) and images are not read: no OCR, no image or URL intake, no vision model yet. The panel says so and asks for the size.
 - GLB stays an export for other tools. Revit 2020 has no documented GLB import.
 - The two templates are small. Real products need richer parts (later slices).
 
@@ -58,3 +58,17 @@ to family library, and Download IFC2X3. Browser spec:
 `ifcopenshell` (LGPL, dev tool only, not shipped) opened the sample as IFC2X3,
 EXPRESS validation returned 0 messages, and the geometry bbox was
 1.2 x 0.7 x 2.0 m.
+
+## Slice 3: PDF text intake and interactive 3D
+
+- Choose a PDF or .txt in the panel. pdf.js (already bundled, same-origin
+  worker, no network) reads the text layer page by page, up to 20 MB and 40
+  pages. The size keeps its real page and line. Typing in the text box
+  replaces the loaded file, so a run never mixes the two.
+- A PDF with no text layer reports that it looks like a scan. Nothing is guessed.
+- The 3D preview is a three.js scene (OrbitControls, no CDN) of the object the
+  engine built: drag to rotate, wheel to zoom, right-drag to pan, Fit. It opts
+  out of the global wheel arbiter with `data-obs-own-wheel`.
+- Tests: `tests/family-creator-pdf.test.cjs` (unit, real pdf.js) and the
+  second case of `tests/e2e/family-creator-ui.spec.ts` (browser, not a CI gate).
+- Still to come: OCR, images, URL, vision model, richer templates.
