@@ -87,6 +87,9 @@ export const USER_PREF_KEYS: readonly string[] = [
   "obs.region.profile", "obs.region.overrides", "obs.currency",
   "obs.selection-prefs.v1", "obs.options.v1", "obs.ui.visibility.v1", "obs.snap",
   "obs.projects.lastId",
+  "obs.cad.ucs", "obs.cad.svgScale", "obs.cad.ribbon.tab", "obs.cad.ribbon.min", "obs.cad.insScale",
+  "obs.cad.filletR", "obs.cad.chamferD", "obs.cad.snapUnit", "obs.cad.qat.hidden.v1", "obs.cad.hatchDefaults",
+  "obs.cad.pageSetup", "obs.cad.nativeBlocks", "obs.cad.textStyles",
 ];
 const MAX_PREF_VALUE = 8 * 1024;
 const MAX_PREFS_TOTAL = 48 * 1024;
