@@ -14,6 +14,8 @@
  *    history with a "reopen from your file" hint instead of an Open button.
  */
 
+import { scopedDbName } from "../core/account-scope";
+
 export type RecentFormat = "DWG" | "DXF" | "XML";
 
 export interface RecentDrawing {
@@ -48,7 +50,7 @@ function openDb(): Promise<IDBDatabase | null> {
         resolve(null);
         return;
       }
-      const req = indexedDB.open(DB_NAME, 1);
+      const req = indexedDB.open(scopedDbName(DB_NAME), 1);
       req.onupgradeneeded = () => {
         const db = req.result;
         if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: "name" });
