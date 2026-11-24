@@ -10,6 +10,7 @@
  */
 import { expect, test } from "@playwright/test";
 import * as fs from "node:fs";
+import { createRequire } from "node:module";
 import * as path from "node:path";
 
 test.setTimeout(240000);
@@ -109,6 +110,78 @@ test("family creator: real status, editable parameters, library, IFC2X3 download
   expect(await panel.innerText()).not.toMatch(/slice/i);
   await expect(panel.getByRole("button", { name: "Download IFC2X3" })).toHaveCount(0);
   await shot(page, "03-failure.png");
+
+  expect(errors).toEqual([]);
+});
+
+const buildTextPdf = createRequire(import.meta.url)("../helpers/text-pdf.cjs") as (pages: string[][]) => Uint8Array;
+
+test("family creator: PDF text intake and interactive 3D preview", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+  await enterAuthoring(page);
+  await openCreator(page);
+  const panel = page.getByTestId("family-creator-panel");
+
+  // A two-page PDF: the size is on page 2.
+  const pdf = buildTextPdf([["Display Cabinet DC-100", "Example Co."], ["Specifications", "Overall size: 1200 x 700 x 2000 mm", "Power: 230 V"]]);
+  await panel.locator('[data-fc="file"]').setInputFiles({ name: "dc100.pdf", mimeType: "application/pdf", buffer: Buffer.from(pdf) });
+  await expect(panel.locator('[data-fc="file-note"]')).toContainText("Loaded dc100.pdf: 2 of 2 page(s) read.");
+  await panel.locator('[data-f="name"]').fill("Display Cabinet DC-100");
+  await panel.getByRole("button", { name: "Create family" }).click();
+  const states = await panel.locator("[data-stage]").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.state));
+  expect(states).toEqual(["done", "done", "done", "done"]);
+  await expect(panel.locator('[data-fc="sources"]')).toContainText("page 2, line 2");
+  await expect(panel.locator('[data-fc="sources"]')).toContainText("Overall size: 1200 x 700 x 2000 mm");
+
+  // 3D: the scene holds the engine's geometry at the spec size.
+  const canvas = panel.locator('canvas[data-fc3d="canvas"]');
+  await canvas.scrollIntoViewIfNeeded();
+  await expect(canvas).toHaveAttribute("data-meshes", /^[1-9]/);
+  await expect.poll(async () => Number(await canvas.getAttribute("data-frames"))).toBeGreaterThan(0);
+  const num = async (a: string) => ((await canvas.getAttribute(a)) ?? "").split(",").map(Number);
+  const size = await num("data-size");
+  expect(size[0]).toBeCloseTo(1200, 0); expect(size[1]).toBeCloseTo(700, 0); expect(size[2]).toBeCloseTo(2000, 0);
+  await shot(page, "10-3d-initial.png");
+
+  // Orbit, zoom, fit.
+  const fitCam = await num("data-cam");
+  const fitDist = Number(await canvas.getAttribute("data-dist"));
+  const box = (await canvas.boundingBox())!;
+  const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy); await page.mouse.down();
+  await page.mouse.move(cx + 90, cy + 25, { steps: 8 }); await page.mouse.up();
+  await expect.poll(async () => (await num("data-cam")).join()).not.toBe(fitCam.join());
+  const orbitDist = Number(await canvas.getAttribute("data-dist"));
+  // Orbiting changes the direction, not the distance to the target.
+  expect(orbitDist).toBeCloseTo(fitDist, 1);
+  await shot(page, "11-3d-orbited.png");
+  await page.mouse.move(cx, cy); await page.mouse.wheel(0, -400);
+  await expect.poll(async () => Number(await canvas.getAttribute("data-dist"))).toBeLessThan(orbitDist - 0.01);
+  await shot(page, "12-3d-zoomed.png");
+  await panel.getByRole("button", { name: "Fit" }).click();
+  await expect.poll(async () => (await num("data-cam")).join()).toBe(fitCam.join());
+  await shot(page, "13-3d-fit.png");
+
+  // Editing a parameter rebuilds the geometry in the same scene.
+  await panel.locator('[data-param="Width"]').fill("1500");
+  await panel.locator('[data-param="Width"]').dispatchEvent("change");
+  await expect.poll(async () => (await num("data-size"))[0]).toBeCloseTo(1500, 0);
+
+  // Typing replaces the file: the run reads the typed text, not the old PDF.
+  await panel.locator('[data-f="text"]').fill("Overall size: 900 x 600 x 1800 mm");
+  await expect(panel.locator('[data-fc="file-note"]')).toHaveText("");
+  await panel.getByRole("button", { name: "Create family" }).click();
+  await expect(panel.locator('[data-fc="sources"]')).toContainText("page 1, line 1");
+  await expect.poll(async () => (await num("data-size"))[2]).toBeCloseTo(1800, 0);
+
+  // A PDF with no text layer: honest message, no invented size.
+  const scan = buildTextPdf([[]]);
+  await panel.locator('[data-fc="file"]').setInputFiles({ name: "scan.pdf", mimeType: "application/pdf", buffer: Buffer.from(scan) });
+  await expect(panel.locator('[data-fc="file-note"]')).toContainText("no selectable text");
+  await expect(panel.locator('[data-fc="file-note"]')).toContainText("Type the size");
+  expect(await panel.innerText()).not.toMatch(/slice|ready for revit/i);
+  await shot(page, "14-scan-message.png");
 
   expect(errors).toEqual([]);
 });
