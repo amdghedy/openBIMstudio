@@ -1,4 +1,4 @@
-# Free family creator (slice 1, partial)
+# Free family creator (slices 1 and 2, partial)
 
 OpenBIMStudio is the family creator and engine. Revit is the destination.
 Everything here uses free tools only: no paid APIs, no cloud calls.
@@ -25,13 +25,23 @@ Product size in, editable family out, IFC2X3 written and structure-checked.
 Status is real. `progress` is finished stages over total stages, nothing else.
 There is no timer. A failed stage stops the run and says why.
 
+## Slice 2: the panel
+
+Manage tab > Family Creator (`src/features/family-creator-panel.ts`). Paste
+text or type a size in mm, press Create family. The panel shows the four real
+stages, a Destinations block (OpenBIMStudio family, IFC2X3 file, Revit 2020
+which always reads "not verified"), editable parameters (changing one re-runs
+the whole pipeline), the Sources, a front/side/top drawing of the parts, Add
+to family library, and Download IFC2X3. Browser spec:
+`tests/e2e/family-creator-ui.spec.ts` (set `FC_SHOTS=dir` for screenshots).
+
 ## What it does not claim
 
 - No "Ready for Revit". `status.revit.state` is always `"unverified"` here.
   Only a run in Revit can change that, and a person records it.
 - IFC import is geometry and properties, not a native editable Revit family.
   The family stays parametric inside OpenBIMStudio.
-- No image or URL intake, no vision model, no UI yet. Those are later slices.
+- No image or URL intake, no vision model, no PDF file reader yet. Those are later slices.
 - GLB stays an export for other tools. Revit 2020 has no documented GLB import.
 - The two templates are small. Real products need richer parts (later slices).
 
