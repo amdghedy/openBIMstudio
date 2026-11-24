@@ -13,6 +13,7 @@ import { buildParametricFamily } from "../modules/families/parametric-engine";
 import { familyStore } from "../modules/families/store";
 import { runCreator, type CreatorResult, type CreatorStatus } from "../modules/families/creator/pipeline";
 import { templateFor, type ProductSpec } from "../modules/families/creator/build";
+import { TEMPLATES } from "../modules/families/creator/templates";
 import { resolveParts } from "../modules/families/creator/layout";
 import { extractPdfPages } from "../modules/families/creator/pdf-text";
 import { createPreview3D, type Preview3D } from "./family-creator-preview";
@@ -22,8 +23,8 @@ import type { FamilyDefinition } from "../modules/families/types";
 let panel: HTMLElement | null = null;
 let visible = false;
 
-interface FormState { name: string; manufacturer: string; model: string; text: string; pages: string[]; fileName: string; fileNote: string; wMm: string; dMm: string; hMm: string }
-const form: FormState = { name: "", manufacturer: "", model: "", text: "", pages: [], fileName: "", fileNote: "", wMm: "", dMm: "", hMm: "" };
+interface FormState { name: string; manufacturer: string; model: string; text: string; pages: string[]; templateId: string; fileName: string; fileNote: string; wMm: string; dMm: string; hMm: string }
+const form: FormState = { name: "", manufacturer: "", model: "", text: "", pages: [], templateId: "", fileName: "", fileNote: "", wMm: "", dMm: "", hMm: "" };
 let result: CreatorResult | null = null;
 let liveStatus: CreatorStatus | null = null;
 let notice = "";
@@ -52,17 +53,22 @@ function mm(v: string): number | null {
   return v.trim() !== "" && Number.isFinite(n) && n > 0 ? n / 1000 : null;
 }
 
+const TPL_IDS = ["box", "cabinet", "table", "shelf"] as const;
+function tplId(): ProductSpec["templateId"] {
+  return (TPL_IDS as readonly string[]).includes(form.templateId) ? (form.templateId as ProductSpec["templateId"]) : undefined;
+}
+
 function run(spec?: ProductSpec) {
   notice = "";
   const useSpec = spec ?? (() => {
     const w = mm(form.wMm), d = mm(form.dMm), h = mm(form.hMm);
     return w !== null && d !== null && h !== null
-      ? { name: form.name.trim() || "New family", manufacturer: form.manufacturer || undefined, model: form.model || undefined, widthM: w, depthM: d, heightM: h } as ProductSpec
+      ? { name: form.name.trim() || "New family", manufacturer: form.manufacturer || undefined, model: form.model || undefined, widthM: w, depthM: d, heightM: h, templateId: tplId() } as ProductSpec
       : undefined;
   })();
   result = runCreator(
     { name: form.name.trim() || "New family", manufacturer: form.manufacturer || undefined, model: form.model || undefined,
-      pages: form.pages.length ? form.pages : form.text ? [form.text] : [], spec: useSpec },
+      pages: form.pages.length ? form.pages : form.text ? [form.text] : [], spec: useSpec, templateId: tplId() },
     deps,
     (s) => { liveStatus = s; },
   );
@@ -169,14 +175,16 @@ function render() {
       <div style="display:flex;gap:6px"><input class="obs-fc-in" data-f="manufacturer" placeholder="${esc(t("familyCreator.manufacturer"))}" value="${esc(form.manufacturer)}"><input class="obs-fc-in" data-f="model" placeholder="${esc(t("familyCreator.model"))}" value="${esc(form.model)}"></div>
       <div style="display:flex;gap:6px;align-items:center;margin:3px 0"><label class="obs-fc-btn" style="cursor:pointer">${esc(t("familyCreator.file.choose"))}<input type="file" accept=".pdf,.txt,application/pdf,text/plain" data-fc="file" style="display:none"></label><span class="obs-fc-detail" data-fc="file-note">${esc(form.fileNote)}</span></div>
       <textarea class="obs-fc-in" data-f="text" rows="4" placeholder="${esc(t("familyCreator.textPlaceholder"))}">${esc(form.text)}</textarea>
+      <label class="obs-fc-detail" style="display:block;margin-top:4px">${esc(t("familyCreator.shape"))}
+        <select class="obs-fc-in" data-f="templateId"><option value="">${esc(t("familyCreator.shapeAuto"))}</option>${TPL_IDS.map((id) => `<option value="${id}"${form.templateId === id ? " selected" : ""}>${esc(TEMPLATES[id].label)}</option>`).join("")}</select></label>
       <div class="obs-fc-detail">${esc(t("familyCreator.sizeHint"))}</div>
       <div style="display:flex;gap:6px"><input class="obs-fc-in" data-f="wMm" placeholder="${esc(t("familyCreator.w"))}" value="${esc(form.wMm)}"><input class="obs-fc-in" data-f="dMm" placeholder="${esc(t("familyCreator.d"))}" value="${esc(form.dMm)}"><input class="obs-fc-in" data-f="hMm" placeholder="${esc(t("familyCreator.h"))}" value="${esc(form.hMm)}"></div>
       <button type="button" class="obs-fc-btn" data-act="create" style="margin-top:8px">${esc(t("familyCreator.create"))}</button>
       ${notice ? `<div class="obs-fc-detail" data-fc="notice" style="color:#22c55e">${esc(notice)}</div>` : ""}
       ${result ? resultHtml(result) : ""}
     </div>`;
-  panel.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("[data-f]").forEach((el) => {
-    el.addEventListener("input", () => {
+  panel.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("[data-f]").forEach((el) => {
+    el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => {
       (form as unknown as Record<string, string>)[el.dataset.f as string] = el.value;
       // Typing replaces the loaded file text, so the run never mixes the two.
       if (el.dataset.f === "text" && form.pages.length) { form.pages = []; form.fileNote = ""; const n = panel?.querySelector('[data-fc="file-note"]'); if (n) n.textContent = ""; }
