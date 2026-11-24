@@ -15,7 +15,8 @@ import { runCreator, type CreatorResult, type CreatorStatus } from "../modules/f
 import { templateFor, type ProductSpec } from "../modules/families/creator/build";
 import { TEMPLATES } from "../modules/families/creator/templates";
 import { resolveParts } from "../modules/families/creator/layout";
-import { extractPdfPages } from "../modules/families/creator/pdf-text";
+import { extractPdfPages, renderPdfPages, MAX_OCR_PAGES } from "../modules/families/creator/pdf-text";
+import { recognizeImage, tidyOcrText } from "../modules/families/creator/ocr";
 import { createPreview3D, type Preview3D } from "./family-creator-preview";
 import { renderThreeViews } from "../modules/families/creator/preview-svg";
 import type { FamilyDefinition } from "../modules/families/types";
@@ -23,8 +24,8 @@ import type { FamilyDefinition } from "../modules/families/types";
 let panel: HTMLElement | null = null;
 let visible = false;
 
-interface FormState { name: string; manufacturer: string; model: string; text: string; pages: string[]; templateId: string; fileName: string; fileNote: string; wMm: string; dMm: string; hMm: string }
-const form: FormState = { name: "", manufacturer: "", model: "", text: "", pages: [], templateId: "", fileName: "", fileNote: "", wMm: "", dMm: "", hMm: "" };
+interface FormState { name: string; manufacturer: string; model: string; text: string; pages: string[]; fromOcr: boolean; templateId: string; fileName: string; fileNote: string; wMm: string; dMm: string; hMm: string }
+const form: FormState = { name: "", manufacturer: "", model: "", text: "", pages: [], fromOcr: false, templateId: "", fileName: "", fileNote: "", wMm: "", dMm: "", hMm: "" };
 let result: CreatorResult | null = null;
 let liveStatus: CreatorStatus | null = null;
 let notice = "";
@@ -88,24 +89,61 @@ function updatePreview(fit: boolean) {
   previewFit = !obj;
 }
 
+const setNote = (msg: string) => {
+  form.fileNote = msg;
+  const n = panel?.querySelector('[data-fc="file-note"]');
+  if (n) n.textContent = msg;
+};
+
+const IMAGE_RE = /\.(png|jpe?g|webp|bmp)$/i;
+
+/** Read pictures with the on-device OCR. Returns the tidied text and the lowest confidence. */
+async function ocrSources(items: Array<HTMLCanvasElement | Blob>, label: string): Promise<{ pages: string[]; confidence: number }> {
+  const pages: string[] = [];
+  let low = 100;
+  for (let i = 0; i < items.length; i++) {
+    setNote(t("familyCreator.file.ocrReading", { file: label, n: i + 1, total: items.length }));
+    const r = await recognizeImage(items[i], {
+      onProgress: (f) => setNote(t("familyCreator.file.ocrReadingPct", { file: label, n: i + 1, total: items.length, pct: Math.round(f * 100) })),
+    });
+    pages.push(tidyOcrText(r.text));
+    low = Math.min(low, r.confidence);
+  }
+  return { pages, confidence: Math.round(low) };
+}
+
 async function loadFile(file: File) {
   form.fileName = file.name;
   form.pages = [];
-  form.fileNote = "";
+  form.fromOcr = false;
+  setNote("");
   try {
     if (/\.pdf$/i.test(file.name) || file.type === "application/pdf") {
-      const r = await extractPdfPages(new Uint8Array(await file.arrayBuffer()));
-      if (r.noText) form.fileNote = t("familyCreator.file.noText", { file: file.name });
-      else {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const r = await extractPdfPages(bytes);
+      if (!r.noText) {
         form.pages = r.pages;
-        form.fileNote = t(r.truncated ? "familyCreator.file.loadedTruncated" : "familyCreator.file.loaded", { file: file.name, n: r.pages.length, total: r.pageCount });
+        setNote(t(r.truncated ? "familyCreator.file.loadedTruncated" : "familyCreator.file.loaded", { file: file.name, n: r.pages.length, total: r.pageCount }));
+      } else {
+        // No text layer: a scan. Read the page pictures on this device.
+        const shown = await renderPdfPages(bytes);
+        const o = await ocrSources(shown.canvases, file.name);
+        if (o.pages.every((x) => x === "")) setNote(t("familyCreator.file.ocrNothing", { file: file.name }));
+        else {
+          form.pages = o.pages; form.fromOcr = true;
+          setNote(t(shown.pageCount > MAX_OCR_PAGES ? "familyCreator.file.ocrDoneTruncated" : "familyCreator.file.ocrDone", { file: file.name, n: o.pages.length, total: shown.pageCount, conf: o.confidence }));
+        }
       }
+    } else if (IMAGE_RE.test(file.name) || file.type.startsWith("image/")) {
+      const o = await ocrSources([file], file.name);
+      if (o.pages[0] === "") setNote(t("familyCreator.file.ocrNothing", { file: file.name }));
+      else { form.pages = o.pages; form.fromOcr = true; setNote(t("familyCreator.file.ocrDone", { file: file.name, n: 1, total: 1, conf: o.confidence })); }
     } else {
       form.pages = [await file.text()];
-      form.fileNote = t("familyCreator.file.loaded", { file: file.name, n: 1, total: 1 });
+      setNote(t("familyCreator.file.loaded", { file: file.name, n: 1, total: 1 }));
     }
   } catch (e) {
-    form.fileNote = t("familyCreator.file.failed", { file: file.name, message: (e as Error).message });
+    setNote(t("familyCreator.file.failed", { file: file.name, message: (e as Error).message }));
   }
   render();
 }
@@ -116,14 +154,14 @@ function chips(s: CreatorStatus): string {
   return s.stages.map((st) => {
     const detail = st.detailKey ? t(st.detailKey, st.detailVars) : (st.detail ?? "");
     return `<div class="obs-fc-stage" data-stage="${st.id}" data-state="${st.state}" style="color:${color[st.state]}">` +
-      `<b>${icon[st.state]}</b> ${esc(t(st.labelKey))}${detail ? `<div class="obs-fc-detail">${esc(detail)}</div>` : ""}</div>`;
+      `<b>${icon[st.state]}</b> ${esc(t(st.labelKey))}${detail ? `<div class="obs-fc-detail"><bdi>${esc(detail)}</bdi></div>` : ""}</div>`;
   }).join("");
 }
 
 function resultHtml(r: CreatorResult): string {
   const s = r.status;
   let html = `<div class="obs-fc-sec"><div class="obs-fc-h">${esc(t("familyCreator.status"))}</div>${chips(s)}` +
-    `<div class="obs-fc-detail" data-fc="progress">${esc(t("familyCreator.progress", { done: s.completed, total: s.total }))}</div></div>`;
+    `<div class="obs-fc-detail" data-fc="progress"><bdi>${esc(t("familyCreator.progress", { done: s.completed, total: s.total }))}</bdi></div></div>`;
   html += `<div class="obs-fc-sec" data-fc="targets"><div class="obs-fc-h">${esc(t("familyCreator.dest.title"))}</div>` +
     `<div>${esc(t("familyCreator.dest.family"))}: <b>${esc(t(s.platformReady ? "familyCreator.dest.familyReady" : "familyCreator.dest.familyNot"))}</b></div>` +
     `<div>${esc(t("familyCreator.dest.ifc"))}: <b>${esc(t(s.exports.ifc2x3.state === "structure-checked" ? "familyCreator.dest.ifcOk" : s.exports.ifc2x3.state === "failed" ? "familyCreator.dest.ifcFailed" : "familyCreator.dest.ifcNot"))}</b></div>` +
@@ -149,14 +187,15 @@ function resultHtml(r: CreatorResult): string {
       const built = deps.buildInEngine(r.family, r.family.types[0]);
       const parts = resolveParts(tpl, built.params);
       html += `<div class="obs-fc-sec"><div class="obs-fc-h">${esc(t("familyCreator.views"))}</div><div data-fc="views">${renderThreeViews(parts, { w: r.spec.widthM, d: r.spec.depthM, h: r.spec.heightM }, { front: t("familyCreator.front"), side: t("familyCreator.side"), top: t("familyCreator.top") })}</div>` +
-        `<div class="obs-fc-detail">${esc(t("familyCreator.partsLine", { n: parts.length, names: parts.map((p) => p.name).join(", ") }))}</div></div>`;
+        `<div class="obs-fc-detail"><bdi>${esc(t("familyCreator.partsLine", { n: parts.length, names: parts.map((p) => p.name).join(", ") }))}</bdi></div></div>`;
     } catch (e) { html += `<div class="obs-fc-detail">${esc(t("familyCreator.viewsUnavailable", { message: (e as Error).message }))}</div>`; }
   }
   if (r.spec?.sources?.length) {
     html += `<div class="obs-fc-sec" data-fc="sources"><div class="obs-fc-h">${esc(t("familyCreator.sources"))}</div>` +
       r.spec.sources.map((c) => `<div class="obs-fc-src"><b>${esc(c.label)}</b> ${Math.round(c.valueM * 1000)} mm` +
-        `<div class="obs-fc-detail">${esc(t("familyCreator.sourceLine", { page: c.page, line: c.line, text: c.sourceText }))}</div></div>`).join("") +
-      `<div class="obs-fc-detail">${esc(t("familyCreator.sourceCheck"))}</div></div>`;
+        `<div class="obs-fc-detail"><bdi>${esc(t("familyCreator.sourceLine", { page: c.page, line: c.line, text: c.sourceText }))}</bdi></div></div>`).join("") +
+      `<div class="obs-fc-detail">${esc(t("familyCreator.sourceCheck"))}</div>` +
+      (form.fromOcr && form.pages.length ? `<div class="obs-fc-detail" data-fc="ocr-warning" style="color:#f59e0b">${esc(t("familyCreator.ocrCheck"))}</div>` : "") + `</div>`;
   }
   if (s.platformReady) {
     html += `<div class="obs-fc-sec"><button type="button" class="obs-fc-btn" data-act="add">${esc(t("familyCreator.add"))}</button> ` +
@@ -173,7 +212,7 @@ function render() {
       <div class="obs-fc-detail" style="margin-bottom:8px">${esc(t("familyCreator.intro"))}</div>
       <input class="obs-fc-in" data-f="name" placeholder="${esc(t("familyCreator.name"))}" value="${esc(form.name)}">
       <div style="display:flex;gap:6px"><input class="obs-fc-in" data-f="manufacturer" placeholder="${esc(t("familyCreator.manufacturer"))}" value="${esc(form.manufacturer)}"><input class="obs-fc-in" data-f="model" placeholder="${esc(t("familyCreator.model"))}" value="${esc(form.model)}"></div>
-      <div style="display:flex;gap:6px;align-items:center;margin:3px 0"><label class="obs-fc-btn" style="cursor:pointer">${esc(t("familyCreator.file.choose"))}<input type="file" accept=".pdf,.txt,application/pdf,text/plain" data-fc="file" style="display:none"></label><span class="obs-fc-detail" data-fc="file-note">${esc(form.fileNote)}</span></div>
+      <div style="display:flex;gap:6px;align-items:center;margin:3px 0"><label class="obs-fc-btn" style="cursor:pointer">${esc(t("familyCreator.file.choose"))}<input type="file" accept=".pdf,.txt,.png,.jpg,.jpeg,.webp,.bmp,application/pdf,text/plain,image/png,image/jpeg,image/webp,image/bmp" data-fc="file" style="display:none"></label><span class="obs-fc-detail" data-fc="file-note">${esc(form.fileNote)}</span></div>
       <textarea class="obs-fc-in" data-f="text" rows="4" placeholder="${esc(t("familyCreator.textPlaceholder"))}">${esc(form.text)}</textarea>
       <label class="obs-fc-detail" style="display:block;margin-top:4px">${esc(t("familyCreator.shape"))}
         <select class="obs-fc-in" data-f="templateId"><option value="">${esc(t("familyCreator.shapeAuto"))}</option>${TPL_IDS.map((id) => `<option value="${id}"${form.templateId === id ? " selected" : ""}>${esc(TEMPLATES[id].label)}</option>`).join("")}</select></label>
@@ -187,7 +226,7 @@ function render() {
     el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => {
       (form as unknown as Record<string, string>)[el.dataset.f as string] = el.value;
       // Typing replaces the loaded file text, so the run never mixes the two.
-      if (el.dataset.f === "text" && form.pages.length) { form.pages = []; form.fileNote = ""; const n = panel?.querySelector('[data-fc="file-note"]'); if (n) n.textContent = ""; }
+      if (el.dataset.f === "text" && form.pages.length) { form.pages = []; form.fromOcr = false; form.fileNote = ""; const n = panel?.querySelector('[data-fc="file-note"]'); if (n) n.textContent = ""; }
     });
   });
   panel.querySelectorAll<HTMLElement>("[data-act]").forEach((el) => {
