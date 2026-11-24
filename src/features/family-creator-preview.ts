@@ -33,7 +33,7 @@ export function createPreview3D(width = 340, height = 250): Preview3D | null {
   const canvas = renderer.domElement;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(width, height, false);
-  canvas.style.cssText = `width:${width}px;height:${height}px;display:block;border-radius:6px;touch-action:none;cursor:grab`;
+  canvas.style.cssText = `width:100%;max-width:${width}px;height:auto;aspect-ratio:${width}/${height};display:block;border-radius:6px;touch-action:none;cursor:grab`;
   canvas.setAttribute("data-fc3d", "canvas");
 
   const scene = new THREE.Scene();
