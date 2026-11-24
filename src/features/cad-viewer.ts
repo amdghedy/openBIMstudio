@@ -6749,8 +6749,21 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           rb("symbol", "Create", `data-a="blk-make"`, "Create a block from the selected objects (BLOCK, B)") +
           rb("file-frag", "Write Block", `data-a="blk-write"`, "Save the selected objects as a DXF file (WBLOCK, W)") +
           rb("new-family", "Library", `data-a="blk-lib"`, "List, insert, rename, delete or export blocks (BLOCKLIB)") +
-          rb("delete", "Explode", `data-a="blk-explode"`, "Explode the selected polylines (EXPLODE)") +
+          rb("delete", "Explode", `data-a="blk-explode"`, "Explode the selected polylines or block references (EXPLODE)") +
+          rb("text", "Edit Attributes", `data-a="blk-attedit"`, "Edit the attribute values of a selected block reference (ATTEDIT)") +
+          rb("component", "Native Blocks", `data-a="blk-native"`, "Toggle: keep block references native when a DWG/DXF is opened (NATIVEBLOCKS, experimental). Applies to the next file you open; the log shows the new state.") +
           `<input type="file" data-r="blockfile" accept=".dwg,.dxf" style="display:none">`,
+        "",
+        "",
+        "insert",
+      ) +
+      rg(
+        "Reference",
+        rb("file", "Attach", `data-a="xr-attach"`, "Attach an external DWG/DXF as a separate reference — not merged into this drawing (XATTACH)") +
+          rb("folder", "Overlay", `data-a="xr-overlay"`, "Attach as an overlay: shown here, not carried into drawings that reference this one (XOVERLAY)") +
+          rb("schedule", "Status", `data-a="xr-status"`, "List every reference with its status, path and unit conversion (XSTATUS)") +
+          rb("import", "Reload", `data-a="xr-reload"`, "Re-read reference files from disk (XRELOAD)") +
+          rb("delete", "Detach", `data-a="xr-detach"`, "Detach a reference (XDETACHN)"),
         "",
         "",
         "insert",
@@ -7187,6 +7200,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       "blk-write": () => void wblockCmd(),
       "blk-lib": () => void blockLibraryCmd(),
       "blk-explode": () => explodeSelection(),
+      "blk-attedit": () => executeDrawingCommand("ATTEDIT"),
+      "blk-native": () => executeDrawingCommand(nativeBlocksOn() ? "NATIVEBLOCKS OFF" : "NATIVEBLOCKS ON"),
+      "xr-attach": () => executeDrawingCommand("XATTACH"),
+      "xr-overlay": () => executeDrawingCommand("XOVERLAY"),
+      "xr-status": () => executeDrawingCommand("XSTATUS"),
+      "xr-reload": () => executeDrawingCommand("XRELOAD"),
+      "xr-detach": () => executeDrawingCommand("XDETACHN"),
       "svg-import": () => tools.querySelector<HTMLInputElement>("[data-r=svgfile]")?.click(),
       "ins-field": () => void fieldCmd(),
       "ins-table": () => setTool("table"),

@@ -29,14 +29,19 @@ test('2D editor: native XREF stays separate from the host drawing', async ({ pag
   await expect.poll(async () => (await census()).LINE ?? 0, { timeout: 15000 }).toBe(1);
 
   const chooser = page.waitForEvent('filechooser');
-  await run('XATTACH');
+  // Reachable from the ribbon (Insert › Reference), not only the command line.
+  await page.locator('[data-ribtab=insert]').first().click();
+  await expect(page.locator('[data-a=xr-attach]').first()).toBeVisible();
+  await page.locator('[data-a=xr-attach]').first().click();
   await (await chooser).setFiles({ name: 'site.dxf', mimeType: 'text/plain', buffer: Buffer.from(ref) });
   await expect.poll(async () => await hist(), { timeout: 15000 }).toContain('XATTACH: "site" loaded');
   expect((await census()).LINE ?? 0).toBe(1); // host database untouched
 
-  await run('XSTATUS');
+  await page.locator('[data-a=xr-status]').first().click();
   await expect.poll(async () => await hist(), { timeout: 5000 }).toMatch(/XSTATUS: site \[attach\] LOADED · 2 entities/);
 
+  await expect(page.locator('[data-a=blk-native]').first()).toBeVisible();
+  await expect(page.locator('[data-a=blk-attedit]').first()).toBeVisible();
   await run('XDETACHN site');
   await expect.poll(async () => await hist(), { timeout: 5000 }).toContain('XDETACHN: removed 1 reference(s).');
   await run('XSTATUS');

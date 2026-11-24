@@ -76,7 +76,7 @@ t("every ribbon group is tagged with exactly one of the nine tabs", () => {
     "Draw II": "tools", "Modify II": "tools", Utilities: "tools",
     "AI Copilot": "tools", "Power Tools": "tools",
     // Insert
-    Block: "insert", "Open Drawing": "insert", "PDF Import": "insert", Import: "insert", Fields: "insert", Data: "insert",
+    Block: "insert", Reference: "insert", "Open Drawing": "insert", "PDF Import": "insert", Import: "insert", Fields: "insert", Data: "insert",
     // Annotate
     Text: "annotate", Dimensions: "annotate", Markup: "annotate", Tables: "annotate", "Markup Files": "annotate",
     // Parametric
