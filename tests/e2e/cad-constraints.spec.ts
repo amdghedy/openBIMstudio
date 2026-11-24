@@ -62,6 +62,7 @@ test('2D editor: a pick tool hits the line where it is actually drawn', async ({
   const hist = async () => page.locator('[data-r=cmdhist]').first().innerText();
   await page.locator('[data-r=importfile]').first().setInputFiles({ name: 'one.dxf', mimeType: 'text/plain', buffer: Buffer.from(one) });
   await expect.poll(async () => { await run('CENSUS'); return /LINE=1/.test(await hist()); }, { timeout: 15000 }).toBe(true);
+  await run('LAYER');
   await run('ZOOM E');
   await page.waitForTimeout(800);
   const info = await page.evaluate(() => {
@@ -74,7 +75,7 @@ test('2D editor: a pick tool hits the line where it is actually drawn', async ({
     const xs: number[] = [], ys: number[] = [];
     for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 2) {
       const i = (y * w + x) * 4;
-      if (Math.abs(d[i] - bgR) + Math.abs(d[i + 1] - bgG) + Math.abs(d[i + 2] - bgB) > 300) { xs.push(x); ys.push(y); }
+      if (Math.abs(d[i] - bgR) + Math.abs(d[i + 1] - bgG) + Math.abs(d[i + 2] - bgB) > 90) { xs.push(x); ys.push(y); }
     }
     xs.sort((a, b) => a - b); ys.sort((a, b) => a - b);
     const m = (a: number[]) => a[Math.floor(a.length / 2)] ?? -1;
@@ -86,7 +87,7 @@ test('2D editor: a pick tool hits the line where it is actually drawn', async ({
         let hit = 0;
         for (let y = Math.floor((gy * h) / 24); y < Math.floor(((gy + 1) * h) / 24); y += 2) for (let x = Math.floor((gx * w) / 80); x < Math.floor(((gx + 1) * w) / 80); x += 2) {
           const i = (y * w + x) * 4;
-          if (Math.abs(d[i] - bgR) + Math.abs(d[i + 1] - bgG) + Math.abs(d[i + 2] - bgB) > 300) hit++;
+          if (Math.abs(d[i] - bgR) + Math.abs(d[i + 1] - bgG) + Math.abs(d[i + 2] - bgB) > 90) hit++;
         }
         row += hit > 2 ? '#' : hit ? '.' : ' ';
       }
