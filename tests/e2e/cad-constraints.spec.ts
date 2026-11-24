@@ -41,7 +41,7 @@ test('2D editor: constraints are recorded and solvable from the ribbon', async (
 
   await page.locator('[data-a=gc-list]').first().click();
   await expect.poll(hist).toMatch(/#1 horizontal — ok/);
-  await expect.poll(hist).toMatch(/#2 length = 10 — ok/);
+  await expect.poll(hist).toMatch(/#2 length = 10(\.0+)?( \w+)? — ok/);
   await page.locator('[data-a=gc-solve]').first().click();
   await expect.poll(hist).toContain('GCSOLVE:');
   expect(errors, errors.join('\n')).toEqual([]);

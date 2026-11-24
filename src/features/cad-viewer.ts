@@ -1877,8 +1877,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     for (const [u, e] of byId) if (fixedEnts.has(e)) pinned.add(u);
     const res = solveRelations(byId, relations, pinned);
     if (res.status === "conflict" || res.status === "diverged" || res.status === "invalid") {
-      for (const r of added) relations.splice(relations.indexOf(r), 1);
       for (const l of describeBridge(res, relations)) logCmd(`GCADD: ${l}`);
+      for (const r of added) relations.splice(relations.indexOf(r), 1);
       logCmd("GCADD: not recorded.");
       return;
     }
