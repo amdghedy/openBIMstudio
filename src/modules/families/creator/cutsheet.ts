@@ -120,7 +120,15 @@ const EXTRA_LENGTHS: Array<{ name: string; label: string; re: RegExp }> = [
  * A plain "Shelves: 4" is ignored on purpose: sheets differ on whether the
  * top and bottom count. The caller decides which names the template has.
  */
-export function pickExtras(pages: string[]): ExtraParam[] {
+export interface ExtrasReading {
+  found: ExtraParam[];
+  /** Same name, different values: none of them is used. */
+  conflicts: Array<{ name: string; label: string; candidates: DimensionCandidate[] }>;
+  /** Lines like "Shelves: 4" that could mean two things. Not used. */
+  ambiguous: DimensionCandidate[];
+}
+
+export function readExtras(pages: string[]): ExtrasReading {
   const found = new Map<string, ExtraParam[]>();
   const add = (e: ExtraParam) => found.set(e.name, [...(found.get(e.name) ?? []), e]);
   for (const c of findLabelled(pages)) {
@@ -129,13 +137,22 @@ export function pickExtras(pages: string[]): ExtraParam[] {
     }
   }
   const cnt = /^\s*(middle|intermediate|adjustable|inner) shelves\s*[:=\-]?\s*(\d{1,2})\s*$/i;
+  const plain = /^\s*(number of )?shelves\s*[:=\-]?\s*(\d{1,2})\s*$/i;
+  const ambiguous: DimensionCandidate[] = [];
   pages.forEach((text, p) => String(text).split(/\r?\n/).forEach((line, i) => {
     const m = cnt.exec(line);
     if (m) add({ name: "MidShelves", value: Number(m[2]), candidate: { label: "Middle shelves", valueM: Number(m[2]), page: p + 1, line: i + 1, sourceText: line.trim(), kind: "count" } });
+    else if (plain.test(line)) ambiguous.push({ label: "Shelves", valueM: Number(plain.exec(line)![2]), page: p + 1, line: i + 1, sourceText: line.trim(), kind: "count" });
   }));
   const out: ExtraParam[] = [];
-  for (const list of found.values()) {
+  const conflicts: ExtrasReading["conflicts"] = [];
+  for (const [name, list] of found) {
     if (list.every((e) => Math.abs(e.value - list[0].value) < 1e-9)) out.push(list[0]);
+    else conflicts.push({ name, label: list[0].candidate.label, candidates: list.map((e) => e.candidate) });
   }
-  return out;
+  return { found: out, conflicts, ambiguous };
+}
+
+export function pickExtras(pages: string[]): ExtraParam[] {
+  return readExtras(pages).found;
 }
