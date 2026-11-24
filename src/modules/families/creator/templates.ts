@@ -57,28 +57,39 @@ export const BOX_TEMPLATE: PartTemplate = {
   ],
 };
 
-// A cabinet or display case: plinth, body, front door panel and a handle.
-// Every part stays inside the overall Width x Depth x Height box.
+// A cabinet or display case: plinth, body, a row of front doors (each with a
+// handle) and a stack of drawer fronts (each with a pull) above the doors.
+// Doors share the width equally. Drawers sit at the top, DrawerHeight each.
+// Every part stays inside the overall Width x Depth x Height box. The parts
+// are simple boxes: no hinges, runners, gaps or internal fittings.
 export const CABINET_TEMPLATE: PartTemplate = {
   id: "cabinet",
-  label: "Cabinet with door",
+  label: "Cabinet with doors and drawers",
   category: "equipment",
   ifcEntity: "IfcFurnishingElement",
   params: [
     { name: "PlinthHeight", label: "Plinth height", default: 0.1, min: 0.0, max: 0.5 },
     { name: "DoorThickness", label: "Door thickness", default: 0.03, min: 0.005, max: 0.15 },
     { name: "HandleRadius", label: "Handle radius", default: 0.012, min: 0.003, max: 0.05 },
+    { name: "Doors", label: "Doors", default: 1, min: 0, max: 6, integer: true },
+    { name: "Drawers", label: "Drawers", default: 0, min: 0, max: 8, integer: true },
+    { name: "DrawerHeight", label: "Drawer front height", default: 0.18, min: 0.08, max: 0.4 },
     { name: "BodyHeight", label: "Body height", default: 0, formula: "= Height - PlinthHeight" },
-    { name: "HandleLength", label: "Handle length", default: 0, formula: "= BodyHeight * 0.4" },
+    { name: "DoorZone", label: "Door zone height", default: 0, formula: "= BodyHeight - Drawers * DrawerHeight" },
+    { name: "HandleLength", label: "Handle length", default: 0, formula: "= DoorZone * 0.4" },
   ],
   parts: [
     { id: "plinth", name: "Plinth", shape: "box", w: "Width", d: "Depth", h: "PlinthHeight", x: "0", y: "PlinthHeight / 2", z: "0" },
     { id: "body", name: "Body", shape: "box", w: "Width", d: "Depth - DoorThickness", h: "BodyHeight",
       x: "0", y: "PlinthHeight + BodyHeight / 2", z: "0 - DoorThickness / 2" },
-    { id: "door", name: "Door", shape: "box", w: "Width", d: "DoorThickness", h: "BodyHeight",
-      x: "0", y: "PlinthHeight + BodyHeight / 2", z: "Depth / 2 - DoorThickness / 2" },
+    { id: "door", name: "Door", shape: "box", w: "Width / Doors", d: "DoorThickness", h: "DoorZone",
+      x: "0 - Width / 2 + (K - 0.5) * Width / Doors", y: "PlinthHeight + DoorZone / 2", z: "Depth / 2 - DoorThickness / 2", repeat: { count: "Doors" } },
     { id: "handle", name: "Handle", shape: "cylinder", r: "HandleRadius", h: "HandleLength",
-      x: "Width / 2 - 0.05", y: "PlinthHeight + BodyHeight / 2", z: "Depth / 2 - HandleRadius" },
+      x: "0 - Width / 2 + K * Width / Doors - 0.05", y: "PlinthHeight + DoorZone / 2", z: "Depth / 2 - HandleRadius", repeat: { count: "Doors" } },
+    { id: "drawer", name: "Drawer front", shape: "box", w: "Width", d: "DoorThickness", h: "DrawerHeight",
+      x: "0", y: "PlinthHeight + DoorZone + (K - 0.5) * DrawerHeight", z: "Depth / 2 - DoorThickness / 2", repeat: { count: "Drawers" } },
+    { id: "pull", name: "Drawer pull", shape: "box", w: "0.12", d: "0.015", h: "0.012",
+      x: "0", y: "PlinthHeight + DoorZone + (K - 0.5) * DrawerHeight", z: "Depth / 2 - 0.0075", repeat: { count: "Drawers" } },
   ],
 };
 
@@ -135,7 +146,7 @@ export const TEMPLATES: Record<string, PartTemplate> = {
 const SHELF_WORDS = /\b(shelf|shelves|shelving|bookcase|bookshelf|rack|racking)\b/i;
 const TABLE_WORDS = /\b(table|desk|counter|bench|workbench)\b/i;
 
-const CABINET_WORDS = /\b(cabinet|case|fridge|refrigerator|freezer|display|merchandiser|cooler|chiller|locker|cupboard|wardrobe)\b/i;
+const CABINET_WORDS = /\b(cabinet|case|fridge|refrigerator|freezer|display|merchandiser|cooler|chiller|locker|cupboard|wardrobe|drawer|drawers|sideboard|dresser|credenza)\b/i;
 
 /** Pick a template from the product text. Falls back to a plain box. */
 export function chooseTemplate(text: string): PartTemplate {
