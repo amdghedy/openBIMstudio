@@ -114,6 +114,7 @@ test("family creator: real status, editable parameters, library, IFC2X3 download
   expect(errors).toEqual([]);
 });
 
+const buildImagePdf = createRequire(import.meta.url)("../helpers/image-pdf.cjs") as (j: Uint8Array, w: number, h: number) => Uint8Array;
 const buildTextPdf = createRequire(import.meta.url)("../helpers/text-pdf.cjs") as (pages: string[][]) => Uint8Array;
 
 test("family creator: PDF text intake and interactive 3D preview", async ({ page }) => {
@@ -183,7 +184,7 @@ test("family creator: PDF text intake and interactive 3D preview", async ({ page
   // A PDF with no text layer: honest message, no invented size.
   const scan = buildTextPdf([[]]);
   await panel.locator('[data-fc="file"]').setInputFiles({ name: "scan.pdf", mimeType: "application/pdf", buffer: Buffer.from(scan) });
-  await expect(panel.locator('[data-fc="file-note"]')).toContainText("no selectable text");
+  await expect(panel.locator('[data-fc="file-note"]')).toContainText("Could not read any text", { timeout: 60000 });
   await expect(panel.locator('[data-fc="file-note"]')).toContainText("Type the size");
   expect(await panel.innerText()).not.toMatch(/slice|ready for revit/i);
   await shot(page, "14-scan-message.png");
@@ -229,5 +230,75 @@ test("family creator: table and shelving shapes", async ({ page }) => {
   await expect.poll(async () => (await canvas.getAttribute("data-size")) ?? "").toBe("900,300,1800");
   await panel.evaluate((el) => { el.scrollTop = el.scrollHeight; });
   await shot(page, "21-shelf.png");
+  expect(errors).toEqual([]);
+});
+
+test("family creator: OCR of a picture and a scanned PDF, same-origin only, with LTR and RTL panel placement", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+  const requests: string[] = [];
+  page.on("request", (r) => requests.push(r.url()));
+  await enterAuthoring(page);
+  await openCreator(page);
+  const panel = page.getByTestId("family-creator-panel");
+
+  // A synthetic sheet picture, drawn in the page: text lines on white.
+  const sheet = await page.evaluate(() => {
+    const c = document.createElement("canvas"); c.width = 900; c.height = 170;
+    const x = c.getContext("2d")!; x.fillStyle = "#fff"; x.fillRect(0, 0, 900, 170);
+    x.fillStyle = "#000"; x.font = "44px sans-serif";
+    x.fillText("Cabinet DC-100", 30, 65); x.fillText("Overall size: 1200 x 700 x 2000 mm", 30, 130);
+    return { png: c.toDataURL("image/png").split(",")[1], jpg: c.toDataURL("image/jpeg", 0.95).split(",")[1] };
+  });
+  const before = requests.length;
+  await panel.locator('[data-fc="file"]').setInputFiles({ name: "sheet.png", mimeType: "image/png", buffer: Buffer.from(sheet.png, "base64") });
+  await expect(panel.locator('[data-fc="file-note"]')).toContainText("Read sheet.png from the picture", { timeout: 90000 });
+  await expect(panel.locator('[data-fc="file-note"]')).toContainText("Check the numbers");
+  await panel.getByRole("button", { name: "Create family" }).click();
+  await expect(panel.locator("[data-stage][data-state=done]")).toHaveCount(4);
+  await expect(panel.locator('[data-fc="sources"]')).toContainText("page 1, line 2");
+  await expect(panel.locator('[data-fc="sources"]')).toContainText("1200 x 700 x 2000 mm");
+  await expect(panel.locator('[data-fc="ocr-warning"]')).toContainText("Digits can be misread");
+  await expect.poll(async () => (await panel.locator('canvas[data-fc3d="canvas"]').getAttribute("data-size")) ?? "").toBe("1200,700,2000");
+
+  // Offline / same-origin proof: every request since the upload went to this site, and the OCR files came from /ocr.
+  const during = requests.slice(before);
+  const origin = new URL(page.url()).origin;
+  const foreign = during.filter((u) => !u.startsWith(origin) && !u.startsWith("data:") && !u.startsWith("blob:"));
+  expect(foreign).toEqual([]);
+  for (const f of ["/ocr/worker.min.js", "/ocr/eng.traineddata.gz"]) expect(during.some((u) => u.includes(f)), f).toBe(true);
+  expect(during.some((u) => /\/ocr\/tesseract-core[^/]*lstm\.wasm\.js/.test(u))).toBe(true);
+  await panel.evaluate((el) => { el.scrollTop = 0; });
+  await shot(page, "30-ocr-image.png");
+
+  // Scanned PDF: a PDF that only holds the picture, no text layer.
+  const scan = buildImagePdf(Buffer.from(sheet.jpg, "base64"), 900, 170);
+  await panel.locator('[data-f="text"]').fill("");
+  await panel.locator('[data-fc="file"]').setInputFiles({ name: "scan.pdf", mimeType: "application/pdf", buffer: Buffer.from(scan) });
+  await expect(panel.locator('[data-fc="file-note"]')).toContainText("Read scan.pdf from the picture: 1 of 1", { timeout: 90000 });
+  await panel.getByRole("button", { name: "Create family" }).click();
+  await expect(panel.locator('[data-fc="sources"]')).toContainText("1200 x 700 x 2000 mm");
+  await expect(panel.locator('[data-fc="ocr-warning"]')).toBeVisible();
+
+  // Full-panel placement in LTR and RTL: panel inside the screen, Fit on the opposite side of the title.
+  const place = async () => {
+    const pb = (await panel.boundingBox())!;
+    const vp = page.viewportSize()!;
+    expect(pb.x).toBeGreaterThanOrEqual(0); expect(pb.x + pb.width).toBeLessThanOrEqual(vp.width + 1);
+    const title = (await panel.locator('.obs-fc-h:has([data-act="fit"]) > span').boundingBox())!;
+    const fit = (await panel.locator('[data-act="fit"]').boundingBox())!;
+    return { titleX: title.x, fitX: fit.x, panelRight: pb.x + pb.width };
+  };
+  await panel.locator('[data-fc="preview3d"]').scrollIntoViewIfNeeded();
+  const ltr = await place();
+  expect(ltr.fitX).toBeGreaterThan(ltr.titleX);
+  await shot(page, "31-panel-ltr.png");
+  await page.evaluate(() => { document.documentElement.dir = "rtl"; document.body.dir = "rtl"; });
+  await page.waitForTimeout(400);
+  const rtl = await place();
+  expect(rtl.fitX).toBeLessThan(rtl.titleX);
+  await shot(page, "32-panel-rtl.png");
+  await page.evaluate(() => { document.documentElement.dir = "ltr"; document.body.dir = "ltr"; });
+
   expect(errors).toEqual([]);
 });
