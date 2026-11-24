@@ -225,5 +225,31 @@ t("T9 user-facing order is width x depth x height everywhere; failure text speak
   assert.ok(!/slice/i.test(JSON.stringify(en)));
 });
 
+t("T10 table and shelf templates: chosen by name or by the user, engine and IFC extents equal the spec, part counts right", () => {
+  const TB = require(find("templates.js", "creator"));
+  assert.strictEqual(TB.chooseTemplate("Workshop bench WB-2").id, "table");
+  assert.strictEqual(TB.chooseTemplate("Steel shelving unit").id, "shelf");
+  assert.strictEqual(TB.chooseTemplate("Bookcase").id, "shelf", "bookcase is shelving, not a cabinet");
+  assert.strictEqual(TB.chooseTemplate("Display Cabinet").id, "cabinet");
+  assert.strictEqual(TB.chooseTemplate("Mystery item").id, "box");
+  const cases = [
+    { id: "table", name: "Dining table", parts: 5, size: "1800 x 900 x 750 mm", w: 1.8, d: 0.9, h: 0.75 },
+    { id: "shelf", name: "Wall shelving", parts: 6, size: "900 x 300 x 1800 mm", w: 0.9, d: 0.3, h: 1.8 },
+  ];
+  for (const c of cases) {
+    for (const byUser of [false, true]) {
+      const r = P.runCreator({ name: byUser ? "Thing" : c.name, pages: ["Overall size: " + c.size], templateId: byUser ? c.id : undefined }, deps);
+      assert.deepStrictEqual(r.status.stages.map((x) => x.state), ["done", "done", "done", "done"], c.id + (byUser ? " user" : " name"));
+      const x = ifcExtents(r.ifcText);
+      assert.strictEqual(x.n, c.parts);
+      near(x.size[0], c.w, 1e-6); near(x.size[1], c.d, 1e-6); near(x.size[2], c.h, 1e-6);
+      near(x.min[2], 0, 1e-9);
+    }
+  }
+  // Too short for its parts is refused with a reason.
+  const bad = P.runCreator({ name: "Low table", pages: ["Overall size: 800 x 600 x 60 mm"], templateId: "table" }, deps);
+  assert.strictEqual(bad.status.stages[0].state, "failed");
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
