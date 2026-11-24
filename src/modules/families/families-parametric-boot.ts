@@ -7,6 +7,7 @@ import { register } from "../../core/services";
 import { sharedParameterManager } from "./shared-parameters";
 import { typeCatalogService } from "./type-catalog";
 import { familyHostingService } from "./family-hosting";
+import { setupFamilyBridge } from "./family-bridge-boot";
 
 type Any = Record<string, any>;
 
@@ -48,6 +49,16 @@ export function setupParametricFamilies(): void {
     (ctx.features as Any).familyHosting = familyHostingService;
     (window as Any).__obsFamily = svc;
     (window as Any).__obsFamilyParametric = svc;
+
+    // Bridge the TS service with the legacy Family Creator
+    // (public/js/obs-family-editor.js): editor saves land in this
+    // store, and service families appear in the editor's library.
+    // A bridge failure must never break the family service boot.
+    try {
+      setupFamilyBridge();
+    } catch (e) {
+      console.warn("[parametric-families] family bridge failed to start", e);
+    }
 
     void import("../../features/family-catalog-controls")
       .then((module) => module.setupFamilyCatalogControls())

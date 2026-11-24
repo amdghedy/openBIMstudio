@@ -443,5 +443,17 @@ export function setupParametricFamilyPanel(): void {
     toggle: toggleParamFamilyPanel,
   };
 
+  // Family bridge: a save in the Family Creator (or any other store
+  // change) refreshes the open panel's family list live — the panel
+  // sits open behind the creator modal, so without this a just-saved
+  // family would not appear until the panel was toggled.
+  // refreshFamilies only rebuilds the family select and preserves the
+  // selection; it never touches the parameter inputs.
+  try {
+    familySvc().onChange?.(() => {
+      if (panel) refreshFamilies();
+    });
+  } catch { /* the panel keeps its open-time refresh */ }
+
   console.log("[parametric-family-panel] ready - FAM button or Ctrl+Shift+F");
 }

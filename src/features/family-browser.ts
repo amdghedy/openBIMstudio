@@ -1721,6 +1721,17 @@ export function setupFamilyBrowser(): void {
   (ctx.features as any).familyBrowser = api;
   (window as any).__obsFamilyBrowser = api;
 
+  // Family bridge: a save in the Family Creator (or any other store
+  // change) refreshes the open browser live, so a just-saved family
+  // appears without reopening. reloadAll preserves the selection and
+  // the category filter; it only runs while the browser is visible
+  // (the open path reloads anyway).
+  try {
+    (svcAny as any)?.onChange?.(() => {
+      if (visible) reloadAll();
+    });
+  } catch { /* the browser keeps its open-time reload */ }
+
   // Ctrl+Shift+B toggles the panel.
   window.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "b") {

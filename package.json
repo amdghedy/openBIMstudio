@@ -400,6 +400,7 @@
     "test:zod-boundaries": "node tests/zod-boundaries.test.cjs",
     "test:mass-to-elements": "node tests/mass-to-elements.test.cjs",
     "test:family-migration": "node tests/family-migration.test.cjs",
+    "test:family-store-bridge": "node tests/family-store-bridge.test.cjs",
     "test:modify-tab-completion": "node tests/modify-tab-completion.test.cjs",
     "test:property-palette-type-selector": "node tests/property-palette-type-selector.test.cjs"
   },

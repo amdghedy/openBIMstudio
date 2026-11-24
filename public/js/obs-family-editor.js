@@ -539,6 +539,15 @@
   function isOpen() { return host && host.classList.contains('is-open'); }
   function open() {
     buildDom();
+    // Family bridge: pull the latest service families into the library
+    // (and push any editor saves made before the service booted) so the
+    // Library dropdown lists service families, not just editor saves.
+    // Absent before boot — the boot sync covers it then.
+    try {
+      if (window.__obsFamilyBridge && window.__obsFamilyBridge.syncNow) {
+        window.__obsFamilyBridge.syncNow();
+      }
+    } catch (e) { /* local library remains the fallback */ }
     state.family = normalizeFamily(state.family);
     renderLibrarySelect();
     refreshAll();
@@ -774,6 +783,17 @@
     localStorage.setItem(LS_SHARED, JSON.stringify(list));
   }
 
+  // Family bridge: mirror a shared-parameter change into the TS shared
+  // parameter manager. Guarded — the local list is the fallback when
+  // the service has not booted yet (the boot sync imports it then).
+  function syncSharedBridge() {
+    try {
+      if (window.__obsFamilyBridge && window.__obsFamilyBridge.syncSharedParameters) {
+        window.__obsFamilyBridge.syncSharedParameters();
+      }
+    } catch (e) { /* local list remains the fallback */ }
+  }
+
   function renderShared() {
     var box = host.querySelector('#fe-shared-list');
     var list = loadShared();
@@ -788,7 +808,7 @@
       row.innerHTML = '<strong>' + esc(sp.name) + '</strong> <span class="obs-fe-help">' + esc(sp.kind) + '</span>'
         + '<button type="button" data-del>&times;</button>';
       row.querySelector('[data-del]').onclick = function () {
-        list.splice(i, 1); saveShared(list); renderShared();
+        list.splice(i, 1); saveShared(list); syncSharedBridge(); renderShared();
       };
       box.appendChild(row);
     });
@@ -805,6 +825,7 @@
     }
     list.push({ name: name, kind: kind });
     saveShared(list);
+    syncSharedBridge();
     host.querySelector('#fe-shared-name').value = '';
     renderShared();
   }
@@ -989,6 +1010,23 @@
     lib[name] = JSON.parse(JSON.stringify(state.family));
     localStorage.setItem(LS_KEY, JSON.stringify(lib));
     renderLibrarySelect();
+    // Family bridge: the same save lands in the TS family store, so the
+    // family appears in the Parametric Panel and Family Browser. The
+    // localStorage write above is the fallback when the service has not
+    // booted yet — the boot sync imports it then. A bridge failure must
+    // never lose the local save.
+    try {
+      if (window.__obsFamilyBridge && window.__obsFamilyBridge.pushEditorFamily) {
+        window.__obsFamilyBridge.pushEditorFamily(state.family);
+        // The push stamps serviceId/serviceProject onto the family;
+        // refresh the stored clone so the stamp is in the library now,
+        // not only after the next export.
+        lib[name] = JSON.parse(JSON.stringify(state.family));
+        localStorage.setItem(LS_KEY, JSON.stringify(lib));
+      }
+    } catch (e) {
+      console.warn('[OBS-family-editor] bridge save failed (local library kept)', e);
+    }
     try {
       window.dispatchEvent(new CustomEvent('obs-toast', {
         detail: { kind: 'success', message: 'Saved family “' + name + '” to library' }
@@ -1003,9 +1041,22 @@
     if (!sel.value) return;
     if (!confirm('Delete library entry “' + sel.value + '”?')) return;
     var lib = loadLibrary();
+    var deleted = lib[sel.value];
+    var serviceId = deleted && deleted.serviceId;
     delete lib[sel.value];
     localStorage.setItem(LS_KEY, JSON.stringify(lib));
     renderLibrarySelect();
+    // Family bridge: a bridged entry is deleted from the service too,
+    // otherwise the next export would put it straight back.
+    if (serviceId) {
+      try {
+        if (window.__obsFamilyBridge && window.__obsFamilyBridge.removeServiceFamily) {
+          window.__obsFamilyBridge.removeServiceFamily(serviceId);
+        }
+      } catch (e) {
+        console.warn('[OBS-family-editor] bridge delete failed', e);
+      }
+    }
   }
 
   function renderLibrarySelect() {

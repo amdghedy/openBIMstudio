@@ -97,6 +97,27 @@ export interface FamilyDefinition {
   /** The element type in the current hardcoded system this family mirrors. */
   sourceElementType?: string;
   /**
+   * Where this family came from. Absent = authored in the TS service
+   * (Parametric Panel / sketch editor / the seeded sample door).
+   * "seed-catalog" = shipped with the app in public/families/*.json
+   * (stamped by the library loader); "editor" = bridged in from the
+   * legacy Family Creator (public/js/obs-family-editor.js). The bridge
+   * (modules/families/family-bridge.ts) exports only non-built-in,
+   * non-seed-catalog families into the editor's library, so the shipped
+   * catalog never floods it.
+   */
+  origin?: "seed-catalog" | "editor";
+  /**
+   * Verbatim legacy-editor family this definition was bridged from
+   * (public/js/obs-family-editor.js). Preserved across round-trips so
+   * editor-only data — placement, constraints, voids, manufacturer,
+   * model, version, description, shared-parameter refs — is never lost
+   * when the family is edited in the panel. The bridge starts a
+   * TS → editor conversion from this record when present and overlays
+   * the current TS name / parameters / types on top.
+   */
+  editorSource?: Record<string, unknown>;
+  /**
    * Optional MEP ports defined in family-local coordinates (metres).
    * Authoring transforms these through the rendered instance world matrix.
    */

@@ -127,6 +127,9 @@ async function doLoad(): Promise<number> {
       }
 
       // Mark as non-builtin so users can edit / delete freely.
+      // Stamp the seed-catalog origin so the family bridge
+      // (modules/families/family-bridge.ts) does not export shipped
+      // catalog families into the legacy editor's user library.
       // Note: `description` is preserved via the `description?: string`
       // extension point added to FamilyDefinition in the seed catalog
       // — but it's not part of the canonical schema, so we type-cast it
@@ -137,6 +140,7 @@ async function doLoad(): Promise<number> {
         ifcEntity: fam.ifcEntity,
         sourceElementType: fam.sourceElementType,
         group: fam.group,
+        origin: "seed-catalog",
         parameters: fam.parameters,
         geometry: fam.geometry,
         types: fam.types,
@@ -151,6 +155,24 @@ async function doLoad(): Promise<number> {
     } catch (e) {
       console.warn(`[families:library] failed to load ${entry.path}:`, e);
       failed++;
+    }
+  }
+
+  // Stamp legacy copies: families persisted by earlier boots carry no
+  // origin (the old skip check above could never match a stored id —
+  // create() assigns a fresh uid — so earlier boots re-added the
+  // catalog). Match by catalog name so the bridge's export rule (skip
+  // seed-catalog) applies to them too. A user family that happens to
+  // share a catalog name is stamped as well; the only consequence is
+  // that it is not exported to the editor library — it stays fully
+  // usable in the panel and browser.
+  for (const entry of entries) {
+    for (const fam of familyStore.list()) {
+      if (fam.name === entry.name && fam.origin !== "seed-catalog") {
+        try {
+          familyStore.update(fam.id, { origin: "seed-catalog" });
+        } catch { /* keep going */ }
+      }
     }
   }
 
