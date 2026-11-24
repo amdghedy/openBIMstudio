@@ -33,9 +33,9 @@
  */
 import { ctx } from "../core/context";
 import { registerCommand } from "./command-palette";
-import { startUserStateSync, signOutRestoreGuest, stopUserStateSync, endStaleAccountScope } from "./user-state";
+import { startUserStateSync, signOutRestoreGuest, stopUserStateSync, endStaleAccountScope, accountScopeDiffers } from "./user-state";
 import { importUnassignedLocalFiles, hasUnassignedLocalFiles } from "./local-import";
-import { getCurrentProject, saveProject } from "../modules/projects/projects";
+import { getCurrentProject, saveProject, isDirty as projectIsDirty } from "../modules/projects/projects";
 import * as store from "../modules/projects/store";
 import { buildProjectFile, suggestedFileName } from "../modules/projects/project-file";
 import { importProjectFile } from "../modules/projects/project-file-io";
@@ -172,27 +172,19 @@ function toast(kind: string, msg: string): void {
   }
 }
 
-// ── remembered logins (localStorage — one-click refill for returning users) ─
+// ── remembered logins ────────────────────────────────────────────────────
+// Email addresses are no longer remembered in the browser: anyone using the same
+// browser could read them. Any list saved by an older version is deleted.
 
 const REMEMBER_KEY = "obs:acct:emails";
+try { localStorage.removeItem(REMEMBER_KEY); } catch { /* private browsing */ }
 
 function rememberedEmails(): string[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(REMEMBER_KEY) ?? "[]") as unknown;
-    if (!Array.isArray(raw)) return [];
-    return raw.filter((x): x is string => typeof x === "string" && x.includes("@") && x.length <= 254).slice(0, 3);
-  } catch {
-    return [];
-  }
+  return [];
 }
 
-function rememberEmail(email: string): void {
-  const clean = email.trim().toLowerCase();
-  if (!clean.includes("@")) return;
-  const next = [clean, ...rememberedEmails().filter((e) => e !== clean)].slice(0, 3);
-  try {
-    localStorage.setItem(REMEMBER_KEY, JSON.stringify(next));
-  } catch { /* private browsing */ }
+function rememberEmail(_email: string): void {
+  /* intentionally not stored */
 }
 
 // ── Google OAuth popup ────────────────────────────────────────────────────
@@ -273,6 +265,27 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return body;
 }
 
+/** Set when this page load is the return from the Google callback (/?signedin=1): nothing can be unsaved yet. */
+let justLanded = false;
+let syncedFor: string | null = null;
+let scopeDeclined = false;
+const pageLoadedAt = typeof performance !== "undefined" ? performance.now() : 0;
+
+/**
+ * Switching account changes which local files and settings the app uses and
+ * reloads the page. Never do that silently over unsaved work: it is automatic
+ * only right after the Google redirect or in the first seconds of a clean page
+ * load; otherwise the user decides, and declining changes nothing.
+ */
+function confirmScopeSwitch(what: string): boolean {
+  if (justLanded) return true;
+  if (!projectIsDirty() && performance.now() - pageLoadedAt < 8000) return true;
+  return window.confirm(
+    `${what}\n\nThis reloads the app to switch your local files and settings. ` +
+    `Unsaved changes in open projects or drawings would be lost, so save them first.\n\nReload now?`,
+  );
+}
+
 /** Ask the server who we are (once at a time — renderTabs can call freely). */
 export function refreshAccountState(): Promise<void> {
   if (meRequest) return meRequest;
@@ -280,12 +293,23 @@ export function refreshAccountState(): Promise<void> {
     .then(async (r) => {
       currentUser = r.user;
       if (r.user) {
-        // Tie local preferences to this account (see user-state.ts); reload once if saved settings were applied.
-        if (await startUserStateSync(r.user.email)) location.reload();
+        const email = r.user.email.trim().toLowerCase();
+        if (syncedFor === email) return; // already synced in this page load; never reload mid-session
+        // Tie local preferences and local file lists to this account (see user-state.ts).
+        if (accountScopeDiffers(email) && !confirmScopeSwitch(`You are signed in as ${email}.`)) {
+          if (!scopeDeclined) { scopeDeclined = true; toast("info", "Account not switched yet. Save your work, then reload the page to finish."); }
+          return;
+        }
+        syncedFor = email;
+        if (await startUserStateSync(email)) location.reload();
       } else {
         stopUserStateSync();
+        syncedFor = null;
         // The server says nobody is signed in: leave any previous account's local scope.
-        if (endStaleAccountScope()) location.reload();
+        if (accountScopeDiffers(null)) {
+          if (confirmScopeSwitch("Your session has ended.")) { if (endStaleAccountScope()) location.reload(); }
+          else if (!scopeDeclined) { scopeDeclined = true; toast("info", "Session ended. Save your work, then reload the page to return to your device's own files."); }
+        }
       }
     })
     .catch(() => {
@@ -424,6 +448,7 @@ function buildMenu(menu: HTMLElement): void {
     })());
     menuItem(menu, "Sign out", async () => {
       try {
+        if (!window.confirm("Sign out?\n\nThis reloads the app to switch back to this device's own files and settings. Unsaved changes in open projects or drawings would be lost, so save them first.")) return;
         // Sync + back up this account's settings BEFORE the session ends (needs the cookie).
         const restore = signOutRestoreGuest();
         const changed = await restore;
@@ -790,6 +815,7 @@ export function handleAuthUrlParams(): void {
     return;
   }
   if (url.searchParams.get("signedin") === "1") {
+    justLanded = true;
     clean();
     void refreshAccountState().then(() => {
       remountAll();
