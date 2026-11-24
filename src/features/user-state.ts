@@ -19,15 +19,26 @@
  * server-side as metadata when a cloud project is saved or opened.
  */
 
+import { OWNER_KEY } from "../core/account-scope";
+
 /** Must match USER_PREF_KEYS in worker/auth.ts (the server ignores other keys). */
 export const USER_PREF_KEYS: readonly string[] = [
   "obs.theme.mode", "obs.locale", "obs.units.system", "obs.units.config",
   "obs.region.profile", "obs.region.overrides", "obs.currency",
   "obs.selection-prefs.v1", "obs.options.v1", "obs.ui.visibility.v1", "obs.snap",
   "obs.projects.lastId",
+  "obs.cad.ucs", "obs.cad.svgScale", "obs.cad.ribbon.tab", "obs.cad.ribbon.min", "obs.cad.insScale",
+  "obs.cad.filletR", "obs.cad.chamferD", "obs.cad.snapUnit", "obs.cad.qat.hidden.v1", "obs.cad.hatchDefaults",
+  "obs.cad.pageSetup", "obs.cad.nativeBlocks", "obs.cad.textStyles",
 ];
 
-const OWNER_KEY = "obs.acct.owner";
+/** Local-only lists that follow the account on this browser (backed up and swapped, never uploaded). */
+export const LOCAL_SCOPED_KEYS: readonly string[] = [
+  "obs.nativeIfc.history.v1", "obs.plan.cmdHistory", "obs.recovery.last", "obs.session.unsaved",
+  // 2D drawing zone: per-drawing view/hidden-entity sessions, block library, sheet sets, clipboard.
+  "obs.cad.drawingSession.v1", "obs.cad.blocks", "obs.cad.sheetSet.v1", "obs.cad.copybase",
+];
+const ALL_KEYS: readonly string[] = [...USER_PREF_KEYS, ...LOCAL_SCOPED_KEYS];
 const BACKUP_PREFIX = "obs.acct.backup.";
 const GUEST = "__guest__";
 const RELOAD_GUARD = "obs.acct.reloadedFor";
@@ -35,9 +46,9 @@ const PUSH_INTERVAL_MS = 30_000;
 
 type Prefs = Record<string, string>;
 
-function readPrefs(): Prefs {
+function readKeys(keys: readonly string[]): Prefs {
   const out: Prefs = {};
-  for (const k of USER_PREF_KEYS) {
+  for (const k of keys) {
     try {
       const v = localStorage.getItem(k);
       if (v != null) out[k] = v;
@@ -46,9 +57,21 @@ function readPrefs(): Prefs {
   return out;
 }
 
-function writePrefs(prefs: Prefs): boolean {
+/** Largest single value uploaded; bigger ones stay local (they would be rejected by the server). */
+const MAX_SYNC_VALUE = 8 * 1024;
+
+/** Synced preference keys only (what is uploaded), skipping oversized values. */
+function readPrefs(): Prefs {
+  const all = readKeys(USER_PREF_KEYS);
+  for (const k of Object.keys(all)) if (all[k].length > MAX_SYNC_VALUE) delete all[k];
+  return all;
+}
+/** Everything that follows an account on this browser (used for local backups). */
+function readAll(): Prefs { return readKeys(ALL_KEYS); }
+
+function writePrefs(prefs: Prefs, keys: readonly string[] = ALL_KEYS): boolean {
   let changed = false;
-  for (const k of USER_PREF_KEYS) {
+  for (const k of keys) {
     try {
       const cur = localStorage.getItem(k);
       const next = prefs[k];
@@ -59,8 +82,8 @@ function writePrefs(prefs: Prefs): boolean {
   return changed;
 }
 
-function clearPrefs(): void {
-  for (const k of USER_PREF_KEYS) {
+function clearPrefs(keys: readonly string[] = ALL_KEYS): void {
+  for (const k of keys) {
     try { localStorage.removeItem(k); } catch { /* */ }
   }
 }
@@ -118,15 +141,36 @@ export async function signOutRestoreGuest(): Promise<boolean> {
   const user = activeEmail;
   if (!user) return false;
   await push(true);
-  backupSet(user, readPrefs());
+  backupSet(user, readAll());
   stopUserStateSync();
-  const before = JSON.stringify(readPrefs());
+  const before = JSON.stringify(readAll());
   clearPrefs();
   const guest = backupGet(GUEST);
   if (guest) writePrefs(guest);
   try { localStorage.removeItem(OWNER_KEY); } catch { /* */ }
   try { sessionStorage.removeItem(RELOAD_GUARD); } catch { /* */ }
-  return JSON.stringify(readPrefs()) !== before;
+  void before;
+  return true; // the local-store scope changed: always reload
+}
+
+/**
+ * The session is gone (expired or ended elsewhere) but this browser still
+ * carries an account scope: hand the browser back to the guest scope so the
+ * next person does not see that account's local files. Returns true when the
+ * page should reload. Only call after the server confirmed "not signed in".
+ */
+export function endStaleAccountScope(): boolean {
+  let owner: string | null = null;
+  try { owner = localStorage.getItem(OWNER_KEY); } catch { /* */ }
+  if (!owner) return false;
+  backupSet(owner, readAll());
+  stopUserStateSync();
+  clearPrefs();
+  const guest = backupGet(GUEST);
+  if (guest) writePrefs(guest);
+  try { localStorage.removeItem(OWNER_KEY); } catch { /* */ }
+  try { sessionStorage.removeItem(RELOAD_GUARD); } catch { /* */ }
+  return true;
 }
 
 /**
@@ -145,16 +189,19 @@ export async function startUserStateSync(email: string): Promise<boolean> {
   let owner: string | null = null;
   try { owner = localStorage.getItem(OWNER_KEY); } catch { /* */ }
 
-  // First account on a browser that has guest preferences: keep an untouched copy.
+  // No account owns this browser right now: what is here is the guest's state. Keep a copy.
+  // The guest's local lists and last-project pointer must not become the account's: they stay in the
+  // guest copy (restored on sign-out) and are removed from the working keys. Guest appearance
+  // preferences (theme, language, units) carry over; no files are claimed.
   if (!owner) {
-    const guestPrefs = readPrefs();
-    if (Object.keys(guestPrefs).length && !backupGet(GUEST)) backupSet(GUEST, guestPrefs);
+    backupSet(GUEST, readAll());
+    clearPrefs([...LOCAL_SCOPED_KEYS, "obs.projects.lastId"]);
   }
 
   // A different account last used this browser: back up its keys, then clear.
   let switched = false;
   if (owner && owner !== user) {
-    backupSet(owner, readPrefs());
+    backupSet(owner, readAll());
     clearPrefs();
     switched = true;
   }
@@ -174,6 +221,7 @@ export async function startUserStateSync(email: string): Promise<boolean> {
   if (fetched && serverPrefs && Object.keys(serverPrefs).length) {
     synced = true;
     reload = writePrefs(serverPrefs);
+    if (switched && own) reload = writePrefs(own, LOCAL_SCOPED_KEYS) || reload; // this account's own local lists too
     lastPushed = JSON.stringify({ prefs: readPrefs() });
   } else if (fetched) {
     // Server reachable, nothing saved for this account yet.
@@ -191,8 +239,8 @@ export async function startUserStateSync(email: string): Promise<boolean> {
     window.addEventListener("pagehide", () => void push(true));
   }
 
-  // Reload at most once per account per tab session so settings apply cleanly.
-  if (reload || switched) {
+  // Reload at most once per account per tab session so settings and the local-store scope apply cleanly.
+  if (reload || switched || owner !== user) {
     try {
       if (sessionStorage.getItem(RELOAD_GUARD) === user) return false;
       sessionStorage.setItem(RELOAD_GUARD, user);
