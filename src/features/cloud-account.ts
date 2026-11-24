@@ -35,6 +35,7 @@ import { ctx } from "../core/context";
 import { registerCommand } from "./command-palette";
 import { startUserStateSync, signOutRestoreGuest, stopUserStateSync, endStaleAccountScope, accountScopeDiffers } from "./user-state";
 import { importUnassignedLocalFiles, hasUnassignedLocalFiles } from "./local-import";
+import { anyUnsavedWork, registerDirtyCheck } from "../core/dirty-registry";
 import { getCurrentProject, saveProject, isDirty as projectIsDirty } from "../modules/projects/projects";
 import * as store from "../modules/projects/store";
 import { buildProjectFile, suggestedFileName } from "../modules/projects/project-file";
@@ -255,6 +256,8 @@ function openGoogleOAuth(onDone?: (ok: boolean, message: string) => void): void 
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  // Fail closed while the page shows another account's scope: only auth calls may pass.
+  if (identityLocked && !path.startsWith("/api/auth/")) throw new Error("Account changed: reload the page to continue.");
   const res = await fetch(path, {
     ...init,
     headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
@@ -268,22 +271,69 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 /** Set when this page load is the return from the Google callback (/?signedin=1): nothing can be unsaved yet. */
 let justLanded = false;
 let syncedFor: string | null = null;
+/** The user declined a reload while the server identity differs from the page's local scope. */
 let scopeDeclined = false;
-const pageLoadedAt = typeof performance !== "undefined" ? performance.now() : 0;
+/** Fail-closed lock: the page still shows another scope than the signed-in identity. No cloud calls or sync until resolved. */
+let identityLocked = false;
+registerDirtyCheck(() => projectIsDirty());
 
 /**
  * Switching account changes which local files and settings the app uses and
- * reloads the page. Never do that silently over unsaved work: it is automatic
- * only right after the Google redirect or in the first seconds of a clean page
- * load; otherwise the user decides, and declining changes nothing.
+ * reloads the page. It is automatic only when nothing can be lost (right after
+ * the Google redirect, or no project/drawing reports unsaved changes). Otherwise
+ * the user decides, and declining locks the page rather than leaving it usable
+ * under the wrong identity.
  */
 function confirmScopeSwitch(what: string): boolean {
-  if (justLanded) return true;
-  if (!projectIsDirty() && performance.now() - pageLoadedAt < 8000) return true;
+  if (justLanded || !anyUnsavedWork()) return true;
   return window.confirm(
     `${what}\n\nThis reloads the app to switch your local files and settings. ` +
     `Unsaved changes in open projects or drawings would be lost, so save them first.\n\nReload now?`,
   );
+}
+
+/**
+ * The server now knows a different person than the files and settings on screen.
+ * Block the whole app (no editing, no cloud calls, no settings sync) until the user
+ * reloads into the right scope, or signs the new account out and keeps working locally.
+ */
+function lockForIdentityMismatch(email: string): void {
+  identityLocked = true;
+  stopUserStateSync();
+  if (document.getElementById("obs-identity-lock")) return;
+  const wrap = document.createElement("div");
+  wrap.id = "obs-identity-lock";
+  wrap.setAttribute("role", "alertdialog");
+  wrap.style.cssText = "position:fixed;inset:0;z-index:2147483000;background:rgba(10,14,24,.88);display:flex;align-items:center;justify-content:center;padding:24px";
+  const box = document.createElement("div");
+  box.style.cssText = "max-width:460px;background:#fff;color:#111;border-radius:12px;padding:22px;font:14px/1.5 system-ui,sans-serif;box-shadow:0 10px 40px rgba(0,0,0,.4)";
+  const h = document.createElement("div");
+  h.style.cssText = "font-weight:600;font-size:16px;margin-bottom:8px";
+  h.textContent = "Account changed";
+  const p = document.createElement("p");
+  p.style.margin = "0 0 14px";
+  p.textContent = `This browser is now signed in as ${email}, but this page still shows files and settings from another account. ` +
+    `Editing and saving are paused so nothing is mixed between accounts.`;
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex;gap:8px;flex-wrap:wrap";
+  const reload = document.createElement("button");
+  reload.textContent = "Reload and switch (unsaved changes are lost)";
+  reload.onclick = () => { void startUserStateSync(email).catch(() => false).then(() => location.reload()); };
+  const out = document.createElement("button");
+  out.textContent = "Sign out the new account and keep working here";
+  out.onclick = async () => {
+    try { await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" }); } catch { /* */ }
+    currentUser = null;
+    identityLocked = false;
+    scopeDeclined = true;
+    wrap.remove();
+    toast("info", "Signed out. You are back in the files and settings that were open on this page.");
+  };
+  for (const b of [reload, out]) b.style.cssText = "padding:8px 12px;border-radius:8px;border:1px solid #888;background:#f4f4f4;cursor:pointer;font:inherit";
+  row.append(reload, out);
+  box.append(h, p, row);
+  wrap.append(box);
+  document.body.appendChild(wrap);
 }
 
 /** Ask the server who we are (once at a time — renderTabs can call freely). */
@@ -297,7 +347,7 @@ export function refreshAccountState(): Promise<void> {
         if (syncedFor === email) return; // already synced in this page load; never reload mid-session
         // Tie local preferences and local file lists to this account (see user-state.ts).
         if (accountScopeDiffers(email) && !confirmScopeSwitch(`You are signed in as ${email}.`)) {
-          if (!scopeDeclined) { scopeDeclined = true; toast("info", "Account not switched yet. Save your work, then reload the page to finish."); }
+          lockForIdentityMismatch(email);
           return;
         }
         syncedFor = email;
@@ -306,9 +356,9 @@ export function refreshAccountState(): Promise<void> {
         stopUserStateSync();
         syncedFor = null;
         // The server says nobody is signed in: leave any previous account's local scope.
-        if (accountScopeDiffers(null)) {
+        if (accountScopeDiffers(null) && !scopeDeclined) {
           if (confirmScopeSwitch("Your session has ended.")) { if (endStaleAccountScope()) location.reload(); }
-          else if (!scopeDeclined) { scopeDeclined = true; toast("info", "Session ended. Save your work, then reload the page to return to your device's own files."); }
+          else { scopeDeclined = true; toast("info", "Session ended. Cloud sync is off. Save your work, then reload to return to your device's own files."); }
         }
       }
     })
