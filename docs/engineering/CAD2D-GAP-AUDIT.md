@@ -80,6 +80,16 @@ iterations. On conflict the sketch is returned unchanged. Constraint list (de)se
 Verified (`tests/cad-constraint-solver.test.cjs`, 14): every constraint type, DOF counts, redundancy, conflict detection,
 determinism, invalid input, a 60-link / 122-variable chain (≈65 ms, 6 iterations).
 
+**Editor integration (Phase 4b).** `constraint-bridge.ts` maps LINE / CIRCLE / ARC entities and recorded relations onto the
+solver. The Parametric tab's HORIZONTAL, VERTICAL, PARALLEL, PERPENDICULAR, TANGENT, CONCENTRIC, EQUAL, DCLINEAR, DCRADIUS and
+DCDIAMETER now also *record* the relation; `GCSOLVE` (ribbon: Manage › Solve All) re-solves all of them together as one
+undoable edit, `GCLIST` (Manage › Constraints) shows each one as ok / redundant / CONFLICT, `GCCLEAR` forgets them. FIX'd
+objects stay put (centre and radius). A conflicting or diverged set is refused — geometry is not changed. Verified:
+`tests/cad-constraint-bridge.test.cjs` (9) and the browser spec `cad-constraints.spec.ts`.
+*Limits:* relations are session-scoped (not written to DXF/DWG), so they are lost on reload; COINCIDENT, SYMMETRIC and
+DCANGULAR still apply once without being tracked; relations do not re-solve automatically while dragging; ARC angles and
+polylines/splines are not solved; no per-relation delete yet (GCCLEAR clears all).
+
 **Not done (honest):** no editor integration yet (no commands, no on-canvas constraint creation, no persistence into the
 DXF file — constraints live only in the model/JSON); arcs are modelled as centre+radius+end points but arc-angle
 consistency is not enforced; no ellipse/spline constraints; analytic Jacobians would be faster for very large sketches;

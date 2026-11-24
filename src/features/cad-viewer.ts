@@ -50,6 +50,7 @@ import { resolvedOf, bindDocumentBlocks, setActiveBlocks, touchBlocks, explodeIn
 import * as BE from "../modules/drawings/block-edit";
 import { XrefStore, composeXrefs, compareXref, type ComposedXref } from "../modules/drawings/xref-engine";
 import * as X from "../modules/cad-viewer/modify-math";
+import { solveRelations, describeBridge, relationArity, validateRelation, type Relation, type RelationKind } from "../modules/cad-viewer/constraint-bridge";
 import * as AcadParity from "../modules/cad-viewer/acad-parity"
 import {
   centerMarkEntities,
@@ -468,6 +469,10 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "DCRADIUS", aliases: ["DCRAD"], description: "Set a circle or arc to an exact radius" },
   { name: "DCDIAMETER", aliases: ["DCDIA"], description: "Set a circle or arc to an exact diameter" },
   { name: "DCANGULAR", aliases: ["DCANG"], description: "Set the angle between two lines" },
+  { name: "GCSOLVE", aliases: ["SOLVE"], description: "Re-solve every recorded constraint together (deterministic solver); reports degrees of freedom, redundant and conflicting relations" },
+  { name: "GCADD", aliases: [], description: "Record a constraint on the selected objects and solve it: GCADD H|V|PAR|PERP|EQ|CONC|TAN, or GCADD LEN|RAD <value> / ANG <degrees>" },
+  { name: "GCLIST", aliases: ["GCSTATUS"], description: "List the recorded constraints and whether they are satisfied" },
+  { name: "GCCLEAR", aliases: [], description: "Forget every recorded constraint (geometry is left as is)" },
   { name: "CONSTRAINTBAR", aliases: ["CONBAR"], description: "Show or hide the FIX constraint markers" },
   { name: "DELCONSTRAINT", aliases: ["DELCON"], description: "Release every FIX constraint" },
   /* ── Express Tools tab ── */
@@ -1793,6 +1798,104 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let selectionCycleOutside: ((event: PointerEvent) => void) | null = null;
   /** FIX constraint: entities pinned by the Parametric tab (object identity — survives index shifts). */
   const fixedEnts = new Set<DxfEntity>();
+  /* Recorded constraints (Phase 4). Entities get a stable id the first time a relation names them; the id follows
+     the object through every undoable edit (replaceEntity). Session scoped — not written to DXF/DWG. */
+  const entUid = new WeakMap<DxfEntity, string>();
+  let entUidSeq = 0;
+  const relations: Relation[] = [];
+  const uidOf = (e: DxfEntity): string => {
+    let u = entUid.get(e);
+    if (!u) { u = `e${++entUidSeq}`; entUid.set(e, u); }
+    return u;
+  };
+  function recordRelation(kind: RelationKind, objs: DxfEntity[], value?: number): void {
+    if (objs.length !== relationArity(kind)) return;
+    const ids = objs.map(uidOf);
+    // A new value for the same kind on the same object(s) replaces the old one instead of piling up conflicts.
+    const same = relations.findIndex((r) => r.kind === kind && r.ids.join("|") === ids.join("|"));
+    const rel: Relation = value === undefined ? { kind, ids } : { kind, ids, value };
+    if (same >= 0) relations[same] = rel;
+    else relations.push(rel);
+    logCmd(`  · recorded as constraint #${relations.length} — GCSOLVE re-applies all, GCLIST shows them.`);
+  }
+  function relationEntities(): Map<string, DxfEntity> {
+    const want = new Set(relations.flatMap((r) => r.ids));
+    const m = new Map<string, DxfEntity>();
+    for (const e of ents) { const u = entUid.get(e); if (u && want.has(u)) m.set(u, e); }
+    return m;
+  }
+  function runSolveRelations(): void {
+    if (!relations.length) { logCmd("GCSOLVE: no recorded constraints yet — apply HORIZONTAL, VERTICAL, PARALLEL, PERPENDICULAR, EQUAL, CONCENTRIC or a DC* dimension first."); return; }
+    const byId = relationEntities();
+    const pinned = new Set<string>();
+    for (const [u, e] of byId) if (fixedEnts.has(e)) pinned.add(u);
+    const res = solveRelations(byId, relations, pinned);
+    for (const l of describeBridge(res, relations)) logCmd(`GCSOLVE: ${l}`);
+    if (!res.updated.size) { draw(); return; }
+    const before: DxfEntity[] = [], after: DxfEntity[] = [];
+    for (const [u, ne] of res.updated) { const old = byId.get(u); if (old) { before.push(old); after.push(ne); } }
+    // Pinned objects are excluded by construction; commitModify still refuses if one slipped in.
+    commitModify(before, after);
+    draw();
+  }
+  /** GCADD: record a relation on the current selection (keyboard-driven twin of the pick tools) and solve it. */
+  function addRelationFromSelection(args: string[]): void {
+    const word = (args[0] ?? "").toUpperCase();
+    const kinds: Record<string, RelationKind> = {
+      H: "horizontal", HORIZONTAL: "horizontal", V: "vertical", VERTICAL: "vertical", PAR: "parallel", PARALLEL: "parallel",
+      PERP: "perpendicular", PERPENDICULAR: "perpendicular", EQ: "equal", EQUAL: "equal", CONC: "concentric", CONCENTRIC: "concentric",
+      TAN: "tangent", TANGENT: "tangent", LEN: "length", LENGTH: "length", RAD: "radius", RADIUS: "radius", ANG: "angle", ANGLE: "angle",
+    };
+    const kind = kinds[word];
+    if (!kind) { logCmd("GCADD: use H, V, PAR, PERP, EQ, CONC, TAN, LEN <value>, RAD <value> or ANG <degrees> with the objects selected."); return; }
+    let value: number | undefined;
+    if (kind === "length" || kind === "radius" || kind === "angle") {
+      const v = parseFloat(args[1] ?? "");
+      if (!Number.isFinite(v) || (kind !== "angle" && v <= 0)) { logCmd(`GCADD ${word}: give a ${kind === "angle" ? "number of degrees" : "positive value"}.`); return; }
+      value = kind === "angle" ? (v * Math.PI) / 180 : v;
+    }
+    const picked = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e);
+    const n = relationArity(kind);
+    if (picked.length < n) { logCmd(`GCADD ${word}: select ${n} object(s) first (selected: ${picked.length}).`); return; }
+    // One-object relations apply to every selected object; two-object relations use the first two, in pick order.
+    const groups: DxfEntity[][] = n === 1 ? picked.map((e) => [e]) : [picked.slice(0, 2)];
+    const added: Relation[] = [];
+    for (const g of groups) {
+      const ids = g.map(uidOf);
+      const rel: Relation = value === undefined ? { kind, ids } : { kind, ids, value };
+      const bad = validateRelation(rel, new Map(g.map((e, i) => [ids[i]!, e])));
+      if (bad) { logCmd(`GCADD: ${bad}`); continue; }
+      const dup = relations.findIndex((r) => r.kind === kind && r.ids.join("|") === ids.join("|"));
+      if (dup >= 0) relations.splice(dup, 1);
+      relations.push(rel);
+      added.push(rel);
+    }
+    if (!added.length) return;
+    const bySize = relations.length;
+    const byId = relationEntities();
+    const pinned = new Set<string>();
+    for (const [u, e] of byId) if (fixedEnts.has(e)) pinned.add(u);
+    const res = solveRelations(byId, relations, pinned);
+    if (res.status === "conflict" || res.status === "diverged" || res.status === "invalid") {
+      for (const l of describeBridge(res, relations)) logCmd(`GCADD: ${l}`);
+      for (const r of added) relations.splice(relations.indexOf(r), 1);
+      logCmd("GCADD: not recorded.");
+      return;
+    }
+    logCmd(`GCADD: recorded ${added.length} ${kind} constraint(s) (${bySize} in total) — ${res.status}, ${res.dof} degree(s) of freedom.`);
+    runSolveRelations();
+  }
+  function listRelations(): void {
+    if (!relations.length) { logCmd("GCLIST: no recorded constraints."); return; }
+    const byId = relationEntities();
+    const res = solveRelations(byId, relations, new Set());
+    logCmd(`GCLIST: ${relations.length} constraint(s) — ${res.status}, ${res.dof} degree(s) of freedom.`);
+    relations.forEach((r, i) => {
+      const gone = r.ids.some((id) => !byId.has(id));
+      const flag = gone ? "object deleted" : res.conflicting.includes(i) ? "CONFLICT" : res.redundant.includes(i) ? "redundant" : "ok";
+      logCmd(`  #${i + 1} ${r.kind}${r.value !== undefined ? ` = ${fmt(r.kind === "angle" ? (r.value * 180) / Math.PI : r.value)}` : ""} — ${flag}`);
+    });
+  }
   /** Parametric overlay: constraint badges / FIX markers on canvas (CONSTRAINTBAR). */
   let conBarOn = true;
   let rband: { a: M.Pt; b: M.Pt } | null = null;
@@ -3963,6 +4066,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   /** Replaces entity `oldE` with `newE` (identity-based) in ents / modelEnts. */
   const replaceEntity = (oldE: DxfEntity, newE: DxfEntity): void => {
+    const cu = entUid.get(oldE);
+    if (cu && !entUid.has(newE)) entUid.set(newE, cu);
     const i = ents.indexOf(oldE);
     if (i >= 0) ents[i] = newE;
     if (modelEnts !== ents) {
@@ -5222,6 +5327,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             }
             commitModify([src], [after]);
             logCmd(`${pk.con.toUpperCase()} constraint applied.`);
+            if (pk.con === "horizontal" || pk.con === "vertical") recordRelation(pk.con, [after]);
             draw();
             return true;
           }
@@ -5244,6 +5350,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
               }
               commitModify([e], [after]);
               logCmd(`${pk.con === "dcdiameter" ? "DCDIAMETER" : "DCRADIUS"}: ${pk.con === "dcdiameter" ? "diameter" : "radius"} set to ${fmt(v)}.`);
+              recordRelation("radius", [after], r);
               draw();
             };
             return true;
@@ -5266,6 +5373,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
               }
               commitModify([e], [after]);
               logCmd(`DCLINEAR: length set to ${fmt(v)}.`);
+              recordRelation("length", [after], v);
               draw();
             };
             return true;
@@ -5315,6 +5423,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         }
         commitModify([b], [after]);
         logCmd(`${pk.con.toUpperCase()} constraint applied to the second object.`);
+        if (pk.con === "parallel" || pk.con === "perpendicular" || pk.con === "tangent" || pk.con === "concentric" || pk.con === "equal") recordRelation(pk.con, [a, after]);
+        else logCmd(`  · ${pk.con.toUpperCase()} was applied once; it is not tracked by the solver yet.`);
         draw();
         pk.stage = "obj";
         logCmd(pickPrompt());
@@ -6992,7 +7102,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       rg(
         "Manage",
         rb("tag", "Constraint Bar", `data-a="con-bar"`, "Show or hide the FIX constraint markers (CONSTRAINTBAR)", "on") +
-          rb("purge", "Unfix All", `data-a="con-unfixall"`, "Release every FIX constraint (DELCONSTRAINT)"),
+          rb("purge", "Unfix All", `data-a="con-unfixall"`, "Release every FIX constraint (DELCONSTRAINT)") +
+          rb("schedule", "Solve All", `data-a="gc-solve"`, "Re-solve every recorded constraint together; reports degrees of freedom, redundant and conflicting ones (GCSOLVE)") +
+          rb("text", "Constraints", `data-a="gc-list"`, "List recorded constraints and their status (GCLIST)"),
         "",
         "",
         "parametric",
@@ -7322,6 +7434,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       "con-sym": () => startConstraint("symmetric"),
       "con-eq": () => startConstraint("equal"),
       "con-fix": () => startConstraint("confix"),
+      "gc-solve": () => runSolveRelations(),
+      "gc-list": () => listRelations(),
       "dc-linear": () => startConstraint("dclinear"),
       "dc-radius": () => startConstraint("dcradius"),
       "dc-dia": () => startConstraint("dcdiameter"),
@@ -11006,6 +11120,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (cmd === "AUTOCONSTRAIN" || cmd === "ACON") { runAutoConstrain(); return; }
     if (cmd === "CONSTRAINTBAR" || cmd === "CONBAR") { toggleConBar(); return; }
     if (cmd === "DELCONSTRAINT" || cmd === "DELCON") { unfixAll(); return; }
+    if (cmd === "GCSOLVE" || cmd === "SOLVE") { runSolveRelations(); return; }
+    if (cmd === "GCADD") { addRelationFromSelection(parts.slice(1)); return; }
+    if (cmd === "GCLIST" || cmd === "GCSTATUS") { listRelations(); return; }
+    if (cmd === "GCCLEAR") { const n = relations.length; relations.length = 0; logCmd(`GCCLEAR: forgot ${n} recorded constraint(s); geometry unchanged.`); return; }
     if (cmd === "FIX" || cmd === "CONSTRAINTFIX") { setTool("confix"); return; }
     if (cmd === "UNFIX" || cmd === "CONSTRAINTUNFIX") { setTool("confix"); return; }
     if (cmd === "HORIZONTAL") { startConstraint("horizontal"); return; }
