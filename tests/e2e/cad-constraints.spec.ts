@@ -33,7 +33,12 @@ test('2D editor: constraints are recorded and solvable from the ribbon', async (
   await run('HORIZONTAL');
   const cv = page.locator('[data-r=cv]').first();
   const box = (await cv.boundingBox())!;
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(600); // let ZOOM E settle
+  const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+  await page.mouse.move(cx - 20, cy - 8);
+  await page.mouse.move(cx, cy, { steps: 4 });
+  await page.waitForTimeout(150);
+  await page.mouse.click(cx, cy);
   await expect.poll(hist, { timeout: 10000 }).toContain('recorded as constraint #1');
 
   await page.locator('[data-a=gc-list]').first().click();
