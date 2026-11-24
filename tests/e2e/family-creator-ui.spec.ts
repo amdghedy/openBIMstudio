@@ -230,6 +230,19 @@ test("family creator: table and shelving shapes", async ({ page }) => {
   await expect.poll(async () => (await canvas.getAttribute("data-size")) ?? "").toBe("900,300,1800");
   await panel.evaluate((el) => { el.scrollTop = el.scrollHeight; });
   await shot(page, "21-shelf.png");
+
+  // A count is real geometry: 3 middle shelves means 8 solids in the 3D scene, evenly spaced, and the size is unchanged.
+  await expect(canvas).toHaveAttribute("data-meshes", "6");
+  await panel.locator('[data-param="MidShelves"]').fill("3");
+  await panel.locator('[data-param="MidShelves"]').dispatchEvent("change");
+  await expect(canvas).toHaveAttribute("data-meshes", "8");
+  await expect(panel).toContainText("8 parts");
+  await expect.poll(async () => (await canvas.getAttribute("data-size")) ?? "").toBe("900,300,1800");
+  await panel.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  await shot(page, "22-shelf-3-middle.png");
+  await panel.locator('[data-param="MidShelves"]').fill("2.5");
+  await panel.locator('[data-param="MidShelves"]').dispatchEvent("change");
+  await expect(panel.locator('[data-stage="intake"]')).toContainText("whole number");
   expect(errors).toEqual([]);
 });
 
@@ -300,5 +313,25 @@ test("family creator: OCR of a picture and a scanned PDF, same-origin only, with
   await shot(page, "32-panel-rtl.png");
   await page.evaluate(() => { document.documentElement.dir = "ltr"; document.body.dir = "ltr"; });
 
+  expect(errors).toEqual([]);
+});
+
+test("family creator: labelled extras from a sheet become parameters with their source line", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+  await enterAuthoring(page);
+  await openCreator(page);
+  const panel = page.getByTestId("family-creator-panel");
+  await panel.locator('[data-f="name"]').fill("Wall shelving WS-9");
+  await panel.locator('[data-f="text"]').fill("Overall size: 900 x 300 x 1800 mm\nMiddle shelves: 3\nPanel thickness: 25 mm");
+  await panel.getByRole("button", { name: "Create family" }).click();
+  await expect(panel.locator('[data-param="MidShelves"]')).toHaveValue("3");
+  await expect(panel.locator('[data-param="PanelThickness"]')).toHaveValue("25");
+  await expect(panel.locator('[data-fc="sources"]')).toContainText("Middle shelves 3");
+  await expect(panel.locator('[data-fc="sources"]')).toContainText("page 1, line 2: Middle shelves: 3");
+  await expect(panel.locator('[data-fc="sources"]')).toContainText("Panel thickness 25 mm");
+  await expect(panel.locator('canvas[data-fc3d="canvas"]')).toHaveAttribute("data-meshes", "8");
+  await panel.locator('[data-fc="sources"]').scrollIntoViewIfNeeded();
+  await shot(page, "23-extras-sources.png");
   expect(errors).toEqual([]);
 });
