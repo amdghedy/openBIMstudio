@@ -49,6 +49,12 @@ export function validateSpec(spec: ProductSpec): SpecProblem[] {
   if (tpl.id === "cabinet" && typeof spec.heightM === "number") {
     const plinth = spec.params?.PlinthHeight ?? tpl.params.find((x) => x.name === "PlinthHeight")!.default;
     if (spec.heightM <= plinth + 0.05) out.push({ field: "heightM", message: "Too short for the plinth and door" });
+    else {
+      const dv = (n: string) => spec.params?.[n] ?? tpl.params.find((x) => x.name === n)!.default;
+      const zone = spec.heightM - plinth - dv("Drawers") * dv("DrawerHeight");
+      if (dv("Drawers") > 0 && zone < -1e-9) out.push({ field: "params.Drawers", message: "The drawers do not fit in this height" });
+      else if (dv("Drawers") > 0 && dv("Doors") > 0 && zone < 0.1) out.push({ field: "params.Drawers", message: "No room left for the doors under the drawers" });
+    }
   }
   if (tpl.id === "table" && typeof spec.heightM === "number") {
     const top = spec.params?.TopThickness ?? tpl.params.find((x) => x.name === "TopThickness")!.default;
