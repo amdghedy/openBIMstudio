@@ -26,7 +26,7 @@ fs.writeFileSync(path.join(tmpOut, "package.json"), '{"type": "commonjs"}');
 process.on("exit", () => { try { fs.rmSync(tmpOut, { recursive: true, force: true }); } catch { /* */ } });
 execSync(
   "npx tsc src/modules/families/creator/pipeline.ts src/modules/families/creator/units.ts src/modules/families/creator/preview-svg.ts"
-  + " src/modules/families/parametric-engine.ts src/modules/families/migration.ts"
+  + " src/modules/families/parametric-engine.ts src/modules/families/migration.ts src/modules/families/creator/part-map.ts"
   + " --outDir " + JSON.stringify(tmpOut)
   + " --module commonjs --moduleResolution node --target ES2022 --skipLibCheck --noCheck",
   { cwd: root, stdio: "inherit", shell: true },
@@ -49,6 +49,7 @@ const B = require(find("build.js", "creator"));
 const I = require(find("ifc2x3.js", "creator"));
 const E = require(find("parametric-engine.js"));
 const M = require(find("migration.js"));
+const PM = require(find("part-map.js", "creator"));
 
 const deps = {
   buildInEngine(family, type) {
@@ -405,6 +406,24 @@ t("writeCreatorIfc with a subset of parts: only those solids, same family proper
   assert.deepStrictEqual(P.checkIfcStructure(sub.text, 7), []);
   assert.ok(/IFCPROPERTYSINGLEVALUE\('Doors',\$,IFCINTEGER\(3\)/.test(sub.text), "count properties still describe the whole family");
   near(ifcExtents(sub.text).size[0], 1.6, 1e-4);
+});
+
+
+t("part map: accepted only when every node is at its part centre; a mismatch is reported, never accepted", () => {
+  const L = require(find("layout.js", "creator"));
+  for (const tid of ["box", "cabinet", "table", "shelf"]) {
+    const spec = { name: "x", widthM: 1.2, depthM: 0.5, heightM: 0.9, templateId: tid };
+    const fam = B.buildFamilyFromSpec(spec), b = deps.buildInEngine(fam, fam.types[0]);
+    const parts = L.resolveParts(B.templateFor(spec), b.params);
+    assert.strictEqual(PM.checkPartMap(b.object.children, parts).ok, true, tid + " maps exactly");
+    const kids = [...b.object.children];
+    assert.strictEqual(PM.checkPartMap(kids.slice(1), parts).reason, "count", tid + " count mismatch");
+    if (kids.length > 1) {
+      const swapped = [kids[1], kids[0], ...kids.slice(2)];
+      const r = PM.checkPartMap(swapped, parts);
+      assert.ok(!r.ok && r.reason === "position", tid + " order mismatch is refused");
+    }
+  }
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
