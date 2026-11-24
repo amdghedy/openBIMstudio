@@ -421,6 +421,23 @@ test("family creator: cabinet doors and drawers from a sheet, editable counts, h
   await expect(panel.locator('[data-fc="sources"]')).not.toContainText("Drawers 2");
   await expect(panel.locator('[data-fc="sources"]')).toContainText("Doors 3");
   await shot(page, "51-cabinet-4drawers.png");
+  // GLB: a viewer format. Save it, check the container and that it names every part. Geometry is checked outside this spec.
+  await expect(panel.locator('[data-fc="glb-note"]')).toContainText("Revit 2020 does not open it");
+  const [glb] = await Promise.all([page.waitForEvent("download"), panel.getByRole("button", { name: "Download GLB" }).click()]);
+  expect(glb.suggestedFilename()).toBe("Kitchen_sideboard_KS-2.glb");
+  const glbPath = path.join(SHOTS ?? "/tmp", "cabinet-3doors-4drawers.glb");
+  fs.mkdirSync(path.dirname(glbPath), { recursive: true });
+  await glb.saveAs(glbPath);
+  const bytes = fs.readFileSync(glbPath);
+  expect(bytes.subarray(0, 4).toString()).toBe("glTF");
+  expect(bytes.readUInt32LE(4)).toBe(2);
+  expect(bytes.readUInt32LE(8)).toBe(bytes.length);
+  const jsonLen = bytes.readUInt32LE(12);
+  const gltf = JSON.parse(bytes.subarray(20, 20 + jsonLen).toString());
+  const names = (gltf.nodes ?? []).map((n: any) => n.name);
+  for (const n of ["Plinth", "Body", "Door 3", "Handle 3", "Drawer front 4", "Drawer pull 4"]) expect(names).toContain(n);
+  expect((gltf.buffers ?? []).every((b: any) => b.uri === undefined)).toBe(true);
+  await expect(panel.locator('[data-fc="notice"]')).toContainText("Saved Kitchen_sideboard_KS-2.glb");
   // Too many drawers for the height: the run says so instead of drawing something wrong.
   await panel.locator('[data-param="Drawers"]').fill("6");
   await panel.locator('[data-param="Drawers"]').dispatchEvent("change");
