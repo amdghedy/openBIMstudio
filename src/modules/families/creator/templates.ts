@@ -31,7 +31,7 @@ export interface TemplatePart {
 }
 
 export interface PartTemplate {
-  id: "box" | "cabinet";
+  id: "box" | "cabinet" | "table" | "shelf";
   label: string;
   category: FamilyCategory;
   ifcEntity: "IfcBuildingElementProxy" | "IfcFurnishingElement";
@@ -75,14 +75,62 @@ export const CABINET_TEMPLATE: PartTemplate = {
   ],
 };
 
+// A table, desk or counter: top slab and four square legs inset at the corners.
+export const TABLE_TEMPLATE: PartTemplate = {
+  id: "table",
+  label: "Table with four legs",
+  category: "generic",
+  ifcEntity: "IfcFurnishingElement",
+  params: [
+    { name: "TopThickness", label: "Top thickness", default: 0.03, min: 0.01, max: 0.15 },
+    { name: "LegSize", label: "Leg size", default: 0.05, min: 0.02, max: 0.2 },
+    { name: "LegHeight", label: "Leg height", default: 0, formula: "= Height - TopThickness" },
+  ],
+  parts: [
+    { id: "top", name: "Top", shape: "box", w: "Width", d: "Depth", h: "TopThickness", x: "0", y: "Height - TopThickness / 2", z: "0" },
+    { id: "leg-fl", name: "Leg front left", shape: "box", w: "LegSize", d: "LegSize", h: "LegHeight", x: "0 - Width / 2 + LegSize / 2", y: "LegHeight / 2", z: "Depth / 2 - LegSize / 2" },
+    { id: "leg-fr", name: "Leg front right", shape: "box", w: "LegSize", d: "LegSize", h: "LegHeight", x: "Width / 2 - LegSize / 2", y: "LegHeight / 2", z: "Depth / 2 - LegSize / 2" },
+    { id: "leg-bl", name: "Leg back left", shape: "box", w: "LegSize", d: "LegSize", h: "LegHeight", x: "0 - Width / 2 + LegSize / 2", y: "LegHeight / 2", z: "0 - Depth / 2 + LegSize / 2" },
+    { id: "leg-br", name: "Leg back right", shape: "box", w: "LegSize", d: "LegSize", h: "LegHeight", x: "Width / 2 - LegSize / 2", y: "LegHeight / 2", z: "0 - Depth / 2 + LegSize / 2" },
+  ],
+};
+
+// Open shelving: two sides, a back, bottom and top panels and one middle shelf.
+export const SHELF_TEMPLATE: PartTemplate = {
+  id: "shelf",
+  label: "Open shelving",
+  category: "generic",
+  ifcEntity: "IfcFurnishingElement",
+  params: [
+    { name: "PanelThickness", label: "Panel thickness", default: 0.02, min: 0.005, max: 0.08 },
+    { name: "InnerWidth", label: "Inner width", default: 0, formula: "= Width - 2 * PanelThickness" },
+    { name: "InnerHeight", label: "Inner height", default: 0, formula: "= Height - 2 * PanelThickness" },
+  ],
+  parts: [
+    { id: "side-l", name: "Left side", shape: "box", w: "PanelThickness", d: "Depth", h: "Height", x: "0 - Width / 2 + PanelThickness / 2", y: "Height / 2", z: "0" },
+    { id: "side-r", name: "Right side", shape: "box", w: "PanelThickness", d: "Depth", h: "Height", x: "Width / 2 - PanelThickness / 2", y: "Height / 2", z: "0" },
+    { id: "bottom", name: "Bottom panel", shape: "box", w: "InnerWidth", d: "Depth", h: "PanelThickness", x: "0", y: "PanelThickness / 2", z: "0" },
+    { id: "top", name: "Top panel", shape: "box", w: "InnerWidth", d: "Depth", h: "PanelThickness", x: "0", y: "Height - PanelThickness / 2", z: "0" },
+    { id: "mid", name: "Middle shelf", shape: "box", w: "InnerWidth", d: "Depth", h: "PanelThickness", x: "0", y: "Height / 2", z: "0" },
+    { id: "back", name: "Back panel", shape: "box", w: "InnerWidth", d: "PanelThickness", h: "InnerHeight", x: "0", y: "Height / 2", z: "0 - Depth / 2 + PanelThickness / 2" },
+  ],
+};
+
 export const TEMPLATES: Record<string, PartTemplate> = {
   box: BOX_TEMPLATE,
   cabinet: CABINET_TEMPLATE,
+  table: TABLE_TEMPLATE,
+  shelf: SHELF_TEMPLATE,
 };
+
+const SHELF_WORDS = /\b(shelf|shelves|shelving|bookcase|bookshelf|rack|racking)\b/i;
+const TABLE_WORDS = /\b(table|desk|counter|bench|workbench)\b/i;
 
 const CABINET_WORDS = /\b(cabinet|case|fridge|refrigerator|freezer|display|merchandiser|cooler|chiller|locker|cupboard|wardrobe)\b/i;
 
 /** Pick a template from the product text. Falls back to a plain box. */
 export function chooseTemplate(text: string): PartTemplate {
+  if (SHELF_WORDS.test(text)) return SHELF_TEMPLATE;
+  if (TABLE_WORDS.test(text)) return TABLE_TEMPLATE;
   return CABINET_WORDS.test(text) ? CABINET_TEMPLATE : BOX_TEMPLATE;
 }
