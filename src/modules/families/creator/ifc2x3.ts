@@ -20,6 +20,8 @@ export interface IfcCreatorInput {
   parts: ResolvedPart[];
   /** Parameter name -> value in metres, written as IfcLengthMeasure. */
   lengthParams: Record<string, number>;
+  /** Count parameters (doors, drawers, shelves), written as IfcInteger. */
+  countParams?: Record<string, number>;
   /** ISO timestamp for the header. Defaults to now. */
   timestamp?: string;
 }
@@ -136,6 +138,9 @@ export function writeIfc2x3(input: IfcCreatorInput): IfcWriteResult {
   const props: number[] = [];
   for (const [k, v] of Object.entries(input.lengthParams)) {
     props.push(add(`IFCPROPERTYSINGLEVALUE(${stepString(k)},$,IFCLENGTHMEASURE(${f(v)}),$)`));
+  }
+  for (const [k, v] of Object.entries(input.countParams ?? {})) {
+    props.push(add(`IFCPROPERTYSINGLEVALUE(${stepString(k)},$,IFCINTEGER(${Math.round(v)}),$)`));
   }
   if (input.manufacturer) props.push(add(`IFCPROPERTYSINGLEVALUE('Manufacturer',$,IFCLABEL(${stepString(input.manufacturer)}),$)`));
   if (input.model) props.push(add(`IFCPROPERTYSINGLEVALUE('Model',$,IFCLABEL(${stepString(input.model)}),$)`));
