@@ -67,6 +67,7 @@ function run(spec?: ProductSpec) {
       ? { name: form.name.trim() || "New family", manufacturer: form.manufacturer || undefined, model: form.model || undefined, widthM: w, depthM: d, heightM: h, templateId: tplId() } as ProductSpec
       : undefined;
   })();
+  const prevWarnings = result?.warnings;
   result = runCreator(
     { name: form.name.trim() || "New family", manufacturer: form.manufacturer || undefined, model: form.model || undefined,
       pages: form.pages.length ? form.pages : form.text ? [form.text] : [], spec: useSpec, templateId: tplId() },
@@ -74,6 +75,7 @@ function run(spec?: ProductSpec) {
     (s) => { liveStatus = s; },
   );
   liveStatus = result.status;
+  if (spec && result.warnings === undefined) result.warnings = prevWarnings;
   updatePreview(!spec);
   render();
 }
@@ -171,13 +173,22 @@ function resultHtml(r: CreatorResult): string {
     let resolved: Record<string, number> = {};
     try { resolved = deps.buildInEngine(r.family, r.family.types[0]).params as Record<string, number>; } catch { /* shown as the type value */ }
     const values = { ...(r.family.types[0].values as Record<string, number>), ...resolved };
+    const srcs = r.spec.sources ?? [];
+    const tagOf = (p: { name: string; label?: string; editable?: boolean }): string => {
+      if (p.editable === false) return "";
+      const sized = p.name === "Width" || p.name === "Depth" || p.name === "Height";
+      const edited = !sized && r.spec!.params?.[p.name] !== undefined && !srcs.some((x) => x.label === p.label);
+      const key = sized ? (srcs.length ? (form.wMm && form.dMm && form.hMm ? "typed" : "sheet") : "typed")
+        : srcs.some((x) => x.label === p.label) ? "sheet" : edited ? "edited" : "default";
+      return ` <span class="obs-fc-detail" data-tag="${key}">(${esc(t("familyCreator.tag." + key))})</span>`;
+    };
     const rows = r.family.parameters.map((p) => {
       const val = (values[p.name] ?? p.default) as number;
       const isInt = p.type === "integer";
       const mmv = isInt ? Math.round(val) : Math.round(val * 1000 * 10) / 10;
       return `<tr><td>${esc(p.label ?? p.name)}</td><td>` +
         (p.editable
-          ? `<input type="number" step="1" min="${isInt ? 0 : 1}" data-param="${esc(p.name)}" data-int="${isInt ? 1 : 0}" value="${mmv}" class="obs-fc-in" style="width:84px">${isInt ? "" : " mm"}`
+          ? `<input type="number" step="1" min="${isInt ? 0 : 1}" data-param="${esc(p.name)}" data-int="${isInt ? 1 : 0}" value="${mmv}" class="obs-fc-in" style="width:84px">${isInt ? "" : " mm"}${tagOf(p)}`
           : `${mmv} mm <span class="obs-fc-detail">${esc(t("familyCreator.formula"))}</span>`) + `</td></tr>`;
     }).join("");
     html += `<div class="obs-fc-sec"><div class="obs-fc-h">${esc(t("familyCreator.params", { template: tpl.label }))}</div><table class="obs-fc-tbl">${rows}</table></div>`;
@@ -190,6 +201,10 @@ function resultHtml(r: CreatorResult): string {
       html += `<div class="obs-fc-sec"><div class="obs-fc-h">${esc(t("familyCreator.views"))}</div><div data-fc="views">${renderThreeViews(parts, { w: r.spec.widthM, d: r.spec.depthM, h: r.spec.heightM }, { front: t("familyCreator.front"), side: t("familyCreator.side"), top: t("familyCreator.top") })}</div>` +
         `<div class="obs-fc-detail"><bdi>${esc(t("familyCreator.partsLine", { n: parts.length, names: parts.map((p) => p.name).join(", ") }))}</bdi></div></div>`;
     } catch (e) { html += `<div class="obs-fc-detail">${esc(t("familyCreator.viewsUnavailable", { message: (e as Error).message }))}</div>`; }
+  }
+  if (r.warnings?.length) {
+    html += `<div class="obs-fc-sec" data-fc="warnings" style="color:#f59e0b"><div class="obs-fc-h">${esc(t("familyCreator.warn.title"))}</div>` +
+      r.warnings.map((w) => `<div class="obs-fc-detail" style="color:#f59e0b"><bdi>${esc(t(w.key, w.vars))}</bdi></div>`).join("") + `</div>`;
   }
   if (r.spec?.sources?.length) {
     html += `<div class="obs-fc-sec" data-fc="sources"><div class="obs-fc-h">${esc(t("familyCreator.sources"))}</div>` +
