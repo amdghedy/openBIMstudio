@@ -71,4 +71,5 @@ EXPRESS validation returned 0 messages, and the geometry bbox was
   out of the global wheel arbiter with `data-obs-own-wheel`.
 - Tests: `tests/family-creator-pdf.test.cjs` (unit, real pdf.js) and the
   second case of `tests/e2e/family-creator-ui.spec.ts` (browser, not a CI gate).
-- Still to come: OCR, images, URL, vision model, richer templates.
+- Shapes: box, cabinet with door, table with four legs, open shelving. Picked from the product name, or by the user in the Shape list. Each is plain data (templates.ts), drives both the engine geometry and the IFC.
+- Still to come: OCR, images, URL, vision model, more shapes and per-part visibility.
