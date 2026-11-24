@@ -33,6 +33,7 @@
  */
 import { ctx } from "../core/context";
 import { registerCommand } from "./command-palette";
+import { startUserStateSync, flushUserState, stopUserStateSync } from "./user-state";
 import { getCurrentProject, saveProject } from "../modules/projects/projects";
 import * as store from "../modules/projects/store";
 import { buildProjectFile, suggestedFileName } from "../modules/projects/project-file";
@@ -275,8 +276,14 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 export function refreshAccountState(): Promise<void> {
   if (meRequest) return meRequest;
   meRequest = api<{ user: SessionUser | null }>("/api/auth/me")
-    .then((r) => {
+    .then(async (r) => {
       currentUser = r.user;
+      if (r.user) {
+        // Tie local preferences to this account (see user-state.ts); reload once if saved settings were applied.
+        if (await startUserStateSync(r.user.email)) location.reload();
+      } else {
+        stopUserStateSync();
+      }
     })
     .catch(() => {
       currentUser = null;
@@ -403,7 +410,9 @@ function buildMenu(menu: HTMLElement): void {
     menuItem(menu, "My cloud projects…", () => void openCloudProjectsDialog());
     menuItem(menu, "Sign out", async () => {
       try {
+        await flushUserState();
         await api("/api/auth/logout", { method: "POST" });
+        stopUserStateSync();
         currentUser = null;
         remountAll();
         toast("success", "Signed out. Projects stay on this device.");
@@ -826,6 +835,7 @@ export async function saveCurrentProjectToCloud(): Promise<boolean> {
 }
 
 interface CloudProject {
+  openedAt?: number;
   id: string;
   name: string;
   updatedAt: number;
@@ -885,7 +895,8 @@ async function openCloudProjectsDialog(): Promise<void> {
     nm.title = p.name;
     const meta = document.createElement("div");
     meta.className = "obs-acct-row__meta";
-    meta.textContent = `${fmtDateTime(p.updatedAt)} · ${formatSize(p.size)}`;
+    const opened = p.openedAt ? ` · opened ${fmtDateTime(p.openedAt)}` : "";
+    meta.textContent = `saved ${fmtDateTime(p.updatedAt)}${opened} · ${formatSize(p.size)}`;
     main.append(nm, meta);
     const openBtn = document.createElement("button");
     openBtn.textContent = "Open";
