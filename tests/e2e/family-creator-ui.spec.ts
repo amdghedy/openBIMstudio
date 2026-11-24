@@ -353,3 +353,46 @@ test("family creator: labelled extras from a sheet become parameters with their 
   await shot(page, "24-warnings.png");
   expect(errors).toEqual([]);
 });
+
+test("family creator: link fetch needs per-use consent, says plainly when the site has it off, and loads a sheet when on", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e: Error) => errors.push(e.message));
+  const calls: string[] = [];
+  let mode: "off" | "on" = "off";
+  await page.route("**/api/fetch-sheet", async (route: any) => {
+    calls.push(route.request().postData() || "");
+    if (mode === "off") return route.fulfill({ status: 404, body: "Not found" });
+    return route.fulfill({ status: 200, headers: { "content-type": "text/plain", "x-fetched-host": "vendor.example" }, body: "Wall shelving WS-9\nOverall size: 900 x 300 x 1800 mm\nMiddle shelves: 2" });
+  });
+  await enterAuthoring(page);
+  await openCreator(page);
+  const panel = page.getByTestId("family-creator-panel");
+  const btn = panel.locator('[data-act="fetch-url"]');
+  const url = panel.locator('[data-f="url"]');
+  await url.fill("https://vendor.example/sheet.txt");
+  // No consent: the button is disabled and nothing is sent.
+  await expect(btn).toBeDisabled();
+  await expect(panel.locator('[data-fc="url-box"]')).toContainText("The site's operator can see the link");
+  await panel.locator('[data-fc="url-consent"]').check();
+  await expect(btn).toBeEnabled();
+  await btn.click();
+  await expect(panel.locator('[data-fc="url-note"]')).toContainText("not switched on for this site");
+  expect(calls.length).toBe(1);
+  expect(JSON.parse(calls[0])).toEqual({ url: "https://vendor.example/sheet.txt", consent: true });
+  // Consent is per use: it is cleared after the attempt.
+  await expect(panel.locator('[data-fc="url-consent"]')).not.toBeChecked();
+  await expect(btn).toBeDisabled();
+  await shot(page, "40-url-off.png");
+  mode = "on";
+  await panel.locator('[data-fc="url-consent"]').check();
+  await btn.click();
+  await expect(panel.locator('[data-fc="file-note"]')).toContainText("sheet.txt");
+  await expect(panel.locator('[data-fc="url-note"]')).toContainText("Fetched from vendor.example");
+  await panel.locator('[data-f="name"]').fill("Wall shelving WS-9");
+  await panel.getByRole("button", { name: "Create family" }).click();
+  await expect(panel.locator('[data-param="MidShelves"] ~ [data-tag]')).toHaveText("(from sheet)");
+  expect(calls.length).toBe(2);
+  await expect(panel.locator('[data-fc="url-consent"]')).not.toBeChecked();
+  await shot(page, "41-url-on.png");
+  expect(errors).toEqual([]);
+});
