@@ -191,7 +191,13 @@ export function runCreator(
     if (used.length) { spec = { ...spec, params, sources: [...size.sources, ...used] }; }
   }
   const problems = validateSpec(spec);
-  if (problems.length) return fail("intake", problems.map((p) => `${p.field}: ${p.message}`).join("; "));
+  if (problems.length) {
+    // Say "Drawers", not "params.Drawers": the user sees the same names as in the parameter list.
+    const tpl = templateFor(spec);
+    const plain: Record<string, string> = { name: "Name", widthM: "Width", depthM: "Depth", heightM: "Height" };
+    const label = (f: string) => plain[f] ?? tpl.params.find((q) => `params.${q.name}` === f)?.label ?? f;
+    return fail("intake", problems.map((p) => `${label(p.field)}: ${p.message}`).join("; "));
+  }
   result.spec = spec;
   const mmr = (v: number) => Math.round(v * 1000 * 100) / 100;
   pass("intake", `${mmr(spec.widthM)} x ${mmr(spec.depthM)} x ${mmr(spec.heightM)} mm (W x D x H)`, "familyCreator.detail.size",
@@ -231,14 +237,16 @@ export function runCreator(
   let parts;
   try { parts = resolveParts(tpl, built.params); } catch (e) { return fail("ifc", (e as Error).message); }
   const lengthParams: Record<string, number> = {};
+  const countParams: Record<string, number> = {};
   for (const p of family.parameters) {
     const v = built.params[p.name];
     if (p.type === "length" && typeof v === "number") lengthParams[p.name] = v;
+    else if (p.type === "integer" && typeof v === "number") countParams[p.name] = v;
   }
   const out = writeIfc2x3({
     name: spec.name, manufacturer: spec.manufacturer, model: spec.model,
     entity: family.ifcEntity === "IfcFurnishingElement" ? "IfcFurnishingElement" : "IfcBuildingElementProxy",
-    parts, lengthParams,
+    parts, lengthParams, countParams,
   });
   const bad = checkIfcStructure(out.text, parts.length);
   if (bad.length) return fail("ifc", bad.join("; "));
