@@ -25,7 +25,7 @@ const tmpOut = fs.mkdtempSync(path.join(root, ".family-creator-test-"));
 fs.writeFileSync(path.join(tmpOut, "package.json"), '{"type": "commonjs"}');
 process.on("exit", () => { try { fs.rmSync(tmpOut, { recursive: true, force: true }); } catch { /* */ } });
 execSync(
-  "npx tsc src/modules/families/creator/pipeline.ts src/modules/families/creator/units.ts"
+  "npx tsc src/modules/families/creator/pipeline.ts src/modules/families/creator/units.ts src/modules/families/creator/preview-svg.ts"
   + " src/modules/families/parametric-engine.ts"
   + " --outDir " + JSON.stringify(tmpOut)
   + " --module commonjs --moduleResolution node --target ES2022 --skipLibCheck --noCheck",
@@ -181,6 +181,48 @@ t("T7 box template, spec validation, guid and string escaping", () => {
   assert.strictEqual(I.ifcGuid("a"), I.ifcGuid("a"));
   assert.notStrictEqual(I.ifcGuid("a"), I.ifcGuid("b"));
   assert.strictEqual(I.stepString("O'Neil \u00e9"), "'O''Neil \\X2\\00E9\\X0\\'");
+});
+
+t("T8 template parameter overrides, units without float noise, and the three-view drawing", () => {
+  assert.strictEqual(U.parseLength("700 mm"), 0.7, "no 0.7000000000000001 noise");
+  const spec = { name: "Display Cabinet DC-100", widthM: 1.2, depthM: 0.7, heightM: 2.0, params: { PlinthHeight: 0.2 } };
+  const r = P.runCreator({ name: spec.name, spec }, deps);
+  assert.strictEqual(r.status.platformReady, true);
+  near(r.family.types[0].values.PlinthHeight, 0.2);
+  const bad = P.runCreator({ name: spec.name, spec: { ...spec, params: { PlinthHeight: 5 } } }, deps);
+  assert.strictEqual(bad.status.stages[0].state, "failed", "out-of-range template parameter is refused");
+  const bad2 = P.runCreator({ name: spec.name, spec: { ...spec, params: { BodyHeight: 1 } } }, deps);
+  assert.strictEqual(bad2.status.stages[0].state, "failed", "a derived parameter cannot be overridden");
+  const V = require(find("preview-svg.js", "creator"));
+  const L = require(find("layout.js", "creator"));
+  const T = require(find("templates.js", "creator"));
+  const E2 = E.buildParametricFamily(r.family, r.family.types[0], {});
+  const svg = V.renderThreeViews(L.resolveParts(T.CABINET_TEMPLATE, E2.params), { w: 1.2, d: 0.7, h: 2.0 });
+  assert.strictEqual((svg.match(/<rect /g) || []).length, 12, "4 parts x 3 views");
+  assert.ok(svg.startsWith("<svg") && svg.endsWith("</svg>"));
+  assert.ok(!/NaN|Infinity/.test(svg));
+});
+
+t("T9 user-facing order is width x depth x height everywhere; failure text speaks to the user; keys exist", () => {
+  const r = P.runCreator({ name: "Display Cabinet DC-100", pages: PAGES }, deps);
+  const [intake, , engine] = r.status.stages;
+  // Engine order is X, Y(up), Z = width, height, depth. The label must still read W x D x H.
+  assert.strictEqual(intake.detail, "1200 x 700 x 2000 mm (W x D x H)");
+  assert.strictEqual(engine.detail, "1200 x 700 x 2000 mm (W x D x H)");
+  assert.deepStrictEqual(engine.detailVars, { w: 1200, d: 700, h: 2000 });
+  const bad = P.runCreator({ name: "X", pages: ["nothing useful"] }, deps);
+  const msg = bad.status.stages[0].detail;
+  assert.ok(!/ask the user/i.test(msg), "must not talk about the user in the third person");
+  assert.ok(/enter the size yourself/i.test(msg));
+  // Every key the pipeline can emit exists in the English catalogue.
+  const en = JSON.parse(fs.readFileSync(path.join(root, "src/locales/en.json"), "utf8")).familyCreator;
+  const get = (k) => k.split(".").slice(1).reduce((o, p) => (o ? o[p] : undefined), en);
+  for (const st of [...r.status.stages, ...bad.status.stages]) {
+    assert.ok(typeof get(st.labelKey) === "string", st.labelKey);
+    if (st.detailKey) assert.ok(typeof get(st.detailKey) === "string", st.detailKey);
+  }
+  // No internal milestone wording in product copy.
+  assert.ok(!/slice/i.test(JSON.stringify(en)));
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
