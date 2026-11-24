@@ -8,6 +8,7 @@
  *   • onProviderConfigChanged lets UI subscribe to storage updates
  */
 import { secureGet, secureSet, secureRemove } from "../core/secure-store";
+import { currentScopeOwner } from "../core/account-scope";
 import { notify } from "../core/notify";
 import { ensureAiConsent, isPrivateEndpoint, redactForCloud, redactJsonStringsForCloud } from "./ai-privacy";
 import {
@@ -80,7 +81,8 @@ export function loadProviderConfig(): ProviderConfig {
       : DEFAULT_CONFIG.model;
     // The key lives encrypted in the secure store; an old plaintext copy is migrated on first read.
     const legacyKey = typeof parsed?.apiKey === "string" && parsed.apiKey ? parsed.apiKey : undefined;
-    if (legacyKey && secureGet(KEY_NAME) == null) secureSet(KEY_NAME, legacyKey);
+    // Only the signed-out device scope may adopt it; an account never inherits an old shared key.
+    if (legacyKey && !currentScopeOwner() && secureGet(KEY_NAME) == null) secureSet(KEY_NAME, legacyKey);
     const apiKey = secureGet(KEY_NAME) || undefined;
     if (legacyKey) {
       try { localStorage.setItem(CONFIG_KEY, JSON.stringify({ kind, endpoint, model })); } catch { /* */ }
