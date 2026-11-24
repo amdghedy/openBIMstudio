@@ -101,7 +101,7 @@
   },
   "familyCreator": {
     "title": "Family Creator",
-    "intro": "Paste a cut sheet or spec, or type the overall size. Free, runs in your browser. Reads pasted text only: PDF and image files are not supported yet.",
+    "intro": "Choose a PDF or text file, paste text, or type the overall size. Free, runs in your browser. PDFs need selectable text: scanned sheets and images are not read yet, so type the size for those.",
     "name": "Product name",
     "manufacturer": "Manufacturer",
     "model": "Model",
@@ -155,7 +155,18 @@
     "add": "Add to family library",
     "ifcDownload": "Download IFC2X3",
     "added": "Added \"{name}\" to the family library.",
-    "saved": "Saved {file}. Not yet checked in Revit."
+    "saved": "Saved {file}. Not yet checked in Revit.",
+    "file": {
+      "choose": "Choose PDF or text file",
+      "loaded": "Loaded {file}: {n} of {total} page(s) read.",
+      "loadedTruncated": "Loaded {file}: only the first {n} of {total} pages were read.",
+      "noText": "{file} has no selectable text, so it looks like a scan. Reading scans is not supported yet. Type the size in the boxes below.",
+      "failed": "Could not read {file}: {message}"
+    },
+    "preview3d": "3D preview",
+    "fit": "Fit",
+    "preview3dHelp": "Drag to rotate, scroll to zoom, right-drag to pan.",
+    "preview3dUnavailable": "3D preview needs WebGL, which this browser does not provide. The views below still work."
   },
   "counts": {
     "elements": "{n, plural, one{# element} other{# elements}}",
