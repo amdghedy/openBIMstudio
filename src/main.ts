@@ -114,6 +114,7 @@ import { setupAiChat } from "./features/ai-chat";
 import { setupTimelinePanel } from "./features/timeline-panel";
 import { setupSheetsPanel } from "./features/sheets-panel";
 import { setupAutomationPanel } from "./features/automation-panel";
+import { setupFamilyCreatorPanel } from "./features/family-creator-panel";
 import { setupProjectBrowser } from "./features/project-browser";
 import { setupBimToolbox } from "./features/bim-toolbox";
 import { refreshViewGraphics, setupViewGraphics } from "./features/view-graphics";
@@ -285,6 +286,7 @@ await step("agent-bridge", async () => {
 await step("timeline-panel", () => setupTimelinePanel());
 await step("sheets-panel", () => setupSheetsPanel());
 await step("automation-panel", () => setupAutomationPanel());
+await step("family-creator-panel", () => setupFamilyCreatorPanel());
 await step("project-browser", () => setupProjectBrowser());
 await step("bim-toolbox", () => setupBimToolbox());
 await step("mep-coloring", () => setupMepColoring());
