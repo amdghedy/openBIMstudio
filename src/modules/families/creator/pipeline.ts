@@ -12,7 +12,7 @@
 
 import type { FamilyDefinition, FamilyType } from "../types";
 import { readStep } from "../../ifc-semantics/step-reader";
-import { pickOverallSize, type OverallSize } from "./cutsheet";
+import { pickExtras, pickOverallSize, type OverallSize } from "./cutsheet";
 import { buildFamilyFromSpec, templateFor, validateSpec, type ProductSpec } from "./build";
 import { resolveParts } from "./layout";
 import { writeIfc2x3 } from "./ifc2x3";
@@ -163,6 +163,18 @@ export function runCreator(
       widthM: size.widthM, depthM: size.depthM, heightM: size.heightM,
       sources: size.sources, templateId: input.templateId,
     };
+    // Optional labelled extras (plinth height, leg size, shelf count...). Only those
+    // the chosen shape has, and only inside its allowed range; the rest are ignored.
+    const tplx = templateFor(spec);
+    const params: Record<string, number> = {};
+    const used = [];
+    for (const e of pickExtras(input.pages ?? [])) {
+      const tp = tplx.params.find((x) => x.name === e.name && x.formula === undefined);
+      if (!tp || (tp.integer && !Number.isInteger(e.value))) continue;
+      if ((tp.min !== undefined && e.value < tp.min) || (tp.max !== undefined && e.value > tp.max)) continue;
+      params[e.name] = e.value; used.push(e.candidate);
+    }
+    if (used.length) { spec = { ...spec, params, sources: [...size.sources, ...used] }; }
   }
   const problems = validateSpec(spec);
   if (problems.length) return fail("intake", problems.map((p) => `${p.field}: ${p.message}`).join("; "));
