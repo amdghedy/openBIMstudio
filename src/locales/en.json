@@ -163,6 +163,8 @@
       "noText": "{file} has no selectable text, so it looks like a scan. Reading scans is not supported yet. Type the size in the boxes below.",
       "failed": "Could not read {file}: {message}"
     },
+    "shape": "Shape",
+    "shapeAuto": "Choose from the name",
     "preview3d": "3D preview",
     "fit": "Fit",
     "preview3dHelp": "Drag to rotate, scroll to zoom, right-drag to pan.",
