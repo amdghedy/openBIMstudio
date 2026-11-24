@@ -1,6 +1,7 @@
 import { Journal, type JournalStore, type Op } from "../../core/journal";
 import type { ProjectDoc } from "./types";
 import { normalizeProjectDoc } from "./project-schema";
+import { scopedDbName } from "../../core/account-scope";
 
 const DB_NAME = "open-bim-studio";
 const DB_VERSION = 4;
@@ -30,7 +31,7 @@ function transactionDone(tx: IDBTransaction): Promise<void> {
 
 function openJournalDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    const request = indexedDB.open(scopedDbName(DB_NAME), DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(S_OPS)) {
