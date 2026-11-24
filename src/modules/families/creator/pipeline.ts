@@ -53,6 +53,8 @@ export interface CreatorInput {
   pages?: string[];
   /** Explicit spec, e.g. confirmed by the user. Wins over `pages`. */
   spec?: ProductSpec;
+  /** Shape chosen by the user. Absent means pick from the product name. */
+  templateId?: ProductSpec["templateId"];
 }
 
 export interface EngineBuildResult {
@@ -159,7 +161,7 @@ export function runCreator(
     spec = {
       name: input.name, manufacturer: input.manufacturer, model: input.model,
       widthM: size.widthM, depthM: size.depthM, heightM: size.heightM,
-      sources: size.sources,
+      sources: size.sources, templateId: input.templateId,
     };
   }
   const problems = validateSpec(spec);
