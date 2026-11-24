@@ -16,6 +16,7 @@ import { getCurrentProject, openProject, saveProject } from "./projects";
 import { decryptProjectBlob, encryptProjectBlob, isEncryptedProjectBlob, WrongPasswordError } from "./project-crypto";
 import { askPassword } from "./password-dialog";
 import { backupExistingFileHandle, backupProjectFile } from "./browser-recovery";
+import { scopedDbName } from "../../core/account-scope";
 
 // legacy module-local state (formerly on window)
 // eslint-disable-next-line no-unused-vars
@@ -36,7 +37,7 @@ const pickerTypes = () => [{ description: "Open BIM Studio project", accept: { [
 const LINK_DB = "obs-file-links";
 function linkDb(): Promise<IDBDatabase> {
   return new Promise((res, rej) => {
-    const r = indexedDB.open(LINK_DB, 1);
+    const r = indexedDB.open(scopedDbName(LINK_DB), 1);
     r.onupgradeneeded = () => r.result.createObjectStore("links");
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
