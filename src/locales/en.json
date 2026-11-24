@@ -170,6 +170,7 @@
       "scopeShown": "The IFC and GLB leave out the switched-off parts and contain {shown} of {n} parts.",
       "countsNote": "The door, drawer and shelf counts and sizes stored in the file still describe the whole family.",
       "omitted": "{omitted} of {n} parts were left out.",
+      "unavailable": "The parts of this shape cannot be matched to the preview, so they cannot be switched off. Nothing is hidden and the downloads contain every part.",
       "allHidden": "Every part is switched off, so there is nothing to export. Switch at least one part on."
     },
     "lib": {
