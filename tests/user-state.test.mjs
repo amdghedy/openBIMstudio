@@ -266,7 +266,7 @@ await t("user switch backs up before clearing; account wires sync + flush on sig
   const u = read("src", "features", "user-state.ts");
   assert.ok(u.indexOf("BACKUP_PREFIX + owner") < u.indexOf("clearPrefs();"), "backup must precede clear");
   const a = read("src", "features", "cloud-account.ts");
-  assert.ok(a.includes("startUserStateSync(r.user.email)"));
+  assert.ok(a.includes("startUserStateSync(email)"));
   assert.ok(a.includes("signOutRestoreGuest()"));
   assert.ok(a.indexOf("signOutRestoreGuest()") < a.indexOf('api("/api/auth/logout"'), "sync must happen before the session ends");
 });
