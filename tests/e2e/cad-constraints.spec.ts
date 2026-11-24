@@ -31,7 +31,7 @@ test('2D editor: constraints are recorded and solvable from the ribbon', async (
 
   // HORIZONTAL on the line (pick at the canvas centre, where the zoomed-to-extents line passes).
   await run('HORIZONTAL');
-  const cv = page.locator('canvas').first();
+  const cv = page.locator('[data-r=cv]').first();
   const box = (await cv.boundingBox())!;
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await expect.poll(hist, { timeout: 10000 }).toContain('recorded as constraint #1');
