@@ -101,7 +101,7 @@
   },
   "familyCreator": {
     "title": "Family Creator",
-    "intro": "Choose a PDF, picture or text file, paste text, or type the overall size. Free, runs in your browser. Pictures and scanned PDFs are read on this device (OCR, English), so check the numbers it finds. The parts come from a ready-made shape for your product, not from tracing the drawing.",
+    "intro": "Choose a PDF, picture or text file, paste text, or type the overall size. Free. Files you choose, pasted text and typed sizes are read on this device and are not uploaded; pictures and scanned PDFs are read here too (OCR, English), so check the numbers it finds. A pasted link is the exception: it goes through this site's server, only if you agree each time and only where the site has switched that on. The parts come from a ready-made shape for your product, not from tracing the drawing.",
     "name": "Product name",
     "manufacturer": "Manufacturer",
     "model": "Model",
@@ -177,6 +177,25 @@
       "ambiguous": "{label} (page {page}, line {line}: {text}) could include or exclude the top and bottom shelves, so it was not used. Set Middle shelves yourself."
     },
     "tag": { "sheet": "from sheet", "default": "default", "edited": "edited by you", "typed": "typed by you" },
+    "url": {
+      "placeholder": "Or paste a link to the sheet (https)",
+      "fetch": "Fetch",
+      "consent": "I agree this link is sent to this site's server, which downloads the file for me. The site's operator can see the link. PDF, PNG, JPEG or text, up to 8 MB.",
+      "done": "Fetched from {host}.",
+      "err": {
+        "consent": "Tick the box first. The link is only sent when you agree.",
+        "notAllowed": "This site only fetches from a short list of approved sources, and that link is not on it.",
+        "refused": "That link cannot be fetched. Use a public https link to a file.",
+        "notEnabled": "Fetching from a link is not switched on for this site. Download the file and choose it instead.",
+        "signin": "Sign in first to fetch from a link.",
+        "limit": "Too many fetches in a minute. Wait a little and try again.",
+        "big": "That file is larger than 8 MB.",
+        "type": "That link is not a PDF, PNG, JPEG or text file.",
+        "timeout": "The other site took too long to answer.",
+        "upstream": "The other site could not be reached or refused the request.",
+        "generic": "The link could not be fetched."
+      }
+    },
     "shape": "Shape",
     "shapeAuto": "Choose from the name",
     "preview3d": "3D preview",
