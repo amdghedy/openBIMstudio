@@ -294,6 +294,15 @@ t("T12 labelled extras from the sheet set template parameters, with page and lin
   // Two different values for the same name: not guessed. Plain "Shelves: 4" is not applied. Out of range ignored.
   const bad = P.runCreator({ name: "Wall shelving", pages: sheet("Middle shelves: 3\nMiddle shelves: 4\nShelves: 4\nPanel thickness: 900 mm") }, deps);
   assert.strictEqual(bad.family.parameters.find((p) => p.name === "MidShelves").default, 1);
+  const keys = bad.warnings.map((w) => w.key).sort();
+  assert.deepStrictEqual(keys, ["familyCreator.warn.ambiguous", "familyCreator.warn.conflict", "familyCreator.warn.outOfRange"], "every ignored sheet value is reported");
+  assert.ok(bad.warnings.every((w) => typeof w.vars.page === "number" && typeof w.vars.line === "number"));
+  const unused = P.runCreator({ name: "Wall shelving", pages: sheet("Plinth height: 100 mm") }, deps);
+  assert.deepStrictEqual(unused.warnings.map((w) => w.key), ["familyCreator.warn.notUsed"]);
+  assert.deepStrictEqual(P.runCreator({ name: "Wall shelving", pages: sheet("Middle shelves: 3") }, deps).warnings, [], "a clean sheet has no warnings");
+  assert.deepStrictEqual(r.warnings.map((w) => w.key), ["familyCreator.warn.notUsed"], "the plinth line on a shelving sheet is reported, not silently dropped");
+  const en = JSON.parse(fs.readFileSync(path.join(root, "src/locales/en.json"), "utf8")).familyCreator;
+  for (const k of ["notUsed", "outOfRange", "conflict", "ambiguous", "title"]) assert.ok(typeof en.warn[k] === "string", k);
   near(bad.family.parameters.find((p) => p.name === "PanelThickness").default, 0.02);
 });
 
