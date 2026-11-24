@@ -518,3 +518,47 @@ test("family creator: named sizes are saved with the family and reopen with thei
   await expect(panel.locator('[data-param="Depth"]')).toHaveValue("500");
   expect(errors).toEqual([]);
 });
+
+test("family creator: parts can be switched off in the preview, and the exports follow a stated choice", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e: Error) => errors.push(e.message));
+  await enterAuthoring(page);
+  await openCreator(page);
+  const panel = page.getByTestId("family-creator-panel");
+  await panel.locator('[data-f="name"]').fill("Sideboard PV-1");
+  await panel.locator('[data-f="text"]').fill("Overall size: 1600 x 500 x 900 mm\nDoors: 3\nDrawers: 2\nDrawer height: 150 mm");
+  await panel.getByRole("button", { name: "Create family" }).click();
+  await expect(panel.locator('[data-fc="parts"] input[data-part]')).toHaveCount(12);
+  await expect(panel.locator('[data-fc="export-scope"]')).toContainText("All 12 parts are on");
+  const dl = async (name: string) => {
+    const [d] = await Promise.all([page.waitForEvent("download"), panel.getByRole("button", { name }).click()]);
+    const f = path.join(SHOTS ?? "/tmp", `pv-${Date.now()}-${d.suggestedFilename()}`); await d.saveAs(f); return f;
+  };
+  const glbNames = (f: string) => { const b = fs.readFileSync(f); const j = JSON.parse(b.subarray(20, 20 + b.readUInt32LE(12)).toString()); return (j.nodes ?? []).map((n: any) => n.name).filter(Boolean) as string[]; };
+  // Switch off the handles and pulls: preview-only by default, exports still full.
+  for (const n of ["Handle 1", "Handle 2", "Handle 3", "Drawer pull 1", "Drawer pull 2"]) await panel.locator(`input[data-part="${n}"]`).uncheck();
+  await expect(panel.locator('[data-fc="export-scope"]')).toContainText("hidden here only. The IFC and GLB still contain all 12 parts");
+  await panel.locator('[data-fc="views"]').scrollIntoViewIfNeeded();
+  await shot(page, "80-parts-hidden-preview-only.png");
+  const ifcAll = fs.readFileSync(await dl("Download IFC2X3"), "utf8");
+  expect((ifcAll.match(/IFCEXTRUDEDAREASOLID/g) ?? []).length).toBe(12);
+  expect(glbNames(await dl("Download GLB"))).toContain("Handle 1");
+  // Now the exports follow the preview.
+  await panel.locator('input[data-scope="shown"]').check();
+  await expect(panel.locator('[data-fc="export-scope"]')).toContainText("contain 7 of 12 parts");
+  await expect(panel.locator('[data-fc="export-scope"]')).toContainText("still describe the whole family");
+  await panel.locator('[data-fc="parts"]').scrollIntoViewIfNeeded();
+  await shot(page, "81-parts-hidden-exports-follow.png");
+  const ifcShown = fs.readFileSync(await dl("Download IFC2X3"), "utf8");
+  expect((ifcShown.match(/IFCEXTRUDEDAREASOLID/g) ?? []).length).toBe(7);
+  await expect(panel.locator('[data-fc="notice"]')).toContainText("5 of 12 parts were left out");
+  const names = glbNames(await dl("Download GLB"));
+  expect(names).toContain("Door 3"); expect(names).not.toContain("Handle 1"); expect(names).not.toContain("Drawer pull 2");
+  // Everything off: nothing to export, said plainly.
+  await panel.getByRole("button", { name: "Show all parts" }).click();
+  await expect(panel.locator('[data-fc="export-scope"]')).toContainText("All 12 parts are on");
+  for (const n of await panel.locator("input[data-part]").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.part as string))) await panel.locator(`input[data-part="${n}"]`).uncheck();
+  await panel.getByRole("button", { name: "Download IFC2X3" }).click();
+  await expect(panel.locator('[data-fc="notice"]')).toContainText("Every part is switched off");
+  expect(errors).toEqual([]);
+});
