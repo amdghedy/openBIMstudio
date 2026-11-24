@@ -41,9 +41,10 @@ to family library, and Download IFC2X3. Browser spec:
   Only a run in Revit can change that, and a person records it.
 - IFC import is geometry and properties, not a native editable Revit family.
   The family stays parametric inside OpenBIMStudio.
-- Scanned PDFs (no text layer) and images are not read: no OCR, no image or URL intake, no vision model yet. The panel says so and asks for the size.
-- GLB stays an export for other tools. Revit 2020 has no documented GLB import.
-- The two templates are small. Real products need richer parts (later slices).
+- Scanned PDFs and pictures are read by on-device OCR (English), so the numbers need checking. There is no vision model and no drawing or photo reconstruction yet.
+- Fetching a sheet from a link exists only as a draft Worker route that is off unless the site owner sets two Worker variables (see `worker/fetch-sheet.ts`). It is not a full SSRF defence: it relies on an explicit host allow-list.
+- GLB (panel button) writes the same engine geometry in metres, Y up, one named node per part, with the parameter values as extra data. It carries no IFC semantics. Revit 2020 has no documented GLB import, so it is a second format for other viewers, not a Revit route.
+- The templates (box, cabinet with N doors and N drawers, table, shelving with N shelves) are small and simple. Count parameters are real geometry and are written to the IFC property set as whole numbers. Real products need richer parts.
 
 ## Revit 2020 acceptance (run by the user, not automated)
 
@@ -52,6 +53,8 @@ to family library, and Download IFC2X3. Browser spec:
 - R2 Units and orientation: width along X, depth along Y, base at level 0.
 - R3 The `OBS_FamilyParameters` property set is present on the element.
 - R4 Note what can and cannot be edited after import.
+
+A ready-to-run acceptance kit (four sample IFCs and a sheet with expected size, solid count and blank "observed in Revit" fields) is produced from the creator; Revit category and editability are recorded there as observations, not assumed.
 
 ## Independent check used in CI-less review
 
