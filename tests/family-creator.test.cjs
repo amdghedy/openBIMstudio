@@ -197,7 +197,7 @@ t("T8 template parameter overrides, units without float noise, and the three-vie
   const L = require(find("layout.js", "creator"));
   const T = require(find("templates.js", "creator"));
   const E2 = E.buildParametricFamily(r.family, r.family.types[0], {});
-  const svg = V.renderThreeViews(L.resolveParts(T.CABINET_TEMPLATE, E2.params), { w: 1.2, d: 0.7, h: 2.0 });
+  const svg = V.renderThreeViews(L.resolveParts(T.expandTemplate(T.CABINET_TEMPLATE, {}), E2.params), { w: 1.2, d: 0.7, h: 2.0 });
   assert.strictEqual((svg.match(/<rect /g) || []).length, 12, "4 parts x 3 views");
   assert.ok(svg.startsWith("<svg") && svg.endsWith("</svg>"));
   assert.ok(!/NaN|Infinity/.test(svg));
@@ -304,6 +304,53 @@ t("T12 labelled extras from the sheet set template parameters, with page and lin
   const en = JSON.parse(fs.readFileSync(path.join(root, "src/locales/en.json"), "utf8")).familyCreator;
   for (const k of ["notUsed", "outOfRange", "conflict", "ambiguous", "title"]) assert.ok(typeof en.warn[k] === "string", k);
   near(bad.family.parameters.find((p) => p.name === "PanelThickness").default, 0.02);
+});
+
+t("T13 cabinet doors and drawers are real counted geometry: engine and IFC follow, defaults unchanged, bad combinations refused", () => {
+  const T = require(find("templates.js", "creator")), L = require(find("layout.js", "creator"));
+  const mk = (params, pages) => ({ name: "Storage Cabinet", pages, spec: pages ? undefined : { name: "Storage Cabinet", widthM: 1.2, depthM: 0.5, heightM: 2.0, templateId: "cabinet", params } });
+  // [doors, drawers, solids]: plinth + body + 2 per door + 2 per drawer
+  for (const [d, w, n] of [[1, 0, 4], [2, 0, 6], [3, 0, 8], [0, 0, 2], [1, 3, 10], [2, 4, 14]]) {
+    const r = P.runCreator(mk({ Doors: d, Drawers: w }), deps);
+    assert.deepStrictEqual(r.status.stages.map((x) => x.state), ["done", "done", "done", "done"], `doors ${d} drawers ${w}: ` + JSON.stringify(r.status.stages.map((x) => x.detail)));
+    const x = ifcExtents(r.ifcText);
+    assert.strictEqual(x.n, n, `solids for ${d} doors, ${w} drawers`);
+    near(x.size[0], 1.2, 1e-6); near(x.size[1], 0.5, 1e-6); near(x.size[2], 2.0, 1e-6);
+    const b = deps.buildInEngine(r.family, r.family.types[0]);
+    const eb = new THREE.Box3().setFromObject(b.object);
+    near(eb.max.x - eb.min.x, 1.2, 1e-6); near(eb.max.y - eb.min.y, 2.0, 1e-6); near(eb.max.z - eb.min.z, 0.5, 1e-6);
+  }
+  // Default stays a single door, as before.
+  const def = P.runCreator(mk({}), deps);
+  assert.strictEqual(ifcExtents(def.ifcText).n, 4);
+  // Geometry: 3 doors share the width, 4 drawers stack above the door zone (1.9 m body - 4 x 0.18).
+  const r = P.runCreator(mk({ Doors: 3, Drawers: 4 }), deps);
+  const tpl = T.expandTemplate(T.CABINET_TEMPLATE, { Doors: 3, Drawers: 4 });
+  const built = deps.buildInEngine(r.family, r.family.types[0]);
+  const parts = L.resolveParts(tpl, built.params);
+  const doors = parts.filter((p) => /^door-/.test(p.id)), drawers = parts.filter((p) => /^drawer-/.test(p.id));
+  assert.strictEqual(doors.length, 3); assert.strictEqual(drawers.length, 4);
+  near(doors[0].cx, -0.4, 1e-9); near(doors[1].cx, 0, 1e-9); near(doors[2].cx, 0.4, 1e-9);
+  near(doors[0].sx ?? doors[0].w, 0.4, 1e-9);
+  near(built.params.DoorZone, 1.9 - 4 * 0.18, 1e-9);
+  near(drawers[0].cy, 0.1 + 1.18 + 0.09, 1e-9); near(drawers[3].cy, 0.1 + 1.18 + 3.5 * 0.18, 1e-9);
+  near(drawers[3].cy + 0.09, 2.0, 1e-9, "top drawer front ends exactly at the overall height");
+  // Bad combinations are refused with a reason.
+  for (const bad of [{ Drawers: 9 }, { Doors: 7 }, { Doors: 1.5 }, { Drawers: -1 }, { DrawerHeight: 0.5 }]) assert.strictEqual(P.runCreator(mk(bad), deps).status.stages[0].state, "failed", JSON.stringify(bad));
+  const tall = (p) => P.runCreator({ name: "Storage Cabinet", spec: { name: "Storage Cabinet", widthM: 1.2, depthM: 0.5, heightM: 0.9, templateId: "cabinet", params: p } }, deps);
+  assert.strictEqual(tall({ Drawers: 5, Doors: 0 }).status.stages[0].state, "failed", "five drawers do not fit in 0.8 m");
+  assert.strictEqual(tall({ Drawers: 4, Doors: 1 }).status.stages[0].state, "failed", "no room left for the door");
+  assert.strictEqual(tall({ Drawers: 4, Doors: 0 }).status.stages[0].state, "done", "drawers alone may fill the body");
+  // From a sheet: counts and the drawer height are read with page and line; the name picks the cabinet.
+  const sheet = P.runCreator({ name: "Kitchen sideboard", pages: ["Overall size: 1600 x 500 x 900 mm\nDoors: 2\nDrawers: 2\nDrawer height: 150 mm"] }, deps);
+  assert.strictEqual(sheet.family.name.length > 0, true);
+  const v = (n) => sheet.family.types[0].values[n];
+  assert.strictEqual(v("Doors"), 2); assert.strictEqual(v("Drawers"), 2); near(v("DrawerHeight"), 0.15);
+  assert.strictEqual(ifcExtents(sheet.ifcText).n, 2 + 4 + 4);
+  assert.deepStrictEqual(sheet.warnings, []);
+  const clash = P.runCreator({ name: "Kitchen sideboard", pages: ["Overall size: 1600 x 500 x 900 mm\nDoors: 2\nDoors: 3\nDrawers: 20"] }, deps);
+  assert.deepStrictEqual(clash.warnings.map((w) => w.key).sort(), ["familyCreator.warn.conflict", "familyCreator.warn.outOfRange"]);
+  assert.strictEqual(clash.family.types[0].values.Drawers, 0, "the out-of-range count is not used; the default stands");
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
