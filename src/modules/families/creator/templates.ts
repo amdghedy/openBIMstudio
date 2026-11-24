@@ -19,6 +19,8 @@ export interface TemplateParam {
   max?: number;
   /** Engine formula, starting with "=". Makes the parameter derived. */
   formula?: string;
+  /** A whole number (a count), not a length. Changing it rebuilds the parts. */
+  integer?: boolean;
 }
 
 export interface TemplatePart {
@@ -28,6 +30,11 @@ export interface TemplatePart {
   // box: w (X), d (Z), h (Y). cylinder: r, h (axis Y).
   w?: string; d?: string; h?: string; r?: string;
   x: string; y: string; z: string;
+  /**
+   * Make one copy per unit of the named integer parameter. In the expressions,
+   * the token K stands for the copy number 1..count. Id and name get the number.
+   */
+  repeat?: { count: string };
 }
 
 export interface PartTemplate {
@@ -103,6 +110,7 @@ export const SHELF_TEMPLATE: PartTemplate = {
   ifcEntity: "IfcFurnishingElement",
   params: [
     { name: "PanelThickness", label: "Panel thickness", default: 0.02, min: 0.005, max: 0.08 },
+    { name: "MidShelves", label: "Middle shelves", default: 1, min: 0, max: 12, integer: true },
     { name: "InnerWidth", label: "Inner width", default: 0, formula: "= Width - 2 * PanelThickness" },
     { name: "InnerHeight", label: "Inner height", default: 0, formula: "= Height - 2 * PanelThickness" },
   ],
@@ -111,7 +119,8 @@ export const SHELF_TEMPLATE: PartTemplate = {
     { id: "side-r", name: "Right side", shape: "box", w: "PanelThickness", d: "Depth", h: "Height", x: "Width / 2 - PanelThickness / 2", y: "Height / 2", z: "0" },
     { id: "bottom", name: "Bottom panel", shape: "box", w: "InnerWidth", d: "Depth", h: "PanelThickness", x: "0", y: "PanelThickness / 2", z: "0" },
     { id: "top", name: "Top panel", shape: "box", w: "InnerWidth", d: "Depth", h: "PanelThickness", x: "0", y: "Height - PanelThickness / 2", z: "0" },
-    { id: "mid", name: "Middle shelf", shape: "box", w: "InnerWidth", d: "Depth", h: "PanelThickness", x: "0", y: "Height / 2", z: "0" },
+    { id: "mid", name: "Middle shelf", shape: "box", w: "InnerWidth", d: "Depth", h: "PanelThickness", x: "0",
+      y: "PanelThickness / 2 + K * (Height - PanelThickness) / (MidShelves + 1)", z: "0", repeat: { count: "MidShelves" } },
     { id: "back", name: "Back panel", shape: "box", w: "InnerWidth", d: "PanelThickness", h: "InnerHeight", x: "0", y: "Height / 2", z: "0 - Depth / 2 + PanelThickness / 2" },
   ],
 };
@@ -133,4 +142,24 @@ export function chooseTemplate(text: string): PartTemplate {
   if (SHELF_WORDS.test(text)) return SHELF_TEMPLATE;
   if (TABLE_WORDS.test(text)) return TABLE_TEMPLATE;
   return CABINET_WORDS.test(text) ? CABINET_TEMPLATE : BOX_TEMPLATE;
+}
+
+/**
+ * Write out repeated parts for the given counts (name -> whole number).
+ * Counts not given use the template default. Copies are spread by the
+ * template's own formulas, so the geometry stays driven by parameters.
+ */
+export function expandTemplate(tpl: PartTemplate, counts: Record<string, number> = {}): PartTemplate {
+  if (!tpl.parts.some((p) => p.repeat)) return tpl;
+  const parts: TemplatePart[] = [];
+  for (const p of tpl.parts) {
+    if (!p.repeat) { parts.push(p); continue; }
+    const def = tpl.params.find((x) => x.name === p.repeat!.count);
+    const n = Math.max(0, Math.round(counts[p.repeat.count] ?? def?.default ?? 0));
+    for (let k = 1; k <= n; k++) {
+      const sub = (e: string | undefined) => (e === undefined ? e : e.replace(/\bK\b/g, String(k)));
+      parts.push({ ...p, id: `${p.id}-${k}`, name: n > 1 ? `${p.name} ${k}` : p.name, w: sub(p.w), d: sub(p.d), h: sub(p.h), r: sub(p.r), x: sub(p.x) as string, y: sub(p.y) as string, z: sub(p.z) as string, repeat: undefined });
+    }
+  }
+  return { ...tpl, parts };
 }
