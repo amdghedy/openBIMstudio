@@ -607,7 +607,12 @@ export async function googleCallback(request: Request, env: AuthEnv): Promise<{ 
       grant_type: "authorization_code",
     }),
   });
-  if (!tokenRes.ok) throw new Error("token-exchange-failed");
+  if (!tokenRes.ok) {
+    const detail = await tokenRes.text().catch(() => "");
+    console.warn("[auth] token exchange failed", tokenRes.status, detail.slice(0, 300));
+    // Typical causes: redirect_uri mismatch in Google Cloud, or wrong client secret.
+    throw new Error("token-exchange-failed");
+  }
   const accessToken = (await tokenRes.json() as { access_token?: string }).access_token;
   if (!accessToken) throw new Error("no-access-token");
   const infoRes = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {

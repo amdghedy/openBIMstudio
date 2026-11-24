@@ -203,6 +203,11 @@ let googleListenerReady = false;
  * this window and closes itself — the app never navigates away. Falls back
  * to the classic full-page redirect when the popup is blocked.
  */
+/**
+ * Prefer full-page Google OAuth. Popups are blocked often and postMessage can
+ * fail under COOP/COEP; the full-page callback sets the session cookie and
+ * returns to /?signedin=1 which refreshAccountState already handles.
+ */
 function openGoogleOAuth(onDone?: (ok: boolean, message: string) => void): void {
   if (!googleListenerReady) {
     googleListenerReady = true;
@@ -225,8 +230,34 @@ function openGoogleOAuth(onDone?: (ok: boolean, message: string) => void): void 
       });
     });
   }
-  const popup = window.open("/api/auth/google/start?popup=1", "obsGoogleOAuth", "popup=yes,width=480,height=640");
-  if (!popup) window.location.href = "/api/auth/google/start"; // popup blocked → full-page flow
+  void (async () => {
+    try {
+      const res = await fetch("/api/auth/google/status", { credentials: "same-origin" });
+      if (!res.ok) {
+        toast(
+          "error",
+          "Sign-in API is not on this host. Open https://openbimstudio.amdghedy.workers.dev and try Continue with Google there.",
+        );
+        onDone?.(false, "auth-api-missing");
+        return;
+      }
+      const body = (await res.json()) as { configured?: boolean };
+      if (!body.configured) {
+        toast("error", "Google sign-in is not configured on the server yet.");
+        onDone?.(false, "not-configured");
+        return;
+      }
+    } catch {
+      toast(
+        "error",
+        "Cannot reach /api/auth. Use https://openbimstudio.amdghedy.workers.dev for Google sign-in.",
+      );
+      onDone?.(false, "auth-unreachable");
+      return;
+    }
+    // Full-page flow is the reliable path (cookie + /?signedin=1).
+    window.location.href = "/api/auth/google/start";
+  })();
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
