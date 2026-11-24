@@ -30,6 +30,10 @@ const form: FormState = { name: "", manufacturer: "", model: "", text: "", pages
 let result: CreatorResult | null = null;
 let liveStatus: CreatorStatus | null = null;
 let notice = "";
+/** The library family the current result was added to or reopened from, and its type. */
+let libId: string | null = null;
+let libTypeId: string | null = null;
+let reopened = false;
 let lastIfcName = "";
 let preview: Preview3D | null = null;
 let previewTried = false;
@@ -188,7 +192,7 @@ function resultHtml(r: CreatorResult): string {
       if (p.editable === false) return "";
       const sized = p.name === "Width" || p.name === "Depth" || p.name === "Height";
       const edited = !sized && r.spec!.params?.[p.name] !== undefined && !srcs.some((x) => x.label === p.label);
-      const key = sized ? (srcs.length ? (form.wMm && form.dMm && form.hMm ? "typed" : "sheet") : "typed")
+      const key = sized ? (srcs.some((x) => x.label === p.name) ? "sheet" : (form.wMm && form.dMm && form.hMm) || !(srcs.length || reopened) ? "typed" : "edited")
         : srcs.some((x) => x.label === p.label) ? "sheet" : edited ? "edited" : "default";
       return ` <span class="obs-fc-detail" data-tag="${key}">(${esc(t("familyCreator.tag." + key))})</span>`;
     };
@@ -228,6 +232,7 @@ function resultHtml(r: CreatorResult): string {
       (r.ifcText ? `<button type="button" class="obs-fc-btn" data-act="ifc">${esc(t("familyCreator.ifcDownload"))}</button>` : "") +
       (r.ifcText && preview ? `<button type="button" class="obs-fc-btn" data-act="glb">${esc(t("familyCreator.glbDownload"))}</button>` : "") + `</div>` +
       (r.ifcText && preview ? `<div class="obs-fc-detail" data-fc="glb-note">${esc(t("familyCreator.glbNote"))}</div>` : "");
+    html += libraryHtml();
   }
   return html;
 }
@@ -238,6 +243,7 @@ function render() {
     <div class="obs-panel-header"><span>${esc(t("familyCreator.title"))}</span><button type="button" class="obs-icon-btn" data-act="close" aria-label="${esc(t("familyCreator.close"))}">\u00d7</button></div>
     <div class="obs-panel-body">
       <div class="obs-fc-detail" style="margin-bottom:8px">${esc(t("familyCreator.intro"))}</div>
+      ${reopenHtml()}
       <input class="obs-fc-in" data-f="name" placeholder="${esc(t("familyCreator.name"))}" value="${esc(form.name)}">
       <div style="display:flex;gap:6px"><input class="obs-fc-in" data-f="manufacturer" placeholder="${esc(t("familyCreator.manufacturer"))}" value="${esc(form.manufacturer)}"><input class="obs-fc-in" data-f="model" placeholder="${esc(t("familyCreator.model"))}" value="${esc(form.model)}"></div>
       <div style="display:flex;gap:6px;align-items:center;margin:3px 0"><label class="obs-fc-btn" style="cursor:pointer">${esc(t("familyCreator.file.choose"))}<input type="file" accept=".pdf,.txt,.png,.jpg,.jpeg,.webp,.bmp,application/pdf,text/plain,image/png,image/jpeg,image/webp,image/bmp" data-fc="file" style="display:none"></label><span class="obs-fc-detail" data-fc="file-note">${esc(form.fileNote)}</span></div>
@@ -276,6 +282,14 @@ function render() {
     const b = panel?.querySelector<HTMLButtonElement>('[data-act="fetch-url"]');
     if (b) b.disabled = !(form.urlConsent && form.url.trim());
   });
+  panel.querySelector<HTMLSelectElement>('[data-fc="reopen-family"]')?.addEventListener("change", (ev) => {
+    const fam = familyStore.get((ev.target as HTMLSelectElement).value);
+    const ts = panel?.querySelector<HTMLSelectElement>('[data-fc="reopen-type"]');
+    if (ts && fam) ts.innerHTML = fam.types.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("");
+  });
+  panel.querySelectorAll<HTMLElement>("[data-rm-size]").forEach((el) => el.addEventListener("click", () => {
+    if (libId && familyStore.removeType(libId, el.dataset.rmSize as string)) { notice = t("familyCreator.lib.sizeRemoved"); render(); }
+  }));
   const slot = panel.querySelector<HTMLElement>('[data-fc-slot="preview3d"]');
   if (slot && preview) slot.appendChild(preview.el);
   panel.querySelector('[data-act="fit"]')?.addEventListener("click", () => preview?.fit());
@@ -293,8 +307,8 @@ function editParam(name: string, valueM: number) {
   else spec.params![name] = valueM;
   // A value the user changed is no longer "from the sheet": drop its source line so the tag and the list stay true.
   const tp = templateFor(spec).params;
-  const label = tp.find((x) => x.name === name)?.label;
-  if (spec.sources) spec.sources = spec.sources.filter((x) => label ? x.label !== label : tp.some((q) => q.label === x.label));
+  const label = tp.find((x) => x.name === name)?.label ?? name;
+  if (spec.sources) spec.sources = spec.sources.filter((x) => x.label !== label);
   run(spec);
 }
 
@@ -329,6 +343,88 @@ async function downloadGlb() {
   render();
 }
 
+const EPS = 1e-9;
+const creatorFamilies = () => familyStore.list().filter((f) => f.creatorSpec && typeof f.creatorSpec === "object");
+
+/** Open a family made here, at one of its types. A value that differs from the stored spec was edited, so it loses its sheet source line. */
+function reopenSelected() {
+  const fid = (panel?.querySelector<HTMLSelectElement>('[data-fc="reopen-family"]'))?.value;
+  const tid = (panel?.querySelector<HTMLSelectElement>('[data-fc="reopen-type"]'))?.value;
+  const fam = fid ? familyStore.get(fid) : null;
+  if (!fam?.creatorSpec) return;
+  const type = fam.types.find((x) => x.id === tid) ?? fam.types[0];
+  const spec = JSON.parse(JSON.stringify(fam.creatorSpec)) as ProductSpec;
+  spec.params = { ...(spec.params ?? {}) };
+  const tp = templateFor(spec).params;
+  const dropSource = (label: string) => { if (spec.sources) spec.sources = spec.sources.filter((x) => x.label !== label); };
+  const vals = (type?.values ?? {}) as Record<string, number>;
+  const dims: Array<["widthM" | "depthM" | "heightM", string]> = [["widthM", "Width"], ["depthM", "Depth"], ["heightM", "Height"]];
+  for (const [k, n] of dims) if (typeof vals[n] === "number" && Math.abs(vals[n] - spec[k]) > EPS) { spec[k] = vals[n]; dropSource(n); }
+  for (const q of tp) {
+    if (q.formula !== undefined || typeof vals[q.name] !== "number") continue;
+    const cur = spec.params[q.name] ?? q.default;
+    if (Math.abs(vals[q.name] - cur) > EPS) { spec.params[q.name] = vals[q.name]; dropSource(q.label); }
+  }
+  form.name = spec.name; form.manufacturer = spec.manufacturer ?? ""; form.model = spec.model ?? "";
+  form.text = ""; form.pages = []; form.fromOcr = false; form.fileName = ""; form.fileNote = "";
+  form.wMm = ""; form.dMm = ""; form.hMm = ""; form.templateId = spec.templateId ?? "";
+  libId = fam.id; libTypeId = type?.id ?? null; reopened = true;
+  run(spec);
+  notice = t("familyCreator.lib.reopened", { name: fam.name, type: type?.name ?? "" });
+  render();
+}
+
+/** Write the current result back to the family it was reopened from: its shape, parameters and the one type that was opened. Other types keep their own sizes. */
+function saveToLibrary() {
+  if (!result?.family || !result.spec || !libId || !reopened) return;
+  const f = result.family;
+  const fam = familyStore.update(libId, { name: f.name, parameters: f.parameters, geometry: f.geometry, creatorSpec: JSON.parse(JSON.stringify(result.spec)) as Record<string, unknown> });
+  if (fam && libTypeId) familyStore.updateType(libId, libTypeId, { values: { ...(f.types[0].values as Record<string, unknown>) } });
+  notice = fam ? t("familyCreator.lib.saved", { name: f.name }) : t("familyCreator.lib.missing");
+  render();
+}
+
+function addSize() {
+  const inp = panel?.querySelector<HTMLInputElement>('[data-fc="size-name"]');
+  const name = (inp?.value ?? "").trim();
+  const fam = libId ? familyStore.get(libId) : null;
+  if (!fam?.creatorSpec || !result?.family || !result.spec) return;
+  if (!name) { notice = t("familyCreator.lib.sizeNeedsName"); render(); return; }
+  if (fam.types.some((x) => x.name.toLowerCase() === name.toLowerCase())) { notice = t("familyCreator.lib.sizeTaken", { name }); render(); return; }
+  const base = (fam.creatorSpec.params ?? {}) as Record<string, number>;
+  const countChanged = templateFor(result.spec).params.some((q) => q.integer && q.formula === undefined && (result!.spec!.params?.[q.name] ?? q.default) !== (base[q.name] ?? q.default));
+  if (countChanged) { notice = t("familyCreator.lib.sizeCountDiffers"); render(); return; }
+  familyStore.createType(fam.id, name, { ...(result.family.types[0].values as Record<string, unknown>) });
+  notice = t("familyCreator.lib.sizeAdded", { name });
+  render();
+}
+
+const mmStr = (v: unknown) => (typeof v === "number" ? String(Math.round(v * 1000)) : "?");
+
+function libraryHtml(): string {
+  const fam = libId ? familyStore.get(libId) : null;
+  if (!fam || !result?.spec) return "";
+  const rows = fam.types.map((ty) => {
+    const v = ty.values as Record<string, unknown>;
+    return `<div class="obs-fc-src" data-fc="size-row"><b>${esc(ty.name)}</b> <bdi dir="ltr">${mmStr(v.Width)} x ${mmStr(v.Depth)} x ${mmStr(v.Height)} mm</bdi>` +
+      (fam.types.length > 1 ? ` <button type="button" class="obs-fc-btn" data-rm-size="${esc(ty.id)}">${esc(t("familyCreator.lib.removeSize"))}</button>` : "") + `</div>`;
+  }).join("");
+  return `<div class="obs-fc-sec" data-fc="library"><div class="obs-fc-h">${esc(t("familyCreator.lib.sizesTitle", { name: fam.name }))}</div>${rows}` +
+    `<div style="display:flex;gap:6px;margin-top:4px"><input class="obs-fc-in" data-fc="size-name" placeholder="${esc(t("familyCreator.lib.sizeName"))}"><button type="button" class="obs-fc-btn" data-act="add-size">${esc(t("familyCreator.lib.addSize"))}</button></div>` +
+    `<div class="obs-fc-detail">${esc(t("familyCreator.lib.sizeHelp"))}</div>` +
+    (reopened ? `<div style="margin-top:6px"><button type="button" class="obs-fc-btn" data-act="save-lib">${esc(t("familyCreator.lib.save"))}</button> <span class="obs-fc-detail">${esc(t("familyCreator.lib.saveHelp"))}</span></div>` : "") + `</div>`;
+}
+
+function reopenHtml(): string {
+  const fams = creatorFamilies();
+  if (!fams.length) return "";
+  const first = fams[0];
+  return `<div class="obs-fc-sec" data-fc="reopen"><div class="obs-fc-h">${esc(t("familyCreator.lib.reopenTitle"))}</div>` +
+    `<div style="display:flex;gap:6px"><select class="obs-fc-in" data-fc="reopen-family">${fams.map((f) => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join("")}</select>` +
+    `<select class="obs-fc-in" data-fc="reopen-type">${first.types.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}</select>` +
+    `<button type="button" class="obs-fc-btn" data-act="reopen">${esc(t("familyCreator.lib.open"))}</button></div></div>`;
+}
+
 function act(a: string) {
   if (a === "close") setVisible(false);
   else if (a === "create") run();
@@ -336,13 +432,18 @@ function act(a: string) {
   else if (a === "fit") preview?.fit();
   else if (a === "add" && result?.family) {
     const f = result.family;
-    familyStore.create({
+    const made = familyStore.create({
       name: f.name, category: f.category, ifcEntity: f.ifcEntity, sourceElementType: f.sourceElementType,
       group: f.group, parameters: f.parameters, geometry: f.geometry, types: f.types,
+      ...(result.spec ? { creatorSpec: JSON.parse(JSON.stringify(result.spec)) as Record<string, unknown> } : {}),
     } as Parameters<typeof familyStore.create>[0]);
+    libId = made.id; libTypeId = made.types[0]?.id ?? null; reopened = false;
     notice = t("familyCreator.added", { name: f.name });
     render();
-  } else if (a === "glb" && result?.family && result.spec) void downloadGlb();
+  } else if (a === "reopen") reopenSelected();
+  else if (a === "save-lib") saveToLibrary();
+  else if (a === "add-size") addSize();
+  else if (a === "glb" && result?.family && result.spec) void downloadGlb();
   else if (a === "ifc" && result?.ifcText && result.spec) {
     const blob = new Blob([result.ifcText], { type: "application/octet-stream" });
     const url = URL.createObjectURL(blob);
