@@ -33,7 +33,8 @@
  */
 import { ctx } from "../core/context";
 import { registerCommand } from "./command-palette";
-import { startUserStateSync, signOutRestoreGuest, stopUserStateSync } from "./user-state";
+import { startUserStateSync, signOutRestoreGuest, stopUserStateSync, endStaleAccountScope } from "./user-state";
+import { importUnassignedLocalFiles, hasUnassignedLocalFiles } from "./local-import";
 import { getCurrentProject, saveProject } from "../modules/projects/projects";
 import * as store from "../modules/projects/store";
 import { buildProjectFile, suggestedFileName } from "../modules/projects/project-file";
@@ -283,6 +284,8 @@ export function refreshAccountState(): Promise<void> {
         if (await startUserStateSync(r.user.email)) location.reload();
       } else {
         stopUserStateSync();
+        // The server says nobody is signed in: leave any previous account's local scope.
+        if (endStaleAccountScope()) location.reload();
       }
     })
     .catch(() => {
@@ -408,6 +411,17 @@ function buildMenu(menu: HTMLElement): void {
     menu.appendChild(title);
     menuItem(menu, "Save current project to cloud", () => void saveCurrentProjectToCloud());
     menuItem(menu, "My cloud projects…", () => void openCloudProjectsDialog());
+    menuItem(menu, "Copy this device's earlier local files into this account…", () => void (async () => {
+      try {
+        if (!(await hasUnassignedLocalFiles())) { toast("info", "No earlier local files were found on this device."); return; }
+        if (!window.confirm("Copy the local projects and drawings that were on this device before accounts into your account's local lists?\n\nThe originals stay where they are (visible when signed out). Nothing is deleted or overwritten.")) return;
+        const n = await importUnassignedLocalFiles();
+        toast("success", n ? `Copied ${n} item(s) into this account. Reloading…` : "Everything was already copied.");
+        if (n) setTimeout(() => location.reload(), 600);
+      } catch (err) {
+        toast("error", err instanceof Error ? err.message : "Copy failed. Nothing was changed or deleted.");
+      }
+    })());
     menuItem(menu, "Sign out", async () => {
       try {
         // Sync + back up this account's settings BEFORE the session ends (needs the cookie).
