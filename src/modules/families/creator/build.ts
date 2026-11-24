@@ -16,7 +16,7 @@ export interface ProductSpec {
   widthM: number;
   depthM: number;
   heightM: number;
-  templateId?: "box" | "cabinet";
+  templateId?: "box" | "cabinet" | "table" | "shelf";
   /** Overrides for the template's own parameters, in metres (e.g. PlinthHeight). */
   params?: Record<string, number>;
   /** Where the size came from, kept for the Sources view. */
@@ -48,6 +48,15 @@ export function validateSpec(spec: ProductSpec): SpecProblem[] {
   if (tpl.id === "cabinet" && typeof spec.heightM === "number") {
     const plinth = spec.params?.PlinthHeight ?? tpl.params.find((x) => x.name === "PlinthHeight")!.default;
     if (spec.heightM <= plinth + 0.05) out.push({ field: "heightM", message: "Too short for the plinth and door" });
+  }
+  if (tpl.id === "table" && typeof spec.heightM === "number") {
+    const top = spec.params?.TopThickness ?? tpl.params.find((x) => x.name === "TopThickness")!.default;
+    if (spec.heightM <= top + 0.05) out.push({ field: "heightM", message: "Too short for the top and legs" });
+  }
+  if (tpl.id === "shelf") {
+    const t = spec.params?.PanelThickness ?? tpl.params.find((x) => x.name === "PanelThickness")!.default;
+    if (spec.heightM <= 3 * t) out.push({ field: "heightM", message: "Too short for the panels" });
+    if (spec.widthM <= 3 * t) out.push({ field: "widthM", message: "Too narrow for the panels" });
   }
   return out;
 }
