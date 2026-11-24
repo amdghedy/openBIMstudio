@@ -138,21 +138,28 @@ function makeBrowser(serverByUser) {
   return { store, session, net };
 }
 let n = 0;
-const fresh = async () => import(path.join(root, "src", "features", "user-state.ts") + `?v=${++n}`);
-const prefsOf = (store) => Object.fromEntries([...store].filter(([k]) => ["obs.theme.mode", "obs.locale", "obs.projects.lastId"].includes(k)));
+const { build } = await import("esbuild");
+const os = await import("node:os");
+const bundled = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "obs-us-")), "user-state.mjs");
+await build({ entryPoints: [path.join(root, "src", "features", "user-state.ts")], bundle: true, format: "esm", outfile: bundled, logLevel: "silent" });
+const fresh = async () => import(bundled + `?v=${++n}`);
+const prefsOf = (store) => Object.fromEntries([...store].filter(([k]) => ["obs.theme.mode", "obs.locale", "obs.projects.lastId", "obs.nativeIfc.history.v1"].includes(k)));
 
 await t("guest -> A -> B -> A: every set of preferences returns, local files/recents untouched", async () => {
   const server = {};
   const b = makeBrowser(server);
   const localFiles = { "obs.projects.docs": "guest-and-A-local-project-list", "obs.drawings.history": "recent-drawings", "obs.xref.cache": "x" };
   for (const [k, v] of Object.entries(localFiles)) b.store.set(k, v);
-  b.store.set("obs.theme.mode", "light"); b.store.set("obs.projects.lastId", "proj-guest");
+  b.store.set("obs.theme.mode", "light"); b.store.set("obs.projects.lastId", "proj-guest"); b.store.set("obs.nativeIfc.history.v1", "guest-ifc-list");
   let m = await fresh();
   b.net.user = "a@x.com";
-  await m.startUserStateSync("a@x.com");                       // guest signs in as A: seeds A from guest prefs
-  assert.equal(server["a@x.com"].prefs["obs.theme.mode"], "light");
+  assert.equal(await m.startUserStateSync("a@x.com"), true, "first sign-in reloads so the account's local-store scope applies");
+  assert.equal(server["a@x.com"].prefs["obs.theme.mode"], "light", "appearance carries over");
+  assert.equal(server["a@x.com"].prefs["obs.projects.lastId"], undefined, "guest's last-project pointer is not claimed by the account");
+  assert.equal(b.store.get("obs.nativeIfc.history.v1"), undefined, "guest's local lists are not shown to the account");
+  assert.equal(JSON.parse(b.store.get("obs.acct.backup.__guest__"))["obs.nativeIfc.history.v1"], "guest-ifc-list", "guest copy kept");
   assert.equal(JSON.parse(b.store.get("obs.acct.backup.__guest__"))["obs.theme.mode"], "light", "guest copy kept");
-  b.store.set("obs.theme.mode", "dark"); b.store.set("obs.locale", "ar"); b.store.set("obs.projects.lastId", "proj-A");
+  b.store.set("obs.theme.mode", "dark"); b.store.set("obs.locale", "ar"); b.store.set("obs.projects.lastId", "proj-A"); b.store.set("obs.nativeIfc.history.v1", "A-ifc-list");
   await m.flushUserState();                                     // A's edits (same session) are uploaded
   assert.equal(server["a@x.com"].prefs["obs.locale"], "ar");
 
@@ -167,19 +174,22 @@ await t("guest -> A -> B -> A: every set of preferences returns, local files/rec
 
   m = await fresh(); b.net.user = "a@x.com";                    // A returns
   await m.startUserStateSync("a@x.com");
-  assert.deepEqual(prefsOf(b.store), { "obs.theme.mode": "dark", "obs.locale": "ar", "obs.projects.lastId": "proj-A" });
+  assert.deepEqual(prefsOf(b.store), { "obs.theme.mode": "dark", "obs.locale": "ar", "obs.projects.lastId": "proj-A", "obs.nativeIfc.history.v1": "A-ifc-list" });
   for (const [k, v] of Object.entries(localFiles)) assert.equal(b.store.get(k), v, k + " (local files/recents) untouched");
 });
 await t("sign-out returns the browser to the original guest preferences (and keeps the account backup)", async () => {
   const server = {};
   const b = makeBrowser(server);
-  b.store.set("obs.theme.mode", "light");
+  b.store.set("obs.theme.mode", "light"); b.store.set("obs.nativeIfc.history.v1", "guest-ifc-list"); b.store.set("obs.projects.lastId", "proj-guest");
   let m = await fresh(); b.net.user = "a@x.com";
   await m.startUserStateSync("a@x.com");
   b.store.set("obs.theme.mode", "dark");
   const changed = await m.signOutRestoreGuest();
   assert.equal(changed, true);
   assert.equal(b.store.get("obs.theme.mode"), "light", "guest preference restored");
+  assert.equal(b.store.get("obs.nativeIfc.history.v1"), "guest-ifc-list", "guest local list restored");
+  assert.equal(b.store.get("obs.projects.lastId"), "proj-guest", "guest last-project pointer restored");
+  assert.equal(b.store.get("obs.acct.owner"), null, "browser is back in the guest scope");
   assert.equal(server["a@x.com"].prefs["obs.theme.mode"], "dark", "account settings were synced before sign-out");
   assert.equal(JSON.parse(b.store.get("obs.acct.backup.a@x.com"))["obs.theme.mode"], "dark");
 });
@@ -209,6 +219,29 @@ await t("a failed read never overwrites the saved server settings with local one
   b.net.up = true; await m.flushUserState();
   assert.equal(b.net.puts.length, 0, "no upload after a failed read");
   assert.equal(server["a@x.com"].prefs["obs.theme.mode"], "dark", "saved account settings intact");
+});
+await t("expired session: server says signed out -> account scope ends, guest restored, nothing lost", async () => {
+  const b = makeBrowser({});
+  b.store.set("obs.theme.mode", "light"); b.store.set("obs.nativeIfc.history.v1", "guest-ifc-list");
+  let m = await fresh(); b.net.user = "a@x.com";
+  await m.startUserStateSync("a@x.com");
+  b.store.set("obs.nativeIfc.history.v1", "A-ifc-list");
+  m = await fresh();
+  assert.equal(m.endStaleAccountScope(), true);
+  assert.equal(b.store.get("obs.nativeIfc.history.v1"), "guest-ifc-list");
+  assert.equal(JSON.parse(b.store.get("obs.acct.backup.a@x.com"))["obs.nativeIfc.history.v1"], "A-ifc-list");
+  assert.equal(m.endStaleAccountScope(), false, "idempotent for a plain guest");
+});
+await t("oversized values stay local and never break the sync of the other settings", async () => {
+  const server = {};
+  const b = makeBrowser(server);
+  b.store.set("obs.theme.mode", "dark"); b.store.set("obs.options.v1", "x".repeat(9000)); b.store.set("obs.cad.drawingSession.v1", "per-drawing-sessions");
+  const m = await fresh(); b.net.user = "a@x.com";
+  await m.startUserStateSync("a@x.com"); await m.flushUserState();
+  assert.equal(server["a@x.com"].prefs["obs.theme.mode"], "dark");
+  assert.equal(server["a@x.com"].prefs["obs.options.v1"], undefined);
+  assert.equal(server["a@x.com"].prefs["obs.cad.drawingSession.v1"], undefined, "2D per-drawing sessions are account-scoped locally, not uploaded");
+  assert.equal(b.store.get("obs.options.v1").length, 9000, "local value untouched");
 });
 await t("user-state never touches IndexedDB or local file stores", () => {
   const u = read("src", "features", "user-state.ts").replace(/\/\*[\s\S]*?\*\//g, "");
