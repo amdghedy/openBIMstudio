@@ -56,9 +56,12 @@ title.textContent = "Families";
 title.style.cssText = "font-weight:700;flex:1;letter-spacing:.2px";
 
 const newBtn = mkHeaderBtn("+ Family", "Duplicate the current family under a new name", () => onNewFamily());
+const galleryBtn = mkHeaderBtn("Gallery", "Browse the family gallery", () => {
+  void import("./family-gallery").then((m) => m.openFamilyGallery());
+});
 const refreshBtn = mkHeaderBtn("↻", "Reload from storage", () => reloadAll());
 const closeBtn = mkHeaderBtn("✕", "Close", () => closeFamilyBrowser());
-header.append(title, newBtn, refreshBtn, closeBtn);
+header.append(title, newBtn, galleryBtn, refreshBtn, closeBtn);
 
 function mkHeaderBtn(label: string, tooltip: string, onclick: () => void): HTMLButtonElement {
   const b = document.createElement("button");
@@ -1680,6 +1683,18 @@ export function openFamilyBrowser(): void {
   panel.style.display = "flex";
   dock?.show();
   reloadAll();
+}
+
+// new.family parity Phase 1 — Gallery deep-link: open the Browser with
+// a specific family selected (used by the Family Gallery cards). An
+// unknown id just opens the Browser on the current selection.
+export function openFamilyBrowserWithFamily(familyId: string): void {
+  const fam = svc()?.get(familyId) ?? null;
+  if (fam) {
+    selectedFamilyId = fam.id;
+    selectedTypeId = fam.types[0]?.id ?? null;
+  }
+  openFamilyBrowser();
 }
 
 export function closeFamilyBrowser(): void {
