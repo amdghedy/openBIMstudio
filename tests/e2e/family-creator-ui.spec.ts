@@ -333,5 +333,23 @@ test("family creator: labelled extras from a sheet become parameters with their 
   await expect(panel.locator('canvas[data-fc3d="canvas"]')).toHaveAttribute("data-meshes", "8");
   await panel.locator('[data-fc="sources"]').scrollIntoViewIfNeeded();
   await shot(page, "23-extras-sources.png");
+  await expect(panel.locator('[data-fc="warnings"]')).toHaveCount(0);
+  await expect(panel.locator('[data-param="MidShelves"] + [data-tag]')).toHaveText("(from sheet)");
+  await expect(panel.locator('[data-param="PanelThickness"] ~ [data-tag]')).toHaveText("(from sheet)");
+
+  // A conflicting value and a value the shape does not allow are reported, and the default is tagged as a default.
+  await panel.locator('[data-f="text"]').fill("Overall size: 900 x 300 x 1800 mm\nMiddle shelves: 3\nMiddle shelves: 4\nPanel thickness: 900 mm\nShelves: 5");
+  await panel.getByRole("button", { name: "Create family" }).click();
+  const warn = panel.locator('[data-fc="warnings"]');
+  await expect(warn).toContainText("appears with different values");
+  await expect(warn).toContainText("outside what this shape allows");
+  await expect(warn).toContainText("could include or exclude");
+  await expect(panel.locator('[data-param="MidShelves"] ~ [data-tag]')).toHaveText("(default)");
+  await panel.locator('[data-param="MidShelves"]').fill("2");
+  await panel.locator('[data-param="MidShelves"]').dispatchEvent("change");
+  await expect(panel.locator('[data-param="MidShelves"] ~ [data-tag]')).toHaveText("(edited by you)");
+  await expect(warn).toBeVisible();
+  await warn.scrollIntoViewIfNeeded();
+  await shot(page, "24-warnings.png");
   expect(errors).toEqual([]);
 });
