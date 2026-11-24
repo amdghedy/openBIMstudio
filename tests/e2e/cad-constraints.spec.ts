@@ -34,11 +34,17 @@ test('2D editor: constraints are recorded and solvable from the ribbon', async (
   const cv = page.locator('[data-r=cv]').first();
   const box = (await cv.boundingBox())!;
   await page.waitForTimeout(600); // let ZOOM E settle
+  // Where exactly the extents put the line depends on layout, so scan a grid until a pick lands on it.
   const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
-  await page.mouse.move(cx - 20, cy - 8);
-  await page.mouse.move(cx, cy, { steps: 4 });
-  await page.waitForTimeout(150);
-  await page.mouse.click(cx, cy);
+  outer: for (let dy = 0; dy <= 160; dy += 20) {
+    for (const sy of dy === 0 ? [1] : [1, -1]) {
+      for (let dx = -240; dx <= 240; dx += 20) {
+        await page.mouse.move(cx + dx, cy + sy * dy);
+        await page.mouse.click(cx + dx, cy + sy * dy);
+        if ((await hist()).includes('recorded as constraint #1')) break outer;
+      }
+    }
+  }
   await expect.poll(hist, { timeout: 10000 }).toContain('recorded as constraint #1');
 
   await page.locator('[data-a=gc-list]').first().click();
