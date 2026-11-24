@@ -173,10 +173,11 @@ function resultHtml(r: CreatorResult): string {
     const values = { ...(r.family.types[0].values as Record<string, number>), ...resolved };
     const rows = r.family.parameters.map((p) => {
       const val = (values[p.name] ?? p.default) as number;
-      const mmv = Math.round(val * 1000 * 10) / 10;
+      const isInt = p.type === "integer";
+      const mmv = isInt ? Math.round(val) : Math.round(val * 1000 * 10) / 10;
       return `<tr><td>${esc(p.label ?? p.name)}</td><td>` +
         (p.editable
-          ? `<input type="number" step="1" min="1" data-param="${esc(p.name)}" value="${mmv}" class="obs-fc-in" style="width:84px"> mm`
+          ? `<input type="number" step="1" min="${isInt ? 0 : 1}" data-param="${esc(p.name)}" data-int="${isInt ? 1 : 0}" value="${mmv}" class="obs-fc-in" style="width:84px">${isInt ? "" : " mm"}`
           : `${mmv} mm <span class="obs-fc-detail">${esc(t("familyCreator.formula"))}</span>`) + `</td></tr>`;
     }).join("");
     html += `<div class="obs-fc-sec"><div class="obs-fc-h">${esc(t("familyCreator.params", { template: tpl.label }))}</div><table class="obs-fc-tbl">${rows}</table></div>`;
@@ -192,7 +193,7 @@ function resultHtml(r: CreatorResult): string {
   }
   if (r.spec?.sources?.length) {
     html += `<div class="obs-fc-sec" data-fc="sources"><div class="obs-fc-h">${esc(t("familyCreator.sources"))}</div>` +
-      r.spec.sources.map((c) => `<div class="obs-fc-src"><b>${esc(c.label)}</b> ${Math.round(c.valueM * 1000)} mm` +
+      r.spec.sources.map((c) => `<div class="obs-fc-src"><b>${esc(c.label)}</b> ${c.kind === "count" ? c.valueM : `${Math.round(c.valueM * 1000)} mm`}` +
         `<div class="obs-fc-detail"><bdi>${esc(t("familyCreator.sourceLine", { page: c.page, line: c.line, text: c.sourceText }))}</bdi></div></div>`).join("") +
       `<div class="obs-fc-detail">${esc(t("familyCreator.sourceCheck"))}</div>` +
       (form.fromOcr && form.pages.length ? `<div class="obs-fc-detail" data-fc="ocr-warning" style="color:#f59e0b">${esc(t("familyCreator.ocrCheck"))}</div>` : "") + `</div>`;
@@ -240,7 +241,7 @@ function render() {
   if (slot && preview) slot.appendChild(preview.el);
   panel.querySelector('[data-act="fit"]')?.addEventListener("click", () => preview?.fit());
   panel.querySelectorAll<HTMLInputElement>("[data-param]").forEach((el) => {
-    el.addEventListener("change", () => editParam(el.dataset.param as string, Number(el.value) / 1000));
+    el.addEventListener("change", () => editParam(el.dataset.param as string, el.dataset.int === "1" ? Number(el.value) : Number(el.value) / 1000));
   });
 }
 
