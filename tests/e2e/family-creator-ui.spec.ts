@@ -143,6 +143,11 @@ test("family creator: PDF text intake and interactive 3D preview", async ({ page
   const size = await num("data-size");
   expect(size[0]).toBeCloseTo(1200, 0); expect(size[1]).toBeCloseTo(700, 0); expect(size[2]).toBeCloseTo(2000, 0);
   await shot(page, "10-3d-initial.png");
+  // Panel scrolled so the whole preview is on screen.
+  await panel.locator('[data-fc="preview3d"]').scrollIntoViewIfNeeded();
+  await panel.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  await page.waitForTimeout(300);
+  await shot(page, "15-3d-scrolled.png");
 
   // Orbit, zoom, fit.
   const fitCam = await num("data-cam");
@@ -182,6 +187,19 @@ test("family creator: PDF text intake and interactive 3D preview", async ({ page
   await expect(panel.locator('[data-fc="file-note"]')).toContainText("Type the size");
   expect(await panel.innerText()).not.toMatch(/slice|ready for revit/i);
   await shot(page, "14-scan-message.png");
+
+  // Narrow (phone-width) layout: the panel must stay inside the screen and the preview usable.
+  await page.setViewportSize({ width: 390, height: 780 });
+  await page.waitForTimeout(500);
+  await panel.locator('[data-f="text"]').fill("Overall size: 900 x 600 x 1800 mm");
+  await panel.getByRole("button", { name: "Create family" }).click();
+  const pb = (await panel.boundingBox())!;
+  await shot(page, "16-narrow-top.png");
+  await panel.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  await page.waitForTimeout(300);
+  await shot(page, "17-narrow-3d.png");
+  expect(pb.x).toBeGreaterThanOrEqual(0);
+  expect(pb.x + pb.width).toBeLessThanOrEqual(390 + 1);
 
   expect(errors).toEqual([]);
 });
