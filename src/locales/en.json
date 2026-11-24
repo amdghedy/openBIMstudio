@@ -169,6 +169,14 @@
       "failed": "Could not read {file}: {message}"
     },
     "ocrCheck": "Read from a picture by OCR. Digits can be misread: check each value against the sheet before you use the family.",
+    "warn": {
+      "title": "Not used from the sheet",
+      "notUsed": "{label} (page {page}, line {line}: {text}) is not a setting of the {shape} shape, so it was not used.",
+      "outOfRange": "{label} {value} (page {page}, line {line}: {text}) is outside what this shape allows, so the default is used instead.",
+      "conflict": "{label} appears with different values (page {page}, line {line} and {other}), so none was used and the default is kept. Check the sheet and enter the value yourself.",
+      "ambiguous": "{label} (page {page}, line {line}: {text}) could include or exclude the top and bottom shelves, so it was not used. Set Middle shelves yourself."
+    },
+    "tag": { "sheet": "from sheet", "default": "default", "edited": "edited by you", "typed": "typed by you" },
     "shape": "Shape",
     "shapeAuto": "Choose from the name",
     "preview3d": "3D preview",
