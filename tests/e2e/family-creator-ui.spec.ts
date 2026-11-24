@@ -396,3 +396,36 @@ test("family creator: link fetch needs per-use consent, says plainly when the si
   await shot(page, "41-url-on.png");
   expect(errors).toEqual([]);
 });
+
+test("family creator: cabinet doors and drawers from a sheet, editable counts, honest warning", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e: Error) => errors.push(e.message));
+  await enterAuthoring(page);
+  await openCreator(page);
+  const panel = page.getByTestId("family-creator-panel");
+  await panel.locator('[data-f="name"]').fill("Kitchen sideboard KS-2");
+  await panel.locator('[data-f="text"]').fill("Overall size: 1600 x 500 x 900 mm\nDoors: 3\nDrawers: 2\nDrawer height: 150 mm");
+  await panel.getByRole("button", { name: "Create family" }).click();
+  await expect(panel.locator('[data-param="Doors"]')).toHaveValue("3");
+  await expect(panel.locator('[data-param="Drawers"]')).toHaveValue("2");
+  await expect(panel.locator('[data-param="DrawerHeight"]')).toHaveValue("150");
+  await expect(panel.locator('[data-param="Doors"] ~ [data-tag]')).toHaveText("(from sheet)");
+  await expect(panel.locator('[data-fc="sources"]')).toContainText("Drawers 2");
+  await expect(panel.getByText(/\b12 parts\b/).first()).toBeVisible();
+  await panel.locator('[data-fc="sources"]').scrollIntoViewIfNeeded();
+  await shot(page, "50-cabinet-3doors-2drawers.png");
+  await panel.locator('[data-param="Drawers"]').fill("4");
+  await panel.locator('[data-param="Drawers"]').dispatchEvent("change");
+  await expect(panel.locator('[data-param="Drawers"] ~ [data-tag]')).toHaveText("(edited by you)");
+  await expect(panel.getByText(/\b16 parts\b/).first()).toBeVisible();
+  await expect(panel.locator('[data-fc="sources"]')).not.toContainText("Drawers 2");
+  await expect(panel.locator('[data-fc="sources"]')).toContainText("Doors 3");
+  await shot(page, "51-cabinet-4drawers.png");
+  // Too many drawers for the height: the run says so instead of drawing something wrong.
+  await panel.locator('[data-param="Drawers"]').fill("6");
+  await panel.locator('[data-param="Drawers"]').dispatchEvent("change");
+  await expect(panel.locator('[data-stage="intake"], [data-stage="family"]').first()).toBeVisible();
+  expect(await panel.innerText()).toMatch(/drawers|room left|fit/i);
+  await shot(page, "52-cabinet-too-many.png");
+  expect(errors).toEqual([]);
+});
