@@ -26,7 +26,7 @@ fs.writeFileSync(path.join(tmpOut, "package.json"), '{"type": "commonjs"}');
 process.on("exit", () => { try { fs.rmSync(tmpOut, { recursive: true, force: true }); } catch { /* */ } });
 execSync(
   "npx tsc src/modules/families/creator/pipeline.ts src/modules/families/creator/units.ts src/modules/families/creator/preview-svg.ts"
-  + " src/modules/families/parametric-engine.ts"
+  + " src/modules/families/parametric-engine.ts src/modules/families/migration.ts"
   + " --outDir " + JSON.stringify(tmpOut)
   + " --module commonjs --moduleResolution node --target ES2022 --skipLibCheck --noCheck",
   { cwd: root, stdio: "inherit", shell: true },
@@ -48,6 +48,7 @@ const C = require(find("cutsheet.js", "creator"));
 const B = require(find("build.js", "creator"));
 const I = require(find("ifc2x3.js", "creator"));
 const E = require(find("parametric-engine.js"));
+const M = require(find("migration.js"));
 
 const deps = {
   buildInEngine(family, type) {
@@ -357,6 +358,36 @@ t("T13 cabinet doors and drawers are real counted geometry: engine and IFC follo
   const clash = P.runCreator({ name: "Kitchen sideboard", pages: ["Overall size: 1600 x 500 x 900 mm\nDoors: 2\nDoors: 3\nDrawers: 20"] }, deps);
   assert.deepStrictEqual(clash.warnings.map((w) => w.key).sort(), ["familyCreator.warn.conflict", "familyCreator.warn.outOfRange"]);
   assert.strictEqual(clash.family.types[0].values.Drawers, 0, "the out-of-range count is not used; the default stands");
+});
+
+
+t("creatorSpec survives migration and a JSON save/load, is not aliased, and each stored size builds its own geometry and IFC", () => {
+  const sheet = P.runCreator({ name: "Sideboard", pages: ["Overall size: 1600 x 500 x 900 mm\nDoors: 3\nDrawers: 2\nDrawer height: 150 mm"] }, deps);
+  const spec = JSON.parse(JSON.stringify(sheet.spec));
+  assert.ok(spec.sources.length >= 5, "sheet source lines present");
+  const input = { ...sheet.family, creatorSpec: JSON.parse(JSON.stringify(spec)), types: [...sheet.family.types, { id: "t-1200", name: "1200 wide", values: { ...sheet.family.types[0].values, Width: 1.2 } }] };
+  const a = M.migrateFamilyDefinition(input).family;
+  assert.deepStrictEqual(a.creatorSpec, spec, "creatorSpec kept by migration");
+  const reloaded = M.migrateFamilyDefinition(JSON.parse(JSON.stringify(a))).family;
+  assert.deepStrictEqual(reloaded.creatorSpec, spec, "and by a JSON round trip");
+  // No aliasing: changing the caller's objects after the fact does not reach the stored family, and the reverse.
+  input.creatorSpec.sources.pop(); input.creatorSpec.params = { Doors: 9 };
+  assert.deepStrictEqual(a.creatorSpec, spec, "stored spec not aliased to the input");
+  a.creatorSpec.sources.length = 0;
+  assert.ok(reloaded.creatorSpec.sources.length >= 5, "a second load is not aliased to the first");
+  assert.ok(spec.sources.length >= 5, "the original result spec is untouched");
+  // Both sizes: the engine builds each type with its own width, same parts and counts; IFC of each size has the matching extent.
+  for (const [type, w] of [[reloaded.types[0], 1.6], [reloaded.types[1], 1.2]]) {
+    const built = deps.buildInEngine(reloaded, type);
+    assert.deepStrictEqual(built.errors ?? [], []);
+    near(built.bbox[3] - built.bbox[0], w, 1e-6, "engine width of " + type.name);
+    near(built.bbox[4] - built.bbox[1], 0.9, 1e-6, "height");
+    assert.strictEqual(built.params.Doors, 3); assert.strictEqual(built.params.Drawers, 2);
+    const run = P.runCreator({ name: "Sideboard", spec: { ...spec, widthM: type.values.Width } }, deps);
+    const ex = ifcExtents(run.ifcText);
+    near(ex.size[0], w, 1e-4, "IFC width of " + type.name);
+    assert.strictEqual(ex.n, 12, "same 12 parts for both sizes");
+  }
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
