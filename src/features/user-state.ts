@@ -153,6 +153,13 @@ export async function signOutRestoreGuest(): Promise<boolean> {
   return true; // the local-store scope changed: always reload
 }
 
+/** True when signing in as `email` (or being signed out, for null) would change this browser's local scope. */
+export function accountScopeDiffers(email: string | null): boolean {
+  let owner: string | null = null;
+  try { owner = localStorage.getItem(OWNER_KEY); } catch { /* */ }
+  return (owner ?? null) !== (email ? email.trim().toLowerCase() : null);
+}
+
 /**
  * The session is gone (expired or ended elsewhere) but this browser still
  * carries an account scope: hand the browser back to the guest scope so the
