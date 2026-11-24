@@ -1,5 +1,6 @@
 /**
- * Family Creator panel (partial: text intake, parameters, drawing, IFC2X3).
+ * Family Creator panel: text and PDF-text intake, parameters, views, interactive 3D, IFC2X3.
+ * Not done yet: OCR for scanned sheets, image/URL intake, AI reading.
  *
  * Product size in, editable family out, IFC2X3 downloadable. Everything
  * runs in the browser with no network call. Status chips show the real
@@ -13,18 +14,23 @@ import { familyStore } from "../modules/families/store";
 import { runCreator, type CreatorResult, type CreatorStatus } from "../modules/families/creator/pipeline";
 import { templateFor, type ProductSpec } from "../modules/families/creator/build";
 import { resolveParts } from "../modules/families/creator/layout";
+import { extractPdfPages } from "../modules/families/creator/pdf-text";
+import { createPreview3D, type Preview3D } from "./family-creator-preview";
 import { renderThreeViews } from "../modules/families/creator/preview-svg";
 import type { FamilyDefinition } from "../modules/families/types";
 
 let panel: HTMLElement | null = null;
 let visible = false;
 
-interface FormState { name: string; manufacturer: string; model: string; text: string; wMm: string; dMm: string; hMm: string }
-const form: FormState = { name: "", manufacturer: "", model: "", text: "", wMm: "", dMm: "", hMm: "" };
+interface FormState { name: string; manufacturer: string; model: string; text: string; pages: string[]; fileName: string; fileNote: string; wMm: string; dMm: string; hMm: string }
+const form: FormState = { name: "", manufacturer: "", model: "", text: "", pages: [], fileName: "", fileNote: "", wMm: "", dMm: "", hMm: "" };
 let result: CreatorResult | null = null;
 let liveStatus: CreatorStatus | null = null;
 let notice = "";
 let lastIfcName = "";
+let preview: Preview3D | null = null;
+let previewTried = false;
+let previewFit = true;
 
 const esc = (s: string) => String(s).replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" } as Record<string, string>)[c]);
@@ -56,11 +62,45 @@ function run(spec?: ProductSpec) {
   })();
   result = runCreator(
     { name: form.name.trim() || "New family", manufacturer: form.manufacturer || undefined, model: form.model || undefined,
-      pages: form.text ? [form.text] : [], spec: useSpec },
+      pages: form.pages.length ? form.pages : form.text ? [form.text] : [], spec: useSpec },
     deps,
     (s) => { liveStatus = s; },
   );
   liveStatus = result.status;
+  updatePreview(!spec);
+  render();
+}
+
+function updatePreview(fit: boolean) {
+  if (!previewTried) { previewTried = true; preview = createPreview3D(); }
+  if (!preview) return;
+  let obj: THREE.Object3D | null = null;
+  if (result?.family && result.status.platformReady) {
+    try { obj = deps.buildInEngine(result.family, result.family.types[0]).object ?? null; } catch { obj = null; }
+  }
+  preview.setObject(obj, fit || previewFit);
+  previewFit = !obj;
+}
+
+async function loadFile(file: File) {
+  form.fileName = file.name;
+  form.pages = [];
+  form.fileNote = "";
+  try {
+    if (/\.pdf$/i.test(file.name) || file.type === "application/pdf") {
+      const r = await extractPdfPages(new Uint8Array(await file.arrayBuffer()));
+      if (r.noText) form.fileNote = t("familyCreator.file.noText", { file: file.name });
+      else {
+        form.pages = r.pages;
+        form.fileNote = t(r.truncated ? "familyCreator.file.loadedTruncated" : "familyCreator.file.loaded", { file: file.name, n: r.pages.length, total: r.pageCount });
+      }
+    } else {
+      form.pages = [await file.text()];
+      form.fileNote = t("familyCreator.file.loaded", { file: file.name, n: 1, total: 1 });
+    }
+  } catch (e) {
+    form.fileNote = t("familyCreator.file.failed", { file: file.name, message: (e as Error).message });
+  }
   render();
 }
 
@@ -96,6 +136,8 @@ function resultHtml(r: CreatorResult): string {
           : `${mmv} mm <span class="obs-fc-detail">${esc(t("familyCreator.formula"))}</span>`) + `</td></tr>`;
     }).join("");
     html += `<div class="obs-fc-sec"><div class="obs-fc-h">${esc(t("familyCreator.params", { template: tpl.label }))}</div><table class="obs-fc-tbl">${rows}</table></div>`;
+    html += `<div class="obs-fc-sec"><div class="obs-fc-h">${esc(t("familyCreator.preview3d"))} <button type="button" class="obs-fc-btn" data-act="fit" style="float:right">${esc(t("familyCreator.fit"))}</button></div>` +
+      (preview ? `<div data-fc-slot="preview3d"></div><div class="obs-fc-detail">${esc(t("familyCreator.preview3dHelp"))}</div>` : `<div class="obs-fc-detail" data-fc="no3d">${esc(t("familyCreator.preview3dUnavailable"))}</div>`) + `</div>`;
     // Views from the engine-resolved parts.
     try {
       const built = deps.buildInEngine(r.family, r.family.types[0]);
@@ -125,6 +167,7 @@ function render() {
       <div class="obs-fc-detail" style="margin-bottom:8px">${esc(t("familyCreator.intro"))}</div>
       <input class="obs-fc-in" data-f="name" placeholder="${esc(t("familyCreator.name"))}" value="${esc(form.name)}">
       <div style="display:flex;gap:6px"><input class="obs-fc-in" data-f="manufacturer" placeholder="${esc(t("familyCreator.manufacturer"))}" value="${esc(form.manufacturer)}"><input class="obs-fc-in" data-f="model" placeholder="${esc(t("familyCreator.model"))}" value="${esc(form.model)}"></div>
+      <div style="display:flex;gap:6px;align-items:center;margin:3px 0"><label class="obs-fc-btn" style="cursor:pointer">${esc(t("familyCreator.file.choose"))}<input type="file" accept=".pdf,.txt,application/pdf,text/plain" data-fc="file" style="display:none"></label><span class="obs-fc-detail" data-fc="file-note">${esc(form.fileNote)}</span></div>
       <textarea class="obs-fc-in" data-f="text" rows="4" placeholder="${esc(t("familyCreator.textPlaceholder"))}">${esc(form.text)}</textarea>
       <div class="obs-fc-detail">${esc(t("familyCreator.sizeHint"))}</div>
       <div style="display:flex;gap:6px"><input class="obs-fc-in" data-f="wMm" placeholder="${esc(t("familyCreator.w"))}" value="${esc(form.wMm)}"><input class="obs-fc-in" data-f="dMm" placeholder="${esc(t("familyCreator.d"))}" value="${esc(form.dMm)}"><input class="obs-fc-in" data-f="hMm" placeholder="${esc(t("familyCreator.h"))}" value="${esc(form.hMm)}"></div>
@@ -133,11 +176,22 @@ function render() {
       ${result ? resultHtml(result) : ""}
     </div>`;
   panel.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("[data-f]").forEach((el) => {
-    el.addEventListener("input", () => { (form as unknown as Record<string, string>)[el.dataset.f as string] = el.value; });
+    el.addEventListener("input", () => {
+      (form as unknown as Record<string, string>)[el.dataset.f as string] = el.value;
+      // Typing replaces the loaded file text, so the run never mixes the two.
+      if (el.dataset.f === "text" && form.pages.length) { form.pages = []; form.fileNote = ""; const n = panel?.querySelector('[data-fc="file-note"]'); if (n) n.textContent = ""; }
+    });
   });
   panel.querySelectorAll<HTMLElement>("[data-act]").forEach((el) => {
     el.addEventListener("click", () => act(el.dataset.act as string));
   });
+  panel.querySelector<HTMLInputElement>('[data-fc="file"]')?.addEventListener("change", (ev) => {
+    const f = (ev.target as HTMLInputElement).files?.[0];
+    if (f) void loadFile(f);
+  });
+  const slot = panel.querySelector<HTMLElement>('[data-fc-slot="preview3d"]');
+  if (slot && preview) slot.appendChild(preview.el);
+  panel.querySelector('[data-act="fit"]')?.addEventListener("click", () => preview?.fit());
   panel.querySelectorAll<HTMLInputElement>("[data-param]").forEach((el) => {
     el.addEventListener("change", () => editParam(el.dataset.param as string, Number(el.value) / 1000));
   });
@@ -156,6 +210,7 @@ function editParam(name: string, valueM: number) {
 function act(a: string) {
   if (a === "close") setVisible(false);
   else if (a === "create") run();
+  else if (a === "fit") preview?.fit();
   else if (a === "add" && result?.family) {
     const f = result.family;
     familyStore.create({
