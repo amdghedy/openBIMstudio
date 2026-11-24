@@ -446,3 +446,75 @@ test("family creator: cabinet doors and drawers from a sheet, editable counts, h
   await shot(page, "52-cabinet-too-many.png");
   expect(errors).toEqual([]);
 });
+
+test("family creator: named sizes are saved with the family and reopen with their tags and sources", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e: Error) => errors.push(e.message));
+  await enterAuthoring(page);
+  await openCreator(page);
+  let panel = page.getByTestId("family-creator-panel");
+  await panel.locator('[data-f="name"]').fill("Sideboard SB-9");
+  await panel.locator('[data-f="text"]').fill("Overall size: 1600 x 500 x 900 mm\nDoors: 3\nDrawers: 2\nDrawer height: 150 mm");
+  await panel.getByRole("button", { name: "Create family" }).click();
+  await expect(panel.locator('[data-param="Doors"]')).toHaveValue("3");
+  await panel.getByRole("button", { name: "Add to family library" }).click();
+  // A second size from the same family: change only the width, name it, add it.
+  await panel.locator('[data-param="Width"]').fill("1200");
+  await panel.locator('[data-param="Width"]').dispatchEvent("change");
+  await expect(panel.locator('[data-param="Width"] ~ [data-tag]')).toHaveText("(edited by you)");
+  await expect(panel.locator('[data-param="Depth"] ~ [data-tag]')).toHaveText("(from sheet)");
+  await panel.locator('[data-fc="size-name"]').fill("1200 wide");
+  await panel.getByRole("button", { name: "Add this size" }).click();
+  await expect(panel.locator('[data-fc="size-row"]')).toHaveCount(2);
+  await expect(panel.locator('[data-fc="library"]')).toContainText("1200 x 500 x 900 mm");
+  await expect(panel.locator('[data-fc="library"]')).toContainText("1600 x 500 x 900 mm");
+  // A different drawer count is a different family: refused for a size.
+  await panel.locator('[data-param="Drawers"]').fill("3");
+  await panel.locator('[data-param="Drawers"]').dispatchEvent("change");
+  await panel.locator('[data-fc="size-name"]').fill("more drawers");
+  await panel.getByRole("button", { name: "Add this size" }).click();
+  await expect(panel.locator('[data-fc="notice"]')).toContainText("differs from the saved family");
+  await expect(panel.locator('[data-fc="size-row"]')).toHaveCount(2);
+  // Reload: the library lives in the browser, the panel state does not.
+  await page.reload();
+  await enterAuthoring(page);
+  await openCreator(page);
+  panel = page.getByTestId("family-creator-panel");
+  await panel.locator('[data-fc="reopen-family"]').selectOption({ label: "Sideboard SB-9" });
+  await expect(panel.locator('[data-fc="reopen-type"] option')).toHaveCount(2);
+  await panel.locator('[data-fc="reopen-type"]').selectOption({ label: "1200 wide" });
+  await panel.getByRole("button", { name: "Open", exact: true }).click();
+  await expect(panel.locator('[data-param="Width"]')).toHaveValue("1200");
+  await expect(panel.locator('[data-param="Doors"]')).toHaveValue("3");
+  await expect(panel.locator('[data-param="Drawers"]')).toHaveValue("2");
+  await expect(panel.locator('[data-param="Width"] ~ [data-tag]')).toHaveText("(edited by you)");
+  await expect(panel.locator('[data-param="Depth"] ~ [data-tag]')).toHaveText("(from sheet)");
+  await expect(panel.locator('[data-param="Doors"] ~ [data-tag]')).toHaveText("(from sheet)");
+  await expect(panel.locator('[data-fc="sources"]')).toContainText("Doors 3");
+  await expect(panel.locator('[data-fc="sources"]')).not.toContainText("Width");
+  await panel.locator('[data-fc="library"]').scrollIntoViewIfNeeded();
+  await shot(page, "70-reopened-1200-wide.png");
+  { const [d] = await Promise.all([page.waitForEvent("download"), panel.getByRole("button", { name: "Download IFC2X3" }).click()]);
+    const f = path.join(SHOTS ?? "/tmp", "sideboard-1200-wide.ifc"); await d.saveAs(f); const txt = fs.readFileSync(f, "utf8");
+    expect((txt.match(/IFCEXTRUDEDAREASOLID/g) ?? []).length).toBe(12); }
+
+  // The default size reopens with its sheet source for the width.
+  await panel.locator('[data-fc="reopen-type"]').selectOption({ label: "Default" });
+  await panel.getByRole("button", { name: "Open", exact: true }).click();
+  await expect(panel.locator('[data-param="Width"]')).toHaveValue("1600");
+  await expect(panel.locator('[data-param="Width"] ~ [data-tag]')).toHaveText("(from sheet)");
+  { const [d] = await Promise.all([page.waitForEvent("download"), panel.getByRole("button", { name: "Download IFC2X3" }).click()]);
+    const f = path.join(SHOTS ?? "/tmp", "sideboard-default-1600.ifc"); await d.saveAs(f); const txt = fs.readFileSync(f, "utf8");
+    expect((txt.match(/IFCEXTRUDEDAREASOLID/g) ?? []).length).toBe(12); }
+  // Edit and save back; the other size keeps its own width.
+  await panel.locator('[data-param="Doors"]').fill("3");
+  await panel.locator('[data-param="Depth"]').fill("550");
+  await panel.locator('[data-param="Depth"]').dispatchEvent("change");
+  await panel.getByRole("button", { name: "Save changes to this family" }).click();
+  await expect(panel.locator('[data-fc="notice"]')).toContainText("Saved changes");
+  await panel.locator('[data-fc="reopen-type"]').selectOption({ label: "1200 wide" });
+  await panel.getByRole("button", { name: "Open", exact: true }).click();
+  await expect(panel.locator('[data-param="Width"]')).toHaveValue("1200");
+  await expect(panel.locator('[data-param="Depth"]')).toHaveValue("500");
+  expect(errors).toEqual([]);
+});
