@@ -72,3 +72,30 @@ export async function extractPdfPages(bytes: Uint8Array): Promise<PdfTextResult>
   await pdf.destroy?.();
   return { pages, pageCount, truncated: pageCount > take, noText: pages.every((t) => t.trim() === "") };
 }
+
+/** Max pages read by OCR in one go. OCR takes seconds per page on a phone. */
+export const MAX_OCR_PAGES = 6;
+
+/** Render PDF pages to canvases (browser only) so they can be read by OCR. */
+export async function renderPdfPages(bytes: Uint8Array, maxPages = MAX_OCR_PAGES, targetLongSidePx = 2200): Promise<{ canvases: HTMLCanvasElement[]; pageCount: number }> {
+  if (bytes.byteLength > MAX_PDF_BYTES) throw new Error(`PDF is larger than ${MAX_PDF_BYTES / 1024 / 1024} MB`);
+  const pdfjs = await loadPdfjs();
+  const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false }).promise;
+  const take = Math.min(pdf.numPages, maxPages);
+  const canvases: HTMLCanvasElement[] = [];
+  for (let p = 1; p <= take; p++) {
+    const page = await pdf.getPage(p);
+    const base = page.getViewport({ scale: 1 });
+    const scale = Math.min(4, targetLongSidePx / Math.max(base.width, base.height));
+    const vp = page.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(vp.width); canvas.height = Math.ceil(vp.height);
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    canvases.push(canvas);
+  }
+  const pageCount: number = pdf.numPages;
+  await pdf.destroy?.();
+  return { canvases, pageCount };
+}
