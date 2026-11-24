@@ -156,6 +156,33 @@ class FamilyStore {
     return family;
   }
 
+  /**
+   * Insert a shipped seed-catalog family under its catalog id.
+   *
+   * `create()` always assigns a fresh random id, which is why the
+   * library loader's `get(entry.id)` "already present" check could
+   * never match a family loaded on an earlier boot — every reload
+   * re-added the whole catalog (50 → 111). Seed families keep their
+   * catalog id so the check works across boots. If a family with this
+   * id already exists it is returned untouched: a user-edited copy
+   * always wins over re-seeding.
+   */
+  createSeed(def: FamilyDefinition): FamilyDefinition {
+    const existing = this.byId.get(def.id);
+    if (existing) return existing;
+    const migrated = migrateFamilyDefinition({
+      ...def,
+      schemaVersion: CURRENT_FAMILY_SCHEMA_VERSION,
+      builtIn: false,
+    });
+    const family = migrated.family;
+    for (const w of migrated.warnings) console.warn(`[families] ${w}`);
+    this.byId.set(family.id, family);
+    this.persist();
+    this.emit();
+    return family;
+  }
+
   update(id: string, patch: Partial<FamilyDefinition>): FamilyDefinition | null {
     const cur = this.byId.get(id);
     if (!cur) return null;

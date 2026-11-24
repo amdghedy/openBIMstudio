@@ -85,6 +85,7 @@ export function createParametricFamilyService(): ParametricFamilyService {
     getByElementType: (et) => familyStore.getByElementType(et),
 
     create: (def) => familyStore.create(def),
+    createSeed: (def) => familyStore.createSeed(def),
     update: (id, patch) => familyStore.update(id, patch),
     remove: (id) => {
       constraintMap.delete(id);

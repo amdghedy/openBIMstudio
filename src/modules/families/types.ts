@@ -144,6 +144,8 @@ export interface FamilyService {
   getByElementType(elementType: string): FamilyDefinition | null;
 
   create(def: Omit<FamilyDefinition, "id" | "schemaVersion" | "builtIn">): FamilyDefinition;
+  /** Insert a shipped seed-catalog family under its catalog id (see store.createSeed). */
+  createSeed(def: FamilyDefinition): FamilyDefinition;
   update(id: string, patch: Partial<FamilyDefinition>): FamilyDefinition | null;
   remove(id: string): boolean;
   duplicate(id: string, newName: string): FamilyDefinition | null;

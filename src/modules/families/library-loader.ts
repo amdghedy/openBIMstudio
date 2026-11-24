@@ -10,9 +10,20 @@
  *   2. fetch("/families/index.json")  → array of catalog entries
  *   3. For each entry: fetch the family JSON
  *   4. Validate against `FamilyDefinition` shape
- *   5. If the family id is not already in the store, register via
- *      `familyStore.create()` (so user-edited copies always win)
+ *   5. If the family is not already in the store, register via
+ *      `familyStore.createSeed()` — which preserves the catalog id, so
+ *      the "already present" check works across boots (see below)
  *   6. Emit a single change event after the batch
+ *
+ * Idempotence (new.family parity Item 1): `create()` assigns a fresh
+ * random id, so the old loader's `get(entry.id)` check could never
+ * match a family loaded on an earlier boot — and seed families are
+ * persisted, so every reload re-added the whole catalog (50 → 111).
+ * The loader now inserts with the catalog id preserved, recognises
+ * legacy copies persisted under random ids by (origin + name +
+ * content signature), and removes exact duplicates those boots left
+ * behind. A same-name family whose content differs from the catalog
+ * is a user edit and is never skipped or removed.
  *
  * Failure modes:
  *   - Network error / 404 → log warning, skip silently (app stays usable
@@ -28,6 +39,10 @@
 
 import type { FamilyDefinition } from "./types";
 import { familyStore } from "./store";
+import {
+  dedupeSeedCatalogCopies,
+  findExistingSeedFamily,
+} from "./seed-catalog-dedupe";
 
 /** Catalog index entry — one per family in `public/families/`. */
 interface CatalogEntry {
@@ -54,20 +69,27 @@ function looksLikeFamily(d: unknown): d is FamilyDefinition {
   );
 }
 
-/** In-flight loader guard so repeated calls don't double-fetch. */
+/** In-flight loader guard so repeated calls don't double-fetch. Cleared
+ *  once the load settles, so a later call re-evaluates against the store
+ *  (idempotent via the store, not via the memo — a failed first load
+ *  must be retryable, and a second boot must see the persisted copies). */
 let loading: Promise<number> | null = null;
 
 /**
  * Fetch + register the seed catalog. Returns the number of new families
  * added (0 if catalog is already loaded or fetch failed).
  *
- * Safe to call multiple times — second call returns the in-flight promise
- * or resolves to 0 if already loaded.
+ * Safe to call multiple times — concurrent calls share the in-flight
+ * promise, and a later call re-checks the store and adds nothing new.
  */
 export async function loadSeedFamilyCatalog(): Promise<number> {
   if (loading) return loading;
-  loading = doLoad();
-  return loading;
+  const p = doLoad();
+  loading = p;
+  p.finally(() => {
+    if (loading === p) loading = null;
+  });
+  return p;
 }
 
 async function doLoad(): Promise<number> {
@@ -103,14 +125,10 @@ async function doLoad(): Promise<number> {
   let added = 0;
   let skipped = 0;
   let failed = 0;
+  // Catalog definitions by name, for the legacy-duplicate cleanup below.
+  const catalogByName = new Map<string, { id: string; def: FamilyDefinition }>();
 
   for (const entry of entries) {
-    // Skip if the user already has a family with this id (user-edited wins).
-    if (familyStore.get(entry.id)) {
-      skipped++;
-      continue;
-    }
-
     try {
       const famRes = await fetch(`/families/${entry.path}`, { cache: "no-cache" });
       if (!famRes.ok) {
@@ -134,7 +152,8 @@ async function doLoad(): Promise<number> {
       // extension point added to FamilyDefinition in the seed catalog
       // — but it's not part of the canonical schema, so we type-cast it
       // to a separate field the store ignores on persist.
-      const def: Omit<FamilyDefinition, "id" | "schemaVersion" | "builtIn"> = {
+      const def: FamilyDefinition = {
+        id: fam.id,
         name: fam.name,
         category: fam.category,
         ifcEntity: fam.ifcEntity,
@@ -144,13 +163,28 @@ async function doLoad(): Promise<number> {
         parameters: fam.parameters,
         geometry: fam.geometry,
         types: fam.types,
+        schemaVersion: fam.schemaVersion,
+        builtIn: false,
       };
       // Stash the description as a sibling property for the browser UI;
       // the store will persist any extra fields via JSON serialization.
       (def as FamilyDefinition & { description?: string }).description =
         (fam as FamilyDefinition & { description?: string }).description;
+      catalogByName.set(entry.name, { id: entry.id, def });
 
-      familyStore.create(def);
+      // Skip if this catalog family is already in the store — by
+      // catalog id, or as a legacy copy persisted under a random id
+      // (same name + same content). A same-name family whose content
+      // differs is a user edit: it does not count as present.
+      if (findExistingSeedFamily(familyStore, entry, def)) {
+        skipped++;
+        continue;
+      }
+
+      // createSeed preserves the catalog id, so the check above matches
+      // on the next boot. create() would assign a fresh random id and
+      // the catalog would be re-added on every reload.
+      familyStore.createSeed(def);
       added++;
     } catch (e) {
       console.warn(`[families:library] failed to load ${entry.path}:`, e);
@@ -176,8 +210,14 @@ async function doLoad(): Promise<number> {
     }
   }
 
+  // Clean up exact duplicates left by earlier boots (each reload used
+  // to re-add the whole catalog under fresh random ids). Only
+  // byte-identical seed copies are removed — one identical copy
+  // remains — and a same-name user edit is never touched.
+  const deduped = dedupeSeedCatalogCopies(familyStore, catalogByName);
+
   console.log(
-    `[families:library] catalog loaded: ${added} added, ${skipped} skipped (already present), ${failed} failed.`,
+    `[families:library] catalog loaded: ${added} added, ${skipped} skipped (already present), ${failed} failed, ${deduped} legacy duplicate(s) removed.`,
   );
 
   return added;

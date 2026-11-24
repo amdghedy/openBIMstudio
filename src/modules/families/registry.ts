@@ -69,6 +69,7 @@ export function createFamilyService(): FamilyService {
     getByElementType: (et) => familyStore.getByElementType(et),
 
     create: (def) => familyStore.create(def),
+    createSeed: (def) => familyStore.createSeed(def),
     update: (id, patch) => familyStore.update(id, patch),
     remove: (id) => familyStore.remove(id),
     duplicate: (id, name) => familyStore.duplicate(id, name),
