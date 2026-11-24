@@ -80,7 +80,7 @@ t("index.ts: forgot is orchestrated (mail when key set, resetUrl otherwise)", ()
 
 t("index.ts: callback branches popup vs top-level /?signedin=1", () => {
   const fn = src(worker, 'url.pathname === "/api/auth/google/callback"', 'url.pathname === "/api/auth/forgot"');
-  assert.ok(fn.includes('searchParams.get("state") === "popup"'), "callback must read the popup state");
+  assert.ok(fn.includes('parseOauthState(new URL(request.url).searchParams.get("state")).popup'), "callback must read the popup state");
   assert.ok(fn.includes('location: "/?signedin=1"'), "top-level flow must land on /?signedin=1");
   assert.ok(fn.includes("googlePopupCallbackPage(true)"), "popup success page missing");
   assert.ok(fn.includes("RESEND_API_KEY?") || worker.includes("RESEND_API_KEY?"), "Env must declare RESEND_API_KEY");

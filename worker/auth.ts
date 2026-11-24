@@ -77,6 +77,26 @@ interface ProjectMeta {
   updatedAt: number;
   size: number;
   chunks: number;
+  /** Last time the signed-in user opened this project from the cloud (metadata only). */
+  openedAt?: number;
+}
+
+/** Local-storage keys a user's app preferences are allowed to sync under. Anything else is rejected. */
+export const USER_PREF_KEYS: readonly string[] = [
+  "obs.theme.mode", "obs.locale", "obs.units.system", "obs.units.config",
+  "obs.region.profile", "obs.region.overrides", "obs.currency",
+  "obs.selection-prefs.v1", "obs.options.v1", "obs.ui.visibility.v1", "obs.snap",
+  "obs.projects.lastId",
+  "obs.cad.ucs", "obs.cad.svgScale", "obs.cad.ribbon.tab", "obs.cad.ribbon.min", "obs.cad.insScale",
+  "obs.cad.filletR", "obs.cad.chamferD", "obs.cad.snapUnit", "obs.cad.qat.hidden.v1", "obs.cad.hatchDefaults",
+  "obs.cad.pageSetup", "obs.cad.nativeBlocks", "obs.cad.textStyles",
+];
+const MAX_PREF_VALUE = 8 * 1024;
+const MAX_PREFS_TOTAL = 48 * 1024;
+
+interface UserState {
+  prefs: Record<string, string>;
+  updatedAt: number;
 }
 
 interface AuthEnv {
@@ -184,6 +204,8 @@ export class AuthVault {
       if (path === "/api/auth/google-upsert" && request.method === "POST") return this.googleUpsert(request);
       if (path === "/api/auth/forgot" && request.method === "POST") return this.forgotPassword(request);
       if (path === "/api/auth/reset" && request.method === "POST") return this.resetPassword(request);
+      if (path === "/api/user/state" && request.method === "GET") return this.getUserState(request);
+      if (path === "/api/user/state" && request.method === "PUT") return this.putUserState(request);
       if (path === "/api/projects" && request.method === "GET") return this.listProjects(request);
       if (path === "/api/projects" && request.method === "POST") return this.saveProject(request);
       if (path.startsWith("/api/projects/") && request.method === "GET") return this.loadProject(request, decodeURIComponent(path.slice("/api/projects/".length)));
@@ -373,10 +395,41 @@ export class AuthVault {
     const metas = await this.storage.list({ prefix: `p:${user.email}:` });
     const projects = [...metas.values()].map((m) => {
       const meta = m as ProjectMeta;
-      return { id: meta.id, name: meta.name, updatedAt: meta.updatedAt, size: meta.size };
+      const openedAt = meta.openedAt ?? 0;
+      return { id: meta.id, name: meta.name, updatedAt: meta.updatedAt, size: meta.size, openedAt, lastUsedAt: Math.max(openedAt, meta.updatedAt) };
     });
-    projects.sort((a, b) => b.updatedAt - a.updatedAt);
+    // Recently opened or saved first (metadata only; no file contents involved).
+    projects.sort((a, b) => b.lastUsedAt - a.lastUsedAt);
     return json({ projects });
+  }
+
+  // ── per-user app preferences (small JSON, whitelisted keys, never file contents) ──
+
+  private async getUserState(request: Request): Promise<Response> {
+    const user = await this.requireUser(request);
+    if (user instanceof Response) return user;
+    const state = await this.storage.get<UserState>(`s:${user.email}`);
+    return json({ state: state ?? null });
+  }
+
+  private async putUserState(request: Request): Promise<Response> {
+    const user = await this.requireUser(request);
+    if (user instanceof Response) return user;
+    const body = await request.json().catch(() => null) as { prefs?: Record<string, unknown> } | null;
+    const incoming = body?.prefs;
+    if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) return json({ error: "prefs object required." }, 400);
+    const prefs: Record<string, string> = {};
+    let total = 0;
+    for (const [key, value] of Object.entries(incoming)) {
+      if (!USER_PREF_KEYS.includes(key)) continue; // unknown keys are ignored, never stored
+      if (typeof value !== "string" || value.length > MAX_PREF_VALUE) return json({ error: `Preference ${key} is invalid or too large.` }, 413);
+      total += key.length + value.length;
+      prefs[key] = value;
+    }
+    if (total > MAX_PREFS_TOTAL) return json({ error: "Preferences payload too large." }, 413);
+    const state: UserState = { prefs, updatedAt: Date.now() };
+    await this.storage.put(`s:${user.email}`, state);
+    return json({ ok: true, updatedAt: state.updatedAt });
   }
 
   private async saveProject(request: Request): Promise<Response> {
@@ -398,7 +451,7 @@ export class AuthVault {
     for (let i = 0; i < chunks; i++) {
       await this.storage.put(`c:${user.email}:${id}:${String(i).padStart(4, "0")}`, data.slice(i * CHUNK_B64, (i + 1) * CHUNK_B64));
     }
-    const meta: ProjectMeta = { id, name, updatedAt: Date.now(), size: data.length, chunks };
+    const meta: ProjectMeta = { id, name, updatedAt: Date.now(), size: data.length, chunks, openedAt: previous?.openedAt };
     await this.storage.put(metaKey, meta);
     return json({ ok: true, project: { id: meta.id, name: meta.name, updatedAt: meta.updatedAt, size: meta.size } });
   }
@@ -415,6 +468,8 @@ export class AuthVault {
       if (chunk === undefined) return json({ error: "Project data is incomplete." }, 500);
       data += chunk;
     }
+    // Record "last opened" (metadata only) so the user's recent list follows the account.
+    await this.storage.put(`p:${user.email}:${id}`, { ...meta, openedAt: Date.now() } satisfies ProjectMeta);
     return json({ project: { id: meta.id, name: meta.name, updatedAt: meta.updatedAt }, data });
   }
 
@@ -519,7 +574,7 @@ export function googleSetupPage(request: Request, opts: { reason?: string; statu
 }
 
 /** Build the Google consent redirect. Returns null when credentials are missing. */
-export function googleStartUrl(request: Request, env: AuthEnv): string | null {
+export function googleStartUrl(request: Request, env: AuthEnv, nonce = ""): string | null {
   if (!env.GOOGLE_CLIENT_ID) return null;
   const url = new URL(request.url);
   const origin = url.origin;
@@ -535,9 +590,41 @@ export function googleStartUrl(request: Request, env: AuthEnv): string | null {
     scope: "openid email profile",
     access_type: "online",
     prompt: "select_account",
-    state: popup ? "popup" : "app",
+    // state = "<mode>.<nonce>"; the nonce is also set as an HttpOnly cookie and checked in the callback (CSRF).
+    state: `${popup ? "popup" : "app"}${nonce ? `.${nonce}` : ""}`,
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+}
+
+const OAUTH_COOKIE = "obs_oauth";
+
+/** New random nonce for one Google sign-in attempt. */
+export function newOauthNonce(): string {
+  return randomB64(18).replace(/[^A-Za-z0-9]/g, "x");
+}
+
+export function oauthNonceCookie(nonce: string): string {
+  return `${OAUTH_COOKIE}=${nonce}; Path=/api/auth/google; HttpOnly; Secure; SameSite=Lax; Max-Age=600`;
+}
+
+export function clearOauthNonceCookie(): string {
+  return `${OAUTH_COOKIE}=; Path=/api/auth/google; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+}
+
+/** Split the OAuth `state` into its flow mode and nonce. */
+export function parseOauthState(state: string | null): { popup: boolean; nonce: string } {
+  const [mode = "", nonce = ""] = (state ?? "").split(".");
+  return { popup: mode === "popup", nonce };
+}
+
+/** True only when the callback state's nonce matches the cookie set at /start. */
+export function oauthStateValid(request: Request): boolean {
+  const { nonce } = parseOauthState(new URL(request.url).searchParams.get("state"));
+  const cookie = readCookie(request, OAUTH_COOKIE);
+  if (!nonce || !cookie || nonce.length !== cookie.length) return false;
+  let diff = 0;
+  for (let i = 0; i < nonce.length; i++) diff |= nonce.charCodeAt(i) ^ cookie.charCodeAt(i);
+  return diff === 0;
 }
 
 /**
@@ -619,7 +706,8 @@ export async function googleCallback(request: Request, env: AuthEnv): Promise<{ 
     headers: { authorization: `Bearer ${accessToken}` },
   });
   if (!infoRes.ok) throw new Error("userinfo-failed");
-  const info = await infoRes.json() as { email?: string; name?: string; sub?: string };
+  const info = await infoRes.json() as { email?: string; email_verified?: boolean | string; name?: string; sub?: string };
   if (!info.email) throw new Error("no-email");
+  if (info.email_verified !== true && info.email_verified !== "true") throw new Error("email-not-verified");
   return { email: info.email, name: info.name ?? info.email.split("@")[0], sub: info.sub };
 }

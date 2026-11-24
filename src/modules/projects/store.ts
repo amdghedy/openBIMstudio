@@ -20,6 +20,7 @@ import { normalizeProjectDoc, repairProjectDocInPlace } from "./project-schema";
 import { buildProjectFile, suggestedFileName } from "./project-file";
 import { backupProjectFile } from "./browser-recovery";
 import { appendProjectDeletion, appendProjectState, type QuarantinedJournalRecord } from "./indexeddb-journal";
+import { scopedDbName } from "../../core/account-scope";
 
 const DB_NAME = "open-bim-studio";
 const DB_VERSION = 4;
@@ -36,7 +37,7 @@ let dbPromise: Promise<IDBDatabase> | null = null;
 function openDb(): Promise<IDBDatabase> {
   if (!dbPromise) {
     const opening = new Promise<IDBDatabase>((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      const req = indexedDB.open(scopedDbName(DB_NAME), DB_VERSION);
       req.onupgradeneeded = () => {
         const db = req.result;
         if (!db.objectStoreNames.contains(S_PROJECTS)) {

@@ -1,3 +1,4 @@
+import { registerDirtyCheck } from "../core/dirty-registry"; registerDirtyCheck(() => tabs.some((t) => t.engine.isDirty()));
 /**
  * Drawing Editor — Standalone 2D DWG/DXF Environment.
  *

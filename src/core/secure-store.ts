@@ -10,7 +10,26 @@
  */
 import { decryptString, encryptString, generateStorageKey } from "./secret-crypto";
 
-const PREFIX = "obs.secure.";
+const BASE_PREFIX = "obs.secure.";
+const OWNER_LS_KEY = "obs.acct.owner"; // same key as core/account-scope.ts (kept literal: no import cycle)
+
+function scopeTag(): string {
+  let owner: string | null = null;
+  try { owner = localStorage.getItem(OWNER_LS_KEY); } catch { /* */ }
+  if (!owner) return "";
+  let h = 0x811c9dc5;
+  const t = owner.toLowerCase();
+  for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return `@${h.toString(36)}.`;
+}
+/**
+ * Secrets are stored per local account scope: signed out keeps the original
+ * "obs.secure.<name>" entries, a signed-in account uses "obs.secure.@<hash>.<name>".
+ * Stored values are never copied between scopes; a new account re-enters its keys.
+ * The page reloads on every account change, so the scope is fixed per page load.
+ */
+const PREFIX = BASE_PREFIX + scopeTag();
+const isGuestScope = PREFIX === BASE_PREFIX;
 const DB = "obs-secure";
 const STORE = "keys";
 
@@ -56,6 +75,7 @@ export async function initSecureStore(): Promise<void> {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (!k || !k.startsWith(PREFIX)) continue;
+      if (isGuestScope && k.startsWith(BASE_PREFIX + "@")) continue; // another account's secrets
       const name = k.slice(PREFIX.length);
       try { mem.set(name, await decryptString(key, localStorage.getItem(k)!, name)); }
       catch { localStorage.removeItem(k); /* unreadable (key was reset): drop rather than keep garbage */ }
@@ -65,7 +85,7 @@ export async function initSecureStore(): Promise<void> {
     console.warn("[secure-store] encryption unavailable, secrets stay in memory for this session only:", e);
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && k.startsWith(PREFIX)) mem.set(k.slice(PREFIX.length), localStorage.getItem(k) ?? "");
+      if (k && k.startsWith(PREFIX) && !(isGuestScope && k.startsWith(BASE_PREFIX + "@"))) mem.set(k.slice(PREFIX.length), localStorage.getItem(k) ?? "");
     }
   }
   ready = true;
@@ -123,6 +143,8 @@ function persist(name: string, value: string): void {
 export function migrateLegacy(name: string, legacyKey: string): string | null {
   const cur = secureGet(name);
   if (cur != null) { try { localStorage.removeItem(legacyKey); } catch { /* */ } return cur; }
+  // Old unscoped plaintext belongs to the signed-out device scope; an account must not inherit it.
+  if (!isGuestScope) return null;
   let legacy: string | null = null;
   try { legacy = localStorage.getItem(legacyKey); } catch { /* */ }
   if (legacy != null) {

@@ -6,6 +6,8 @@
  * recoverable copy. Copies are best-effort and never block the primary action.
  */
 
+import { scopedDbName } from "../../core/account-scope";
+
 export const BROWSER_RECOVERY_KEEP = 5;
 export const BROWSER_RECOVERY_MAX_BYTES = 256 * 1024 * 1024;
 const DB_NAME = "obs-project-recovery";
@@ -25,7 +27,7 @@ export interface BrowserRecoveryCopy {
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    const request = indexedDB.open(scopedDbName(DB_NAME), DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE)) {
