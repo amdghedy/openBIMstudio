@@ -125,16 +125,20 @@ t("cloud-account: sign-in dialog has Forgot password? + remembered chips + Enter
   assert.ok(/passInput\.focus\(\)/.test(enter), "Enter on email must move to the password field");
 });
 
-// ── 4. client: Google popup opener ──
-t("cloud-account: popup opener + obs-oauth listener + blocked-popup fallback", () => {
+// ── 4. client: Google full-page OAuth (popup path removed in c404fb4) ──
+t("cloud-account: full-page Google OAuth with server status pre-check and remembered account", () => {
   const fn = src(acct, "function openGoogleOAuth", "async function api<");
-  assert.ok(fn.includes('"/api/auth/google/start?popup=1"'), "popup must open the ?popup=1 start URL");
   assert.ok(fn.includes('d.type !== "obs-oauth"'), "message filter missing");
   assert.ok(fn.includes("e.origin !== location.origin"), "postMessage origin check missing");
-  assert.ok(fn.includes('window.location.href = "/api/auth/google/start"'), "blocked popup must fall back to full-page");
   assert.ok(fn.includes("rememberEmail(currentUser!.email)"), "google success must remember the account");
+  assert.ok(!fn.includes("window.open("), "Google sign-in must not rely on a popup");
+  assert.ok(fn.includes('fetch("/api/auth/google/status", { credentials: "same-origin" })'), "must check the auth API on this host first");
+  assert.ok(fn.includes("body.configured"), "must report when Google sign-in is not configured");
+  assert.ok(fn.includes('window.location.href = "/api/auth/google/start"'), "must continue to the full-page start URL");
+  assert.ok(!fn.includes("popup=1"), "full-page flow must not request the popup state");
+  assert.ok(fn.indexOf("/api/auth/google/status") < fn.indexOf('window.location.href = "/api/auth/google/start"'), "status check must come before the redirect");
   const dlg = src(acct, "google.addEventListener(\"click\"", "  const note = document.createElement");
-  assert.ok(dlg.includes("openGoogleOAuth((ok) =>"), "dialog google button must use the popup flow");
+  assert.ok(dlg.includes("openGoogleOAuth((ok) =>"), "dialog google button must call openGoogleOAuth");
 });
 
 // ── 5. CI registration ──
