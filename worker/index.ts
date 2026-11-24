@@ -1,5 +1,5 @@
 import { handleLinkedInRequest, LinkedInVault, type LinkedInEnv } from "./linkedin";
-import { AuthVault, googleStartUrl, googleCallback, googleSetupPage, googleStatus, googlePopupCallbackPage, sendResetEmail } from "./auth";
+import { AuthVault, googleStartUrl, googleCallback, googleSetupPage, googleStatus, googlePopupCallbackPage, sendResetEmail, newOauthNonce, oauthNonceCookie, clearOauthNonceCookie, oauthStateValid, parseOauthState } from "./auth";
 
 /**
  * Open BIM Studio edge worker.
@@ -206,14 +206,22 @@ export default {
       return googleStatus(env);
     }
     if (url.pathname === "/api/auth/google/start") {
-      const start = googleStartUrl(request, env);
+      const nonce = newOauthNonce();
+      const start = googleStartUrl(request, env, nonce);
       // Not configured: a styled explanation page instead of raw JSON — this is
       // a top-level browser navigation, the user would otherwise see JSON.
       if (!start) return googleSetupPage(request);
-      return Response.redirect(start, 302);
+      return new Response(null, { status: 302, headers: { location: start, "set-cookie": oauthNonceCookie(nonce), "cache-control": "no-store" } });
     }
     if (url.pathname === "/api/auth/google/callback") {
-      const popup = new URL(request.url).searchParams.get("state") === "popup";
+      const popup = parseOauthState(new URL(request.url).searchParams.get("state")).popup;
+      // CSRF guard: the state nonce must match the cookie set when this sign-in started.
+      if (!oauthStateValid(request)) {
+        const reason = "Google sign-in could not be verified (state-mismatch). Please start again.";
+        const bad = popup ? googlePopupCallbackPage(false, reason) : googleSetupPage(request, { reason, status: 400 });
+        bad.headers.append("set-cookie", clearOauthNonceCookie());
+        return bad;
+      }
       try {
         const info = await googleCallback(request, env);
         const stub = env.AUTH.get(env.AUTH.idFromName("global"));
@@ -237,7 +245,12 @@ export default {
           ? (setCookie
               ? googlePopupCallbackPage(true, "", setCookie)
               : googlePopupCallbackPage(true))
-          : new Response(null, { status: 302, headers: { location: "/?signedin=1", "set-cookie": setCookie } });
+          : (() => {
+              const h = new Headers({ location: "/?signedin=1" });
+              h.append("set-cookie", setCookie);
+              h.append("set-cookie", clearOauthNonceCookie());
+              return new Response(null, { status: 302, headers: h });
+            })();
       } catch (cause) {
         const code = cause instanceof Error ? cause.message : "error";
         if (code === "google-not-configured") return popup ? googlePopupCallbackPage(false, "Google sign-in is not configured on this deployment.") : googleSetupPage(request);
@@ -272,7 +285,7 @@ export default {
         return json({ error: "Account service unavailable." }, 503);
       }
     }
-    if (url.pathname.startsWith("/api/auth/") || url.pathname.startsWith("/api/projects")) {
+    if (url.pathname.startsWith("/api/auth/") || url.pathname.startsWith("/api/projects") || url.pathname.startsWith("/api/user/")) {
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_PREFLIGHT });
       try {
         const stub = env.AUTH.get(env.AUTH.idFromName("global"));
