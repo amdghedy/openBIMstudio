@@ -1,8 +1,6 @@
 /**
- * Converts a (large) IFC File to FRAG off the main thread. web-ifc reads the
- * file through a chunked callback, so the CONVERSION never holds the whole file
- * as one JS ArrayBuffer. NOTE: the STEP preflight below DOES make one transient
- * whole-file read (see Safety), so peak memory is still ~file size briefly.
+ * Converts a (large) IFC File to FRAG off the main thread WITHOUT ever
+ * materialising the whole file as one JS ArrayBuffer.
  *
  * The @thatopen/fragments IfcImporter accepts `readFromCallback` + a
  * synchronous `readCallback(offset, size)` (web-ifc OpenModelFromCallback).
@@ -14,20 +12,17 @@
  *                 | { type: "ready", frag: Uint8Array } | { type: "error", message }
  *
  * Safety: the same whole-file structural STEP preflight the main-thread path
- * runs (hang-class corruption, issue #231) runs HERE first, on a transient
- * in-worker read of the file that is released before web-ifc opens it. A
- * preflight scan that is slow cannot freeze the page, and the worker can be
- * terminated. If the browser cannot allocate that transient buffer the
- * conversion fails visibly; it never skips the check.
+ * runs (hang-class corruption, issue #231) runs HERE first, via the streaming
+ * twin preflightStepStreaming (identical results, <= 2 x 32 MB resident; see
+ * tests/step-preflight-stream equivalence check). A slow scan cannot freeze the
+ * page, and the worker can be terminated.
  *
- * Honest limit: this removes the whole-file JS copy during conversion (not
- * during the preflight) and keeps the page
- * responsive/terminable. It does NOT by itself guarantee that the parsed
- * model of a multi-GB IFC fits the 32-bit WASM heap.
+ * Honest limit: this does NOT by itself guarantee that the parsed model of a
+ * multi-GB IFC fits the 32-bit WASM heap.
  */
 import * as WEBIFC from "web-ifc";
 import * as FRAGS from "@thatopen/fragments";
-import { preflightStep } from "../modules/ifc-semantics/step-preflight";
+import { preflightStepStreaming } from "../modules/ifc-semantics/step-preflight-stream";
 
 const post = (m: unknown, t?: Transferable[]) =>
   (self as unknown as { postMessage(m: unknown, t?: Transferable[]): void }).postMessage(m, t);
@@ -51,9 +46,10 @@ self.addEventListener("message", async (ev: MessageEvent) => {
     const size = file.size;
     post({ type: "phase", text: "validating STEP structure (worker)…" });
     {
-      let whole: Uint8Array | null = new Uint8Array(reader.readAsArrayBuffer(file));
-      const pre = preflightStep(whole);
-      whole = null; // release before web-ifc opens the file
+      // Streaming preflight: same scanner logic as preflightStep, reading the file
+      // in <= 32 MB blocks (two cached). Peak memory is ~64 MB, not the file size.
+      const pre = preflightStepStreaming(size, (offset, length) =>
+        new Uint8Array(reader.readAsArrayBuffer(file.slice(offset, offset + length))));
       if (!pre.ok) {
         throw new Error(`This file is not a valid IFC (STEP) file: ${pre.reason}${pre.line ? ` (line ${pre.line})` : ""}. It was not opened.`);
       }
