@@ -30,10 +30,10 @@ const post = (m: unknown, t?: Transferable[]) =>
 // Same single-thread forcing as importer.ts getImporter(): never pick web-ifc's MT build.
 try {
   const proto = (WEBIFC as any).IfcAPI?.prototype;
-  if (proto && typeof proto.Init === "function" && !proto.Init.__obsForcedST) {
+  if (proto && typeof proto.Init === "function" && !proto.Init.stForcedSingleThread) {
     const orig = proto.Init;
     proto.Init = function (handler?: any, _f?: boolean) { return orig.call(this, handler, true); };
-    proto.Init.__obsForcedST = true;
+    proto.Init.stForcedSingleThread = true;
   }
 } catch { /* ignore */ }
 
