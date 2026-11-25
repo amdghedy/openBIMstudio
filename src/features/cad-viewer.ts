@@ -1806,6 +1806,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let cmp: { removed: Set<DxfEntity>; added: DxfEntity[] } | null = null;
   let tipEl: HTMLDivElement | null = null;
   let layoutI = -1;
+  /** Last paper layout entered, so MODEL/PAPER returns to it (A13). */
+  let lastPaperLayoutI = 0;
   const layoutIdxCache = new Map<number, M.SpatialIndex>();
   let press: { x: number; y: number; moved: boolean; id: number; band?: boolean; add?: boolean } | null = null;
   const sel = new Set<number>();
@@ -1932,6 +1934,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     /** DRAWORDER: the full entity paint order before / after the reorder. */
     orderBefore?: DxfEntity[];
     orderAfter?: DxfEntity[];
+    /** Space the edit was made in: -1 = model, >= 0 = layout index (A13).
+     * Stamped at push time so UNDO / REDO apply in the owning space even
+     * after a layout switch, instead of corrupting whichever space happens
+     * to be current. */
+    space?: number;
     /** Block table snapshots (BLOCK / redefine): restored with the entities so undo/redo is one transaction. */
     blocksBefore?: Record<string, DxfBlockDef> | null;
     blocksAfter?: Record<string, DxfBlockDef> | null;
@@ -1953,6 +1960,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
    */
   const MAX_UNDO_DEPTH = 200;
   const pushUndoAct = (act: UndoAction): void => {
+    // Stamp the space the edit was made in (A13) — once; a redone action
+    // keeps its original space instead of being re-stamped to the space
+    // the redo happened to run from.
+    if (act.space === undefined) act.space = layoutI;
     undoStack.push(act);
     if (undoStack.length > MAX_UNDO_DEPTH) undoStack.shift();
   };
@@ -4068,6 +4079,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const eb = M.entityBBox(e);
     bounds = M.extendBounds(bounds, wasEmpty, eb);
     idx = M.buildIndex(ents, bounds);
+    syncSpaceIndex();
     pushUndoAct({ type: "add", entities: [e] });
     markDirty();
     redoStack.length = 0;
@@ -4103,25 +4115,24 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (layoutI < 0) modelEnts = keep;
     sel.clear();
     selected = -1;
-    let b: M.BBox | null = null;
-    for (const e of ents) b = M.unionBBox(b, M.entityBBox(e));
-    bounds = b ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 };
-    idx = M.buildIndex(ents, bounds);
+    rebuildIndex();
     showProps();
     draw();
     logCmd(`Command: ERASE — ${removed.length} object(s) deleted`);
   }
 
-  /** Replaces entity `oldE` with `newE` (identity-based) in ents / modelEnts. */
-  const replaceEntity = (oldE: DxfEntity, newE: DxfEntity): void => {
+  /** Replaces entity `oldE` with `newE` (identity-based) in one list. */
+  const replaceEntityIn = (list: DxfEntity[], oldE: DxfEntity, newE: DxfEntity): void => {
     const cu = entUid.get(oldE);
     if (cu && !entUid.has(newE)) entUid.set(newE, cu);
-    const i = ents.indexOf(oldE);
-    if (i >= 0) ents[i] = newE;
-    if (modelEnts !== ents) {
-      const j = modelEnts.indexOf(oldE);
-      if (j >= 0) modelEnts[j] = newE;
-    }
+    const i = list.indexOf(oldE);
+    if (i >= 0) list[i] = newE;
+  };
+
+  /** Replaces entity `oldE` with `newE` (identity-based) in ents / modelEnts. */
+  const replaceEntity = (oldE: DxfEntity, newE: DxfEntity): void => {
+    replaceEntityIn(ents, oldE, newE);
+    if (modelEnts !== ents) replaceEntityIn(modelEnts, oldE, newE);
   };
 
   const rebuildIndex = (): void => {
@@ -4130,8 +4141,56 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     for (const e of ents) b = M.unionBBox(b, M.entityBBox(e));
     bounds = b ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 };
     idx = M.buildIndex(ents, bounds);
+    syncSpaceIndex();
   };
 
+  /**
+   * Keep the cached per-space index in step after the live entity list
+   * changed (A13): activate() reuses the cached model / layout index on
+   * a switch back, so a rebuild that only refreshed the live `idx` left
+   * picks stale after a layout round-trip (an undone entity stayed
+   * pickable, a modified one kept its old box). modelBounds only follows
+   * when the space is non-empty, so an emptied drawing keeps its default
+   * sheet frame.
+   */
+  const syncSpaceIndex = (): void => {
+    if (!idx) return;
+    if (layoutI < 0) {
+      modelIdx = idx;
+      if (ents.length) modelBounds = bounds;
+    } else {
+      layoutIdxCache.set(layoutI, idx);
+    }
+  };
+
+  /**
+   * Refresh the cached index of a space that is not currently on screen
+   * (A13): an undo/redo landing in another space changes that space's
+   * list, so its cached index — and the model bounds — would go stale and
+   * picks after the switch back would miss the restored entities. A
+   * layout entry is simply dropped; activate() rebuilds it on the next
+   * switch into that layout.
+   */
+  const refreshOffscreenSpace = (space: number, list: DxfEntity[]): void => {
+    if (space < 0) {
+      let b: M.BBox | null = null;
+      for (const e of list) b = M.unionBBox(b, M.entityBBox(e));
+      if (list.length && b) modelBounds = b;
+      modelIdx = M.buildIndex(list, modelBounds ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 });
+    } else {
+      layoutIdxCache.delete(space);
+    }
+  };
+
+  /**
+   * UNDO applies the action in the space it was made in (A13): the action
+   * carries its owning space (`space`, stamped at push time), so an edit
+   * made in model space is undone in model space even when the user has
+   * since switched to a paper layout — and never leaks model entities into
+   * a layout's entity list. The current space is left alone when the
+   * action belongs elsewhere; its view is only refreshed when the action
+   * touched the space on screen.
+   */
   function undo(): void {
     const act = undoStack.pop();
     if (!act) {
@@ -4139,41 +4198,28 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     restoreBlocks(act.blocksBefore);
-    if (act.type === "add") {
-      // Remove added entities
-      const addSet = new Set(act.entities ?? []);
-      ents = ents.filter((e) => !addSet.has(e));
-      if (layoutI < 0) modelEnts = ents;
-      redoStack.push(act);
-    } else if (act.type === "delete") {
-      // Restore deleted entities
-      ents.push(...(act.entities ?? []));
-      if (layoutI < 0) modelEnts.push(...(act.entities ?? []));
-      redoStack.push(act);
-    } else if (act.type === "modify") {
+    const space = act.space ?? -1;
+    const owned = space < 0 ? modelEnts : doc?.layouts?.[space]?.entities;
+    // A layout the action belongs to can only disappear with the document;
+    // fall back to the current space rather than dropping the undo.
+    const list = owned ?? ents;
+    let next = AcadParity.undoEntityList(list, act);
+    if (act.type === "modify") {
       const before = act.before ?? [];
       const after = act.after ?? [];
-      for (let i = 0; i < after.length; i++) replaceEntity(after[i], before[i]);
-      if (layoutI < 0) modelEnts = ents;
-      redoStack.push(act);
-    } else if (act.type === "order") {
-      // DRAWORDER: restore the full paint order captured before the reorder.
-      if (act.orderBefore) {
-        ents = act.orderBefore.slice();
-        if (layoutI < 0) modelEnts = ents;
-      }
-      redoStack.push(act);
-    } else if (act.type === "replace") {
-      // N→M replacement (TRIM / BREAK / EXPLODE / JOIN / FILLET / CHAMFER):
-      // drop the after-entities, restore the before-entities.
-      const afterSet = new Set(act.after ?? []);
-      const restored = act.before ?? [];
-      const kept = ents.filter((e) => !afterSet.has(e));
-      kept.push(...restored);
-      ents = kept;
-      if (layoutI < 0) modelEnts = ents;
-      redoStack.push(act);
+      for (let i = 0; i < after.length; i++) replaceEntityIn(next, after[i], before[i]);
     }
+    if (space < 0) {
+      modelEnts = next;
+      if (doc) doc.entities = next;
+    } else if (doc?.layouts?.[space]) {
+      doc.layouts[space].entities = next;
+    }
+    // The edit landed in a space that is not on screen: refresh that
+    // space's cached index now, or picks go stale after the switch back.
+    if (list !== ents) refreshOffscreenSpace(space, next);
+    if (list === ents) ents = next;
+    redoStack.push(act);
     rebuildIndex();
     // Selection holds indices into the old entity list; after a replace they may point past the end.
     sel.clear();
@@ -4189,41 +4235,27 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     restoreBlocks(act.blocksAfter);
-    if (act.type === "add") {
-      ents.push(...(act.entities ?? []));
-      if (layoutI < 0) modelEnts.push(...(act.entities ?? []));
-      pushUndoAct(act);
-      markDirty();
-    } else if (act.type === "delete") {
-      const delSet = new Set(act.entities ?? []);
-      ents = ents.filter((e) => !delSet.has(e));
-      if (layoutI < 0) modelEnts = ents;
-      pushUndoAct(act);
-      markDirty();
-    } else if (act.type === "modify") {
+    const space = act.space ?? -1;
+    const owned = space < 0 ? modelEnts : doc?.layouts?.[space]?.entities;
+    const list = owned ?? ents;
+    let next = AcadParity.redoEntityList(list, act);
+    if (act.type === "modify") {
       const before = act.before ?? [];
       const after = act.after ?? [];
-      for (let i = 0; i < before.length; i++) replaceEntity(before[i], after[i]);
-      if (layoutI < 0) modelEnts = ents;
-      pushUndoAct(act);
-      markDirty();
-    } else if (act.type === "order") {
-      if (act.orderAfter) {
-        ents = act.orderAfter.slice();
-        if (layoutI < 0) modelEnts = ents;
-      }
-      pushUndoAct(act);
-      markDirty();
-    } else if (act.type === "replace") {
-      const beforeSet = new Set(act.before ?? []);
-      const produced = act.after ?? [];
-      const kept = ents.filter((e) => !beforeSet.has(e));
-      kept.push(...produced);
-      ents = kept;
-      if (layoutI < 0) modelEnts = ents;
-      pushUndoAct(act);
-      markDirty();
+      for (let i = 0; i < before.length; i++) replaceEntityIn(next, before[i], after[i]);
     }
+    if (space < 0) {
+      modelEnts = next;
+      if (doc) doc.entities = next;
+    } else if (doc?.layouts?.[space]) {
+      doc.layouts[space].entities = next;
+    }
+    // The edit landed in a space that is not on screen: refresh that
+    // space's cached index now, or picks go stale after the switch back.
+    if (list !== ents) refreshOffscreenSpace(space, next);
+    if (list === ents) ents = next;
+    pushUndoAct(act);
+    markDirty();
     rebuildIndex();
     // Selection holds indices into the old entity list; after a replace they may point past the end.
     sel.clear();
@@ -4458,6 +4490,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (b) bounds = M.extendBounds(bounds, wasEmpty, b);
     // Appends go into the existing index (O(added)); a full rebuild only when something leaves its frame.
     if (!(idx && M.indexAppend(idx, ents, firstNew))) idx = M.buildIndex(ents, bounds ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 });
+    syncSpaceIndex();
     pushUndoAct({ type: "add", entities: list });
     markDirty();
     redoStack.length = 0;
@@ -6279,13 +6312,17 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (!doc) return;
     clearModState();
     layoutI = i;
+    // Remember the last paper layout so MODEL/PAPER can return to it.
+    if (i >= 0) lastPaperLayoutI = i;
     sel.clear();
     selected = -1;
     pts = [];
     drawn = [];
     hits = [];
     rband = null;
-    history.length = 0;
+    // A13: the view history (Zoom Previous) is space-agnostic camera state
+    // and must survive a layout switch — it used to be wiped here, so
+    // Zoom Previous reported "No previous view" after every switch.
     if (i < 0 || !doc.layouts?.[i]) {
       layoutI = -1;
       ents = modelEnts;
@@ -6317,14 +6354,64 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     scheduleSessionSave();
   }
 
+  /** Create a layout with a default viewport fitted to the model, switch to it. */
+  function createLayoutAndActivate(name?: string): void {
+    if (!doc) {
+      logCmd("LAYOUT: open a drawing first.");
+      return;
+    }
+    const b = modelBounds;
+    const sheet =
+      b && Number.isFinite(b.minX + b.maxX + b.minY + b.maxY)
+        ? {
+            viewCenter: { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2, z: 0 },
+            viewHeight: Math.max(b.maxY - b.minY, 1) * 1.1,
+          }
+        : undefined;
+    const nm = AcadParity.addLayout(doc, name, sheet);
+    buildTabs();
+    activate((doc.layouts?.length ?? 1) - 1);
+    logCmd(`LAYOUT: created "${nm}".`);
+    markDirty();
+  }
+
+  /** MODEL/PAPER status-bar toggle (A13): PAPER goes to the last paper
+   * layout, creating Layout1 when the drawing has none; MODEL returns to
+   * model space. The drawing state follows the toggle — activate() swaps
+   * the entity list, index and view — it is not a label change. */
+  function toggleSpace(): void {
+    if (!doc) return;
+    if (layoutI >= 0) {
+      activate(-1);
+      logCmd("Switched to model space.");
+    } else if (doc.layouts?.length) {
+      activate(Math.min(lastPaperLayoutI, doc.layouts.length - 1));
+      logCmd("Switched to paper space.");
+    } else {
+      createLayoutAndActivate();
+      logCmd("Switched to paper space.");
+    }
+  }
+
   function buildTabs(): void {
-    const n = doc?.layouts?.length ?? 0;
-    tabsEl.style.display = n ? "flex" : "none";
-    tabsEl.innerHTML = n
-      ? `<button data-li="-1">Model</button>` +
-        doc!.layouts!.map((l, i) => `<button data-li="${i}">${escapeHtml(l.name)}</button>`).join("")
-      : "";
-    tabsEl.querySelectorAll<HTMLButtonElement>("button").forEach((b) => (b.onclick = () => activate(Number(b.dataset.li))));
+    // The strip is always visible while a drawing is open (AutoCAD shows
+    // the Model tab even with no layouts) so the "+" new-layout button is
+    // reachable from a blank drawing, not only once a layout exists.
+    if (!doc) {
+      tabsEl.style.display = "none";
+      tabsEl.innerHTML = "";
+      return;
+    }
+    tabsEl.style.display = "flex";
+    tabsEl.innerHTML =
+      `<button data-li="-1">Model</button>` +
+      (doc.layouts ?? []).map((l, i) => `<button data-li="${i}">${escapeHtml(l.name)}</button>`).join("") +
+      `<button data-new-layout title="New layout" aria-label="New layout">+</button>`;
+    tabsEl.querySelectorAll<HTMLButtonElement>("button[data-li]").forEach((b) => {
+      b.onclick = () => activate(Number(b.dataset.li));
+      b.classList.toggle("on", Number(b.dataset.li) === layoutI);
+    });
+    tabsEl.querySelector<HTMLButtonElement>("button[data-new-layout]")!.onclick = () => createLayoutAndActivate();
   }
 
   function setSel(ids: number[], add = false): void {
@@ -9258,6 +9345,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         pushView();
         view = M.zoomWindow(view, a, b);
       }
+      // ZOOM W is a one-shot command (A13): after the window the tool
+      // must return to select, or every later canvas click starts a new
+      // zoom window instead of picking.
+      setTool("select");
       draw();
     }
     try {
@@ -9790,7 +9881,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ${promptBit}
       <span style="color:#f8fafc;font-weight:600" data-s="coords">${xy}</span>
       <span class="sep"></span>
-      <button class="obs-status-btn active" data-s="space">${layoutI >= 0 ? "PAPER" : "MODEL"}</button>
+      <button class="obs-status-btn active" data-s="space" title="Toggle model/paper space">${layoutI >= 0 ? "PAPER" : "MODEL"}</button>
       <button class="obs-status-btn ${showGrid ? "active" : ""}" data-s="grid" title="Grid (F7)">GRID</button>
       <button class="obs-status-btn ${gridSnapOn ? "active" : ""}" data-s="gridsnap" title="Snap to grid (F9)">SNAP</button>
       <button class="obs-status-btn ${snapOn ? "active" : ""}" data-s="snap" title="Object Snap (F3)">OSNAP</button>
@@ -9816,6 +9907,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (t?.closest("[data-s=ucsview]")) setUcs(!ucsActive);
     });
     tools.querySelector('[data-a=ucsview]')?.classList.toggle("on", ucsActive);
+    statusEl.querySelector("[data-s=space]")?.addEventListener("click", () => {
+      toggleSpace();
+    });
     statusEl.querySelector("[data-s=grid]")?.addEventListener("click", () => {
       showGrid = !showGrid;
       updateStatus();
@@ -10370,10 +10464,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (!doc) { logCmd("LAYOUT: open a drawing first."); return; }
       const sub = (parts[1] || "LIST").toUpperCase();
       if (sub === "NEW" || sub === "N") {
-        const nm = AcadParity.addLayout(doc, parts.slice(2).join(" ") || undefined);
-        buildTabs();
-        logCmd(`LAYOUT: created "${nm}".`);
-        markDirty();
+        // Creates the layout and makes it current, like AutoCAD's LAYOUT New.
+        createLayoutAndActivate(parts.slice(2).join(" ") || undefined);
         return;
       }
       const list = (doc.layouts ?? []).map((l, i) => `  ${i + 1}. ${l.name} (${l.entities.length} ents)`).join("\n") || "  (none)";
@@ -12047,6 +12139,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       sel.clear();
       markDirty();
       idx = M.buildIndex(ents, bounds ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 });
+      syncSpaceIndex();
       draw();
       logCmd(`ERASEOUT: deleted ${removed.length} outside bounds${outside.length > removed.length ? ` (${outside.length - removed.length} locked-layer object(s) kept)` : ""}`);
       return;
@@ -14180,6 +14273,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       modelEnts.splice(at2 < 0 ? modelEnts.length : at2, 0, ...after);
     }
     idx = M.buildIndex(ents, bounds ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 });
+    syncSpaceIndex();
     pushUndoAct({ type: "replace", before, after });
     markDirty();
     draw();
