@@ -59,6 +59,22 @@ function mapHatch(h: DxfHatch, f: (p: Pt) => Pt): DxfHatch {
   return { ...h, loops: h.loops.map((loop) => loop.map(f)) };
 }
 
+/**
+ * A DIMENSION moves with its definition points; the drawn geometry (its
+ * anonymous block) is transformed separately by the caller. Rotation is
+ * derived from the points, so there is no angle to adjust here.
+ */
+function mapDimPts(e: Extract<DxfEntity, { type: "DIMENSION" }>, f: (p: Pt) => Pt): DxfEntity {
+  return {
+    ...e,
+    defPoint: f(e.defPoint),
+    ...(e.extOrigin1 ? { extOrigin1: f(e.extOrigin1) } : {}),
+    ...(e.extOrigin2 ? { extOrigin2: f(e.extOrigin2) } : {}),
+    ...(e.curvePoint ? { curvePoint: f(e.curvePoint) } : {}),
+    ...(e.textPoint ? { textPoint: f(e.textPoint) } : {}),
+  };
+}
+
 /* ── Entity transforms ── */
 
 function translateEntCore(e: DxfEntity, dx: number, dy: number): DxfEntity {
@@ -85,6 +101,8 @@ function translateEntCore(e: DxfEntity, dx: number, dy: number): DxfEntity {
     case "XLINE":
       // The anchor moves; the direction is relative and unchanged.
       return { ...e, start: translatePt(e.start, dx, dy) };
+    case "DIMENSION":
+      return mapDimPts(e, (q) => translatePt(q, dx, dy));
   }
 }
 
@@ -138,8 +156,10 @@ function rotateEntCore(e: DxfEntity, cx: number, cy: number, deg: number): DxfEn
         },
       };
     }
+    case "DIMENSION":
+      return mapDimPts(e, (q) => rotatePt(q, { x: cx, y: cy }, rad));
     default:
-      // SOLID, HATCH, DIMENSION, etc. — leave unhandled types unchanged
+      // SOLID, HATCH, etc. — leave unhandled types unchanged
       return e;
   }
 }
@@ -203,6 +223,8 @@ function mirrorEntCore(e: DxfEntity, a: Pt, b: Pt): DxfEntity {
       const tip = mirrorPt({ x: e.start.x + e.direction.x, y: e.start.y + e.direction.y }, a, b);
       return { ...e, start: s, direction: { x: tip.x - s.x, y: tip.y - s.y } };
     }
+    case "DIMENSION":
+      return mapDimPts(e, (q) => mirrorPt(q, a, b));
   }
 }
 
@@ -240,6 +262,8 @@ function scaleEntCore(e: DxfEntity, cx: number, cy: number, k: number): DxfEntit
     case "XLINE":
       // Scale the anchor; a uniform scale leaves the direction parallel.
       return { ...e, start: scalePt(e.start, { x: cx, y: cy }, k) };
+    case "DIMENSION":
+      return mapDimPts(e, (q) => scalePt(q, { x: cx, y: cy }, k));
   }
 }
 
@@ -271,6 +295,8 @@ export function entityArrayAnchor(e: DxfEntity): Pt {
     case "RAY":
     case "XLINE":
       return { x: e.start.x, y: e.start.y };
+    case "DIMENSION":
+      return { x: e.defPoint.x, y: e.defPoint.y };
   }
 }
 
@@ -1551,6 +1577,12 @@ export function stretchEnts(ents: DxfEntity[], win: { minX: number; minY: number
       case "XLINE":
         // Stretch moves the anchor; the direction is relative and unchanged.
         return inside(e.start) ? translateEnt(e, dp.x, dp.y) : e;
+      case "DIMENSION": {
+        // Each definition point inside the window rides the stretch.
+        const pts = [e.defPoint, e.extOrigin1, e.extOrigin2, e.curvePoint, e.textPoint];
+        if (!pts.some((p) => p && inside(p))) return e;
+        return mapDimPts(e, (q) => (inside(q) ? translatePt(q, dp.x, dp.y) : q));
+      }
     }
   });
 }

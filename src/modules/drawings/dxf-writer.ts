@@ -3,7 +3,7 @@
  * Pure TypeScript - no native deps.
  */
 
-import type { DxfDocument, DxfEntity, DxfLayer, DxfPoint, DxfViewport } from "./dxf-types";
+import type { DxfDimStyle, DxfDocument, DxfEntity, DxfLayer, DxfPoint, DxfViewport } from "./dxf-types";
 import { ensureLinetypes, fontDxfFile, isTrueTypeFont, lineweightToDxf, linetypesInUse } from "./cad-styles";
 import { TEXT_LINE_PITCH } from "../cad-viewer/viewer-math";
 import { nativeIfValid, splineDxfBody, ellipseDxfBody } from "./native-curves";
@@ -322,7 +322,47 @@ export function layoutsNotSaved(doc: Pick<DxfDocument, "layouts">): number {
   return Math.max(0, (doc.layouts?.length ?? 0) - 1);
 }
 
-function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TEXT" }>) => string, hatchEntities = true): string {
+/**
+ * DIMENSION entity (DXF reference): definition points per type, style name,
+ * measurement text, and the anonymous block holding the drawn geometry.
+ * Group 70 carries the type in bits 0-2 plus bit 5 (32) when the block is
+ * referenced only by this dimension. Group 50 (dimension-line rotation) is
+ * derived from the definition points: rotated-linear is horizontal (0) or
+ * vertical (90) by the extension origins; aligned uses their true angle.
+ * Radius/diameter carry no rotation — the reader measures them from the
+ * centre + curve point. Group 40 (leader length) is omitted: the model
+ * stores no leader length, and inventing one would misplace the fallback
+ * text; the anonymous block is authoritative.
+ */
+function writeDimensionEntity(e: Extract<DxfEntity, { type: "DIMENSION" }>, blockName?: string): string {
+  let s = entityHead(e, "DIMENSION");
+  s += pair(100, "AcDbDimension");
+  if (blockName) s += pair(2, blockName);
+  if (e.styleName) s += pair(3, e.styleName);
+  s += writePoint([10, 20, 30], e.defPoint);
+  if (e.textPoint) s += writePoint([11, 21, 31], e.textPoint);
+  if (e.dimType === 0 || e.dimType === 1) {
+    if (e.extOrigin1) s += writePoint([13, 23, 33], e.extOrigin1);
+    if (e.extOrigin2) s += writePoint([14, 24, 34], e.extOrigin2);
+    if (e.extOrigin1 && e.extOrigin2) {
+      const dx = e.extOrigin2.x - e.extOrigin1.x, dy = e.extOrigin2.y - e.extOrigin1.y;
+      const rot =
+        e.dimType === 0
+          ? Math.abs(dx) >= Math.abs(dy)
+            ? 0
+            : 90
+          : ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
+      s += pair(50, rot);
+    }
+  } else {
+    if (e.curvePoint) s += writePoint([15, 25, 35], e.curvePoint);
+  }
+  if (e.text != null) s += pair(1, e.text);
+  s += pair(70, e.dimType | (blockName ? 32 : 0));
+  return s;
+}
+
+function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TEXT" }>) => string, hatchEntities = true, dimBlockByEntity?: ReadonlyMap<DxfEntity, string>): string {
   let s = "";
 
   if (e.type === "LINE") {
@@ -410,6 +450,11 @@ function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TE
     s += entityHead(e, e.type);
     s += writePoint([10, 20, 30], e.start);
     s += writePoint([11, 21, 31], e.direction);
+  } else if (e.type === "DIMENSION") {
+    // The anonymous block name is assigned by writeDxf's pre-pass (the
+    // block holds this dimension's drawn geometry); without one the entity
+    // still carries its definition points for the native fallback.
+    s += writeDimensionEntity(e, dimBlockByEntity?.get(e));
   }
   return s;
 }
@@ -433,6 +478,12 @@ function computeExtents(entities: DxfEntity[]): { min: DxfPoint; max: DxfPoint }
       e.points.forEach(add);
     } else if (e.type === "TEXT" || e.type === "POINT") {
       add(e.position);
+    } else if (e.type === "DIMENSION") {
+      add(e.defPoint);
+      if (e.extOrigin1) add(e.extOrigin1);
+      if (e.extOrigin2) add(e.extOrigin2);
+      if (e.curvePoint) add(e.curvePoint);
+      if (e.textPoint) add(e.textPoint);
     } else if (e.type === "RAY" || e.type === "XLINE") {
       // Native behaviour: infinite lines do not define the drawing extents.
     }
@@ -441,6 +492,37 @@ function computeExtents(entities: DxfEntity[]): { min: DxfPoint; max: DxfPoint }
     return { min: { x: 0, y: 0 }, max: { x: 100, y: 100 } };
   }
   return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
+}
+
+/** DIMSTYLE table (DXF reference groups): the styles a DIMENSION entity's group 3 can name. */
+function dimstyleTable(styles: Record<string, DxfDimStyle>): string {
+  const names = Object.keys(styles);
+  let s = "";
+  s += pair(0, "TABLE");
+  s += pair(2, "DIMSTYLE");
+  s += pair(5, nextHandle());
+  s += pair(100, "AcDbSymbolTable");
+  s += pair(70, names.length);
+  for (const name of names) {
+    const st = styles[name];
+    s += pair(0, "DIMSTYLE");
+    s += pair(5, nextHandle());
+    s += pair(100, "AcDbSymbolTableRecord");
+    s += pair(100, "AcDbDimStyleTableRecord");
+    s += pair(2, name);
+    s += pair(70, 0);
+    if (st.scale != null) s += pair(40, st.scale);
+    if (st.arrowSize != null) s += pair(41, st.arrowSize);
+    if (st.extOffset != null) s += pair(42, st.extOffset);
+    if (st.extExtend != null) s += pair(44, st.extExtend);
+    if (st.textHeight != null) s += pair(140, st.textHeight);
+    if (st.textGap != null) s += pair(147, st.textGap);
+    if (st.decimals != null) s += pair(271, st.decimals);
+    if (st.linearFactor != null) s += pair(143, st.linearFactor);
+    if (st.postFix != null) s += pair(3, st.postFix);
+  }
+  s += pair(0, "ENDTAB");
+  return s;
 }
 
 /** Serialize a document to DXF R2010 ASCII. */
@@ -478,12 +560,86 @@ export interface WriteDxfOptions {
   allLayouts?: boolean;
 }
 
+interface CollectedDimension {
+  /** The DIMENSION entity as written, with its text resolved from the drawn geometry. */
+  entity: Extract<DxfEntity, { type: "DIMENSION" }>;
+  /** The DIMENSION entity object as it appears in doc.entities. */
+  original: Extract<DxfEntity, { type: "DIMENSION" }>;
+  dimId: string;
+  /** Anonymous block holding the dimension's drawn geometry (undefined when it has none). */
+  blockName?: string;
+  /** Tagged entities (meta.dimId) that move into the anonymous block. */
+  geometry: DxfEntity[];
+}
+
+/**
+ * Validates the DIMENSION entities in the document and resolves each one's
+ * drawn geometry + measurement text. A DIMENSION without its required
+ * definition points (extension origins for linear/aligned, curve point for
+ * radius/diameter) is skipped — its geometry stays plain, today's behaviour,
+ * rather than writing a DIMENSION no reader can measure. A second DIMENSION
+ * reusing an already-consumed dimId keeps its definition points but gets no
+ * block, so the geometry is never written twice. Angular, arc-length and
+ * centre-mark dimensions have no DIMENSION entity in this model and are
+ * never collected here.
+ */
+function collectDimensions(doc: DxfDocument): CollectedDimension[] {
+  const takenNames = new Set(Object.values(doc.blocks ?? {}).map((b) => b.name.toUpperCase()));
+  const usedBlockNames = new Set<string>();
+  const usedDimIds = new Set<string>();
+  const out: CollectedDimension[] = [];
+  let n = 0;
+  for (const e of doc.entities) {
+    if (e.type !== "DIMENSION") continue;
+    const supported = e.dimType === 0 || e.dimType === 1 || e.dimType === 3 || e.dimType === 4;
+    const valid =
+      supported &&
+      Number.isFinite(e.defPoint?.x) &&
+      Number.isFinite(e.defPoint?.y) &&
+      ((e.dimType === 0 || e.dimType === 1) ? !!e.extOrigin1 && !!e.extOrigin2 : !!e.curvePoint);
+    if (!valid) continue;
+    const dimId = e.dimId ?? "";
+    const freshId = dimId && !usedDimIds.has(dimId);
+    if (freshId) usedDimIds.add(dimId);
+    const geometry = freshId ? doc.entities.filter((g) => g.meta?.dimId === dimId) : [];
+    // Measurement text comes from the drawn TEXT entity — the geometry is
+    // the source of truth for what the dimension shows; the entity's own
+    // text field is only a fallback for a DIMENSION without geometry.
+    const textEnt = geometry.find((g): g is Extract<DxfEntity, { type: "TEXT" }> => g.type === "TEXT");
+    const entity = {
+      ...e,
+      ...(textEnt ? { text: textEnt.value, textPoint: { ...textEnt.position } } : {}),
+    };
+    let blockName: string | undefined;
+    if (geometry.length) {
+      do {
+        blockName = `*D${++n}`;
+      } while (takenNames.has(blockName) || usedBlockNames.has(blockName));
+      usedBlockNames.add(blockName);
+    }
+    out.push({ entity, original: e, dimId, blockName, geometry });
+  }
+  return out;
+}
+
 export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
   const layers =
     doc.layers.length > 0
       ? doc.layers
       : [{ name: "0", color: 7 }];
   const userBlocks = Object.values(doc.blocks ?? {}).filter((b) => !/^\*(model_space|paper_space)/i.test(b.name));
+  // A5: a DIMENSION's drawn geometry lives in its anonymous *D<n> block, not
+  // as plain entities — collect the dimensions before anything else reads
+  // the entity list, and resolve each DIMENSION's text from its geometry.
+  const dims = collectDimensions(doc);
+  const dimGeometry = new Set(dims.flatMap((d) => d.geometry));
+  // Anonymous block per DIMENSION *entity* (not per dimId): two DIMENSIONs
+  // sharing one dimId must not both claim the same block.
+  const dimBlockByEntity = new Map(dims.filter((d) => d.blockName).map((d) => [d.entity as DxfEntity, d.blockName!]));
+  const dimBlocks: DxfBlockDef[] = dims
+    .filter((d) => d.blockName)
+    .map((d) => ({ name: d.blockName!, base: { x: 0, y: 0 }, entities: d.geometry, attdefs: [] }));
+  const resolvedDimByOriginal = new Map(dims.map((d) => [d.original as DxfEntity, d.entity]));
   // Styles and linetypes used inside block bodies must be declared too.
   const allEntities = userBlocks.length ? [...doc.entities, ...userBlocks.flatMap((b) => b.entities)] : doc.entities;
   const extents = doc.extents ?? computeExtents(doc.entities);
@@ -526,13 +682,17 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
   s += linetypeTable(defs);
   s += layerTable(layers);
   s += styles.table;
-  if (userBlocks.length) s += blockRecordTable(userBlocks);
+  // The style names a DIMENSION's group 3 can reference; only written when
+  // the file actually carries dimensions, so dimension-free saves are
+  // byte-identical to before.
+  if (dims.length && doc.dimStyleTable && Object.keys(doc.dimStyleTable).length) s += dimstyleTable(doc.dimStyleTable);
+  if (userBlocks.length || dimBlocks.length) s += blockRecordTable([...userBlocks, ...dimBlocks]);
   s += pair(0, "ENDSEC");
 
   // BLOCKS: native block definitions, then extra sheets (DWG conversion only)
   const extraSheets = opts.allLayouts ? (doc.layouts ?? []).slice(1) : [];
   const xrefDecls = (doc.xrefs ?? []).filter((x) => !userBlocks.some((b) => b.name === x.name));
-  if (extraSheets.length || userBlocks.length || xrefDecls.length) {
+  if (extraSheets.length || userBlocks.length || xrefDecls.length || dimBlocks.length) {
     s += pair(0, "SECTION");
     s += pair(2, "BLOCKS");
     // External references: an empty block flagged 4 (xref) / 12 (overlay) carrying the stored path (group 1).
@@ -543,6 +703,10 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
       s += pair(0, "ENDBLK") + pair(5, nextHandle()) + pair(100, "AcDbEntity") + pair(8, "0") + pair(100, "AcDbBlockEnd");
     }
     for (const b of userBlocks) s += writeBlockDef(b, styles.nameFor, (opts.hatches ?? "hatch") === "hatch");
+    // Anonymous dimension blocks: the drawn geometry of each DIMENSION.
+    // Written with the conformant prologue like user blocks (the legacy form
+    // below is only for the DWG converter's extra paper-space sheets).
+    for (const b of dimBlocks) s += writeBlockDef(b, styles.nameFor, (opts.hatches ?? "hatch") === "hatch");
     legacyPrologue = true; // DWG-converter block contents use the legacy entity form (see above)
     extraSheets.forEach((sheet, i) => {
       const name = `*Paper_Space${i + 1}`;
@@ -560,8 +724,15 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
   // ENTITIES
   s += pair(0, "SECTION");
   s += pair(2, "ENTITIES");
+  const hatchFlag = (opts.hatches ?? "hatch") === "hatch";
   for (const e of doc.entities) {
-    s += writeEntity(e, styles.nameFor, (opts.hatches ?? "hatch") === "hatch");
+    // Drawn dimension geometry lives in its DIMENSION's anonymous block.
+    if (dimGeometry.has(e)) continue;
+    // A DIMENSION collectDimensions rejected (unmeasurable definition
+    // points) is not written at all — its geometry stays plain.
+    if (e.type === "DIMENSION" && !resolvedDimByOriginal.has(e)) continue;
+    const toWrite = e.type === "DIMENSION" ? (resolvedDimByOriginal.get(e) ?? e) : e;
+    s += writeEntity(toWrite, styles.nameFor, hatchFlag, dimBlockByEntity);
   }
   // The first paper-space layout is the drawing's active sheet: its entities and
   // viewports are written with group 67 = 1, which is how DXF stores paper space.

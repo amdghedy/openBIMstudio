@@ -471,6 +471,12 @@ export function entityBBox(e: DxfEntity): BBox {
       return boxOf([{ x: o.dx, y: o.dy }, { x: o.dx + w, y: o.dy }, { x: o.dx + w, y: o.dy + h }, { x: o.dx, y: o.dy + h }].map((p) => ({ x: e.position.x + p.x * c - p.y * s, y: e.position.y + p.x * s + p.y * c })));
     }
     case "POINT": return { minX: e.position.x, minY: e.position.y, maxX: e.position.x, maxY: e.position.y };
+    case "DIMENSION": {
+      // The drawn geometry lives in the anonymous block; the definition
+      // points bound where the dimension measures.
+      const pts = [e.defPoint, e.extOrigin1, e.extOrigin2, e.curvePoint, e.textPoint].filter((p): p is Pt => !!p);
+      return boxOf(pts);
+    }
   }
 }
 
@@ -542,6 +548,14 @@ export function distToEntity(e: DxfEntity, x: number, y: number): number {
       const t = l2 < 1e-18 ? 0 : ((x - e.start.x) * e.direction.x + (y - e.start.y) * e.direction.y) / l2;
       const tc = e.type === "RAY" && t < 0 ? 0 : t;
       return Math.hypot(x - (e.start.x + tc * e.direction.x), y - (e.start.y + tc * e.direction.y));
+    }
+    case "DIMENSION": {
+      // Distance to the nearest definition point (the drawn geometry is
+      // what gets picked in practice; the entity itself never lives in the doc).
+      const pts = [e.defPoint, e.extOrigin1, e.extOrigin2, e.curvePoint, e.textPoint].filter((p): p is Pt => !!p);
+      let d = Infinity;
+      for (const p of pts) d = Math.min(d, Math.hypot(x - p.x, y - p.y));
+      return d;
     }
   }
 }
@@ -1447,6 +1461,13 @@ export function entitySignature(e: DxfEntity, tol: number): string {
     case "POINT": return `O${pointSig(e.position, q)}`;
     case "RAY": return `R${pointSig(e.start, q)}${pointSig(e.direction, q)}`;
     case "XLINE": return `X${pointSig(e.start, q)}${pointSig(e.direction, q)}`;
+    case "DIMENSION": {
+      const parts = [pointSig(e.defPoint, q)];
+      if (e.extOrigin1) parts.push(pointSig(e.extOrigin1, q));
+      if (e.extOrigin2) parts.push(pointSig(e.extOrigin2, q));
+      if (e.curvePoint) parts.push(pointSig(e.curvePoint, q));
+      return `D${e.dimType}|${parts.join("|")}${e.text ?? ""}`;
+    }
   }
 }
 

@@ -180,6 +180,34 @@ export type DxfEntity =
       type: "POINT";
       position: DxfPoint;
     })
+  | (DxfEntityBase & {
+      type: "DIMENSION";
+      /**
+       * In-memory link to the dimension's drawn geometry: entities carrying
+       * meta.dimId === dimId are written into this dimension's anonymous
+       * block (*D<n>) instead of as plain entities, so the file carries a
+       * real DIMENSION — not dumb LINE/TEXT geometry. Never written to DXF.
+       */
+      dimId?: string;
+      /** DXF group 70 (& 7): 0 rotated-linear, 1 aligned, 3 diameter, 4 radius. */
+      dimType: 0 | 1 | 3 | 4;
+      /** Dimension style name (DXF group 3); undefined = Standard. */
+      styleName?: string;
+      /**
+       * Definition point (DXF group 10): dimension-line location for
+       * linear/aligned, centre for radius/diameter.
+       */
+      defPoint: DxfPoint;
+      /** Extension-line origins (DXF groups 13/14; linear/aligned only). */
+      extOrigin1?: DxfPoint;
+      extOrigin2?: DxfPoint;
+      /** Point on the measured curve (DXF group 15; radius/diameter only). */
+      curvePoint?: DxfPoint;
+      /** Measurement text (DXF group 1); readers measure it when omitted. */
+      text?: string;
+      /** Dimension text midpoint (DXF group 11). */
+      textPoint?: DxfPoint;
+    })
   | DxfInsert;
 
 /** Attribute definition inside a block (DXF ATTDEF). */

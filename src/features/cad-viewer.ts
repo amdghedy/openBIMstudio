@@ -40,7 +40,7 @@ import {
   parseClip,
   type CadClip,
 } from "../modules/cad-viewer/clipboard";
-import type { DxfBlockDef, DxfDocument, DxfEntity, DxfPoint } from "../modules/drawings/dxf-types";
+import type { DxfBlockDef, DxfDimStyle, DxfDocument, DxfEntity, DxfPoint } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
 import { safeLoad, MarkupsFileSchema } from "../core/safeLoad";
 import { setCadHotkeyOwner } from "../core/cad-hotkey-ownership";
@@ -12553,6 +12553,53 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     return entities.map((e) => (hiddenEntities.has(e) && !e.invisible ? { ...e, invisible: true } : e));
   }
 
+  /**
+   * DIMENSION entities for the live dimension records (A5): the DXF writer
+   * turns each one into a real DIMENSION entity plus its anonymous block,
+   * so dimensions survive a save as dimensions instead of dumb LINE/TEXT
+   * geometry. Only the four types the reader can measure natively are
+   * emitted — angular, arc-length and centre-mark records stay as plain
+   * tagged geometry, exactly as before. A record with no drawn entities
+   * emits nothing: a bare DIMENSION with no block would re-measure
+   * differently from what the user sees.
+   */
+  function dimensionEntitiesForSave(entities: DxfEntity[]): DxfEntity[] {
+    const out: DxfEntity[] = [];
+    for (const rec of dimRecords.values()) {
+      if (rec.mode !== "linear" && rec.mode !== "aligned" && rec.mode !== "radial" && rec.mode !== "diameter") continue;
+      const geom = entities.filter((e) => e.meta?.dimId === rec.id);
+      if (!geom.length) continue;
+      const textEnt = geom.find((e): e is Extract<DxfEntity, { type: "TEXT" }> => e.type === "TEXT");
+      const radial = rec.mode === "radial" || rec.mode === "diameter";
+      out.push({
+        type: "DIMENSION",
+        layer: rec.layer,
+        dimId: rec.id,
+        dimType: rec.mode === "linear" ? 0 : rec.mode === "aligned" ? 1 : rec.mode === "diameter" ? 3 : 4,
+        styleName: rec.styleName,
+        defPoint: radial ? { ...rec.p1 } : { ...rec.placement },
+        ...(radial ? { curvePoint: { ...rec.p2 } } : { extOrigin1: { ...rec.p1 }, extOrigin2: { ...rec.p2 } }),
+        ...(textEnt ? { text: textEnt.value, textPoint: { ...textEnt.position } } : {}),
+      });
+    }
+    return out;
+  }
+
+  /** DIMSTYLE table for the save: the viewer's live styles over the imported ones. */
+  function dimStyleTableForSave(): Record<string, DxfDimStyle> {
+    const table: Record<string, DxfDimStyle> = { ...(doc?.dimStyleTable ?? {}) };
+    for (const s of dimStyleList) {
+      table[s.name.toUpperCase()] = {
+        textHeight: s.textHeight,
+        arrowSize: s.arrowSize,
+        decimals: s.precision,
+        ...(s.suffix ? { postFix: s.suffix } : {}),
+        ...(s.linearScale !== 1 ? { linearFactor: s.linearScale } : {}),
+      };
+    }
+    return table;
+  }
+
   /** Save the edited drawing back to DXF R2010 (QSAVE / SAVE). */
   function saveDxf(): void {
     if (!doc) {
@@ -12568,7 +12615,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // hidden in this session are stamped with the DXF group 60 Invisible flag
     // so the state survives the save/open round trip without mutating the
     // live entity objects (visibility stays owned by hiddenEntities).
-    const text = writeDxf({ ...doc, entities: stampInvisibleForSave(entities) });
+    const stamped = stampInvisibleForSave(entities);
+    const text = writeDxf({
+      ...doc,
+      entities: [...stamped, ...dimensionEntitiesForSave(stamped)],
+      dimStyleTable: dimStyleTableForSave(),
+    });
     const blob = new Blob([text], { type: "application/dxf" });
     download(blob, fn);
     // Refresh the welcome-screen drawing history with the freshly saved bytes.
@@ -12646,7 +12698,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       // Real HATCH entities and the first paper-space sheet go through the converter;
       // tests/cad-dwg-roundtrip.test.cjs reads the DWG back with the real engine.
       const dwgVersion = currentDwgVersion();
-      const dxf = writeDxf({ ...doc, entities: stampInvisibleForSave(entities) }, { version: dwgVersion, allLayouts: true });
+      const stamped = stampInvisibleForSave(entities);
+      const dxf = writeDxf(
+        { ...doc, entities: [...stamped, ...dimensionEntitiesForSave(stamped)], dimStyleTable: dimStyleTableForSave() },
+        { version: dwgVersion, allLayouts: true },
+      );
       await validateDxfForDwgExport(dxf, entities.length, doc.layers.map((layer) => layer.name));
       const bytes = await exportDxfToDwg(dxf);
       const blobBuffer = new ArrayBuffer(bytes.byteLength);
@@ -12998,6 +13054,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           return `R|${e.layer}|${f(e.start.x)},${f(e.start.y)}|${f(e.direction.x)},${f(e.direction.y)}`;
         case "XLINE":
           return `X|${e.layer}|${f(e.start.x)},${f(e.start.y)}|${f(e.direction.x)},${f(e.direction.y)}`;
+        case "DIMENSION":
+          return `D|${e.layer}|${e.dimType}|${f(e.defPoint.x)},${f(e.defPoint.y)}|${e.extOrigin1 ? `${f(e.extOrigin1.x)},${f(e.extOrigin1.y)}` : ""}|${e.extOrigin2 ? `${f(e.extOrigin2.x)},${f(e.extOrigin2.y)}` : ""}|${e.curvePoint ? `${f(e.curvePoint.x)},${f(e.curvePoint.y)}` : ""}|${e.text ?? ""}`;
       }
     };
     for (const e of before) {

@@ -230,6 +230,18 @@ export function transformEntity(e: DxfEntity, m: InsertXform): DxfEntity[] {
         points: arcPoints(e.center.x, e.center.y, e.radius, e.startAngle * DEG, e.endAngle * DEG, e.center.z ?? 0)
           .map((p) => xp(m, p)),
       }];
+    case "DIMENSION":
+      // A dimension moves rigidly with its definition points; the drawn
+      // geometry (anonymous block) is transformed separately by the caller.
+      return [{
+        ...base, type: "DIMENSION", dimId: e.dimId, dimType: e.dimType, styleName: e.styleName,
+        defPoint: xp(m, e.defPoint),
+        ...(e.extOrigin1 ? { extOrigin1: xp(m, e.extOrigin1) } : {}),
+        ...(e.extOrigin2 ? { extOrigin2: xp(m, e.extOrigin2) } : {}),
+        ...(e.curvePoint ? { curvePoint: xp(m, e.curvePoint) } : {}),
+        ...(e.text !== undefined ? { text: e.text } : {}),
+        ...(e.textPoint ? { textPoint: xp(m, e.textPoint) } : {}),
+      }];
   }
   return [];
 }
@@ -254,6 +266,13 @@ export function computeExtents(entities: DxfEntity[]): DxfDocument["extents"] | 
         for (const p of arcPoints(e.center.x, e.center.y, e.radius, e.startAngle * DEG, e.endAngle * DEG)) add(p.x, p.y);
         break;
       case "TEXT": case "POINT": add(e.position.x, e.position.y); break;
+      case "DIMENSION":
+        add(e.defPoint.x, e.defPoint.y);
+        if (e.extOrigin1) add(e.extOrigin1.x, e.extOrigin1.y);
+        if (e.extOrigin2) add(e.extOrigin2.x, e.extOrigin2.y);
+        if (e.curvePoint) add(e.curvePoint.x, e.curvePoint.y);
+        if (e.textPoint) add(e.textPoint.x, e.textPoint.y);
+        break;
     }
   }
   if (!Number.isFinite(minX)) return undefined;
@@ -310,6 +329,14 @@ export function flipEntityX(e: DxfEntity): DxfEntity {
     case "RAY":
     case "XLINE": return { ...e, start: fp(e.start), direction: fp(e.direction) };
     case "TEXT": return { ...e, position: fp(e.position), rotation: 180 - (e.rotation ?? 0), align: e.align === "left" ? "right" : e.align === "right" ? "left" : e.align };
+    case "DIMENSION":
+      return {
+        ...e, defPoint: fp(e.defPoint),
+        ...(e.extOrigin1 ? { extOrigin1: fp(e.extOrigin1) } : {}),
+        ...(e.extOrigin2 ? { extOrigin2: fp(e.extOrigin2) } : {}),
+        ...(e.curvePoint ? { curvePoint: fp(e.curvePoint) } : {}),
+        ...(e.textPoint ? { textPoint: fp(e.textPoint) } : {}),
+      };
   }
 }
 
