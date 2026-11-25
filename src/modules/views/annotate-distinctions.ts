@@ -10,15 +10,16 @@
  * Diameter / Slope are distinct dimension types; Detail Line vs Insulation
  * are distinct line styles.
  *
- * Honest limits (also recorded in the ribbon as planned() stubs — do not
- * fake these):
+ * Honest limits (A12 removed the ribbon's "planned for a future release"
+ * stubs for these — the buttons are gone rather than faked; the limits
+ * below still hold):
  * - Space tags: there is no space model anywhere in the repo (no
  *   SpacesStore, no "space" element type; MEP zones are rooms). The Space
  *   tag mode accepts nothing.
  * - View Reference / Tread Number / Check Spelling / Find-Replace and the
  *   Duct / Pipe / Color-Fill / Symbol legends are out of reach in this
  *   workstream (no view-reference model, no spell engine, no
- *   legend/schedule pipeline) and stay honest planned() stubs.
+ *   legend/schedule pipeline).
  */
 
 import { tagLabel, TAG_CATEGORY_NAMES } from "./plan-tags";

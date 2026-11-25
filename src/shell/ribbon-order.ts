@@ -11,6 +11,15 @@
  * Architecture, Structure, Systems, Insert, Annotate, Analyze,
  * Massing & Site, Collaborate, View, Manage, Add-Ins, Modify (contextual).
  *
+ * AutoCAD parity (A12) adds three tabs that Revit does not have:
+ * - `home` is FIRST and is the default tab at startup (AutoCAD-style
+ *   draw/modify essentials). It is not a product tab: it heads the run.
+ * - `parametric` sits after Annotate (AutoCAD puts Parametric between
+ *   Annotate and View). It holds the parametric toolkit, family tools
+ *   and constraint tools.
+ * - `output` sits after Manage with the other product tabs (Revit has
+ *   no Output tab; printing lives in the application menu there).
+ *
  * Documented deviations from Revit (deliberate, not oversights):
  * - `file` is kept as a permanent tab. Revit has no File tab — it has the
  *   application menu. A browser app has no application menu, so the File
@@ -67,6 +76,13 @@ export interface RibbonTabOrder {
 }
 
 export const RIBBON_TAB_ORDER: readonly RibbonTabOrder[] = [
+  {
+    id: "home",
+    label: "Home",
+    groups: ["Draw", "Modify", "Annotate", "History", "Properties"],
+    deviation:
+      "AutoCAD parity (A12): Revit has no Home tab. Home is first and is the default tab at startup, holding the draw/modify essentials.",
+  },
   {
     id: "file",
     label: "File",
@@ -128,6 +144,13 @@ export const RIBBON_TAB_ORDER: readonly RibbonTabOrder[] = [
     id: "annotate",
     label: "Annotate",
     groups: ["Graphics", "Dimension", "Chain", "Keynotes", "Detail", "Text", "Legend"],
+  },
+  {
+    id: "parametric",
+    label: "Parametric",
+    groups: ["Parametric", "Families", "Constraints"],
+    deviation:
+      "AutoCAD parity (A12): Revit has no Parametric tab. Holds the parametric toolkit, family tools and constraint tools.",
   },
   {
     id: "analyze",
@@ -195,6 +218,14 @@ export const RIBBON_TAB_ORDER: readonly RibbonTabOrder[] = [
       "Reset",
       "Panels",
     ],
+  },
+  {
+    id: "output",
+    label: "Output",
+    groups: ["Plot", "Export", "Sheets"],
+    product: true,
+    deviation:
+      "AutoCAD parity (A12): Revit has no Output tab (printing lives in the application menu). Kept after Manage with the other product tabs.",
   },
   {
     id: "coordinate",

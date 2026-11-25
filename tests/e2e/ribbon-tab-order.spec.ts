@@ -17,15 +17,17 @@ async function enterPlatform(page: Page): Promise<void> {
   await expect(page.locator('.obs-home.is-open')).toHaveCount(0, { timeout: 15000 });
 }
 
-const EXPECTED_TABS = ['File', 'Architecture', 'Structure', 'Systems', 'Insert',
-  'Annotate', 'Analyze', 'Massing & Site', 'Collaborate', 'View', 'Manage',
-  'Coordinate', 'Clash Detective', 'Edit', 'X Dim'];
+const EXPECTED_TABS = ['Home', 'File', 'Architecture', 'Structure', 'Systems', 'Insert',
+  'Annotate', 'Parametric', 'Analyze', 'Massing & Site', 'Collaborate', 'View',
+  'Manage', 'Output', 'Coordinate', 'Clash Detective', 'Edit', 'X Dim'];
 
-test('ribbon tabs render in Revit order (Systems merged, Collaborate present)', async ({ page }) => {
+test('ribbon tabs render in Revit order with the A12 tabs (Home, Parametric, Output)', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
   await expect(page.locator('.obs-ribbon')).toBeVisible({ timeout: 30000 });
+  // A12: Home is the default tab at boot (fresh profile, no saved workspace).
+  await expect(page.locator("button.obs-ribbon__tab[data-active='1']")).toHaveText('Home');
   await enterPlatform(page);
 
   const tabs = page.locator('button.obs-ribbon__tab');
@@ -58,6 +60,13 @@ test('ribbon tabs render in Revit order (Systems merged, Collaborate present)', 
   // Edit stays a permanent tab (documented G1a deviation).
   await ribbon.getByRole('button', { name: 'Edit', exact: true }).click();
   await expect(strip.getByRole('button', { name: 'Snap settings', exact: true })).toBeVisible();
+
+  // A12: Parametric follows Annotate and shows the toolkit button.
+  await ribbon.getByRole('button', { name: 'Parametric', exact: true }).click();
+  await expect(strip.getByRole('button', { name: 'Parametric', exact: true })).toBeVisible();
+  // A12: Output follows Manage and shows Print.
+  await ribbon.getByRole('button', { name: 'Output', exact: true }).click();
+  await expect(strip.getByRole('button', { name: 'Print', exact: true })).toBeVisible();
 
   expect(errors, errors.join('\n')).toEqual([]);
 });

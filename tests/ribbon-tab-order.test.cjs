@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * Ribbon tab order — Revit 2D environment audit gap G1a.
+ * Ribbon tab order — Revit 2D environment audit gap G1a + AutoCAD parity A12.
  *
- * Pins the ribbon to Revit tab order: File, Architecture, Structure,
- * Systems (Mechanical + Electrical merged), Insert, Annotate, Analyze,
- * Massing & Site, Collaborate, View, Manage, then the product tabs
- * Coordinate / Clash Detective / Edit / X Dim kept after Manage.
+ * Pins the ribbon to Revit tab order: Home (A12 default tab), File,
+ * Architecture, Structure, Systems (Mechanical + Electrical merged), Insert,
+ * Annotate, Parametric (A12), Analyze, Massing & Site, Collaborate, View,
+ * Manage, then the product tabs Output (A12) / Coordinate / Clash Detective
+ * / Edit / X Dim kept after Manage.
  *
  * Two layers, same style as tests/ribbon-collapse.test.cjs:
  *  1. The order model itself is EXECUTED: src/shell/ribbon-order.ts is a
@@ -32,12 +33,27 @@ execSync(`npx tsc src/shell/ribbon-order.ts --outDir ${out} --module commonjs --
 const model = require(path.join(out, "ribbon-order.js"));
 const ORDER = model.RIBBON_TAB_ORDER;
 
-const EXPECTED_IDS = ["file", "architecture", "structure", "systems", "insert",
-  "annotate", "analyze", "massing-site", "collaborate", "view", "manage",
-  "coordinate", "clash", "edit", "cost"];
+const EXPECTED_IDS = ["home", "file", "architecture", "structure", "systems", "insert",
+  "annotate", "parametric", "analyze", "massing-site", "collaborate", "view", "manage",
+  "output", "coordinate", "clash", "edit", "cost"];
 
-t("tab ids are in Revit order", () => {
+t("tab ids are in Revit order with the A12 AutoCAD tabs", () => {
   assert.deepStrictEqual(ORDER.map((x) => x.id), EXPECTED_IDS);
+});
+
+t("Home is first and is the default tab; Parametric follows Annotate; Output follows Manage", () => {
+  assert.strictEqual(ORDER[0].id, "home", "Home must be the first tab");
+  assert.deepStrictEqual([...ORDER.find((x) => x.id === "home").groups],
+    ["Draw", "Modify", "Annotate", "History", "Properties"]);
+  const ann = ORDER.findIndex((x) => x.id === "annotate");
+  assert.strictEqual(ORDER[ann + 1].id, "parametric", "Parametric must follow Annotate");
+  assert.deepStrictEqual([...ORDER.find((x) => x.id === "parametric").groups],
+    ["Parametric", "Families", "Constraints"]);
+  const man = ORDER.findIndex((x) => x.id === "manage");
+  assert.strictEqual(ORDER[man + 1].id, "output", "Output must follow Manage");
+  assert.deepStrictEqual([...ORDER.find((x) => x.id === "output").groups],
+    ["Plot", "Export", "Sheets"]);
+  assert.ok(ORDER.find((x) => x.id === "output").product, "Output must be a product tab");
 });
 
 t("Mechanical + Electrical are gone; Systems + Collaborate exist", () => {
@@ -67,8 +83,8 @@ t("Collaborate groups are Live Sync + Worksets", () => {
   assert.deepStrictEqual([...c.groups], ["Live Sync", "Worksets"]);
 });
 
-t("deviation tabs are exactly the four after Manage, in order", () => {
-  assert.deepStrictEqual([...model.RIBBON_PRODUCT_TAB_IDS], ["coordinate", "clash", "edit", "cost"]);
+t("deviation tabs are exactly the five after Manage, in order", () => {
+  assert.deepStrictEqual([...model.RIBBON_PRODUCT_TAB_IDS], ["output", "coordinate", "clash", "edit", "cost"]);
   assert.deepStrictEqual([...model.RIBBON_REVIT_TAB_IDS],
     EXPECTED_IDS.slice(0, EXPECTED_IDS.indexOf("manage") + 1));
   const manageIdx = ORDER.findIndex((x) => x.id === "manage");
