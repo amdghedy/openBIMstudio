@@ -30,13 +30,14 @@ import {
   buildAngularDimension,
   buildArcLengthDimension,
   buildCenterMark,
+  buildOrdinateDimension,
   type LinearDimensionMode,
 } from "./dimension-tools";
 
 export interface Pt { x: number; y: number }
 
 /** Every dimension kind the editor can place (DIMMODE union). */
-export type DimMode = LinearDimensionMode | "radial" | "diameter" | "angular" | "arclen" | "center";
+export type DimMode = LinearDimensionMode | "radial" | "diameter" | "angular" | "arclen" | "center" | "ordinate";
 
 /** A named dimension style (subset of AutoCAD's DIMSTYLE that matters here). */
 export interface DimStyle {
@@ -65,10 +66,18 @@ export interface DimRecord {
    *  radial/diameter: p1 = centre, p2 = picked edge point, placement = same edge.
    *  angular: p1 = vertex, p2 = point on first ray, placement = point on second ray.
    *  arclen: p1 = arc centre, p2 = arc start point, placement = arc end point.
-   *  center: p1 = centre (p2/placement mirror it). */
+   *  center: p1 = centre (p2/placement mirror it).
+   *  ordinate: p1 = feature point, p2 = leader end, placement = leader end. */
   p1: Pt;
   p2: Pt;
   placement: Pt;
+  /**
+   * Ordinate datum: "x" measures the feature's X coordinate from the
+   * drawing origin, "y" its Y coordinate. Set by DIMORDINATE from the
+   * leader endpoint (see ordinateAxis in cad-annotation.ts); always set
+   * for ordinate records.
+   */
+  axis?: "x" | "y";
 }
 
 /** The stock styles every drawing starts with (ISO-25 flavour). */
@@ -133,12 +142,15 @@ export function formatMeasurement(value: number, style: DimStyle): string {
 }
 
 /** Raw measurement of a record, mirroring the DIM* tool maths. */
-export function measureRecord(rec: Pick<DimRecord, "mode" | "p1" | "p2" | "placement">): number {
+export function measureRecord(rec: Pick<DimRecord, "mode" | "p1" | "p2" | "placement" | "axis">): number {
   const dx = Math.abs(rec.p2.x - rec.p1.x);
   const dy = Math.abs(rec.p2.y - rec.p1.y);
   switch (rec.mode) {
     case "linear":
       return Math.max(dx, dy);
+    case "ordinate":
+      // Datum dimension: the feature's WCS coordinate from the origin.
+      return rec.axis === "y" ? rec.p1.y : rec.p1.x;
     case "radial":
       return dist(rec.p1, rec.p2);
     case "diameter":
@@ -190,6 +202,9 @@ export function buildDimEntities(rec: DimRecord, style: DimStyle, text: string):
       break;
     case "center":
       built = buildCenterMark({ center: rec.p1, layer: rec.layer, size: style.arrowSize > 0 ? style.arrowSize : style.textHeight * 2.5, dimId: rec.id });
+      break;
+    case "ordinate":
+      built = buildOrdinateDimension({ ...common, feature: rec.p1, leaderEnd: rec.p2, axis: rec.axis ?? "x" });
       break;
     default:
       built = buildLinearDimension({
@@ -244,7 +259,10 @@ export function trackDimensionDefpoints(
     // edge point is not an entity endpoint, so when the centre moved it must
     // translate along (AutoCAD's defpoint model cannot see radius changes —
     // documented limitation: scaling a circle does not update radial dims).
-    const centerAnchored = rec.mode === "radial" || rec.mode === "diameter" || rec.mode === "arclen" || rec.mode === "center";
+    // Ordinate is the same shape: the feature point (p1) is a geometry
+    // endpoint, but the leader end (p2) and placement are free points that
+    // must ride along with it.
+    const centerAnchored = rec.mode === "radial" || rec.mode === "diameter" || rec.mode === "arclen" || rec.mode === "center" || rec.mode === "ordinate";
     const isAngular = rec.mode === "angular";
     const moves: Array<{ key: "p1" | "p2" | "placement"; delta: Pt }> = [];
     const match = (p: Pt): Pt | null => {

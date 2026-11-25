@@ -354,6 +354,10 @@ function writeDimensionEntity(e: Extract<DxfEntity, { type: "DIMENSION" }>, bloc
           : ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
       s += pair(50, rot);
     }
+  } else if (e.dimType === 6) {
+    // Ordinate: group 13 is the leader end (the dimension's text
+    // position); no group 50 — an ordinate has no dimension-line rotation.
+    if (e.leaderEnd) s += writePoint([13, 23, 33], e.leaderEnd);
   } else {
     if (e.curvePoint) s += writePoint([15, 25, 35], e.curvePoint);
   }
@@ -396,6 +400,27 @@ function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TE
       s += pair(20, p.y);
     }
   } else if (e.type === "TEXT") {
+    if (e.wrapWidth && e.wrapWidth > 0) {
+      // Wrapped text is a real MTEXT entity (AcDbMText), not a plain TEXT:
+      // the column width (group 41) and the paragraph text with \P
+      // separators (group 1) survive a DXF round-trip, so the wrapping the
+      // user placed comes back as wrapping — plain TEXT would lose it.
+      let t = entityHead(e, "MTEXT");
+      t += pair(100, "AcDbMText");
+      t += writePoint([10, 20, 30], e.position);
+      t += pair(40, e.height);
+      t += pair(41, e.wrapWidth);
+      if (e.lineSpacing != null) t += pair(44, e.lineSpacing);
+      if (e.rotation != null) t += pair(50, e.rotation);
+      // Attachment point: rows top/middle/bottom, columns left/center/right
+      // (the reader maps ap = (row - 1) * 3 + col back to align/valign).
+      const row = e.valign === "top" ? 0 : e.valign === "middle" ? 1 : 2;
+      const col = e.align === "left" ? 1 : e.align === "center" ? 2 : 3;
+      t += pair(71, row * 3 + col);
+      t += pair(1, String(e.value ?? "").split("\n").join("\\P"));
+      t += pair(7, styleName(e));
+      s += t;
+    } else {
     // A DXF TEXT record cannot hold a line break — a multi-line value (MTEXT
     // \P paragraphs read back as one TEXT) would corrupt the code/value stream
     // on re-import. Native CAD does the same: emit one TEXT per visual line,
@@ -442,6 +467,7 @@ function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TE
         }, false);
       });
     }
+    } // else: plain TEXT (no wrap width)
   } else if (e.type === "POINT") {
     s += entityHead(e, "POINT");
     s += writePoint([10, 20, 30], e.position);
@@ -483,6 +509,7 @@ function computeExtents(entities: DxfEntity[]): { min: DxfPoint; max: DxfPoint }
       if (e.extOrigin1) add(e.extOrigin1);
       if (e.extOrigin2) add(e.extOrigin2);
       if (e.curvePoint) add(e.curvePoint);
+      if (e.leaderEnd) add(e.leaderEnd);
       if (e.textPoint) add(e.textPoint);
     } else if (e.type === "RAY" || e.type === "XLINE") {
       // Native behaviour: infinite lines do not define the drawing extents.
@@ -591,12 +618,12 @@ function collectDimensions(doc: DxfDocument): CollectedDimension[] {
   let n = 0;
   for (const e of doc.entities) {
     if (e.type !== "DIMENSION") continue;
-    const supported = e.dimType === 0 || e.dimType === 1 || e.dimType === 3 || e.dimType === 4;
+    const supported = e.dimType === 0 || e.dimType === 1 || e.dimType === 3 || e.dimType === 4 || e.dimType === 6;
     const valid =
       supported &&
       Number.isFinite(e.defPoint?.x) &&
       Number.isFinite(e.defPoint?.y) &&
-      ((e.dimType === 0 || e.dimType === 1) ? !!e.extOrigin1 && !!e.extOrigin2 : !!e.curvePoint);
+      ((e.dimType === 0 || e.dimType === 1) ? !!e.extOrigin1 && !!e.extOrigin2 : e.dimType === 6 ? !!e.leaderEnd : !!e.curvePoint);
     if (!valid) continue;
     const dimId = e.dimId ?? "";
     const freshId = dimId && !usedDimIds.has(dimId);

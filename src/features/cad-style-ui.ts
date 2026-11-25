@@ -537,6 +537,46 @@ export async function placeText(api: CadStyleApi, p: { x: number; y: number }): 
   api.log(`TEXT placed (${chosen.name})`);
 }
 
+/**
+ * Ask for text and place a wrapped MTEXT entity: a TEXT entity carrying a
+ * column `width`, so the viewer wraps it at render and the DXF writer
+ * emits a real MTEXT record (group 41) that round-trips as wrapping.
+ * The first corner is the anchor (AutoCAD's top-left attachment default);
+ * the column grows downward from it, so the entity is anchored top.
+ */
+export async function placeMText(api: CadStyleApi, p: { x: number; y: number }, width: number): Promise<void> {
+  const st = getCurrent().textStyle;
+  const v = await openFormModal({
+    title: "Multiline Text",
+    subtitle: `Style: ${st.name}`,
+    fields: [
+      { kind: "textarea", key: "text", label: "Text", default: "", validate: (x) => (String(x).trim() ? null : "Enter some text") },
+      { kind: "select", key: "style", label: "Style", default: st.name, options: allTextStyles().map((s) => [s.name, s.name] as [string, string]) },
+      { kind: "number", key: "height", label: "Height", default: st.height, min: 0.0001, step: 0.1 },
+      { kind: "number", key: "width", label: "Width", default: Math.max(1e-4, width), min: 0.0001, step: 1, hint: "Column width — text wraps at this width" },
+      { kind: "number", key: "rotation", label: "Rotation", default: 0, step: 1, unit: "deg" },
+      { kind: "select", key: "align", label: "Justify", default: "left", options: [["left", "Left"], ["center", "Center"], ["right", "Right"]] },
+    ],
+    submitLabel: "Place multiline text",
+  });
+  if (!v) return;
+  const chosen = allTextStyles().find((s) => s.name === v.style) ?? st;
+  setCurrentTextStyle(chosen);
+  const w = Math.max(1e-4, Number(v.width) || width);
+  const base: TextEnt = {
+    type: "TEXT", layer: api.currentLayer(), position: { x: p.x, y: p.y },
+    height: Number(v.height) || chosen.height, value: String(v.text),
+    wrapWidth: w, valign: "top", ...newObjectProps(),
+  };
+  let e = applyTextStyle(base, chosen, { keepHeight: true });
+  // applyTextStyle does not touch the anchor — keep the MTEXT top-anchored.
+  e = { ...e, wrapWidth: w, valign: "top" };
+  if (Number(v.rotation)) e = { ...e, rotation: Number(v.rotation) };
+  if (v.align !== "left") e = { ...e, align: v.align as TextEnt["align"] };
+  api.addEntity(e);
+  api.log(`MTEXT placed (${chosen.name}, width ${w})`);
+}
+
 /* ───────────────────────────── layer property editing ───────────────────────────── */
 
 export type LayerField = "color" | "lineType" | "lineweight" | "transparency";

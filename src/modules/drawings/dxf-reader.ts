@@ -367,6 +367,41 @@ function nativeDimension(d: Data, styles: Record<string, DxfDimStyle>): DxfEntit
     return out;
   }
 
+  if (dimType === 6) {
+    // Ordinate: feature point (10,20), leader end (13,23). The axis is the
+    // leader end's dominant offset from the feature — a mostly-horizontal
+    // leader measures the feature's X coordinate, a mostly-vertical one Y.
+    // The measurement is the coordinate itself (it can be negative), not a
+    // length, so no absolute value is taken.
+    const fp = d.pt(10, 20, 30), le = d.pt(13, 23, 33);
+    if (!d.has(13)) return null;
+    const isX = Math.abs(le.x - fp.x) >= Math.abs(le.y - fp.y);
+    const meas = isX ? fp.x : fp.y;
+    const over = txtH * 0.75;
+    const off = txtH * 0.25;
+    const dimStart = isX ? { x: fp.x, y: le.y, z: le.z } : { x: le.x, y: fp.y, z: le.z };
+    const dimEnd = isX
+      ? { x: le.x + Math.sign(le.x - fp.x || 1) * over, y: le.y, z: le.z }
+      : { x: le.x, y: le.y + Math.sign(le.y - fp.y || 1) * over, z: le.z };
+    out.push(line(dimStart, dimEnd));
+    const extStart = isX
+      ? { x: fp.x, y: fp.y + Math.sign(le.y - fp.y || 1) * off, z: fp.z }
+      : { x: fp.x + Math.sign(le.x - fp.x || 1) * off, y: fp.y, z: fp.z };
+    const extEnd = isX
+      ? { x: fp.x, y: le.y + Math.sign(le.y - fp.y || 1) * over, z: fp.z }
+      : { x: le.x + Math.sign(le.x - fp.x || 1) * over, y: fp.y, z: fp.z };
+    out.push(line(extStart, extEnd));
+    out.push(arrow(dimStart, isX ? Math.sign(le.x - fp.x || 1) : 0, isX ? 0 : Math.sign(le.y - fp.y || 1)));
+    const textPos = isX
+      ? { x: dimEnd.x + Math.sign(dimEnd.x - fp.x || 1) * txtH * 0.25, y: le.y, z: le.z }
+      : { x: le.x, y: dimEnd.y + Math.sign(dimEnd.y - fp.y || 1) * txtH * 0.25, z: le.z };
+    out.push({
+      type: "TEXT", position: textPos,
+      height: txtH, value: measText(meas), rotation: isX ? 0 : 90, align: "left", valign: "middle",
+    } as DxfEntity);
+    return out;
+  }
+
   if (dimType === 4 || dimType === 3) {
     // Radius / diameter: center (10,20), point on the curve (15,25), leader length (40).
     const cp = d.pt(10, 20, 30), pp = d.pt(15, 25, 35);

@@ -189,8 +189,8 @@ export type DxfEntity =
        * real DIMENSION — not dumb LINE/TEXT geometry. Never written to DXF.
        */
       dimId?: string;
-      /** DXF group 70 (& 7): 0 rotated-linear, 1 aligned, 3 diameter, 4 radius. */
-      dimType: 0 | 1 | 3 | 4;
+      /** DXF group 70 (& 7): 0 rotated-linear, 1 aligned, 3 diameter, 4 radius, 6 ordinate. */
+      dimType: 0 | 1 | 3 | 4 | 6;
       /** Dimension style name (DXF group 3); undefined = Standard. */
       styleName?: string;
       /**
@@ -203,6 +203,13 @@ export type DxfEntity =
       extOrigin2?: DxfPoint;
       /** Point on the measured curve (DXF group 15; radius/diameter only). */
       curvePoint?: DxfPoint;
+      /**
+       * Leader end (DXF group 13; ordinate only): the point the user picked
+       * as the dimension's leader/text position. The axis (X vs Y) is
+       * derived from the leader end's dominant offset from the feature
+       * point (see ordinateAxis).
+       */
+      leaderEnd?: DxfPoint;
       /** Measurement text (DXF group 1); readers measure it when omitted. */
       text?: string;
       /** Dimension text midpoint (DXF group 11). */

@@ -133,7 +133,7 @@ import {
 import { promptLine, confirmDialog, pickFromList, openFormModal, showTableDialog } from "./form-modal";
 import { loadCadAliases, resolveCadToken, openCadAliasEditor, effectiveAliases, registerCadAliasEditorOpener } from "./command-aliases";
 import {
-  renderAppearanceEditor, openLinetypeManager, openTextStyleManager, placeText, editLayerProperty,
+  renderAppearanceEditor, openLinetypeManager, openTextStyleManager, placeText, placeMText, editLayerProperty,
   matchProperties, newObjectProps, lineweightPx, setCurrentColor, setCurrentLineType, setCurrentLineweight, getCurrentDrawingProps, type CadStyleApi,
 } from "./cad-style-ui";
 import { lineweightLabel } from "../modules/drawings/cad-styles";
@@ -153,6 +153,7 @@ import { HATCH_PATTERN_NAMES, DEFAULT_HATCH_PATTERN, isKnownHatchPattern, patter
 import { collectHatchGeometry, detectLoopAt, type BoundaryResult } from "../modules/drawings/hatch-boundary";
 import * as P from "./cad-params";
 import * as DIM from "../modules/cad-viewer/dimension-system";
+import * as Ann from "../modules/cad-viewer/cad-annotation";
 import * as LayerMgr from "../modules/cad-viewer/cad-layer-manager";
 import { fmtTime } from "../core/region";
 import { strokeFontFor, strokeLinePolylines, strokeLineWidth, CAP_UNITS, type StrokeFont } from "../modules/drawings/stroke-font";
@@ -222,10 +223,12 @@ type Tool =
   | "dimang"
   | "dimarc"
   | "dimdia"
+  | "dimord"
   | "arpath"
   | "dimcenter"
   | "dimcont"
   | "dimbase"
+  | "mtext"
   | "table"
   | "lengthen"
   | "divide"
@@ -266,7 +269,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "PLINE", aliases: ["PL", "POLYLINE"], description: "Create a 2D polyline" },
   { name: "CIRCLE", aliases: ["C"], description: "Create a circle from center and radius" },
   { name: "RECTANG", aliases: ["REC", "RECTANGLE"], description: "Create a rectangular polyline" },
-  { name: "ARC", aliases: ["A"], description: "Create an arc using 3 points" },
+  { name: "ARC", aliases: ["A"], description: "Create an arc: 3 points, or Center / End / Angle / Radius / Length options" },
   { name: "ERASE", aliases: ["E", "DEL", "DELETE"], description: "Erase selected objects" },
   { name: "MOVE", aliases: ["M"], description: "Move selected objects a distance and direction" },
   { name: "COPY", aliases: ["CO"], description: "Copy selected objects to multiple placements from one fixed base point" },
@@ -285,7 +288,8 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "LINETYPE", aliases: ["LT", "LTYPE"], description: "Open the Linetype Manager (load linetypes, set current)" },
   { name: "LTSCALE", aliases: ["LTS"], description: "Set the global linetype scale, e.g. LTSCALE 2" },
   { name: "STYLE", aliases: ["ST"], description: "Open the Text Style Manager (fonts, heights, presets)" },
-  { name: "TEXT", aliases: ["T", "DT", "DTEXT", "MT", "MTEXT"], description: "Place text with the current text style" },
+  { name: "TEXT", aliases: ["T", "DT", "DTEXT"], description: "Place text with the current text style" },
+  { name: "MTEXT", aliases: ["MT"], description: "Place multiline text with a column width (wraps at the width)" },
   { name: "MATCHPROP", aliases: ["MA"], description: "Copy layer, colour, linetype and lineweight from one object to others" },
   { name: "PROPERTIES", aliases: ["PR", "CH", "PROP"], description: "Show properties inspector" },
   { name: "REGEN", aliases: ["RE", "REA", "REGENALL"], description: "Regenerate view and graphics" },
@@ -433,6 +437,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "DIMDIAMETER", aliases: ["DDI", "DIMDIA"], description: "Diameter dimension on a circle" },
   { name: "DIMRADIUS", aliases: ["DIMRAD", "DRA"], description: "Radial dimension: pick a circle or arc and place an R<radius> dimension from the centre to the picked edge" },
   { name: "DIMCENTER", aliases: ["DCE"], description: "Center mark on a circle or arc" },
+  { name: "DIMORDINATE", aliases: ["DIMORD", "DOR"], description: "Ordinate dimension: pick a feature point, then the leader end — X or Y coordinate from the drawing origin" },
   { name: "DIMCONTINUE", aliases: ["DCO", "DIMCONT"], description: "Continue a dimension from the last one" },
   { name: "DIMBASELINE", aliases: ["DBA", "DIMBASE"], description: "Baseline dimension from the last one" },
   { name: "DIMSTYLE", aliases: ["D", "DST", "DSTYLE"], description: "Open the Dimension Style Manager: text height, tick size, precision, suffix, measurement factor — apply to all or selected dimensions" },
@@ -1589,7 +1594,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
   /** Registers a newly placed dimension and returns its tagged entities. */
   function createDimEntities(args: {
-    first: M.Pt; second: M.Pt; placement: M.Pt; mode: DIM.DimMode;
+    first: M.Pt; second: M.Pt; placement: M.Pt; mode: DIM.DimMode; axis?: "x" | "y";
   }): DxfEntity[] {
     const style = currentDimStyle();
     const rec: DIM.DimRecord = {
@@ -1600,6 +1605,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       p1: { ...args.first },
       p2: { ...args.second },
       placement: { ...args.placement },
+      ...(args.axis ? { axis: args.axis } : {}),
     };
     return commitDimRecord(rec);
   }
@@ -3984,6 +3990,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let matchSrc: DxfEntity | null = null;
   /** CIRCLE creation mode — drawing workspace: Center-radius (default), 2P, 3P. */
   let circleMode: "center" | "2p" | "3p" = "center";
+  /**
+   * ARC creation mode (A10) — drawing workspace, mirroring AutoCAD's ARC
+   * options: "3p" (default, three points on the arc), "cse" (centre first,
+   * then start and end), "sce" (start, then centre, then end), "sea"
+   * (start, then end, then angle or radius), "csa" (centre, then start,
+   * then angle or chord length). Reset by setTool like circleMode.
+   */
+  let arcMode: "3p" | "cse" | "sce" | "sea" | "csa" = "3p";
   /** Last status prompt shown (for dyn input / status bar). */
   let acadPromptText = "";
 
@@ -4139,7 +4153,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   function addDraftEntity(e: DxfEntity): void {
     const wasEmpty = ents.length === 0;
     ents.push(e);
-    if (layoutI < 0) modelEnts.push(e);
+    // In model space ents IS modelEnts (same array) — pushing again would
+    // duplicate the entity (it counted twice in CENSUS and saved twice).
+    // The guard mirrors addEntities; in paper space the lists differ and
+    // the model list still needs the push.
+    if (layoutI < 0 && modelEnts !== ents) modelEnts.push(e);
     const eb = M.entityBBox(e);
     bounds = M.extendBounds(bounds, wasEmpty, eb);
     idx = M.buildIndex(ents, bounds);
@@ -4936,6 +4954,126 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         return false;
     }
   }
+
+  /**
+   * ARC in-tool options (A10), mirroring AutoCAD's ARC command: while the
+   * ARC tool is active, C picks the centre (first, or after the start
+   * point), E switches to start→end, and A / R / L take the included
+   * angle, radius or chord length as a typed number (pendingNumeric, the
+   * A6 pattern). Returns true when the input was consumed.
+   */
+  function handleArcOption(trimmed: string): boolean {
+    if (tool !== "arc") return false;
+    const k = trimmed.trim().toUpperCase();
+    if (k === "C" || k === "CENTER") {
+      if (pts.length >= 2) {
+        logCmd("ARC: the centre is already fixed — press Esc to restart the arc.");
+        showAcadPrompt();
+        return true;
+      }
+      // No point yet: centre-first. One point picked: it is the start, so
+      // the next pick is the centre.
+      arcMode = pts.length === 0 ? "cse" : "sce";
+      showAcadPrompt();
+      return true;
+    }
+    if (k === "E" || k === "END") {
+      if (pts.length === 0) {
+        logCmd("ARC: pick the start point first, then E for start-end.");
+        showAcadPrompt();
+        return true;
+      }
+      arcMode = "sea";
+      showAcadPrompt();
+      return true;
+    }
+    if (k === "A" || k === "ANGLE") {
+      if (arcMode !== "sea" && arcMode !== "csa") {
+        logCmd("ARC: angle needs start-end (E) or centre-start (C) first.");
+        showAcadPrompt();
+        return true;
+      }
+      pendingNumeric = onArcAngleTyped;
+      logCmd("Specify included angle:");
+      showAcadPrompt();
+      return true;
+    }
+    if (k === "R" || k === "RADIUS") {
+      if (arcMode !== "sea") {
+        logCmd("ARC: radius needs start-end (E) first.");
+        showAcadPrompt();
+        return true;
+      }
+      pendingNumeric = onArcRadiusTyped;
+      logCmd("Specify radius:");
+      showAcadPrompt();
+      return true;
+    }
+    if (k === "L" || k === "LENGTH") {
+      if (arcMode !== "csa") {
+        logCmd("ARC: length needs centre-start (C) first.");
+        showAcadPrompt();
+        return true;
+      }
+      pendingNumeric = onArcLengthTyped;
+      logCmd("Specify chord length:");
+      showAcadPrompt();
+      return true;
+    }
+    return false;
+  }
+
+  /** ARC angle typed (start-end or centre-start flow): build and place the arc. */
+  function onArcAngleTyped(v: number): void {
+    if (arcMode === "sea" && pts.length === 2) {
+      const def = Ann.arcFromStartEndAngle(pts[0], pts[1], v);
+      if (def) {
+        addDraftEntity({ type: "ARC", layer: currentLayer, ...newObjectProps(), center: def.center, radius: def.radius, startAngle: def.startAngle, endAngle: def.endAngle });
+        logCmd(`Arc added (start-end-angle ${fmt(v)}°): R=${fmt(def.radius)}`);
+      } else logCmd("ARC: angle must be between 0° and 360° (exclusive), and the points must differ.");
+    } else if (arcMode === "csa" && pts.length === 2) {
+      const def = Ann.arcFromCenterStartAngle(pts[0], pts[1], v);
+      if (def) {
+        addDraftEntity({ type: "ARC", layer: currentLayer, ...newObjectProps(), center: def.center, radius: def.radius, startAngle: def.startAngle, endAngle: def.endAngle });
+        logCmd(`Arc added (centre-start-angle ${fmt(v)}°): R=${fmt(def.radius)}`);
+      } else logCmd("ARC: angle must be between 0° and 360° (exclusive), and the start must differ from the centre.");
+    } else {
+      logCmd("ARC: angle needs two points first.");
+    }
+    pts = [];
+    showAcadPrompt();
+  }
+
+  /** ARC radius typed (start-end flow): build and place the arc. */
+  function onArcRadiusTyped(v: number): void {
+    if (arcMode === "sea" && pts.length === 2) {
+      const def = Ann.arcFromStartEndRadius(pts[0], pts[1], v);
+      if (def) {
+        addDraftEntity({ type: "ARC", layer: currentLayer, ...newObjectProps(), center: def.center, radius: def.radius, startAngle: def.startAngle, endAngle: def.endAngle });
+        logCmd(`Arc added (start-end-radius ${fmt(v)}): R=${fmt(def.radius)}`);
+      } else logCmd("ARC: |radius| must be at least half the start-end distance.");
+    } else {
+      logCmd("ARC: radius needs start-end (E) and two points first.");
+    }
+    pts = [];
+    showAcadPrompt();
+  }
+
+  /** ARC chord length typed (centre-start flow): build and place the arc. */
+  function onArcLengthTyped(v: number): void {
+    if (arcMode === "csa" && pts.length === 2) {
+      const def = Ann.arcFromCenterStartLength(pts[0], pts[1], v);
+      if (def) {
+        addDraftEntity({ type: "ARC", layer: currentLayer, ...newObjectProps(), center: def.center, radius: def.radius, startAngle: def.startAngle, endAngle: def.endAngle });
+        logCmd(`Arc added (centre-start-length ${fmt(v)}): R=${fmt(def.radius)}`);
+      } else logCmd("ARC: chord length must be positive and no longer than the diameter.");
+    } else {
+      logCmd("ARC: length needs centre-start (C) and two points first.");
+    }
+    pts = [];
+    showAcadPrompt();
+  }
+
   let polySides = 6;
   let tableDims = { rows: 3, cols: 4 };
   /** Named views: name → view snapshot (VIEW S / VIEW R). */
@@ -6664,7 +6802,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     addItem("Edit Hatch…",()=>{ hatchEditCmd(); });
     addSep();
     addLabel("ANNOTATION & DIMENSIONS");
-    for (const [label,t] of [["Text","text"],["Edit Text","ddedit"],["Leader","leader"],["Multileader","mleader"],["Table","table"],["Dimension","dim"],["Linear Dimension","dimlinear"],["Angular Dimension","dimang"],["Arc Length Dimension","dimarc"],["Diameter Dimension","dimdia"],["Center Mark","dimcenter"],["Continue Dimension","dimcont"],["Baseline Dimension","dimbase"]] as Array<[string,Tool]>) addItem(label,()=>setTool(t));
+    for (const [label,t] of [["Text","text"],["Multiline Text","mtext"],["Edit Text","ddedit"],["Leader","leader"],["Multileader","mleader"],["Table","table"],["Dimension","dim"],["Linear Dimension","dimlinear"],["Ordinate Dimension","dimord"],["Angular Dimension","dimang"],["Arc Length Dimension","dimarc"],["Diameter Dimension","dimdia"],["Center Mark","dimcenter"],["Continue Dimension","dimcont"],["Baseline Dimension","dimbase"]] as Array<[string,Tool]>) addItem(label,()=>setTool(t));
     addItem("Dimension Style…",()=>openDimStyleManager(),!doc,false,"DIMSTYLE");
     addSep();
     addLabel("DRAWING");
@@ -7536,6 +7674,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         "Dimensions",
         tb("dim", "dim-aligned", "Aligned") +
           tb("dimlinear", "dim-linear", "Linear") +
+          tb("dimord", "dim-ordinate", "Ordinate") +
           tb("dimang", "dim-angular", "Angular") +
           tb("dimarc", "dim-arclen", "Arc Len") +
           tb("dimdia", "dim-diameter", "Diameter") +
@@ -7899,8 +8038,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       pasteorig: () => pasteOrig(),
       // Annotation / find
       mtext: () => {
-        setTool("text");
-        logCmd("MTEXT: click to place multiline text.");
+        setTool("mtext");
+        logCmd("MTEXT: click the first corner of the text column, then the opposite corner.");
       },
       find: () => void findReplace(),
       list: () => showSelectionList(),
@@ -8242,7 +8381,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         }
         return n === 0 ? "Specify center point for circle or [2P/3P]:" : "Specify radius of circle:";
       case "arc":
-        return n === 0 ? "Specify start point of arc:" : n === 1 ? "Specify second point of arc:" : "Specify end point of arc:";
+        if (arcMode === "cse") return n === 0 ? "Specify center point for arc or [3P]:" : n === 1 ? "Specify start point of arc:" : "Specify end point of arc:";
+        if (arcMode === "sce") return n === 0 ? "Specify start point of arc or [C/E]:" : n === 1 ? "Specify center point for arc:" : "Specify end point of arc:";
+        if (arcMode === "sea") return n === 0 ? "Specify start point of arc or [C/E]:" : n === 1 ? "Specify end point of arc:" : "Specify included angle or [Angle/Radius]:";
+        if (arcMode === "csa") return n === 0 ? "Specify center point for arc or [3P]:" : n === 1 ? "Specify start point of arc:" : "Specify included angle or chord length [Angle/Length]:";
+        return n === 0 ? "Specify start point of arc or [C/E]:" : n === 1 ? "Specify second point of arc:" : "Specify end point of arc:";
+      case "dimord":
+        return n === 0 ? "Specify feature location:" : "Specify leader endpoint:";
+      case "mtext":
+        return n === 0 ? "Specify first corner of text column:" : "Specify opposite corner of text column:";
       case "rect":
         return n === 0 ? "Specify first corner point:" : "Specify other corner point:";
       case "poly":
@@ -8387,6 +8534,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     matchSrc = null;
     tool = t;
     if (t !== "circle") circleMode = "center";
+    if (t !== "arc") arcMode = "3p";
     cv.focus({ preventScroll: true });
     pts = [];
     offsetEntity = -1;
@@ -8919,6 +9067,29 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         }
         break;
       }
+      case "dimord": {
+        pts.push(p);
+        if (pts.length === 2) {
+          const feature = pts[0], leaderEnd = pts[1];
+          const axis = Ann.ordinateAxis(feature, leaderEnd);
+          const entities = createDimEntities({
+            first: feature, second: leaderEnd, placement: leaderEnd,
+            mode: "ordinate", axis,
+          });
+          if (entities.length) {
+            addEntities(entities);
+            const rec = dimRecords.get(entities[0].meta?.dimId ?? "");
+            const style = currentDimStyle();
+            const label = rec ? dimTextFor(rec, style) : "";
+            results.push("Ordinate dimension: " + label);
+            drawn.push({ kind: "dist", pts: [feature, leaderEnd] });
+            logCmd(`DIMORDINATE (${axis === "x" ? "X" : "Y"}): ${label}. Dimension placed [${style.name}].`);
+          } else logCmd("Dimension could not be created — check the picked points.");
+          pts = [];
+          showMeas();
+        }
+        break;
+      }
       case "coord": {
         const u = M.unitLabel(doc.units, du);
         const msg = `Point: X = ${M.convertLength(p.x * scaleCal, doc.units, du).toFixed(4)} ${u}, Y = ${M.convertLength(
@@ -8972,20 +9143,36 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       }
       case "arc": {
         pts.push(p);
+        if (arcMode === "sea" || arcMode === "csa") {
+          // Start-end / centre-start: the arc is completed by a typed
+          // angle, radius or length (pendingNumeric), not a third click.
+          if (pts.length === 3) {
+            pts.pop();
+            logCmd(arcMode === "sea" ? "ARC: type A for angle or R for radius." : "ARC: type A for angle or L for chord length.");
+          }
+          showAcadPrompt();
+          break;
+        }
         if (pts.length === 3) {
-          const p1 = pts[0], p2 = pts[1], p3 = pts[2];
-          const ax = p1.x, ay = p1.y, bx = p2.x, by = p2.y, cx = p3.x, cy = p3.y;
-          const d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
-          if (Math.abs(d) > 1e-9) {
-            const ux = ((ax*ax+ay*ay)*(by-cy) + (bx*bx+by*by)*(cy-ay) + (cx*cx+cy*cy)*(ay-by)) / d;
-            const uy = ((ax*ax+ay*ay)*(cx-bx) + (bx*bx+by*by)*(ax-cx) + (cx*cx+cy*cy)*(bx-ax)) / d;
-            const radius = Math.hypot(ax-ux, ay-uy);
-            const aStart = (Math.atan2(ay-uy, ax-ux) * 180) / Math.PI;
-            const aEnd = (Math.atan2(cy-uy, cx-ux) * 180) / Math.PI;
-            addDraftEntity({ type: "ARC", layer: currentLayer, ...newObjectProps(), center: { x: ux, y: uy }, radius, startAngle: aStart, endAngle: aEnd });
-            logCmd(`Arc added: R=${fmt(radius)}`);
+          let def: Ann.ArcDef | null = null;
+          let label = "Arc added";
+          if (arcMode === "3p") {
+            def = Ann.arcFrom3Points(pts[0], pts[1], pts[2]);
+          } else if (arcMode === "cse") {
+            def = Ann.arcFromStartCenterEnd(pts[1], pts[0], pts[2]);
+            label = "Arc added (centre-start-end)";
+          } else if (arcMode === "sce") {
+            def = Ann.arcFromStartCenterEnd(pts[0], pts[1], pts[2]);
+            label = "Arc added (start-centre-end)";
+          }
+          if (def) {
+            addDraftEntity({ type: "ARC", layer: currentLayer, ...newObjectProps(), center: def.center, radius: def.radius, startAngle: def.startAngle, endAngle: def.endAngle });
+            logCmd(`${label}: R=${fmt(def.radius)}`);
+          } else {
+            logCmd("ARC: points are collinear or degenerate — no arc.");
           }
           pts = [];
+          showAcadPrompt();
         }
         break;
       }
@@ -9007,11 +9194,25 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           const leaderPts = [...pts];
           pts = [];
           void promptLine("Leader", "Enter leader text", "").then((t) => {
-            if (t) {
-              markups.push({ kind: "leader", pts: leaderPts, text: t });
-              results.push(`Leader: ${t}`);
-              showMeas();
-            }
+            if (!t) { draw(); return; }
+            // A leader is a persistent entity now (A10): arrowhead + line
+            // + text, selectable, undoable, and saved to DXF — not a
+            // transient markup. (Markup leaders still render for loaded
+            // .markups.json files.)
+            const [tip, landing] = leaderPts;
+            const span = bounds ? Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) : 0;
+            const h = span > 0 ? span / 100 : 2;
+            const arrowSize = Math.max(h * 2.5, h);
+            const arrow = Ann.buildLeaderArrowhead(tip, landing, arrowSize);
+            const parts: DxfEntity[] = [
+              { type: "LINE", layer: currentLayer, ...newObjectProps(), start: { x: tip.x, y: tip.y }, end: { x: landing.x, y: landing.y } },
+              { type: "TEXT", layer: currentLayer, ...newObjectProps(), position: { x: landing.x + h * 0.25, y: landing.y + h * 0.25 }, height: h, value: t },
+            ];
+            if (arrow) parts.unshift({ ...arrow, layer: currentLayer, ...newObjectProps() });
+            addEntities(parts);
+            results.push(`Leader: ${t}`);
+            showMeas();
+            logCmd(`Leader added: "${t}".`);
             draw();
           });
         }
@@ -9039,6 +9240,18 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       }
       case "text": {
         void placeText(styleApi, p);
+        break;
+      }
+      case "mtext": {
+        pts.push(p);
+        if (pts.length === 2) {
+          // Column width is the horizontal span of the two corners; the
+          // first corner is the anchor and the column grows downward.
+          const width = Math.max(Math.abs(pts[1].x - pts[0].x), 1);
+          const corner = pts[0];
+          pts = [];
+          void placeMText(styleApi, corner, width);
+        }
         break;
       }
       case "match": {
@@ -10535,6 +10748,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         return;
       }
     }
+    // ARC option keywords while ARC is active (A10): C = centre-first or
+    // start→centre, E = start→end, A = angle, R = radius, L = length.
+    if (tool === "arc" && handleArcOption(trimmed)) {
+      draw();
+      return;
+    }
     // Yes/No answer to the MIRROR "Erase source objects?" prompt
     if (pendingYesNo && /^(y|yes|n|no)$/i.test(trimmed)) {
       const f = pendingYesNo;
@@ -10590,6 +10809,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     if (cmd === "A" || cmd === "ARC") {
+      // ARC C starts centre-first (AutoCAD's ARC Center option); any other
+      // argument keeps the 3-point flow. In-tool keywords (E/A/R/L) are
+      // handled by handleArcOption while the tool is active.
+      const opt = (arg || "").trim().toUpperCase();
+      if (opt === "C" || opt === "CENTER") arcMode = "cse";
+      else arcMode = "3p";
       setTool("arc");
       return;
     }
@@ -10688,9 +10913,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       openTextStyleManager(styleApi);
       return;
     }
-    if (cmd === "T" || cmd === "DT" || cmd === "DTEXT" || cmd === "MT" || cmd === "MTEXT" || cmd === "TEXT") {
+    if (cmd === "T" || cmd === "DT" || cmd === "DTEXT" || cmd === "TEXT") {
       setTool("text");
       logCmd("Click to place text.");
+      return;
+    }
+    if (cmd === "MT" || cmd === "MTEXT") {
+      setTool("mtext");
+      logCmd("Click the first corner of the text column, then the opposite corner.");
       return;
     }
     if (cmd === "MA" || cmd === "MATCHPROP") {
@@ -11570,6 +11800,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     if (cmd === "DIMCENTER" || cmd === "DCE") {
       setTool("dimcenter");
+      return;
+    }
+    if (cmd === "DIMORDINATE" || cmd === "DIMORD" || cmd === "DOR") {
+      setTool("dimord");
       return;
     }
     if (cmd === "DIMCONTINUE" || cmd === "DCO" || cmd === "DIMCONT") {
@@ -13257,19 +13491,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   function dimensionEntitiesForSave(entities: DxfEntity[]): DxfEntity[] {
     const out: DxfEntity[] = [];
     for (const rec of dimRecords.values()) {
-      if (rec.mode !== "linear" && rec.mode !== "aligned" && rec.mode !== "radial" && rec.mode !== "diameter") continue;
+      if (rec.mode !== "linear" && rec.mode !== "aligned" && rec.mode !== "radial" && rec.mode !== "diameter" && rec.mode !== "ordinate") continue;
       const geom = entities.filter((e) => e.meta?.dimId === rec.id);
       if (!geom.length) continue;
       const textEnt = geom.find((e): e is Extract<DxfEntity, { type: "TEXT" }> => e.type === "TEXT");
       const radial = rec.mode === "radial" || rec.mode === "diameter";
+      const ordinate = rec.mode === "ordinate";
       out.push({
         type: "DIMENSION",
         layer: rec.layer,
         dimId: rec.id,
-        dimType: rec.mode === "linear" ? 0 : rec.mode === "aligned" ? 1 : rec.mode === "diameter" ? 3 : 4,
+        dimType: rec.mode === "linear" ? 0 : rec.mode === "aligned" ? 1 : rec.mode === "diameter" ? 3 : rec.mode === "ordinate" ? 6 : 4,
         styleName: rec.styleName,
-        defPoint: radial ? { ...rec.p1 } : { ...rec.placement },
-        ...(radial ? { curvePoint: { ...rec.p2 } } : { extOrigin1: { ...rec.p1 }, extOrigin2: { ...rec.p2 } }),
+        defPoint: radial || ordinate ? { ...rec.p1 } : { ...rec.placement },
+        ...(radial ? { curvePoint: { ...rec.p2 } } : ordinate ? { leaderEnd: { ...rec.p2 } } : { extOrigin1: { ...rec.p1 }, extOrigin2: { ...rec.p2 } }),
         ...(textEnt ? { text: textEnt.value, textPoint: { ...textEnt.position } } : {}),
       });
     }
@@ -13557,7 +13792,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (!list.length) return 0;
     for (const e of list) {
       ents.push(e);
-      if (layoutI < 0) modelEnts.push(e);
+      // Same guard as addDraftEntity: in model space ents IS modelEnts.
+      if (layoutI < 0 && modelEnts !== ents) modelEnts.push(e);
     }
     const start = ents.length - list.length;
     pushUndoAct({ type: "add", entities: list });

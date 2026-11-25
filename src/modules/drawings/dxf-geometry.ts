@@ -239,6 +239,7 @@ export function transformEntity(e: DxfEntity, m: InsertXform): DxfEntity[] {
         ...(e.extOrigin1 ? { extOrigin1: xp(m, e.extOrigin1) } : {}),
         ...(e.extOrigin2 ? { extOrigin2: xp(m, e.extOrigin2) } : {}),
         ...(e.curvePoint ? { curvePoint: xp(m, e.curvePoint) } : {}),
+        ...(e.leaderEnd ? { leaderEnd: xp(m, e.leaderEnd) } : {}),
         ...(e.text !== undefined ? { text: e.text } : {}),
         ...(e.textPoint ? { textPoint: xp(m, e.textPoint) } : {}),
       }];
@@ -271,6 +272,7 @@ export function computeExtents(entities: DxfEntity[]): DxfDocument["extents"] | 
         if (e.extOrigin1) add(e.extOrigin1.x, e.extOrigin1.y);
         if (e.extOrigin2) add(e.extOrigin2.x, e.extOrigin2.y);
         if (e.curvePoint) add(e.curvePoint.x, e.curvePoint.y);
+        if (e.leaderEnd) add(e.leaderEnd.x, e.leaderEnd.y);
         if (e.textPoint) add(e.textPoint.x, e.textPoint.y);
         break;
     }

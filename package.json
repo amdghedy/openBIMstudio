@@ -319,6 +319,7 @@
     "test:cad-snap-override": "node tests/cad-snap-override.test.cjs",
     "test:cad-snap-a15": "node tests/cad-snap-a15.test.cjs",
     "test:cad-layer-manager-a16": "node tests/cad-layer-manager-a16.test.cjs",
+    "test:cad-annotation-a10": "node tests/cad-annotation-a10.test.cjs",
     "test:autocad-parity": "node tests/autocad-parity.test.cjs",
     "test:cad-dim-tools": "node tests/cad-dim-tools.test.cjs",
     "test:spatial-index": "node tests/spatial-index.test.cjs",

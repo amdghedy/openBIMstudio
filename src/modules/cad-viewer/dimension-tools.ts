@@ -123,6 +123,62 @@ function tickAt(
   ];
 }
 
+/**
+ * DIMORDINATE — datum dimension: the feature point's X or Y coordinate,
+ * measured from the drawing origin (AutoCAD's UCS origin). The leader end
+ * the user picked fixes the datum: a mostly-horizontal leader measures X,
+ * a mostly-vertical one Y. X datum: horizontal dim line at the leader end
+ * (feature → past the leader end), vertical extension from the feature.
+ * Y datum: mirrored. Tick at the dim line's feature end, text past the
+ * leader end (vertical for Y datums).
+ */
+export function buildOrdinateDimension(args: {
+  feature: DimensionPoint;
+  leaderEnd: DimensionPoint;
+  axis: "x" | "y";
+  layer: string;
+  text: string;
+  textHeight: number;
+  arrowSize?: number;
+  dimId?: string;
+}): DxfEntity[] {
+  const { feature, leaderEnd, axis, layer, text, textHeight, dimId } = args;
+  const arrow = Math.max(args.arrowSize ?? textHeight * 2.5, textHeight);
+  const gap = textHeight * 0.25;
+  const over = textHeight * 0.75;
+  const isX = axis === "x";
+  const s = isX
+    ? Math.sign(leaderEnd.y - feature.y || 1)
+    : Math.sign(leaderEnd.x - feature.x || 1);
+  const t = isX
+    ? Math.sign(leaderEnd.x - feature.x || 1)
+    : Math.sign(leaderEnd.y - feature.y || 1);
+  const dimStart: DimensionPoint = isX
+    ? { x: feature.x, y: leaderEnd.y }
+    : { x: leaderEnd.x, y: feature.y };
+  const dimEnd: DimensionPoint = isX
+    ? { x: leaderEnd.x + t * over, y: leaderEnd.y }
+    : { x: leaderEnd.x, y: leaderEnd.y + t * over };
+  const extStart: DimensionPoint = isX
+    ? { x: feature.x, y: feature.y + s * gap }
+    : { x: feature.x + s * gap, y: feature.y };
+  const extEnd: DimensionPoint = isX
+    ? { x: feature.x, y: leaderEnd.y + s * over }
+    : { x: leaderEnd.x + s * over, y: feature.y };
+  const out: DxfEntity[] = [lineTagged(layer, dimStart, dimEnd, dimId, "dimline")];
+  out.push(lineTagged(layer, extStart, extEnd, dimId, "ext"));
+  out.push(...tickAt(layer, dimStart, isX ? t : 0, isX ? 0 : t, arrow, dimId, 1));
+  const textPos: DimensionPoint = isX
+    ? { x: dimEnd.x + t * textHeight * 0.25, y: leaderEnd.y }
+    : { x: leaderEnd.x, y: dimEnd.y + t * textHeight * 0.25 };
+  out.push({
+    type: "TEXT", layer, position: textPos, height: textHeight, value: text,
+    rotation: isX ? 0 : 90, align: "left", valign: "middle",
+    ...(dimId ? { meta: { dimId, role: "text" as const } } : {}),
+  });
+  return out;
+}
+
 /** DIMRADIUS — dimension line from the centre to the picked edge, tick at the edge. */
 export function buildRadialDimension(args: {
   center: DimensionPoint;

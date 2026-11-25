@@ -75,7 +75,7 @@ export type IconName =
   | "hatch" | "wipeout" | "xline" | "ray" | "trim" | "extend" | "break"
   | "stretch" | "join" | "fillet" | "chamfer" | "explode" | "align"
   | "matchprop" | "find" | "table" | "center-mark" | "dim-arclen"
-  | "dim-diameter" | "dim-baseline" | "dim-continue" | "ucs" | "purge"
+  | "dim-diameter" | "dim-baseline" | "dim-continue" | "dim-ordinate" | "ucs" | "purge"
   | "audit" | "layer-state" | "import" | "export" | "calc";
 
 const PATHS: Record<IconName, string> = {
@@ -341,6 +341,7 @@ const PATHS: Record<IconName, string> = {
   "dim-diameter": `<circle cx="12" cy="12" r="8"/><path d="M6.3 6.3 L17.7 17.7"/><path d="M6.3 6.3 L7.5 9 M6.3 6.3 L9 7.5 M17.7 17.7 L16.5 15 M17.7 17.7 L15 16.5"/>`,
   "dim-baseline": `<path d="M4 5 V19"/><path d="M4 8 H14 M4 14 H20"/><path d="M14 6 V10 M20 12 V16 M14 8 L20 14" opacity="0.6"/>`,
   "dim-continue": `<path d="M3 17 H9 M11 17 H17 M19 17 H21"/><path d="M9 15 V19 M17 15 V19 M3 15 V19 M21 15 V19"/><path d="M9 17 L11 17 M17 17 L19 17" stroke-dasharray="1.4 1.4" opacity="0.7"/>`,
+  "dim-ordinate": `<path d="M5 21 V5"/><path d="M5 9 H20"/><path d="M5 7 V11"/><path d="M15 7 V11"/>`,
   ucs: `<path d="M4 20 V4 M4 20 H20"/><path d="M4 12 L12 20" stroke-dasharray="2.4 2"/><circle cx="4" cy="20" r="1.4" fill="currentColor" stroke="none"/><path d="M12 20 L10 18 M4 12 L6 10"/>`,
   purge: `<rect x="5" y="7" width="14" height="14" rx="1.5"/><path d="M9 7 V4.5 A1.5 1.5 0 0 1 10.5 3 H13.5 A1.5 1.5 0 0 1 15 4.5 V7"/><path d="M9 11 V18 M12 11 V18 M15 11 V18" opacity="0.75"/>`,
   audit: `<circle cx="12" cy="12" r="8.5"/><path d="M8 12.5 L11 15.5 L16.5 9.5"/>`,
