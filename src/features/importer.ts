@@ -2055,4 +2055,4 @@ export function setupImporter() {
   };
 
   console.log("[importer] ready · positioning modes + live offset control");
-                             }
+}
