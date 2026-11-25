@@ -68,11 +68,11 @@ test('2D editor: ATTDEF collects attribute definitions for the next BLOCK', asyn
   await run('ATTDEF');
   await expect.poll(hist).toContain('ATTDEF: none waiting');
   await run('ATTDEF ROOMNO 1,2 2.5 101');
-  await expect.poll(hist).toContain('"ROOMNO" at 1,2');
+  await expect.poll(hist).toMatch(/"ROOMNO" at 1\.0+ mm,2\.0+ mm/);
   await run('ATTDEF BAD');
   await expect.poll(hist).toContain('ATTDEF: ATTDEF needs an insertion point');
   await run('ATTDEF LIST');
-  await expect.poll(hist).toContain('1 waiting for the next BLOCK: ROOMNO@1,2');
+  await expect.poll(hist).toMatch(/1 waiting for the next BLOCK: ROOMNO@1\.0+ mm,2\.0+ mm/);
   await run('ATTDEF CLEAR');
   await expect.poll(hist).toContain('discarded 1 waiting definition');
 });
