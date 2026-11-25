@@ -55,5 +55,15 @@ check("seed file", SEEDFILE); assert.deepStrictEqual(bad, [], "pristine seed mus
 check("recursive blocks", RECURSIVE);
 for (let i = 0; i < 400; i++) { const m = mutate(); check(`mutation #${i} (seed ${SEED})`, m); if (bad.length) { fs.mkdirSync(path.join(os.tmpdir(), "dxf-counterexamples"), { recursive: true }); fs.writeFileSync(path.join(os.tmpdir(), "dxf-counterexamples", `seed${SEED}-${i}.dxf`), m); } }
 for (const [name, text] of [["empty", ""], ["only EOF", "0\nEOF"], ["binary DXF sentinel", "AutoCAD Binary DXF\r\n\x1a\x00\x00"], ["100k entities", sec("ENTITIES", D(Array.from({ length: 100000 }, () => D("0", "LINE", "8", "0", "10", "0", "20", "0", "11", "1", "21", "1")))) + "\n0\nEOF"]]) check(name, text);
+// A non-finite coordinate must not default to 0 and fabricate geometry at the origin: the entity is skipped and counted.
+{
+  const nanLine = sec("ENTITIES", D("0", "LINE", "8", "0", "10", "NaN", "20", "Infinity", "11", "NaN", "21", "NaN",
+    "0", "LINE", "8", "0", "10", "0", "20", "0", "11", "4", "21", "3", "0", "CIRCLE", "8", "0", "10", "1", "20", "1", "40", "-Infinity"));
+  const d = parseDxf(D(nanLine, "0", "EOF"));
+  assert.strictEqual(d.entities.length, 1, "only the valid LINE survives: " + JSON.stringify(d.entities.map((e) => e.type)));
+  assert.strictEqual(d.entities[0].type, "LINE");
+  assert.strictEqual(d.skipped && d.skipped.LINE, 1, "the NaN LINE is counted as skipped");
+  assert.strictEqual(d.skipped && d.skipped.CIRCLE, 1, "the -Infinity CIRCLE is counted as skipped");
+}
 if (bad.length) { console.error("MALFORMED-DXF FAILURES (seed " + SEED + "):\n" + bad.slice(0, 15).join("\n")); process.exit(1); }
 console.log(`=== malformed DXF: ${n} inputs (${accepted} parsed, ${rejected} rejected with Error), seed ${SEED}, all bounded + finite ===`);

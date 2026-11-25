@@ -3596,7 +3596,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (!f) return;
       try {
         status(`Attaching XREF ${f.name}…`);
-        const r = await readCadFile(f);
+        const r = await readCadFile(f, { requireComplete: true });
         const base = f.name.replace(/\.(dwg|dxf)$/i, "").replace(/[^\w.-]+/g, "_") || "xref";
         const { layers, entities } = AcadParity.prefixXrefLayers(r.doc.layers, r.doc.entities, base);
         for (const l of layers) {
@@ -13713,7 +13713,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (!doc) return;
     status(`Importing ${f.name}…`);
     try {
-      const r = await readCadFile(f);
+      const r = await readCadFile(f, { requireComplete: true });
       const incoming = r.doc.entities.filter((e) => {
         const b = M.entityBBox(e);
         return Number.isFinite(b.minX + b.maxX + b.minY + b.maxY);
