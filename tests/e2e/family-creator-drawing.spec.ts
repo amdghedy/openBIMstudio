@@ -87,7 +87,7 @@ test("drawing to parts: enter one length, read, confirm parts, honest labels, IF
   const dims = drawing.locator('[data-fc="drawing-dims"]');
   await expect(dims).toContainText("entered"); await expect(dims).toContainText("checked: about");
   // Parts say what was read and what was assumed; the unknowns are listed, the far side is not claimed empty.
-  await expect(drawing.locator('[data-fc="drawing-parts"]')).toContainText("read from the picture");
+  await expect(drawing.locator('[data-fc="drawing-parts"]')).toContainText("estimated from the picture");
   await expect(drawing.locator('[data-fc="drawing-parts"]')).toContainText("thickness: assumed");
   await expect(drawing.locator('[data-fc="drawing-parts"]')).toContainText("placed on");
   await expect(drawing.locator('[data-fc="drawing-unknown"]')).toContainText("opposite");
@@ -167,6 +167,8 @@ test("drawing to parts: two real manufacturer drawings through the same code", a
     await drawing.locator('[data-fc="drawing-3d"]').scrollIntoViewIfNeeded();
     await page.waitForTimeout(1200);
     await shot(page, `${c.shot}-3d.png`);
+    await page.waitForTimeout(1500);
+    for (const [loc, nm] of [['[data-fc="drawing-overlay"]', "a-overlay"], ['[data-fc="drawing-parts"] .obs-fc-h', "b-parts-header"], ['[data-fc="drawing-3d"]', "c-3d"]] as const) { if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await drawing.locator(loc).first().screenshot({ path: path.join(SHOTS, `${c.shot}-preview-${nm}.png`) }); } }
     await drawing.locator('[data-dact="confirm"]').click();
     await drawing.locator('[data-fc="drawing-overlay"]').scrollIntoViewIfNeeded();
     await shot(page, `${c.shot}-overlay.png`);
@@ -204,4 +206,31 @@ test("drawing to parts: drag a rectangle on the picture to crop, fields follow, 
   expect(Math.abs((await v("l")) - 10)).toBeLessThan(1.5);
   await drawing.locator("[data-dcrop-reset]").click();
   for (const k of ["l", "r", "t", "b"]) await expect(drawing.locator(`[data-dcrop="${k}"]`)).toHaveValue("");
+});
+
+test("drawing to parts: draw the side view and end view boxes by hand; both are needed; the read uses them", async ({ page }, info) => {
+  await enterAuthoring(page); await openCreator(page);
+  const dir = fs.mkdtempSync(path.join(info.outputDir.replace(/[^/]*$/, ""), "fc-vb-")); fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, "cabinet.png"); fs.writeFileSync(file, syntheticSheet());
+  const drawing = page.locator('[data-fc="drawing"]');
+  await expect(drawing).toBeVisible(); await page.waitForTimeout(1500); await drawing.scrollIntoViewIfNeeded();
+  await drawing.locator("[data-dfile]").setInputFiles(file);
+  const pick = drawing.locator('[data-fc="drawing-crop-pick"]'); await pick.scrollIntoViewIfNeeded();
+  const bb = (await pick.boundingBox())!;
+  const drag = async (a: number[], b: number[]) => { await page.mouse.move(bb.x + bb.width * a[0], bb.y + bb.height * a[1]); await page.mouse.down(); await page.mouse.move(bb.x + bb.width * b[0], bb.y + bb.height * b[1], { steps: 4 }); await page.mouse.up(); };
+  await drawing.locator('[data-dfield="length"]').fill("2000");
+  // Side view only: not enough, the automatic views stay.
+  await drawing.locator('[data-dfield="mode"]').selectOption("side");
+  await drag([0.01, 0.02], [0.6, 0.98]);
+  await expect(drawing.locator('[data-fc="drawing-vbox-side"]')).toBeVisible();
+  await expect(drawing.locator('[data-fc="drawing-vb-state"]')).toContainText("One view box");
+  await drawing.locator('[data-dfield="mode"]').selectOption("end");
+  await drag([0.62, 0.02], [0.99, 0.98]);
+  await expect(drawing.locator('[data-fc="drawing-vb-state"]')).toContainText("Both view boxes");
+  await drawing.locator('[data-dact="read"]').click();
+  await expect(drawing.locator('[data-fc="drawing-parts"]')).toBeVisible({ timeout: 60000 });
+  await expect(drawing.locator('[data-fc="drawing-warnings"]')).toContainText("boxes drawn by the person");
+  await shot(page, "drawing-view-boxes.png");
+  await drawing.locator("[data-dvb-reset]").click();
+  await expect(drawing.locator('[data-fc="drawing-vb-state"]')).toContainText("found automatically");
 });
