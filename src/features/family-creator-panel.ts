@@ -43,6 +43,8 @@ let notice = "";
 /** Parts the user has switched off in the preview and views, by name. Whether exports leave them out is a separate, visible choice. */
 const hiddenParts = new Set<string>();
 let exportShownOnly = false;
+/** The person pressed "I reviewed this result" for the result as it is now. Any rerun or part change takes it back. Adding to the library needs it. */
+let reviewed = false;
 /** The library family the current result was added to or reopened from, and its type. */
 let libId: string | null = null;
 let libTypeId: string | null = null;
@@ -86,6 +88,7 @@ function run(spec?: ProductSpec) {
       : undefined;
   })();
   const prevWarnings = result?.warnings;
+  reviewed = false;
   result = runCreator(
     { name: form.name.trim() || "New family", manufacturer: form.manufacturer || undefined, model: form.model || undefined,
       pages: form.pages.length ? form.pages : form.text ? [form.text] : [], spec: useSpec, templateId: tplId() },
@@ -278,7 +281,8 @@ function resultHtml(r: CreatorResult): string {
       (form.fromOcr && form.pages.length ? `<div class="obs-fc-detail" data-fc="ocr-warning" style="color:#f59e0b">${esc(t("familyCreator.ocrCheck"))}</div>` : "") + `</div>`;
   }
   if (s.platformReady) {
-    html += `<div class="obs-fc-sec"><button type="button" class="obs-fc-btn" data-act="add">${esc(t("familyCreator.add"))}</button> ` +
+    html += `<div class="obs-fc-sec" data-fc="review"><div class="obs-fc-detail">${esc(t(reviewed ? "familyCreator.review.done" : "familyCreator.review.needed"))}</div><button type="button" class="obs-fc-btn" data-act="review"${reviewed ? " disabled" : ""}>${esc(t("familyCreator.review.btn"))}</button></div>` + taskStateHtml(r) +
+      `<div class="obs-fc-sec"><button type="button" class="obs-fc-btn" data-act="add"${reviewed ? "" : " disabled"}>${esc(t("familyCreator.add"))}</button> ` +
       (r.ifcText ? `<button type="button" class="obs-fc-btn" data-act="ifc">${esc(t("familyCreator.ifcDownload"))}</button>` : "") +
       (r.ifcText && preview ? `<button type="button" class="obs-fc-btn" data-act="glb">${esc(t("familyCreator.glbDownload"))}</button>` : "") + `</div>` +
       (r.ifcText && preview ? `<div class="obs-fc-detail" data-fc="glb-note">${esc(t("familyCreator.glbNote"))}</div>` : "");
@@ -287,6 +291,23 @@ function resultHtml(r: CreatorResult): string {
   return html;
 }
 
+
+/** Read-only summary of where the task stands, for a person or a tool that reads the page. It holds no secrets and does not change anything. */
+function taskStateHtml(r: CreatorResult): string {
+  const st = {
+    version: 1,
+    source: { fileName: form.fileName || null, pages: form.pages.length, fromOcr: form.fromOcr, link: form.url ? true : false },
+    stages: r.status.stages.map((x) => ({ id: x.id, state: x.state })),
+    platformReady: r.status.platformReady,
+    size: r.size ? { widthM: r.size.widthM, depthM: r.size.depthM, heightM: r.size.heightM } : null,
+    warnings: (r.warnings ?? []).map((w) => w.key),
+    exports: { ifc2x3: r.status.exports.ifc2x3.state },
+    revit: r.status.revit.state,
+    review: { required: true, done: reviewed },
+    savedToLibrary: libId !== null,
+  };
+  return `<details class="obs-fc-sec" data-fc="task-state-box"><summary class="obs-fc-detail">${esc(t("familyCreator.taskState.title"))}</summary><pre class="obs-fc-detail" dir="ltr" data-fc="task-state" style="white-space:pre-wrap">${esc(JSON.stringify(st, null, 1))}</pre></details>`;
+}
 
 function partsHtml(parts: ReturnType<typeof resolveParts>): string {
   if (!partsSwitchable()) { hiddenParts.clear(); exportShownOnly = false; return `<div class="obs-fc-sec" data-fc="parts"><div class="obs-fc-h">${esc(t("familyCreator.parts.title"))}</div><div class="obs-fc-detail" data-fc="parts-unavailable" style="color:#f59e0b">${esc(t("familyCreator.parts.unavailable"))}</div></div>`; }
@@ -395,11 +416,12 @@ function render() {
   panel.querySelector('[data-act="fit"]')?.addEventListener("click", () => preview?.fit());
   panel.querySelectorAll<HTMLInputElement>("input[data-part]").forEach((el) => el.addEventListener("change", () => {
     const n = el.dataset.part as string;
+    reviewed = false;
     if (el.checked) hiddenParts.delete(n); else hiddenParts.add(n);
     updatePreview(false); render();
   }));
   panel.querySelectorAll<HTMLInputElement>("input[data-scope]").forEach((el) => el.addEventListener("change", () => {
-    exportShownOnly = el.dataset.scope === "shown"; render();
+    reviewed = false; exportShownOnly = el.dataset.scope === "shown"; render();
   }));
   panel.querySelectorAll<HTMLInputElement>("[data-param]").forEach((el) => {
     el.addEventListener("change", () => {
@@ -554,7 +576,8 @@ function act(a: string) {
   else if (a === "create") run();
   else if (a === "fetch-url") { if (form.urlConsent && form.url.trim()) void loadFromUrl(); }
   else if (a === "fit") preview?.fit();
-  else if (a === "add" && result?.family) {
+  else if (a === "review" && result?.family) { reviewed = true; render(); }
+  else if (a === "add" && result?.family && reviewed) {
     const f = result.family;
     const made = familyStore.create({
       name: f.name, category: f.category, ifcEntity: f.ifcEntity, sourceElementType: f.sourceElementType,
@@ -567,7 +590,7 @@ function act(a: string) {
   } else if (a === "reopen") reopenSelected();
   else if (a === "save-lib") saveToLibrary();
   else if (a === "add-size") addSize();
-  else if (a === "show-all-parts") { hiddenParts.clear(); updatePreview(false); render(); }
+  else if (a === "show-all-parts") { reviewed = false; hiddenParts.clear(); updatePreview(false); render(); }
   else if (a === "glb" && result?.family && result.spec) void downloadGlb();
   else if (a === "ifc" && result?.ifcText && result.spec) {
     let text = result.ifcText, omittedNote = "";
