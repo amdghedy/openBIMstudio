@@ -6,6 +6,7 @@
 import type { DxfDimStyle, DxfDocument, DxfEntity, DxfLayer, DxfPoint, DxfViewport } from "./dxf-types";
 import { ensureLinetypes, fontDxfFile, isTrueTypeFont, lineweightToDxf, linetypesInUse } from "./cad-styles";
 import { TEXT_LINE_PITCH } from "../cad-viewer/viewer-math";
+import { polylineBBox } from "./dxf-geometry";
 import { nativeIfValid, splineDxfBody, ellipseDxfBody } from "./native-curves";
 import type { DxfAttDef, DxfBlockDef, DxfInsert } from "./dxf-types";
 
@@ -395,10 +396,20 @@ function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TE
     s += entityHead(e, "LWPOLYLINE");
     s += pair(90, e.points.length);
     s += pair(70, e.closed ? 1 : 0);
-    for (const p of e.points) {
+    // A7: the constant width (43) and, per vertex, the bulge (42) and the
+    // start/end widths (40/41) — without them an arc segment in a
+    // polyline came back from save as many straight chords, and a wide
+    // polyline came back hairline. Only segments that exist carry them:
+    // the last vertex of an open polyline starts no segment.
+    if (e.width != null && e.width > 0) s += pair(43, e.width);
+    const segCount = e.closed ? e.points.length : Math.max(0, e.points.length - 1);
+    e.points.forEach((p, i) => {
       s += pair(10, p.x);
       s += pair(20, p.y);
-    }
+      if (i < segCount && e.bulges?.[i]) s += pair(42, e.bulges[i]);
+      if (i < segCount && e.startWidths?.[i] != null) s += pair(40, e.startWidths[i]);
+      if (i < segCount && e.endWidths?.[i] != null) s += pair(41, e.endWidths[i]);
+    });
   } else if (e.type === "TEXT") {
     if (e.wrapWidth && e.wrapWidth > 0) {
       // Wrapped text is a real MTEXT entity (AcDbMText), not a plain TEXT:
@@ -501,7 +512,13 @@ function computeExtents(entities: DxfEntity[]): { min: DxfPoint; max: DxfPoint }
       add({ x: e.center.x - e.radius, y: e.center.y - e.radius });
       add({ x: e.center.x + e.radius, y: e.center.y + e.radius });
     } else if (e.type === "LWPOLYLINE") {
-      e.points.forEach(add);
+      // Bulged arcs reach past their chord, and a wide polyline reaches
+      // past its centreline by half its width — the header extents must
+      // cover both, or ZOOM E in the next CAD to open the file clips them.
+      const mw = Math.max(0, e.width ?? 0, ...(e.startWidths ?? []), ...(e.endWidths ?? []));
+      const b = polylineBBox(e.points, e.bulges, !!e.closed, mw / 2);
+      add({ x: b.minX, y: b.minY });
+      add({ x: b.maxX, y: b.maxY });
     } else if (e.type === "TEXT" || e.type === "POINT") {
       add(e.position);
     } else if (e.type === "DIMENSION") {

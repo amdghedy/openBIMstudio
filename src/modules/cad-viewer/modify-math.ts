@@ -12,7 +12,15 @@
  */
 
 import type { DxfEntity, DxfPoint, DxfHatch } from "../drawings/dxf-types";
+import { normalizePolyline, polylineLength, tessellatePolyline } from "../drawings/dxf-geometry";
 import { carryNative, type AffineOps } from "../drawings/native-curves";
+import {
+  expandPolylineBulges,
+  reversePolylineEntity,
+  segmentWidths,
+  widthFieldsForSegments,
+  type PolylineEntity,
+} from "./cad-polyline";
 
 export interface Pt {
   x: number;
@@ -588,6 +596,11 @@ function offsetPolyline(
   d: number,
   side: Pt,
 ): DxfEntity | null {
+  // A7 surgery rule (see trimEntity): offsetting a bulged segment along
+  // its chord is wrong (the true offset chord is c ± 2d for a
+  // semicircle) — expand first so the offset follows the arc shape.
+  // Widths are kept: the offset of a wide polyline is wide.
+  if (e.bulges?.some((b) => b)) return offsetPolyline(expandPolylineBulges(e), d, side);
   const off = (loop: DxfPoint[]): DxfPoint[] | null => {
     const n = loop.length;
     if (n < 2) return null;
@@ -602,12 +615,22 @@ function offsetPolyline(
       const len = Math.hypot(dx, dy);
       dirs.push(len < 1e-12 ? { x: 0, y: 0 } : { x: dx / len, y: dy / len });
     }
-    // Decide global side from the first non-degenerate segment.
+    // Decide the global side from the segment NEAREST the side point.
+    // The first segment is a poor proxy for a curved chain: a bulged
+    // polyline is expanded into tessellation chords first, and the first
+    // chord's tangent can put an outside point on the wrong side (a
+    // semicircle's start tangent points up while the point above its
+    // crown is outside — judging from the first chord offsets it
+    // inward and collapses the arc). For a straight polyline every
+    // segment gives the same answer, so this changes nothing there.
     let s = 1;
+    let best = Infinity;
     for (let i = 0; i < m; i++) {
-      if (dirs[i].x || dirs[i].y) {
+      if (!dirs[i].x && !dirs[i].y) continue;
+      const d = distToSeg(side, loop[i], loop[(i + 1) % n]);
+      if (d < best) {
+        best = d;
         s = isLeft(side, loop[i], loop[(i + 1) % n]) ? 1 : -1;
-        break;
       }
     }
     // Offset endpoints per segment: a→b shifted by d along the left-hand normal.
@@ -741,11 +764,15 @@ export function entitySegments(e: DxfEntity): Array<[Pt, Pt]> {
     case "LINE":
       return [[e.start, e.end]];
     case "LWPOLYLINE": {
-      const n = e.points.length;
+      // A7: bulged segments read as their tessellated arcs — intersections
+      // (TRIM cutters, EXTEND boundaries) see the arc, not its chord.
+      // Straight polylines take the exact old path.
+      const pts = e.bulges?.some((b) => b) ? tessellatePolyline(e.points, e.bulges, !!e.closed) : e.points;
+      const n = pts.length;
       if (n < 2) return [];
       const m = e.closed ? n : n - 1;
       const segs: Array<[Pt, Pt]> = [];
-      for (let i = 0; i < m; i++) segs.push([e.points[i], e.points[(i + 1) % n]]);
+      for (let i = 0; i < m; i++) segs.push([pts[i], pts[(i + 1) % n]]);
       return segs;
     }
     case "RAY":
@@ -920,6 +947,13 @@ const lineEnt = (e: DxfEntity): e is Extract<DxfEntity, { type: "LINE" }> => e.t
  * LINE, 1–2 polylines for a picked LWPOLYLINE segment); [] when nothing to trim.
  */
 export function trimEntity(e: DxfEntity, click: Pt, cutters: DxfEntity[], eps = 1e-7): DxfEntity[] {
+  // A7 surgery rule: trimming rebuilds the vertex list (cut points
+  // inserted, the cut span removed), so the bulge/width arrays would
+  // misalign with the new points. Expand bulged polylines first — the
+  // arc shape survives as tessellation. (Recursion, not reassignment:
+  // assigning the parameter would invalidate the lineEnt narrowing in
+  // the closures below.)
+  if (e.type === "LWPOLYLINE" && e.bulges?.some((b) => b)) return trimEntity(expandPolylineBulges(e), click, cutters, eps);
   if (lineEnt(e)) {
     const xs: number[] = [];
     for (const c of cutters) {
@@ -1034,13 +1068,24 @@ export function trimEntity(e: DxfEntity, click: Pt, cutters: DxfEntity[], eps = 
  * boundary entities. Returns the extended entity or null when no boundary hit.
  */
 export function extendEntity(e: DxfEntity, click: Pt, boundaries: DxfEntity[], eps = 1e-7): DxfEntity | null {
+  // A7 surgery rule (see trimEntity): extending moves an endpoint, so
+  // a bulged end segment would keep its old bulge on a new chord.
+  // Expand first — the end then extends along the arc's tangent.
+  if (e.type === "LWPOLYLINE" && e.bulges?.some((b) => b)) return extendEntity(expandPolylineBulges(e), click, boundaries, eps);
   const tryEnd = (from: Pt, dir: Pt, back: (p: Pt) => DxfEntity | null): DxfEntity | null => {
     const far = Math.hypot(dir.x, dir.y) || 1;
     const tip = { x: from.x + (dir.x / far) * 1e9, y: from.y + (dir.y / far) * 1e9 };
     let best: Pt | null = null;
     for (const b of boundaries) {
       if (b === e) continue;
-      for (const p of entIntersections({ ...e, start: from, end: tip } as DxfEntity, b, eps)) {
+      // The ray is a LINE from the endpoint: spreading `e` here would
+      // keep an LWPOLYLINE's type (and its points), so entIntersections
+      // would test the polyline itself — which never reaches a boundary
+      // beyond its end — and EXTEND on any polyline silently returned
+      // null. (Only LINEs were ever tested, where the spread happened
+      // to be a line already.)
+      const ray = { type: "LINE", layer: (e as { layer?: string }).layer ?? "0", start: from, end: tip } as DxfEntity;
+      for (const p of entIntersections(ray, b, eps)) {
         const d = Math.hypot(p.x - from.x, p.y - from.y);
         if (d > 1e-6 && (!best || d < Math.hypot(best.x - from.x, best.y - from.y))) best = p;
       }
@@ -1076,6 +1121,10 @@ export function extendEntity(e: DxfEntity, click: Pt, boundaries: DxfEntity[], e
  * sorted). Returns the two remaining pieces, or null when nothing remains.
  */
 export function breakEntity(e: DxfEntity, p1: Pt, p2: Pt): DxfEntity[] | null {
+  // A7 surgery rule (see trimEntity): breaking splits the vertex list,
+  // so the bulge/width arrays would misalign with the pieces. Expand
+  // first — the pieces are built from tessellation nodes.
+  if (e.type === "LWPOLYLINE" && e.bulges?.some((b) => b)) return breakEntity(expandPolylineBulges(e), p1, p2);
   if (lineEnt(e)) {
     let t1 = paramAlong(e, p1),
       t2 = paramAlong(e, p2);
@@ -1260,25 +1309,84 @@ export function chainPolyline(list: DxfEntity[], closed = false): DxfEntity | nu
     e.type === "LINE" || (e.type === "LWPOLYLINE" && !e.closed && !e.hatch),
   );
   if (ok.length < 2) return null;
-  const chains: DxfPoint[][] = ok.map((e) => (e.type === "LINE" ? [e.start, e.end] : [...e.points]));
-  const merged: DxfPoint[] = chains.shift()!;
+  // A7: each chain carries its segments' bulges and widths alongside the
+  // points, so JOIN keeps arc segments and wide segments instead of
+  // silently dropping them — the old code spread the first entity's
+  // bulge/width arrays onto a merged point list of a different length.
+  // The arrays are segment-length: bulges[i] / startW[i] / endW[i]
+  // describe the segment from point i to point i+1.
+  type Chain = { points: DxfPoint[]; bulges: number[]; startW: number[]; endW: number[] };
+  const toChain = (e: Extract<DxfEntity, { type: "LINE" | "LWPOLYLINE" }>): Chain => {
+    if (e.type === "LINE") {
+      return { points: [{ ...e.start }, { ...e.end }], bulges: [0], startW: [0], endW: [0] };
+    }
+    const bulges: number[] = [];
+    const startW: number[] = [];
+    const endW: number[] = [];
+    for (let i = 0; i < e.points.length - 1; i++) {
+      bulges.push(e.bulges?.[i] ?? 0);
+      const w = segmentWidths(e, i);
+      startW.push(w.start);
+      endW.push(w.end);
+    }
+    return { points: e.points.map((p) => ({ ...p })), bulges, startW, endW };
+  };
+  const reverseChain = (c: Chain): Chain => {
+    // Reuse the entity-level reversal (bulges negate, widths swap) on a
+    // synthetic open polyline, then read the segment arrays back.
+    const rev = reversePolylineEntity({
+      type: "LWPOLYLINE",
+      layer: "0",
+      points: c.points,
+      ...(c.bulges.some((b) => b) ? { bulges: [...c.bulges, 0] } : {}),
+      startWidths: [...c.startW, 0],
+      endWidths: [...c.endW, 0],
+      closed: false,
+    } as PolylineEntity);
+    const bulges: number[] = [];
+    const startW: number[] = [];
+    const endW: number[] = [];
+    for (let i = 0; i < rev.points.length - 1; i++) {
+      bulges.push(rev.bulges?.[i] ?? 0);
+      const w = segmentWidths(rev, i);
+      startW.push(w.start);
+      endW.push(w.end);
+    }
+    return { points: rev.points, bulges, startW, endW };
+  };
+  const chains: Chain[] = ok.map(toChain);
+  const merged: Chain = chains.shift()!;
   let progress = true;
   while (chains.length && progress) {
     progress = false;
     for (let i = 0; i < chains.length; i++) {
-      const c = chains[i];
-      const tail = merged[merged.length - 1];
-      const head = merged[0];
+      let c = chains[i];
+      const tail = merged.points[merged.points.length - 1];
+      const head = merged.points[0];
       const dEnd = (p: Pt): number => Math.min(Math.hypot(p.x - tail.x, p.y - tail.y), Math.hypot(p.x - head.x, p.y - head.y));
-      if (dEnd(c[0]) > dEnd(c[c.length - 1])) c.reverse();
-      const gapT = Math.hypot(c[0].x - tail.x, c[0].y - tail.y);
-      const gapH = Math.hypot(c[0].x - head.x, c[0].y - head.y);
+      if (dEnd(c.points[0]) > dEnd(c.points[c.points.length - 1])) c = reverseChain(c);
+      const gapT = Math.hypot(c.points[0].x - tail.x, c.points[0].y - tail.y);
+      const gapH = Math.hypot(c.points[0].x - head.x, c.points[0].y - head.y);
       if (gapT < 1e-6 && gapT <= gapH) {
-        merged.push(...c.slice(1));
+        merged.points.push(...c.points.slice(1));
+        merged.bulges.push(...c.bulges);
+        merged.startW.push(...c.startW);
+        merged.endW.push(...c.endW);
         chains.splice(i, 1);
         progress = true;
       } else if (gapH < 1e-6) {
-        merged.unshift(...c.slice(0, c.length - 1));
+        // Prepending walks the chain backwards from the joint (c[0] is
+        // the joint, == head), so the prepended part is the REVERSED
+        // chain — bulges negate, widths swap — minus its last point,
+        // which is the joint the head already is. (The old code unshifted
+        // c.slice(0, -1) in order, which duplicated the joint and dropped
+        // the far end: JOIN [line(2,0,4,0), line(0,0,2,0)] came out as
+        // [(2,0),(2,0),(4,0)] instead of [(0,0),(2,0),(4,0)].)
+        const rev = reverseChain(c);
+        merged.points.unshift(...rev.points.slice(0, -1));
+        merged.bulges.unshift(...rev.bulges);
+        merged.startW.unshift(...rev.startW);
+        merged.endW.unshift(...rev.endW);
         chains.splice(i, 1);
         progress = true;
       }
@@ -1286,7 +1394,33 @@ export function chainPolyline(list: DxfEntity[], closed = false): DxfEntity | nu
   }
   if (chains.length) return null; // broken chain
   const base = ok[0];
-  return { ...base, type: "LWPOLYLINE", points: merged, closed, hatch: undefined } as Extract<DxfEntity, { type: "LWPOLYLINE" }>;
+  // Closing adds a straight closing edge (bulge 0) whose widths continue
+  // the last segment into the first — the same rule as withClosed.
+  const bulges = [...merged.bulges];
+  const startW = [...merged.startW];
+  const endW = [...merged.endW];
+  if (closed) {
+    bulges.push(0);
+    startW.push(endW[endW.length - 1] ?? 0);
+    endW.push(startW[0] ?? 0);
+  }
+  const fields = widthFieldsForSegments(startW, endW);
+  const out = {
+    ...base,
+    type: "LWPOLYLINE",
+    points: merged.points,
+    closed,
+    hatch: undefined,
+    ...(bulges.some((b) => b) ? { bulges } : {}),
+    ...(fields.width != null ? { width: fields.width } : {}),
+    ...(fields.startWidths ? { startWidths: fields.startWidths, endWidths: fields.endWidths } : {}),
+  } as Extract<DxfEntity, { type: "LWPOLYLINE" }>;
+  if (base.type === "LINE") {
+    // A spread LINE leaves stale start/end on the polyline; drop them.
+    delete (out as unknown as Record<string, unknown>).start;
+    delete (out as unknown as Record<string, unknown>).end;
+  }
+  return normalizePolyline(out);
 }
 
 /** Open Catmull–Rom spline through `pts` — `per` points per segment. */
@@ -1359,9 +1493,8 @@ export function entitySpanLength(e: DxfEntity): number {
     }
     case "LWPOLYLINE": {
       if (e.closed || e.points.length < 2) return 0;
-      let len = 0;
-      for (let i = 1; i < e.points.length; i++) len += Math.hypot(e.points[i].x - e.points[i - 1].x, e.points[i].y - e.points[i - 1].y);
-      return len;
+      // A7: bulged segments count as arcs, not chords.
+      return polylineLength(e.points, e.bulges, false);
     }
     default:
       return 0;

@@ -576,14 +576,14 @@ function convertEntity(e: Any, cx: Ctx, depth: number, insertLayer: string | nul
         cx.skip(`${type} (<2 vertices)`);
         return [];
       }
-      const points = expandBulges(
-        verts.map((v) => {
-          const p = pt(v);
-          return { ...p, bulge: Number(Array.isArray(v) ? v[2] : v.bulge) || undefined };
-        }),
-        e.closed === true,
-      );
-      return [{ ...c, type: "LWPOLYLINE", points, closed: e.closed === true }];
+      // A7: the engine hands us vertices with bulges — keep them on the
+      // entity instead of tessellating here. (The DWG writer path goes
+      // through writeDxf, so the bulges round-trip to DWG as well.)
+      const points = verts.map((v) => pt(v));
+      const bulges = verts.map((v) => Number(Array.isArray(v) ? v[2] : v.bulge) || 0);
+      const ent: DxfEntity = { ...c, type: "LWPOLYLINE", points, closed: e.closed === true };
+      if (bulges.some((b) => b)) ent.bulges = bulges;
+      return [ent];
     }
     case "SPLINE": {
       const deg = Math.max(1, Math.round(Number(e.degree ?? 3)));

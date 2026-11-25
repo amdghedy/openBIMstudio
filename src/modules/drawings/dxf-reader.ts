@@ -20,7 +20,7 @@ import { parseWithAcadEngine } from "./acad-engine";
 import type { DxfAttDef, DxfAttrib, DxfBlockDef, DxfDimStyle, DxfDocument, DxfEntity, DxfHatch, DxfLayer, DxfLayout, DxfPoint, DxfTextStyle, DxfUnits, DxfViewport, DxfXrefDecl } from "./dxf-types";
 import {
   arcPoints, computeExtents, ellipsePoints, evalBSpline, expandBulges,
-  insUnitsToUnits, transformEntity, flipEntityX, isMirroredOcs, type InsertXform,
+  insUnitsToUnits, normalizePolyline, transformEntity, flipEntityX, isMirroredOcs, type InsertXform,
 } from "./dxf-geometry";
 import { attachNative } from "./native-curves";
 import { bindDocumentBlocks, resolveInsert } from "./block-refs";
@@ -745,20 +745,42 @@ function expandRecs(
         break;
 
       case "LWPOLYLINE": {
-        const verts: Array<DxfPoint & { bulge?: number }> = [];
+        // A7: vertices stay vertices — bulges (42), the constant width
+        // (43) and per-vertex widths (40/41) are stored on the entity, so
+        // arc segments survive the import instead of being tessellated
+        // into straight chords at read time. Display, picking and the
+        // writer tessellate from the stored bulges.
+        const verts: DxfPoint[] = [];
+        const bulges: number[] = [];
+        const startW: number[] = [];
+        const endW: number[] = [];
+        let width: number | undefined;
+        let hasVertexWidths = false;
         for (const p of r.pairs) {
-          if (p.code === 10) verts.push({ x: num(p.value), y: 0, z: d.n(38) });
+          if (p.code === 10) { verts.push({ x: num(p.value), y: 0, z: d.n(38) }); bulges.push(0); startW.push(0); endW.push(0); }
           else if (p.code === 20 && verts.length) verts[verts.length - 1].y = num(p.value);
-          else if (p.code === 42 && verts.length) verts[verts.length - 1].bulge = num(p.value);
+          else if (p.code === 42 && verts.length) bulges[bulges.length - 1] = num(p.value);
+          else if (p.code === 43) width = num(p.value);
+          else if (p.code === 40 && verts.length) { startW[startW.length - 1] = num(p.value); hasVertexWidths = true; }
+          else if (p.code === 41 && verts.length) { endW[endW.length - 1] = num(p.value); hasVertexWidths = true; }
         }
         const closed = (d.n(70) & 1) === 1;
-        if (verts.length >= 2) push({ ...c, type: "LWPOLYLINE", points: expandBulges(verts, closed), closed });
+        if (verts.length >= 2) push(normalizePolyline({
+          ...c, type: "LWPOLYLINE", points: verts, closed,
+          ...(bulges.some((b) => b) ? { bulges } : {}),
+          ...(width != null && width > 0 ? { width } : {}),
+          ...(hasVertexWidths ? { startWidths: startW, endWidths: endW } : {}),
+        }));
         break;
       }
 
       case "POLYLINE": {
         const flags = d.n(70);
-        const verts: Array<DxfPoint & { bulge?: number }> = [];
+        const verts: DxfPoint[] = [];
+        const bulges: number[] = [];
+        const startW: number[] = [];
+        const endW: number[] = [];
+        let hasVertexWidths = false;
         let j = i + 1;
         for (; j < recs.length && recs[j].type !== "SEQEND"; j++) {
           if (recs[j].type !== "VERTEX") continue;
@@ -766,12 +788,20 @@ function expandRecs(
           const vf = vd.n(70);
           if (vf & 16) continue; // spline-frame control point
           if (vf & 128) continue; // polyface vertex/face record
-          verts.push({ ...vd.pt(10, 20, 30), bulge: vd.n(42) || undefined });
+          verts.push(vd.pt(10, 20, 30));
+          bulges.push(vd.n(42) || 0);
+          const sw = vd.n(40) || 0, ew = vd.n(41) || 0;
+          startW.push(sw); endW.push(ew);
+          if (sw > 0 || ew > 0) hasVertexWidths = true;
         }
         i = j; // skip VERTEX records and SEQEND
         if (flags & (16 | 64)) { skip("POLYLINE (mesh)"); break; }
         const closed = (flags & 1) === 1;
-        if (verts.length >= 2) push({ ...c, type: "LWPOLYLINE", points: expandBulges(verts, closed), closed });
+        if (verts.length >= 2) push(normalizePolyline({
+          ...c, type: "LWPOLYLINE", points: verts, closed,
+          ...(bulges.some((b) => b) ? { bulges } : {}),
+          ...(hasVertexWidths ? { startWidths: startW, endWidths: endW } : {}),
+        }));
         break;
       }
 

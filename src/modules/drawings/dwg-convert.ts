@@ -292,7 +292,16 @@ function convertList(list: Any[], cx: Ctx, depth: number, insertLayer: string | 
           const verts = raw
             .filter((v) => !(toNum(v?.flag ?? v?.flags) & 16)) // spline-frame points
             .map((v) => ({ ...toPt(v), bulge: toNum(v?.bulge) || undefined }));
-          if (verts.length >= 2) out.push({ ...c, type: "LWPOLYLINE", points: expandBulges(verts, closed), closed });
+          // A7: keep the vertices and their bulges — expanding here turned
+          // every DWG arc segment into straight chords on import. (The
+          // engine does not expose polyline widths under a verifiable
+          // field name, so widths still come only from DXF for now.)
+          if (verts.length >= 2) {
+            const ent: DxfEntity = { ...c, type: "LWPOLYLINE", points: verts.map((v) => ({ x: v.x, y: v.y, z: v.z })), closed };
+            const bulges = verts.map((v) => v.bulge || 0);
+            if (bulges.some((b) => b)) ent.bulges = bulges;
+            out.push(ent);
+          }
           break;
         }
 

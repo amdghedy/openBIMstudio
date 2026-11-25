@@ -107,6 +107,8 @@ import {
   setFilletRadiusStore,
   getChamferDistStore,
   setChamferDistStore,
+  getPlineWidthStore,
+  setPlineWidthStore,
   explodePolylines,
   removeZeroLength,
   countZeroLength,
@@ -155,6 +157,7 @@ import * as P from "./cad-params";
 import * as DIM from "../modules/cad-viewer/dimension-system";
 import * as Ann from "../modules/cad-viewer/cad-annotation";
 import * as LayerMgr from "../modules/cad-viewer/cad-layer-manager";
+import * as Poly from "../modules/cad-viewer/cad-polyline";
 import { fmtTime } from "../core/region";
 import { strokeFontFor, strokeLinePolylines, strokeLineWidth, CAP_UNITS, type StrokeFont } from "../modules/drawings/stroke-font";
 
@@ -266,7 +269,8 @@ interface CadCommandDef {
 
 const CAD_COMMANDS: CadCommandDef[] = [
   { name: "LINE", aliases: ["L"], description: "Create straight line segments" },
-  { name: "PLINE", aliases: ["PL", "POLYLINE"], description: "Create a 2D polyline" },
+  { name: "PLINE", aliases: ["PL", "POLYLINE"], description: "Create a 2D polyline — in-tool options A (arc) · C (close) · U (undo) · W (width)" },
+  { name: "PLINEWID", aliases: [], description: "Default width for newly drawn polylines (PLINEWID <width>)" },
   { name: "CIRCLE", aliases: ["C"], description: "Create a circle from center and radius" },
   { name: "RECTANG", aliases: ["REC", "RECTANGLE"], description: "Create a rectangular polyline" },
   { name: "ARC", aliases: ["A"], description: "Create an arc: 3 points, or Center / End / Angle / Radius / Length options" },
@@ -376,7 +380,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "SELECTIONCYCLING", aliases: ["SELCYCLE"], description: "Choose which overlapping object is selected at the cursor (Ctrl+W)" },
   { name: "ARRAYPOLAR", aliases: ["ARP"], description: "Create a polar array around a centre point; choose item count, sweep angle and whether items rotate" },
   { name: "ARRAYPATH", aliases: ["ARPATH"], description: "Place copies of the selection along a LINE, polyline, ARC or CIRCLE path; choose item count and whether copies align to the path tangent" },
-  { name: "PEDIT", aliases: ["PE"], description: "Edit polylines: PEDIT J (join selection) · PEDIT C (close) · PEDIT O (open) · PEDIT R (reverse)" },
+  { name: "PEDIT", aliases: ["PE"], description: "Edit polylines: PEDIT J (join selection) · PEDIT C (close) · PEDIT O (open) · PEDIT R (reverse) · PEDIT W <width>" },
   { name: "CAL", aliases: ["QUICKCALC", "QC"], description: "Evaluate an expression: CAL 2*PI*25 · sin/cos/tan (degrees) · sqrt/abs/round/min/max" },
   { name: "FIND", aliases: ["FIND"], description: "Find and replace text in the drawing" },
   { name: "VIEW", aliases: ["V"], description: "Named views: VIEW S <name> saves, VIEW R <name> restores" },
@@ -1825,7 +1829,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let lastPointerScreen: M.Pt = { x: 24, y: 24 };
   let pts: M.Pt[] = [];
   let results: string[] = [];
-  let drawn: Array<{ kind: Tool; pts: M.Pt[] }> = [];
+  let drawn: Array<{ kind: Tool; pts: M.Pt[]; bulges?: number[]; closed?: boolean }> = [];
+  // A7 — PLINE in-progress state: per-segment bulges/widths for the
+  // polyline being drawn (segments 0..pts.length-2), the pending 3-point
+  // arc (A), and the width of the NEXT segment (W sets start then end;
+  // each drawn segment starts at the previous end width, like AutoCAD).
+  let polySegs: Array<{ bulge: number; startW: number; endW: number }> = [];
+  let polyArcStage: "off" | "mid" | "end" = "off";
+  let polyArcMid: M.Pt | null = null;
+  let polyNextW: { start: number; end: number } = { start: 0, end: 0 };
   let markups: Markup[] = [];
   let hits: M.TextHit[] = [],
     hitI = -1;
@@ -2533,12 +2545,58 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           drawHatch(c, e, v);
           break;
         }
-        e.points.forEach((q, i) => {
-          const p = P(q.x, q.y);
-          i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y);
-        });
-        if (e.closed) c.closePath();
-        c.stroke();
+        // A7: bulged segments render as their tessellated arcs (not
+        // chords), and each segment strokes at its own width — a hairline
+        // polyline strokes once at the entity lineweight, a wide one
+        // strokes in runs at the width interpolated along the segment,
+        // so a taper visibly tapers and an arc stays thick along its curve.
+        const segs = Poly.displaySegments(e);
+        if (!segs.length) break;
+        if (!segs.some((s) => s.startWidth > 0 || s.endWidth > 0)) {
+          // Hairline: one continuous path (miter joins, as before)
+          // through the tessellated points, so arcs render as arcs.
+          const pts = Poly.displayPoints(e).map((q) => P(q.x, q.y));
+          if (e.closed && pts.length > 2) pts.push(pts[0]);
+          c.beginPath();
+          pts.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)));
+          c.stroke();
+          break;
+        }
+        const baseW = c.lineWidth;
+        c.save();
+        for (const seg of segs) {
+          const sp = seg.points.map((q) => P(q.x, q.y));
+          const w0 = Math.max(seg.startWidth, 0) * v.scale;
+          const w1 = Math.max(seg.endWidth, 0) * v.scale;
+          if (w0 <= 0 && w1 <= 0) {
+            c.lineWidth = baseW;
+            c.beginPath();
+            sp.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)));
+            c.stroke();
+            continue;
+          }
+          c.lineCap = "round";
+          c.lineJoin = "round";
+          const total = sp.reduce((a, p, i) => (i ? a + Math.hypot(p.x - sp[i - 1].x, p.y - sp[i - 1].y) : 0), 0) || 1;
+          let acc = 0;
+          for (let i = 0; i + 1 < sp.length; i++) {
+            const a = sp[i], b = sp[i + 1];
+            const len = Math.hypot(b.x - a.x, b.y - a.y);
+            // A straight segment gets 8 runs so its taper shows; an arc
+            // already has a run per tessellation chord.
+            const steps = sp.length === 2 ? 8 : 1;
+            for (let s = 0; s < steps; s++) {
+              const mid = (acc + (len * (s + 0.5)) / steps) / total;
+              c.lineWidth = Math.max(1, w0 + (w1 - w0) * mid);
+              c.beginPath();
+              c.moveTo(a.x + ((b.x - a.x) * s) / steps, a.y + ((b.y - a.y) * s) / steps);
+              c.lineTo(a.x + ((b.x - a.x) * (s + 1)) / steps, a.y + ((b.y - a.y) * (s + 1)) / steps);
+              c.stroke();
+            }
+            acc += len;
+          }
+        }
+        c.restore();
         break;
       }
       case "POINT": {
@@ -3490,8 +3548,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       c.strokeStyle = "#facc15";
       c.fillStyle = "#facc15";
       c.font = "12px sans-serif";
-      for (const d of drawn) paintMeasure(c, v, d.kind, d.pts);
-      if (pts.length) paintMeasure(c, v, tool, cursor ? [...pts, cursor] : pts);
+      for (const d of drawn) {
+        // A7: a committed polyline's measure trace tessellates its arcs
+        // instead of drawing their chords.
+        paintMeasure(
+          c, v, d.kind,
+          d.bulges?.some((b) => b)
+            ? Poly.displayPoints({ type: "LWPOLYLINE", layer: currentLayer, points: d.pts, bulges: d.bulges, closed: !!d.closed } as Poly.PolylineEntity)
+            : d.pts,
+        );
+      }
+      // A7: the in-progress PLINE preview tessellates arc segments (and
+      // the pending arc through its second point) so what is drawn is
+      // what the committed polyline will be — not the chord.
+      if (pts.length) paintMeasure(c, v, tool, tool === "poly" ? polyPreviewPoints(cursor) : cursor ? [...pts, cursor] : pts);
       c.restore();
 
       // Text search highlights
@@ -5023,6 +5093,135 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     return false;
   }
 
+  /**
+   * PLINE in-tool options (A7): A = arc segment (3-point, through the
+   * next two clicks), C = close in-tool, U = undo last point, W =
+   * width (start, then end, for the next segment). Until now C fell
+   * through to the CIRCLE command and the prompt's [Close/Undo] was a
+   * lie — close only existed afterwards via PEDIT C / CLOSEPL.
+   */
+  function handlePolyOption(trimmed: string): boolean {
+    if (tool !== "poly") return false;
+    const k = trimmed.trim().toUpperCase();
+    if (k === "C" || k === "CLOSE") {
+      if (pts.length < 2) {
+        logCmd("PLINE: need at least two points before Close.");
+        showAcadPrompt();
+        return true;
+      }
+      if (polyArcStage !== "off") {
+        logCmd("PLINE: finish the arc segment first (pick its end point).");
+        showAcadPrompt();
+        return true;
+      }
+      finishMeasure(true);
+      pts = [];
+      setTool("select");
+      logCmd("Command: PLINE closed.");
+      return true;
+    }
+    if (k === "U" || k === "UNDO") {
+      if (polyArcStage !== "off") {
+        polyArcStage = "off";
+        polyArcMid = null;
+        logCmd("PLINE: arc cancelled.");
+        showAcadPrompt();
+        draw();
+        return true;
+      }
+      if (pts.length === 0) {
+        logCmd("PLINE: nothing to undo.");
+        showAcadPrompt();
+        return true;
+      }
+      pts.pop();
+      polySegs.pop();
+      logCmd("PLINE: last point undone.");
+      showAcadPrompt();
+      draw();
+      return true;
+    }
+    if (k === "A" || k === "ARC") {
+      if (pts.length < 1) {
+        logCmd("PLINE: pick the start point first, then A for an arc segment.");
+        showAcadPrompt();
+        return true;
+      }
+      if (polyArcStage !== "off") {
+        logCmd("PLINE: pick the arc's end point, or U to cancel the arc.");
+        showAcadPrompt();
+        return true;
+      }
+      polyArcStage = "mid";
+      logCmd("PLINE: specify the arc's second point, then its end point.");
+      showAcadPrompt();
+      return true;
+    }
+    if (k === "W" || k === "WIDTH") {
+      pendingNumeric = onPolyStartWidthTyped;
+      logCmd("Specify starting width:");
+      showAcadPrompt();
+      return true;
+    }
+    return false;
+  }
+
+  /** PLINE width typed (W option): the starting width of the next segment. */
+  function onPolyStartWidthTyped(v: number): void {
+    if (tool !== "poly") return;
+    if (!(v >= 0)) {
+      logCmd("PLINE: width must be zero or greater.");
+      showAcadPrompt();
+      return;
+    }
+    polyNextW.start = v;
+    pendingNumeric = onPolyEndWidthTyped;
+    logCmd("Specify ending width:");
+    showAcadPrompt();
+  }
+
+  /** PLINE width typed (W option): the ending width of the next segment. */
+  function onPolyEndWidthTyped(v: number): void {
+    if (tool !== "poly") return;
+    if (!(v >= 0)) {
+      logCmd("PLINE: width must be zero or greater.");
+      showAcadPrompt();
+      return;
+    }
+    polyNextW.end = v;
+    logCmd(`PLINE: next segment width ${fmt(polyNextW.start)} → ${fmt(polyNextW.end)}.`);
+    showAcadPrompt();
+  }
+
+  /** Tessellated points of the polyline being drawn, with the rubber-band segment to the cursor. */
+  function polyPreviewPoints(cur: M.Pt | null): M.Pt[] {
+    const base = Poly.displayPoints({
+      type: "LWPOLYLINE",
+      layer: currentLayer,
+      points: pts,
+      bulges: polySegs.map((s) => s.bulge),
+      closed: false,
+    } as Poly.PolylineEntity);
+    if (!cur || !pts.length) return base;
+    const last = pts[pts.length - 1];
+    // The rubber-band segment: an arc when the A option is waiting for
+    // its end point, a straight segment otherwise.
+    if (polyArcStage === "end" && polyArcMid) {
+      const bulge = Poly.arcSegmentBulge(last, polyArcMid, cur);
+      if (bulge) {
+        const arcPts = Poly.displayPoints({
+          type: "LWPOLYLINE",
+          layer: currentLayer,
+          points: [last, cur],
+          bulges: [bulge],
+          closed: false,
+        } as Poly.PolylineEntity);
+        return [...base, ...arcPts.slice(1)];
+      }
+    }
+    return [...base, { ...cur }];
+  }
+
   /** ARC angle typed (start-end or centre-start flow): build and place the arc. */
   function onArcAngleTyped(v: number): void {
     if (arcMode === "sea" && pts.length === 2) {
@@ -5375,15 +5574,29 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       }
       return { entity: e, pick: at };
     };
+    // A7: a bulged polyline cannot be filleted on its chord — the fillet
+    // would be placed against the straight line while the arc stays, and
+    // the trim would move a vertex under a stale bulge. Expand bulged
+    // operands first (the segment index above is then computed on the
+    // tessellation, against the drawn geometry); the expansion folds
+    // into this same undo step — the commit below replaces the ORIGINAL
+    // entities, so one UNDO restores the bulged polyline.
+    const expandOperand = (e: DxfEntity): DxfEntity =>
+      e.type === "LWPOLYLINE" && e.bulges?.some((x) => x) ? Poly.expandPolylineBulges(e) : e;
+    const aX = expandOperand(a);
+    const bX = expandOperand(b);
     const res =
       pk.kind === "fillet"
-        ? FC.filletEntities(operandOf(a, pk.pickPts[0]), operandOf(b, pk.pickPts[1]), filletR, { trim: trimMode })
-        : FC.chamferEntities(operandOf(a, pk.pickPts[0]), operandOf(b, pk.pickPts[1]), chamferD[0], chamferD[1], { trim: trimMode });
+        ? FC.filletEntities(operandOf(aX, pk.pickPts[0]), operandOf(bX, pk.pickPts[1]), filletR, { trim: trimMode })
+        : FC.chamferEntities(operandOf(aX, pk.pickPts[0]), operandOf(bX, pk.pickPts[1]), chamferD[0], chamferD[1], { trim: trimMode });
     if (!res.ok) {
       fail(res.reason);
       return;
     }
-    commitReplace(res.before, res.after);
+    commitReplace(
+      res.before.map((e) => (e === aX ? a : e === bX ? b : e)),
+      res.after,
+    );
     if (pk.kind === "fillet") {
       logCmd(
         res.addedKind === null
@@ -7251,8 +7464,23 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         row("End angle", e.endAngle.toFixed(2) + "°"),
         row("Sweep", m.sweep!.toFixed(2) + "°"),
       );
-    if (e.type === "LWPOLYLINE" && !e.hatch)
+    if (e.type === "LWPOLYLINE" && !e.hatch) {
       rows.push(row("Vertices", String(e.points.length)), row("Closed", e.closed ? "Yes" : "No"));
+      // A7: the Width row is a control, not read-only text — typing a
+      // number sets the constant width of the whole polyline (undoable,
+      // via commitModify). A polyline with varying per-vertex widths
+      // shows "varies" until a constant width is set.
+      const segCount = e.closed ? e.points.length : e.points.length - 1;
+      const allW: number[] = [];
+      for (let i = 0; i < segCount; i++) {
+        const w = Poly.segmentWidths(e, i);
+        allW.push(w.start, w.end);
+      }
+      const uniform = allW.length > 0 && allW.every((x) => x === allW[0]);
+      rows.push(
+        `<tr><td>Width</td><td><input type="number" data-props-width min="0" step="any" style="width:90px" value="${uniform ? allW[0] : ""}" placeholder="${uniform ? "" : "varies"}" title="Constant width for the whole polyline (0 = hairline)"></td></tr>`,
+      );
+    }
     if (e.type === "TEXT") {
       const styleName = e.style ?? "Standard";
       const fileStyle = doc?.textStyles?.[styleName.toUpperCase()];
@@ -7279,6 +7507,18 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const cur = ents[selected];
       if (!cur || !v || v === cur.layer) return;
       commitModify([cur], [{ ...cur, layer: v }]);
+      showProps();
+      draw();
+    });
+    // A7: width change for the single selected polyline (undoable).
+    propsEl.querySelector<HTMLInputElement>("[data-props-width]")?.addEventListener("change", (ev) => {
+      const v = Number((ev.target as HTMLInputElement).value);
+      const cur = ents[selected];
+      if (!cur || cur.type !== "LWPOLYLINE" || !Number.isFinite(v) || v < 0) {
+        showProps();
+        return;
+      }
+      commitModify([cur], [Poly.withConstantWidth(cur, v)]);
       showProps();
       draw();
     });
@@ -7483,7 +7723,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       rg(
         "Modify II",
         tb("join", "join", "Join") +
-          rb("join", "Pedit", `data-a="pedit"`, "Polyline edit on the selection: PEDIT J (join) · C (close) · O (open) · R (reverse)") +
+          rb("join", "Pedit", `data-a="pedit"`, "Polyline edit on the selection: PEDIT J (join) · C (close) · O (open) · R (reverse) · W <width>") +
           tb("fillet", "fillet", "Fillet") +
           tb("chamfer", "chamfer", "Chamfer") +
           tb("lengthen", "stretch", "Lengthen") +
@@ -8393,6 +8633,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       case "rect":
         return n === 0 ? "Specify first corner point:" : "Specify other corner point:";
       case "poly":
+        // A7: the arc option waits for its second point, then its end
+        // point; the other options are intercepted by handlePolyOption.
+        if (polyArcStage === "mid") return "Specify second point of arc:";
+        if (polyArcStage === "end") return "Specify end point of arc:";
+        return n === 0 ? "Specify start point:" : "Specify next point or [Arc/Close/Undo/Width]:";
       case "cloud":
         return n === 0 ? "Specify start point:" : "Specify next point or [Close/Undo]:";
       case "dist":
@@ -8537,6 +8782,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (t !== "arc") arcMode = "3p";
     cv.focus({ preventScroll: true });
     pts = [];
+    // A7: leaving PLINE drops its in-progress segments/arc; entering it
+    // seeds the width from PLINEWID (the store is the default, W
+    // overrides it for the next segment only).
+    polySegs = [];
+    polyArcMid = null;
+    polyArcStage = "off";
+    if (t === "poly") {
+      const w = getPlineWidthStore(0);
+      polyNextW = { start: w, end: w };
+    }
     offsetEntity = -1;
     winStart = winNow = null;
     hover = null;
@@ -8594,17 +8849,37 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     showAcadPrompt();
   }
 
-  function finishMeasure() {
+  function finishMeasure(closed = false) {
     if (tool === "poly" && pts.length >= 2) {
-      results.push(`Polyline: ${fmt(M.pathLength(pts))}`);
-      // Also add drafted polyline entity
-      addDraftEntity({
-        type: "LWPOLYLINE",
-        layer: currentLayer, ...newObjectProps(),
-        points: pts.map((p) => ({ x: p.x, y: p.y })),
-        closed: false,
+      // A7: the drafted polyline carries its bulges and widths — an arc
+      // segment stays an arc and a wide segment stays wide, in the
+      // drawing and in the saved DXF. (closed=true is the in-tool Close
+      // option; Enter finishes open, as before.)
+      const bulges = polySegs.map((s) => s.bulge);
+      const startW = polySegs.map((s) => s.startW);
+      const endW = polySegs.map((s) => s.endW);
+      if (closed && polySegs.length) {
+        // The closing edge is straight (bulge 0) and its widths continue
+        // the last segment into the first — the withClosed convention.
+        bulges.push(0);
+        startW.push(endW[endW.length - 1]);
+        endW.push(startW[0]);
+      }
+      const ent = Poly.buildPolylineEntity({
+        layer: currentLayer,
+        props: newObjectProps(),
+        points: pts,
+        bulges,
+        startWidths: startW,
+        endWidths: endW,
+        closed,
       });
-      drawn.push({ kind: "poly", pts: [...pts] });
+      results.push(`Polyline: ${fmt(Poly.polylineLength(ent))}${closed ? " (closed)" : ""}`);
+      addDraftEntity(ent);
+      drawn.push({ kind: "poly", pts: [...pts], bulges: polySegs.map((s) => s.bulge), closed });
+      polySegs = [];
+      polyArcMid = null;
+      polyArcStage = "off";
     } else if (tool === "area" && pts.length >= 3) {
       results.push(`Area: ${fmt(M.polygonArea(pts), 2)}  Perimeter: ${fmt(M.pathLength(pts, true))}`);
       drawn.push({ kind: "area", pts: [...pts] });
@@ -9103,7 +9378,36 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         logCmd(msg);
         break;
       }
-      case "poly":
+      case "poly": {
+        // A7: arc segments (A option) and per-segment widths ride
+        // alongside the points; each segment starts at the previous
+        // segment's end width, like AutoCAD.
+        if (polyArcStage === "mid") {
+          polyArcMid = p;
+          polyArcStage = "end";
+          logCmd("PLINE: specify the arc's end point.");
+          showAcadPrompt();
+          break;
+        }
+        if (polyArcStage === "end" && polyArcMid) {
+          const start = pts[pts.length - 1];
+          const bulge = Poly.arcSegmentBulge(start, polyArcMid, p);
+          pts.push(p);
+          polySegs.push({ bulge: bulge ?? 0, startW: polyNextW.start, endW: polyNextW.end });
+          polyNextW = { start: polyNextW.end, end: polyNextW.end };
+          logCmd(bulge ? "PLINE: arc segment added." : "PLINE: arc points are collinear — straight segment instead.");
+          polyArcMid = null;
+          polyArcStage = "off";
+          showAcadPrompt();
+          break;
+        }
+        pts.push(p);
+        if (pts.length >= 2) {
+          polySegs.push({ bulge: 0, startW: polyNextW.start, endW: polyNextW.end });
+          polyNextW = { start: polyNextW.end, end: polyNextW.end };
+        }
+        break;
+      }
       case "area":
       case "chain":
       case "cloud":
@@ -10754,6 +11058,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       draw();
       return;
     }
+    // PLINE option keywords while PLINE is active (A7): A = arc segment,
+    // C = close in-tool, U = undo last point, W = width.
+    if (tool === "poly" && handlePolyOption(trimmed)) {
+      draw();
+      return;
+    }
     // Yes/No answer to the MIRROR "Erase source objects?" prompt
     if (pendingYesNo && /^(y|yes|n|no)$/i.test(trimmed)) {
       const f = pendingYesNo;
@@ -11276,6 +11586,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           if (k === "ORTHOMODE") return orthoOn ? 1 : 0;
           if (k === "SNAPMODE") return gridSnapOn ? 1 : 0;
           if (k === "TRIMMODE") return trimMode ? 1 : 0;
+          if (k === "PLINEWID") return getPlineWidthStore(0);
           if (k === "GRIDMODE") return showGrid ? 1 : 0;
           if (k === "CLAYER") return currentLayer;
           return null;
@@ -11285,6 +11596,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           if (k === "ORTHOMODE") orthoOn = Number(v) !== 0;
           if (k === "SNAPMODE") gridSnapOn = Number(v) !== 0;
           if (k === "TRIMMODE") trimMode = Number(v) !== 0;
+          if (k === "PLINEWID" && Number(v) >= 0) setPlineWidthStore(Number(v));
           if (k === "GRIDMODE") showGrid = Number(v) !== 0;
           if (k === "CLAYER") currentLayer = String(v);
           updateStatus();
@@ -12034,7 +12346,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         const open = polys.filter((e) => !e.closed);
         if (!open.length) logCmd("PEDIT: no open polyline in the selection.");
         else {
-          commitModify(open, open.map((e) => ({ ...e, closed: true })));
+          // A7: closing is bookkeeping, not just a flag — the closing
+          // edge's bulge is forced to 0 and its widths continue last→first.
+          commitModify(open, open.map((e) => Poly.withClosed(e, true)));
           logCmd(`PEDIT: ${open.length} polyline(s) closed.`);
           draw();
         }
@@ -12042,18 +12356,39 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         const closed = polys.filter((e) => !!e.closed);
         if (!closed.length) logCmd("PEDIT: no closed polyline in the selection.");
         else {
-          commitModify(closed, closed.map((e) => ({ ...e, closed: false })));
+          commitModify(closed, closed.map((e) => Poly.withClosed(e, false)));
           logCmd(`PEDIT: ${closed.length} polyline(s) opened.`);
           draw();
         }
       } else if (sub === "R" || sub === "REVERSE") {
         if (!polys.length) logCmd("PEDIT: no polyline in the selection.");
         else {
-          commitModify(polys, polys.map((e) => ({ ...e, points: e.points.slice().reverse() })));
+          // A7: reversing points alone leaves the bulge/width arrays
+          // aligned to the old direction — a bulged segment would arc
+          // the wrong way.
+          commitModify(polys, polys.map((e) => Poly.reversePolylineEntity(e)));
           logCmd(`PEDIT: ${polys.length} polyline(s) reversed.`);
           draw();
         }
-      } else logCmd("PEDIT options: J (join selection) · C (close) · O (open) · R (reverse).");
+      } else if (sub === "W" || sub === "WIDTH") {
+        // A7: PEDIT W <width> sets the constant width of the whole
+        // polyline (per-vertex widths are dropped); without a number it
+        // asks for one.
+        const apply = (w: number): void => {
+          if (!polys.length) { logCmd("PEDIT: no polyline in the selection."); return; }
+          if (!Number.isFinite(w) || w < 0) { logCmd("PEDIT: width must be zero or greater."); return; }
+          commitModify(polys, polys.map((e) => Poly.withConstantWidth(e, w)));
+          logCmd(`PEDIT: ${polys.length} polyline(s) set to width ${fmt(w)}.`);
+          draw();
+        };
+        const wArg = Number(parts[2]);
+        if (Number.isFinite(wArg)) apply(wArg);
+        else {
+          pendingNumeric = (v) => apply(v);
+          logCmd("PEDIT: specify the polyline width:");
+          showAcadPrompt();
+        }
+      } else logCmd("PEDIT options: J (join selection) · C (close) · O (open) · R (reverse) · W <width>.");
       return;
     }
     /* ── Parametric tab — one-shot geometric + dimensional constraints ── */
@@ -12710,6 +13045,18 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (!(r >= 0)) { logCmd("FILLETRAD: specify radius ≥ 0"); return; }
       applyFilletRadius(r);
       logCmd(`FILLETRAD = ${r}`);
+      return;
+    }
+    // A7: PLINEWID — the default width for newly drawn polylines
+    // (persisted like FILLETRAD). The W option inside PLINE overrides
+    // it for the next segment of the polyline being drawn.
+    if (cmd === "PLINEWID") {
+      if (!arg) { logCmd(`PLINEWID = ${getPlineWidthStore(0)}`); return; }
+      const w = Number(arg);
+      if (!(w >= 0)) { logCmd("PLINEWID: specify width ≥ 0"); return; }
+      setPlineWidthStore(w);
+      if (tool === "poly" && pts.length === 0) polyNextW = { start: w, end: w };
+      logCmd(`PLINEWID = ${w}`);
       return;
     }
     if (cmd === "CHAMFERD" || cmd === "CHAMFERDIST") {

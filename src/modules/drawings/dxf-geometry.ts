@@ -71,6 +71,175 @@ export function expandBulges(
   return out;
 }
 
+const isFiniteNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+/**
+ * Structural clean-up for a polyline read from a file or built by a tool:
+ * bulge/width arrays are padded or truncated to `points.length`, NaN and
+ * negative widths are dropped to 0, and an all-zero bulge array is
+ * removed. Never changes the geometry, only the bookkeeping.
+ */
+export function normalizePolyline<T extends Extract<DxfEntity, { type: "LWPOLYLINE" }>>(e: T): T {
+  const n = e.points.length;
+  const align = (arr: number[] | undefined): number[] | undefined => {
+    if (!arr) return undefined;
+    const out = new Array<number>(n).fill(0);
+    for (let i = 0; i < Math.min(n, arr.length); i++) out[i] = isFiniteNum(arr[i]) ? arr[i] : 0;
+    return out;
+  };
+  const bulges = align(e.bulges);
+  const startWidths = align(e.startWidths);
+  const endWidths = align(e.endWidths);
+  const width = isFiniteNum(e.width) && e.width > 0 ? e.width : undefined;
+  const cleanWidths = (arr: number[] | undefined): number[] | undefined => {
+    if (!arr) return undefined;
+    // Clamp only (negatives and NaN are invalid DXF); an explicit 0 at a
+    // vertex is meaningful — per DXF rules it overrides the constant
+    // width there (a taper to a point) — so all-zero arrays are kept.
+    return arr.map((w) => (isFiniteNum(w) && w > 0 ? w : 0));
+  };
+  return {
+    ...e,
+    ...(bulges?.some((b) => b !== 0) ? { bulges } : { bulges: undefined }),
+    ...(width != null ? { width } : { width: undefined }),
+    ...(cleanWidths(startWidths) ? { startWidths: cleanWidths(startWidths) } : { startWidths: undefined }),
+    ...(cleanWidths(endWidths) ? { endWidths: cleanWidths(endWidths) } : { endWidths: undefined }),
+  };
+}
+
+/**
+ * The circle behind one bulged segment, as a counter-clockwise arc.
+ * `startAngleDeg`/`endAngleDeg` are the CCW sweep that draws the same
+ * geometric arc (0 < sweep < 360); the arc runs from p0 to p1 along that
+ * sweep exactly when bulge > 0, and against it (clockwise) when bulge < 0.
+ * null for a zero bulge or a degenerate (zero-length) chord.
+ */
+export interface BulgeArc {
+  center: DxfPoint;
+  radius: number;
+  /** Degrees, CCW start of the arc. */
+  startAngleDeg: number;
+  /** Degrees, CCW end of the arc. */
+  endAngleDeg: number;
+  /** Degrees, 0 < sweep < 360, the CCW sweep from start to end. */
+  sweepDeg: number;
+}
+export function bulgeArc(p0: DxfPoint, p1: DxfPoint, bulge: number): BulgeArc | null {
+  if (!bulge || !Number.isFinite(bulge)) return null;
+  const dx = p1.x - p0.x, dy = p1.y - p0.y;
+  const c = Math.hypot(dx, dy);
+  if (c < 1e-12) return null;
+  const theta = 4 * Math.atan(bulge); // signed sweep, radians
+  const h = c / 2 / Math.tan(theta / 2);
+  const cx = (p0.x + p1.x) / 2 + (-dy / c) * h;
+  const cy = (p0.y + p1.y) / 2 + (dx / c) * h;
+  const radius = Math.hypot(p0.x - cx, p0.y - cy);
+  const a0 = Math.atan2(p0.y - cy, p0.x - cx) / DEG;
+  // The CCW sweep from p0 to p1 is theta when bulge > 0; when bulge < 0
+  // the arc runs clockwise, so the CCW arc starts at p1 instead.
+  const sweepDeg = ((Math.abs(theta) / DEG) % 360) || 360;
+  const start = bulge > 0 ? a0 : a0 + (theta / DEG);
+  const norm = (d: number): number => ((d % 360) + 360) % 360;
+  return { center: { x: cx, y: cy, z: p0.z }, radius, startAngleDeg: norm(start), endAngleDeg: norm(start + sweepDeg), sweepDeg };
+}
+
+/** Included angle of a bulge in degrees (signed: + = CCW). */
+export function bulgeSweepDeg(bulge: number): number {
+  return (4 * Math.atan(bulge)) / DEG;
+}
+
+/**
+ * Display vertices for a polyline whose segments may bulge: the stored
+ * vertices plus the tessellated arc points in between (bulgePoints).
+ * `bulges` is index-aligned with `points` (bulges[i] = segment i→i+1,
+ * last entry = closing segment when closed). Straight segments pass
+ * through unchanged, so a bulge-free polyline returns its own vertices.
+ */
+export function tessellatePolyline(points: DxfPoint[], bulges: number[] | undefined, closed: boolean): DxfPoint[] {
+  if (!bulges || !bulges.some((b) => b)) return points.map((p) => ({ ...p }));
+  return expandBulges(points.map((p, i) => ({ ...p, bulge: bulges[i] || undefined })), closed);
+}
+
+/** True (arc-aware) length of a polyline: bulged segments count as arcs. */
+export function polylineLength(points: DxfPoint[], bulges: number[] | undefined, closed: boolean): number {
+  const n = points.length;
+  if (n < 2) return 0;
+  const segs = closed ? n : n - 1;
+  let len = 0;
+  for (let i = 0; i < segs; i++) {
+    const a = points[i], b = points[(i + 1) % n];
+    const chord = Math.hypot(b.x - a.x, b.y - a.y);
+    const bg = bulges?.[i] ?? 0;
+    if (!bg) { len += chord; continue; }
+    const arc = bulgeArc(a, b, bg);
+    len += arc ? arc.radius * (arc.sweepDeg * DEG) : chord;
+  }
+  return len;
+}
+
+/**
+ * True (arc-aware) area of a closed polyline: the chord-polygon area plus
+ * one circular-segment correction per bulged edge,
+ * (r²/2)·(θ − sin θ) with θ the signed included angle. Open polylines
+ * have no area.
+ */
+export function polylineArea(points: DxfPoint[], bulges: number[] | undefined, closed: boolean): number {
+  const n = points.length;
+  if (!closed || n < 3) return 0;
+  let a = 0;
+  for (let i = 0; i < n; i++) {
+    const p = points[i], q = points[(i + 1) % n];
+    a += p.x * q.y - q.x * p.y;
+  }
+  a /= 2;
+  for (let i = 0; i < n; i++) {
+    const bg = bulges?.[i] ?? 0;
+    if (!bg) continue;
+    const arc = bulgeArc(points[i], points[(i + 1) % n], bg);
+    if (!arc) continue;
+    const theta = (bulgeSweepDeg(bg) * DEG);
+    a += (arc.radius * arc.radius / 2) * (theta - Math.sin(theta));
+  }
+  return Math.abs(a);
+}
+
+/**
+ * Bounding box of a polyline including bulged-arc extremes (the arc's
+ * cardinal points that fall inside its sweep) and, when `halfWidth` is
+ * given, the stroke width around it. With no bulges this is exactly the
+ * vertex box, so existing callers see no change.
+ */
+export function polylineBBox(
+  points: DxfPoint[], bulges: number[] | undefined, closed: boolean, halfWidth = 0,
+): { minX: number; minY: number; maxX: number; maxY: number } {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const add = (x: number, y: number) => {
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+  };
+  for (const p of points) add(p.x, p.y);
+  const n = points.length;
+  const segs = closed ? n : Math.max(0, n - 1);
+  for (let i = 0; i < segs; i++) {
+    const bg = bulges?.[i] ?? 0;
+    if (!bg) continue;
+    const arc = bulgeArc(points[i], points[(i + 1) % n], bg);
+    if (!arc) continue;
+    for (const q of [0, 90, 180, 270]) {
+      // Is the cardinal angle inside the CCW sweep from start to end?
+      const rel = ((q - arc.startAngleDeg) % 360 + 360) % 360;
+      if (rel <= arc.sweepDeg + 1e-9) {
+        const a = q * DEG;
+        add(arc.center.x + arc.radius * Math.cos(a), arc.center.y + arc.radius * Math.sin(a));
+      }
+    }
+  }
+  if (halfWidth > 0 && Number.isFinite(minX)) {
+    minX -= halfWidth; minY -= halfWidth; maxX += halfWidth; maxY += halfWidth;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
 /** Points along an arc/circle (angles in radians, CCW from a0 to a1). */
 export function arcPoints(
   cx: number, cy: number, r: number, a0: number, a1: number, z = 0,
@@ -196,8 +365,17 @@ export function transformEntity(e: DxfEntity, m: InsertXform): DxfEntity[] {
     case "POINT":
       return [{ ...base, type: "POINT", position: xp(m, e.position) }];
     case "LWPOLYLINE":
+      // Bulges travel with the polyline: a mirror (sx·sy < 0) reverses the
+      // arc direction, so the bulge sign flips; a rotation or uniform scale
+      // leaves it alone. Widths are drawing-unit strokes: they scale with
+      // the mean absolute scale (exact for uniform scales, the honest
+      // average for non-uniform ones, where a width has no single scale).
       return [{
         ...base, type: "LWPOLYLINE", points: e.points.map((p) => xp(m, p)), closed: e.closed,
+        ...(e.bulges?.some((b) => b) ? { bulges: e.bulges.map((b) => (mirrored ? -b : b)) } : {}),
+        ...(e.width != null ? { width: e.width * ((Math.abs(m.sx) + Math.abs(m.sy)) / 2) } : {}),
+        ...(e.startWidths ? { startWidths: e.startWidths.map((w) => w * ((Math.abs(m.sx) + Math.abs(m.sy)) / 2)) } : {}),
+        ...(e.endWidths ? { endWidths: e.endWidths.map((w) => w * ((Math.abs(m.sx) + Math.abs(m.sy)) / 2)) } : {}),
         ...(e.hatch ? { hatch: { ...e.hatch, angle: textAngleThrough(m, e.hatch.angle ?? 0), scale: (e.hatch.scale ?? 1) * Math.abs(m.sx), loops: e.hatch.loops.map((l) => l.map((p) => xp(m, p))) } } : {}),
       }];
     case "TEXT":
@@ -258,7 +436,7 @@ export function computeExtents(entities: DxfEntity[]): DxfDocument["extents"] | 
   for (const e of entities) {
     switch (e.type) {
       case "LINE": add(e.start.x, e.start.y); add(e.end.x, e.end.y); break;
-      case "LWPOLYLINE": for (const p of e.points) add(p.x, p.y); break;
+      case "LWPOLYLINE": { const mw = Math.max(0, e.width ?? 0, ...(e.startWidths ?? []), ...(e.endWidths ?? [])); const b = polylineBBox(e.points, e.bulges, !!e.closed, mw / 2); add(b.minX, b.minY); add(b.maxX, b.maxY); break; }
       case "CIRCLE":
         add(e.center.x - e.radius, e.center.y - e.radius);
         add(e.center.x + e.radius, e.center.y + e.radius);
@@ -327,7 +505,7 @@ export function flipEntityX(e: DxfEntity): DxfEntity {
     case "POINT": return { ...e, position: fp(e.position) };
     case "CIRCLE": return { ...e, center: fp(e.center) };
     case "ARC": return { ...e, center: fp(e.center), startAngle: 180 - e.endAngle, endAngle: 180 - e.startAngle };
-    case "LWPOLYLINE": return { ...e, points: e.points.map(fp), ...(e.hatch ? { hatch: { ...e.hatch, angle: 180 - (e.hatch.angle ?? 0), loops: e.hatch.loops.map((l) => l.map(fp)) } } : {}) };
+    case "LWPOLYLINE": return { ...e, points: e.points.map(fp), ...(e.bulges?.some((b) => b) ? { bulges: e.bulges.map((b) => -b) } : {}), ...(e.hatch ? { hatch: { ...e.hatch, angle: 180 - (e.hatch.angle ?? 0), loops: e.hatch.loops.map((l) => l.map(fp)) } } : {}) };
     case "RAY":
     case "XLINE": return { ...e, start: fp(e.start), direction: fp(e.direction) };
     case "TEXT": return { ...e, position: fp(e.position), rotation: 180 - (e.rotation ?? 0), align: e.align === "left" ? "right" : e.align === "right" ? "left" : e.align };

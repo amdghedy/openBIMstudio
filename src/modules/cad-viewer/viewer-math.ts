@@ -5,6 +5,7 @@
 import { findFont } from "../drawings/cad-styles";
 import { resolvedOf } from "../drawings/block-refs";
 import type { DxfEntity, DxfLayout, DxfPoint, DxfUnits, DxfViewport } from "../drawings/dxf-types";
+import { bulgeArc, polylineArea, polylineBBox, polylineLength, tessellatePolyline } from "../drawings/dxf-geometry";
 import { pointInPolygon } from "../drawings/hatch-patterns";
 
 export type Pt = { x: number; y: number };
@@ -465,7 +466,15 @@ export function entityBBox(e: DxfEntity): BBox {
       for (const q of [0, 90, 180, 270]) if (angleInArc(q, e.startAngle, e.endAngle)) pts.push(arcPt(e, q));
       return boxOf(pts);
     }
-    case "LWPOLYLINE": return boxOf(e.hatch ? e.hatch.loops.flat() : e.points);
+    case "LWPOLYLINE": {
+      if (e.hatch) return boxOf(e.hatch.loops.flat());
+      // A7: a bulged arc reaches past its chord, and a wide polyline
+      // reaches past its centreline by half its width — the box must
+      // cover both, or picks and ZOOM E miss the drawn geometry.
+      const mw = Math.max(0, e.width ?? 0, ...(e.startWidths ?? []), ...(e.endWidths ?? []));
+      const b = polylineBBox(e.points, e.bulges, !!e.closed, mw / 2);
+      return { minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY };
+    }
     case "TEXT": {
       const { w, h } = textBox(e), o = textOrigin(e), r = (e.rotation ?? 0) * DEG, c = Math.cos(r), s = Math.sin(r);
       return boxOf([{ x: o.dx, y: o.dy }, { x: o.dx + w, y: o.dy }, { x: o.dx + w, y: o.dy + h }, { x: o.dx, y: o.dy + h }].map((p) => ({ x: e.position.x + p.x * c - p.y * s, y: e.position.y + p.x * s + p.y * c })));
@@ -503,9 +512,14 @@ export function nearestOnSeg(px: number, py: number, ax: number, ay: number, bx:
 }
 
 function polySegs(e: Extract<DxfEntity, { type: "LWPOLYLINE" }>): Array<[Pt, Pt]> {
+  // A7: bulged segments read as their tessellated arcs — picking,
+  // snapping, midpoints and intersections all see the arc, not its
+  // chord. Straight polylines take the exact old path. (The stored
+  // entity keeps its bulges; only the segment view is tessellated.)
+  const pts = e.bulges?.some((b) => b) ? tessellatePolyline(e.points, e.bulges, !!e.closed) : e.points;
   const out: Array<[Pt, Pt]> = [];
-  for (let i = 0; i + 1 < e.points.length; i++) out.push([e.points[i], e.points[i + 1]]);
-  if (e.closed && e.points.length > 2) out.push([e.points[e.points.length - 1], e.points[0]]);
+  for (let i = 0; i + 1 < pts.length; i++) out.push([pts[i], pts[i + 1]]);
+  if (e.closed && pts.length > 2) out.push([pts[pts.length - 1], pts[0]]);
   return out;
 }
 
@@ -725,7 +739,10 @@ export function entityMetrics(e: DxfEntity): EntityMetrics {
         const [outer, ...holes] = e.hatch.loops;
         return { length: e.hatch.loops.reduce((a, l) => a + pathLength(l, true), 0), area: Math.max(0, polygonArea(outer) - holes.reduce((a, l) => a + polygonArea(l), 0)) };
       }
-      return { length: pathLength(e.points, !!e.closed), ...(e.closed && e.points.length > 2 ? { area: polygonArea(e.points) } : {}) };
+      // A7: bulged segments count as arcs, not chords — a semicircle
+      // segment is π·r long, not the chord. Width does not change the
+      // centreline length; area counts the filled region of a closed ring.
+      return { length: polylineLength(e.points, e.bulges, !!e.closed), ...(e.closed && e.points.length > 2 ? { area: polylineArea(e.points, e.bulges, true) } : {}) };
     default: return {};
   }
 }
@@ -996,7 +1013,21 @@ function keyPoints(e: DxfEntity): Snap[] {
     }
     case "LWPOLYLINE": {
       const out: Snap[] = e.points.map((p) => ({ x: p.x, y: p.y, kind: "endpoint" as const }));
-      for (const [a, b] of polySegs(e)) out.push({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, kind: "midpoint" });
+      // Midpoints are computed on the stored segments, not the tessellated
+      // ones — a bulged arc has ONE midpoint (the arc's own), not one per
+      // tessellation chord.
+      const n = e.points.length;
+      const segCount = e.closed ? n : n - 1;
+      for (let i = 0; i < segCount; i++) {
+        const a = e.points[i], b = e.points[(i + 1) % n];
+        const arc = bulgeArc(a, b, e.bulges?.[i] ?? 0);
+        if (arc) {
+          const mid = ((arc.startAngleDeg + arc.sweepDeg / 2) * Math.PI) / 180;
+          out.push({ x: arc.center.x + arc.radius * Math.cos(mid), y: arc.center.y + arc.radius * Math.sin(mid), kind: "midpoint" });
+        } else {
+          out.push({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, kind: "midpoint" });
+        }
+      }
       if (e.points.length >= 3) {
         let sx = 0, sy = 0;
         for (const p of e.points) { sx += p.x; sy += p.y; }

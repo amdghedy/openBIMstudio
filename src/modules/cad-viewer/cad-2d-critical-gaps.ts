@@ -3,6 +3,8 @@
  * Pure functions; cad-viewer wires them into commands.
  */
 import type { DxfDocument, DxfEntity, DxfLayer } from "../drawings/dxf-types";
+import { bulgeArc, polylineArea, polylineLength } from "../drawings/dxf-geometry";
+import { bulgeSegmentArc, reversePolylineEntity, withClosed } from "./cad-polyline";
 
 type Pt = { x: number; y: number };
 
@@ -171,13 +173,8 @@ export function totalLinearLength(entities: DxfEntity[], indices: number[]): num
     if (e.type === "LINE" && e.start && e.end) {
       sum += Math.hypot(e.end.x - e.start.x, e.end.y - e.start.y);
     } else if (e.type === "LWPOLYLINE" && Array.isArray(e.points) && e.points.length >= 2) {
-      for (let k = 1; k < e.points.length; k++) {
-        sum += Math.hypot(e.points[k].x - e.points[k - 1].x, e.points[k].y - e.points[k - 1].y);
-      }
-      if (e.closed && e.points.length > 2) {
-        const a = e.points[e.points.length - 1], b = e.points[0];
-        sum += Math.hypot(b.x - a.x, b.y - a.y);
-      }
+      // A7: bulged segments count as arcs, not chords.
+      sum += polylineLength(e.points, e.bulges, !!e.closed);
     } else if (e.type === "ARC" && e.center != null && e.radius != null) {
       const a0 = ((e.startAngle ?? 0) * Math.PI) / 180;
       const a1 = ((e.endAngle ?? 360) * Math.PI) / 180;
@@ -328,13 +325,9 @@ export function selectionArea(entities: DxfEntity[], indices: number[]): number 
     if (e.type === "CIRCLE" && e.radius != null) {
       area += Math.PI * e.radius * e.radius;
     } else if (e.type === "LWPOLYLINE" && Array.isArray(e.points) && e.points.length >= 3 && e.closed) {
-      const pts = e.points as Array<{ x: number; y: number }>;
-      let a = 0;
-      for (let k = 0; k < pts.length; k++) {
-        const p = pts[k], q = pts[(k + 1) % pts.length];
-        a += p.x * q.y - q.x * p.y;
-      }
-      area += Math.abs(a) * 0.5;
+      // A7: bulged edges add their circular-segment correction — a
+      // semicircle edge encloses more than its chord polygon.
+      area += polylineArea(e.points, e.bulges, true);
     }
   }
   return area;
@@ -345,7 +338,16 @@ export function reversePolyline(entities: DxfEntity[], indices: number[]): numbe
   for (const i of indices) {
     const e: any = entities[i];
     if (!e || e.type !== "LWPOLYLINE" || !Array.isArray(e.points)) continue;
-    e.points = [...e.points].reverse();
+    // A7: reversing points alone leaves the bulge/width arrays aligned
+    // to the old direction — a bulged segment would arc the wrong way.
+    // Replace the fields in place (the viewer holds this object by
+    // reference and the command has no undo step — same as before).
+    const rev = reversePolylineEntity(e);
+    e.points = rev.points;
+    if (rev.bulges) e.bulges = rev.bulges; else delete e.bulges;
+    if (rev.width != null) e.width = rev.width; else delete e.width;
+    if (rev.startWidths) e.startWidths = rev.startWidths; else delete e.startWidths;
+    if (rev.endWidths) e.endWidths = rev.endWidths; else delete e.endWidths;
     n++;
   }
   return n;
@@ -356,7 +358,13 @@ export function setPolylineClosed(entities: DxfEntity[], indices: number[], clos
   for (const i of indices) {
     const e: any = entities[i];
     if (!e || e.type !== "LWPOLYLINE") continue;
-    e.closed = closed;
+    // A7: closing is bookkeeping, not just a flag — the closing edge's
+    // bulge is forced to 0 and its widths continue last→first.
+    const next = withClosed(e, closed);
+    e.closed = next.closed;
+    if (next.bulges) e.bulges = next.bulges; else delete e.bulges;
+    if (next.startWidths) e.startWidths = next.startWidths; else delete e.startWidths;
+    if (next.endWidths) e.endWidths = next.endWidths; else delete e.endWidths;
     n++;
   }
   return n;
@@ -374,13 +382,18 @@ export function midpointMarkers(entities: DxfEntity[], indices: number[], layer:
         position: { x: (e.start.x + e.end.x) / 2, y: (e.start.y + e.end.y) / 2 },
       } as DxfEntity);
     } else if (e.type === "LWPOLYLINE" && Array.isArray(e.points)) {
-      for (let k = 1; k < e.points.length; k++) {
-        const a = e.points[k - 1], b = e.points[k];
-        out.push({
-          type: "POINT",
-          layer,
-          position: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
-        } as DxfEntity);
+      // A7: a bulged segment's midpoint is the arc's own midpoint, not
+      // the chord's — and the closing edge of a closed polyline gets a
+      // marker too (the old code skipped it).
+      const segCount = e.closed ? e.points.length : e.points.length - 1;
+      for (let k = 0; k < segCount; k++) {
+        const a = e.points[k], b = e.points[(k + 1) % e.points.length];
+        const arc = bulgeArc(a, b, e.bulges?.[k] ?? 0);
+        const mid = arc ? ((arc.startAngleDeg + arc.sweepDeg / 2) * Math.PI) / 180 : 0;
+        const position = arc
+          ? { x: arc.center.x + arc.radius * Math.cos(mid), y: arc.center.y + arc.radius * Math.sin(mid) }
+          : { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        out.push({ type: "POINT", layer, position } as DxfEntity);
       }
     }
   }
@@ -705,6 +718,18 @@ export function getFilletRadiusStore(def = 0): number {
     return Number.isFinite(v) && v >= 0 ? v : def;
   } catch { return def; }
 }
+/** PLINEWID — the default width for newly drawn polylines (A7), following
+ *  the FILLETRAD pattern above: one localStorage key, 0 = hairline. */
+export function setPlineWidthStore(w: number): void {
+  try { localStorage.setItem("obs.cad.plinewid", String(w)); } catch { /* */ }
+}
+export function getPlineWidthStore(def = 0): number {
+  try {
+    if (localStorage.getItem("obs.cad.plinewid") === null) return def;
+    const v = Number(localStorage.getItem("obs.cad.plinewid"));
+    return Number.isFinite(v) && v >= 0 ? v : def;
+  } catch { return def; }
+}
 export function setChamferDistStore(d1: number, d2?: number): void {
   try { localStorage.setItem("obs.cad.chamferD", JSON.stringify([d1, d2 ?? d1])); } catch { /* */ }
 }
@@ -721,27 +746,25 @@ export function explodePolylines(entities: DxfEntity[], indices: number[]): DxfE
   for (const i of indices) {
     const e: any = entities[i];
     if (!e || e.type !== "LWPOLYLINE" || !Array.isArray(e.points) || e.points.length < 2) continue;
-    for (let k = 1; k < e.points.length; k++) {
-      out.push({
-        type: "LINE",
-        layer: e.layer,
-        color: e.color,
-        lineType: e.lineType,
-        lineweight: e.lineweight,
-        start: { ...e.points[k - 1] },
-        end: { ...e.points[k] },
-      } as DxfEntity);
-    }
-    if (e.closed && e.points.length > 2) {
-      out.push({
-        type: "LINE",
-        layer: e.layer,
-        color: e.color,
-        lineType: e.lineType,
-        lineweight: e.lineweight,
-        start: { ...e.points[e.points.length - 1] },
-        end: { ...e.points[0] },
-      } as DxfEntity);
+    // A7: a bulged segment explodes to a real ARC, not its chord — the
+    // old code straightened every arc. (Width is dropped, like AutoCAD:
+    // width is a polyline property, not a line's.)
+    const segCount = e.closed ? e.points.length : e.points.length - 1;
+    for (let k = 0; k < segCount; k++) {
+      const a = e.points[k], b = e.points[(k + 1) % e.points.length];
+      const arc = bulgeSegmentArc(a, b, e.bulges?.[k] ?? 0, e.layer);
+      out.push(
+        arc ??
+          ({
+            type: "LINE",
+            layer: e.layer,
+            color: e.color,
+            lineType: e.lineType,
+            lineweight: e.lineweight,
+            start: { ...a },
+            end: { ...b },
+          } as DxfEntity),
+      );
     }
   }
   return out;

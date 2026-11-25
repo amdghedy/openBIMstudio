@@ -131,6 +131,33 @@ export type DxfEntity =
       type: "LWPOLYLINE";
       points: DxfPoint[];
       closed?: boolean;
+      /**
+       * Bulge of the segment starting at vertex i (tan of a quarter of the
+       * included angle; + = counter-clockwise from vertex i to the next),
+       * index-aligned with `points`. The closing segment of a closed
+       * polyline is bulges[points.length - 1]; the last entry is unused
+       * when open. Absent or 0 = straight segment. Stored as vertices +
+       * bulges (never pre-tessellated): the arc survives save/reload and
+       * is tessellated only for display, picking and surgery.
+       */
+      bulges?: number[];
+      /**
+       * Constant width (DXF group 43) in drawing units, applying to every
+       * segment unless a per-vertex width overrides it.
+       */
+      width?: number;
+      /**
+       * Per-vertex start width (DXF group 40) of the segment starting at
+       * vertex i, index-aligned with `points`. The last entry is unused
+       * when open.
+       */
+      startWidths?: number[];
+      /**
+       * Per-vertex end width (DXF group 41) of the segment starting at
+       * vertex i, index-aligned with `points`. The last entry is unused
+       * when open.
+       */
+      endWidths?: number[];
       /** Present when this polyline is the boundary of a hatch / solid fill. */
       hatch?: DxfHatch;
       /**
