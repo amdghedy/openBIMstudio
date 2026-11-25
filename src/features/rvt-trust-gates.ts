@@ -104,7 +104,28 @@ function openFragDb(): Promise<IDBDatabase> {
 }
 
 /** Hash file contents for cache key (FNV-1a 32-bit + size + name). */
+/** Above this the whole file is NOT read just to build a cache key. */
+export const HASH_FULL_READ_MAX_BYTES = 128 * 1024 * 1024;
+
 export async function hashFileKey(file: File): Promise<string> {
+  if (file.size > HASH_FULL_READ_MAX_BYTES) {
+    // Large file: reading it whole (file.arrayBuffer()) just to sample ~250k
+    // bytes made a multi-GB file allocate a full extra copy before the real
+    // import even started. Sample evenly spaced 4 KB blocks via slice() instead.
+    // (Different key format than the small-file path, so the two never collide.)
+    const BLOCKS = 64;
+    const BLOCK = 4096;
+    let h = 0x811c9dc5;
+    for (let b = 0; b < BLOCKS; b++) {
+      const start = Math.min(file.size - 1, Math.floor((file.size - BLOCK) * (b / (BLOCKS - 1))));
+      const bytes = new Uint8Array(await file.slice(Math.max(0, start), Math.max(0, start) + BLOCK).arrayBuffer());
+      for (let i = 0; i < bytes.length; i++) {
+        h ^= bytes[i];
+        h = Math.imul(h, 0x01000193);
+      }
+    }
+    return `${file.name}|${file.size}|L${(h >>> 0).toString(16)}`;
+  }
   const buf = await file.arrayBuffer();
   const bytes = new Uint8Array(buf);
   let h = 0x811c9dc5;
