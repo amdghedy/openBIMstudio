@@ -85,6 +85,7 @@ test("family creator: real status, editable parameters, library, IFC2X3 download
   await shot(page, "02-width-1500.png");
 
   // Library and IFC download.
+  await panel.getByRole("button", { name: "I reviewed this result" }).click();
   await panel.getByRole("button", { name: "Add to family library" }).click();
   await expect(panel.locator('[data-fc="notice"]')).toContainText("Added");
   const [download] = await Promise.all([
@@ -410,6 +411,7 @@ test("family creator: typing a width and pressing Add this size in one go saves 
   await panel.locator('[data-f="dMm"]').fill("500");
   await panel.locator('[data-f="hMm"]').fill("700");
   await panel.getByRole("button", { name: "Create family" }).click();
+  await panel.getByRole("button", { name: "I reviewed this result" }).click();
   await panel.getByRole("button", { name: "Add to family library" }).click();
   await panel.locator('[data-fc="size-name"]').fill("1500 wide");
   // Type the new width and click Add this size straight away: the blur redraws the panel under the click.
@@ -485,6 +487,7 @@ test("family creator: named sizes are saved with the family and reopen with thei
   await panel.locator('[data-f="text"]').fill("Overall size: 1600 x 500 x 900 mm\nDoors: 3\nDrawers: 2\nDrawer height: 150 mm");
   await panel.getByRole("button", { name: "Create family" }).click();
   await expect(panel.locator('[data-param="Doors"]')).toHaveValue("3");
+  await panel.getByRole("button", { name: "I reviewed this result" }).click();
   await panel.getByRole("button", { name: "Add to family library" }).click();
   // A second size from the same family: change only the width, name it, add it.
   await panel.locator('[data-param="Width"]').fill("1200");
@@ -625,4 +628,39 @@ test("family creator: if parts cannot be matched to the preview, the panel says 
   const f = path.join(SHOTS ?? "/tmp", "mm-" + Date.now() + ".ifc"); await d.saveAs(f);
   expect((fs.readFileSync(f, "utf8").match(/IFCEXTRUDEDAREASOLID/g) ?? []).length).toBe(12);
   expect(errors).toEqual([]);
+});
+
+test("family creator: review gate blocks adding until reviewed, and any change takes the review back", async ({ page }) => {
+  await enterAuthoring(page);
+  await openCreator(page);
+  const panel = page.getByTestId("family-creator-panel");
+  await panel.locator('[data-f="name"]').fill("Display Cabinet DC-100");
+  await panel.locator('[data-f="text"]').fill("Display Cabinet DC-100\nOverall size: 1200 x 700 x 2000 mm");
+  await panel.getByRole("button", { name: "Create family" }).click();
+  const add = panel.getByRole("button", { name: "Add to family library" });
+  const rev = panel.getByRole("button", { name: "I reviewed this result" });
+  const gateShot = async (name: string) => {
+    if (!SHOTS) return;
+    const a = await panel.locator('[data-fc="review"]').boundingBox(); const b = await add.boundingBox();
+    if (a && b) await page.screenshot({ path: path.join(SHOTS, name), clip: { x: a.x, y: a.y, width: a.width, height: b.y + b.height - a.y + 6 } });
+  };
+  await expect(add).toBeDisabled();
+  await expect(rev).toBeEnabled();
+  await panel.locator('[data-fc="review"]').scrollIntoViewIfNeeded();
+  await add.scrollIntoViewIfNeeded(); await gateShot("gate-1-disabled.png");
+  await rev.click();
+  await expect(add).toBeEnabled();
+  await expect(rev).toBeDisabled();
+  await gateShot("gate-2-enabled.png");
+  await panel.getByRole("button", { name: "Create family" }).click();
+  await expect(add).toBeDisabled();
+  await expect(rev).toBeEnabled();
+  await add.scrollIntoViewIfNeeded(); await gateShot("gate-3-reset-after-rerun.png");
+  await panel.locator('[data-fc="task-state-box"] summary').click();
+  const txt = await panel.locator('[data-fc="task-state"]').innerText();
+  const st = JSON.parse(txt);
+  expect(st.review).toEqual({ required: true, done: false });
+  expect(st.revit).toBe("unverified");
+  await panel.locator('[data-fc="task-state-box"]').scrollIntoViewIfNeeded();
+  if (SHOTS) await panel.screenshot({ path: path.join(SHOTS, "gate-4-task-state-panel.png") });
 });
