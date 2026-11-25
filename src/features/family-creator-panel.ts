@@ -19,6 +19,7 @@ import { checkPartMap } from "../modules/families/creator/part-map";
 import { extractPdfPages, renderPdfPages, MAX_OCR_PAGES } from "../modules/families/creator/pdf-text";
 import { fetchSheetFromUrl } from "../modules/families/creator/url-intake";
 import { recognizeImage, tidyOcrText } from "../modules/families/creator/ocr";
+import { drawingHtml, bindDrawing } from "./family-creator-drawing";
 import { createPreview3D, type Preview3D } from "./family-creator-preview";
 import { renderThreeViews } from "../modules/families/creator/preview-svg";
 import type { FamilyDefinition } from "../modules/families/types";
@@ -341,9 +342,11 @@ function render() {
       <div class="obs-fc-detail">${esc(t("familyCreator.sizeHint"))}</div>
       <div style="display:flex;gap:6px"><input class="obs-fc-in" data-f="wMm" placeholder="${esc(t("familyCreator.w"))}" value="${esc(form.wMm)}"><input class="obs-fc-in" data-f="dMm" placeholder="${esc(t("familyCreator.d"))}" value="${esc(form.dMm)}"><input class="obs-fc-in" data-f="hMm" placeholder="${esc(t("familyCreator.h"))}" value="${esc(form.hMm)}"></div>
       <button type="button" class="obs-fc-btn" data-act="create" style="margin-top:8px">${esc(t("familyCreator.create"))}</button>
+      ${drawingHtml()}
       ${notice ? `<div class="obs-fc-detail" data-fc="notice" style="color:#22c55e">${esc(notice)}</div>` : ""}
       ${result ? resultHtml(result) : ""}
     </div>`;
+  bindDrawing(panel);
   panel.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("[data-f]").forEach((el) => {
     el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => {
       (form as unknown as Record<string, string>)[el.dataset.f as string] = el.value;
