@@ -47,6 +47,7 @@ import { setCadHotkeyOwner } from "../core/cad-hotkey-ownership";
 import { resolveDblClick } from "../shell/ribbon-collapse";
 import { sanitizeSessionUi, sessionUiSignature, hiddenEntityIndexes, sanitizeHiddenEntities, type SessionUi, type SessionHiddenEntities } from "../modules/cad-viewer/session-state";
 import * as M from "../modules/cad-viewer/viewer-math";
+import * as LayerLock from "../modules/cad-viewer/layer-lock";
 import { resolvedOf, bindDocumentBlocks, setActiveBlocks, touchBlocks, explodeInsert } from "../modules/drawings/block-refs";
 import * as BE from "../modules/drawings/block-edit";
 import { XrefStore, composeXrefs, compareXref, type ComposedXref } from "../modules/drawings/xref-engine";
@@ -473,6 +474,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "GCSOLVE", aliases: ["SOLVE"], description: "Re-solve every recorded constraint together (deterministic solver); reports degrees of freedom, redundant and conflicting relations" },
   { name: "GCADD", aliases: [], description: "Record a constraint on the selected objects and solve it: GCADD H|V|PAR|PERP|EQ|CONC|TAN, or GCADD LEN|RAD <value> / ANG <degrees>" },
   { name: "GCLIST", aliases: ["GCSTATUS"], description: "List the recorded constraints and whether they are satisfied" },
+  { name: "GCDEL", aliases: [], description: "Delete one recorded constraint by its number from GCLIST (GCDEL 2); geometry is left as is" },
   { name: "GCCLEAR", aliases: [], description: "Forget every recorded constraint (geometry is left as is)" },
   { name: "CONSTRAINTBAR", aliases: ["CONBAR"], description: "Show or hide the FIX constraint markers" },
   { name: "DELCONSTRAINT", aliases: ["DELCON"], description: "Release every FIX constraint" },
@@ -1605,6 +1607,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const style = dimStyleOf(rec);
       const old = DIM.entitiesOfDim(ents, rec.id);
       if (!old.length || old.some((e) => movedSet.has(e))) continue; // moved manually this commit
+      if (old.some((e) => isLayerLocked(e.layer))) continue; // locked-layer dims do not follow a move
       const fresh = DIM.buildDimEntities(rec, style, dimTextFor(rec, style));
       if (!fresh.length) continue;
       dimRecords.set(rec.id, rec);
@@ -2154,6 +2157,27 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   const shown = (e: DxfEntity) =>
     visible(e) && !(e.type === "TEXT" && !showText) && !(e.type === "LWPOLYLINE" && e.hatch && !showHatch);
   const layerOf = (n: string) => doc?.layers.find((l) => l.name === n);
+  /**
+   * AutoCAD layer lock (parity A3): locked layers stay visible and rendered —
+   * `visible` above deliberately has no lock check — but their entities are
+   * never pickable, selectable, gripped or editable. Every pick / selection /
+   * grip / modify choke point below uses `pickable` (or `selAccept`) instead
+   * of `visible`. Snapping is NOT gated: AutoCAD lets you snap to locked
+   * layers, and dimension/hatch/array reference picks only read geometry.
+   */
+  const isLayerLocked = (layer: string): boolean => LayerLock.isLayerLocked(doc?.layers, layer);
+  const pickable = (e: DxfEntity): boolean => visible(e) && !isLayerLocked(e.layer);
+  /** An entity index may enter `sel` only when its layer is not locked. */
+  const selAccept = (i: number): boolean => {
+    const e = ents[i];
+    return !!e && !isLayerLocked(e.layer);
+  };
+  /** Drop entities on newly-locked layers from the selection (their grips vanish, like AutoCAD). */
+  function pruneLockedFromSel(): void {
+    if (!sel.size) return;
+    for (const i of [...sel]) if (!selAccept(i)) sel.delete(i);
+    selected = sel.size ? [...sel][sel.size - 1] : -1;
+  }
 
   function colorOf(e: DxfEntity): string {
     if (forceColor) return forceColor;
@@ -3064,7 +3088,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         let budget = 400;
         for (const i of sel) {
           const e = ents[i];
-          if (!e || !visible(e)) continue;
+          if (!e || !pickable(e)) continue;
           const grips = M.entityGrips(e);
           for (let gi = 0; gi < grips.length && budget > 0; gi++, budget--) {
             const g = grips[gi];
@@ -4044,6 +4068,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd("CONSTRAINT: fixed object(s) in the selection — run UNFIX to erase them.");
       return;
     }
+    const lockedSel = [...sel].map((i) => ents[i]).filter((e): e is DxfEntity => !!e && isLayerLocked(e.layer));
+    if (lockedSel.length) {
+      logCmd("LAYER: locked-layer object(s) in the selection — unlock the layer to erase them.");
+      return;
+    }
     const removed: DxfEntity[] = [];
     const keep: DxfEntity[] = [];
     ents.forEach((e, i) => {
@@ -4262,7 +4291,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     let budget = 400;
     for (const i of sel) {
       const e = ents[i];
-      if (!e || !visible(e)) continue;
+      if (!e || !pickable(e)) continue;
       const grips = M.entityGrips(e);
       for (let gi = 0; gi < grips.length && budget > 0; gi++, budget--) {
         const g = grips[gi];
@@ -4340,7 +4369,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   function handleSelectionClick(sp: M.Pt, wp: M.Pt, add: boolean): void {
-    const candidates = idx ? M.pickEntities(idx, ents, wp.x, wp.y, 8 / view.scale, visible, 32) : [];
+    const candidates = idx ? M.pickEntities(idx, ents, wp.x, wp.y, 8 / view.scale, pickable, 32) : [];
     if (selectionCyclingOn && candidates.length > 1) {
       openSelectionCycle(candidates, sp, add);
       return;
@@ -4424,6 +4453,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd("CONSTRAINT: a fixed object is in the selection (FIX). Run UNFIX on it to allow edits.");
       return;
     }
+    if (before.some((e) => isLayerLocked(e.layer))) {
+      logCmd("LAYER: an object is on a locked layer — unlock the layer to edit it.");
+      return;
+    }
     // Associative dimensions: defpoints that coincide with moved endpoints
     // ride along, and the rebuilt dimensions join the same undo step.
     const ext = withAssociativeDims(before, after);
@@ -4438,7 +4471,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     sel.clear();
     for (const e of after) {
       const i = ents.indexOf(e);
-      if (i >= 0) sel.add(i);
+      if (i >= 0 && selAccept(i)) sel.add(i);
     }
     selected = sel.size ? [...sel][sel.size - 1] : -1;
     showProps();
@@ -4449,6 +4482,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (!before.length) return;
     if (before.some((e) => fixedEnts.has(e))) {
       logCmd("CONSTRAINT: a fixed object is in the selection (FIX). Run UNFIX on it to allow edits.");
+      return;
+    }
+    if (before.some((e) => isLayerLocked(e.layer))) {
+      logCmd("LAYER: an object is on a locked layer — unlock the layer to edit it.");
       return;
     }
     // Associative dimensions follow cutting tools too (TRIM moves an endpoint).
@@ -4467,7 +4504,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     sel.clear();
     for (const e of after) {
       const i = ents.indexOf(e);
-      if (i >= 0) sel.add(i);
+      if (i >= 0 && selAccept(i)) sel.add(i);
     }
     selected = sel.size ? [...sel][sel.size - 1] : -1;
     showProps();
@@ -4523,17 +4560,21 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       pendingYesNo = null;
       if (yes) {
         const doomed = modTargets();
-        const keep = ents.filter((e) => !doomed.includes(e));
-        pushUndoAct({ type: "delete", entities: doomed });
-        markDirty();
-        redoStack.length = 0;
-        ents = keep;
-        if (layoutI < 0) modelEnts = keep;
-        sel.clear();
-        selected = -1;
-        rebuildIndex();
-        showProps();
-        logCmd(`MIRROR: ${doomed.length} source object(s) erased.`);
+        if (doomed.some((e) => isLayerLocked(e.layer))) {
+          logCmd("LAYER: source objects are on a locked layer — unlock the layer to erase them.");
+        } else {
+          const keep = ents.filter((e) => !doomed.includes(e));
+          pushUndoAct({ type: "delete", entities: doomed });
+          markDirty();
+          redoStack.length = 0;
+          ents = keep;
+          if (layoutI < 0) modelEnts = keep;
+          sel.clear();
+          selected = -1;
+          rebuildIndex();
+          showProps();
+          logCmd(`MIRROR: ${doomed.length} source object(s) erased.`);
+        }
       }
       const kind = mod?.kind;
       clearModState();
@@ -4931,7 +4972,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   /** Central staged-pick pointer-down handler. Returns true when consumed. */
   function onPickClick(wp: M.Pt): boolean {
     if (!pick) return false;
-    const hit = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1;
+    // Layer-state tools (LAYISO / LAYOFF / LAYLCK / LAYUNLCK) act on the layer,
+    // not the object, so they must still pick entities on locked layers —
+    // LAYUNLCK could never unlock anything otherwise. Every other pick tool
+    // edits its target, so locked-layer entities are unpickable for it.
+    const layerStatePick =
+      pick.kind === "layiso" || pick.kind === "layoff" || pick.kind === "laylck" || pick.kind === "layunlck";
+    const hit = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, layerStatePick ? visible : pickable) : -1;
     const eps = 10 / view.scale;
 
     switch (pick.kind) {
@@ -5034,7 +5081,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             const a = pick.win.a;
             const rect = M.rectOf(a, wp);
             if (idx) {
-              const crossing = M.selectInRect(idx, ents, rect, "crossing", visible);
+              const crossing = M.selectInRect(idx, ents, rect, "crossing", pickable);
               pick.edges = crossing;
               setSel(crossing);
               logCmd(`${crossing.length} object(s) cross the window.`);
@@ -5261,6 +5308,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         const lyr = doc?.layers.find((l) => l.name === layerName);
         if (lyr) {
           lyr.locked = pick.kind === "laylck";
+          if (lyr.locked) pruneLockedFromSel();
           logCmd(`${pick.kind === "laylck" ? "LAYLCK" : "LAYUNLCK"}: layer "${layerName}" is now ${lyr.locked ? "locked" : "unlocked"}.`);
         } else logCmd(`Layer "${layerName}" is not in the layer table.`);
         clearPickState();
@@ -5712,7 +5760,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           offStage = "dist";
           return true;
         }
-        const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1;
+        const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, pickable) : -1;
         if (i < 0) {
           logCmd("0 found");
           return true;
@@ -5769,7 +5817,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (!mod) return false;
 
     if (mod.stage === "select") {
-      const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1;
+      const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, pickable) : -1;
       if (i >= 0) setSel([i], true);
       else logCmd("0 found");
       return true;
@@ -5828,7 +5876,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           sel.clear();
           for (const e of placed) {
             const i = ents.indexOf(e);
-            if (i >= 0) sel.add(i);
+            if (i >= 0 && selAccept(i)) sel.add(i);
           }
           selected = sel.size ? [...sel][sel.size - 1] : -1;
           showProps();
@@ -6079,9 +6127,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   function setSel(ids: number[], add = false): void {
+    // Central selection gate (A3): locked-layer entities can never enter the
+    // selection, whichever path produced the ids — click, box, Select All,
+    // QSELECT, SELECTSIMILAR, LAYSEL, or a pick tool's setSel call.
+    const allowed = LayerLock.filterUnlockedIndices(ents, doc?.layers, ids);
     if (!add) sel.clear();
-    if (add && ids.length === 1 && sel.has(ids[0])) sel.delete(ids[0]);
-    else for (const i of ids) sel.add(i);
+    if (add && allowed.length === 1 && sel.has(allowed[0])) sel.delete(allowed[0]);
+    else for (const i of allowed) sel.add(i);
     selected = sel.size ? [...sel][sel.size - 1] : -1;
     showProps();
     draw();
@@ -6445,10 +6497,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       });
       tr.querySelector("[data-act=toggle-lock]")?.addEventListener("click", () => {
         const lyr = layerOf(lname);
-        if (lyr) lyr.locked = !lyr.locked;
+        if (lyr) {
+          lyr.locked = !lyr.locked;
+          if (lyr.locked) pruneLockedFromSel();
+        }
         closeOverlay();
         buildLayers();
         openLayerPropertiesManager();
+        draw();
+        scheduleSessionSave();
       });
     });
   }
@@ -8424,7 +8481,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         break;
       }
       case "match": {
-        const mi = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1;
+        const mi = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, pickable) : -1;
         if (mi < 0) break;
         if (!matchSrc) {
           matchSrc = ents[mi];
@@ -8435,7 +8492,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         break;
       }
       case "erase": {
-        const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, visible) : -1;
+        const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, pickable) : -1;
         if (i >= 0) {
           setSel([i]);
           eraseSelected();
@@ -8957,7 +9014,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         const screenW = Math.abs(rband.b.x - rband.a.x);
         const screenH = Math.abs(rband.b.y - rband.a.y);
         if (screenW >= 4 || screenH >= 4) {
-          const ids = M.selectInRect(idx, ents, rect, mode, visible);
+          const ids = M.selectInRect(idx, ents, rect, mode, pickable);
           setSel(ids, !!press.add);
           logCmd(
             isWindow
@@ -11126,6 +11183,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (cmd === "GCSOLVE" || cmd === "SOLVE") { runSolveRelations(); return; }
     if (cmd === "GCADD") { addRelationFromSelection(parts.slice(1)); return; }
     if (cmd === "GCLIST" || cmd === "GCSTATUS") { listRelations(); return; }
+    if (cmd === "GCDEL") {
+      const k = parseInt(parts[1] ?? "", 10);
+      if (!Number.isInteger(k) || k < 1 || k > relations.length) { logCmd(`GCDEL: give a constraint number between 1 and ${relations.length} (see GCLIST).`); return; }
+      const [gone] = relations.splice(k - 1, 1);
+      logCmd(`GCDEL: removed #${k} ${gone?.kind ?? ""}; ${relations.length} constraint(s) remain (numbers shift down). Geometry unchanged.`);
+      return;
+    }
     if (cmd === "GCCLEAR") { const n = relations.length; relations.length = 0; logCmd(`GCCLEAR: forgot ${n} recorded constraint(s); geometry unchanged.`); return; }
     if (cmd === "FIX" || cmd === "CONSTRAINTFIX") { setTool("confix"); return; }
     if (cmd === "UNFIX" || cmd === "CONSTRAINTUNFIX") { setTool("confix"); return; }
@@ -11188,8 +11252,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const layer = (arg || currentLayer || "0").trim();
       const ids = selectIdsByLayer(ents, layer);
       sel.clear();
-      for (const i of ids) sel.add(i);
-      logCmd(`LAYSEL: ${ids.length} on layer "${layer}".`);
+      for (const i of ids) if (selAccept(i)) sel.add(i);
+      logCmd(`LAYSEL: ${sel.size} on layer "${layer}".`);
       draw();
       return;
     }
@@ -11199,8 +11263,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (!typ) { logCmd("TYPESEL: specify a type, e.g. TYPESEL CIRCLE"); return; }
       const ids = selectIdsByType(ents, typ);
       sel.clear();
-      for (const i of ids) sel.add(i);
-      logCmd(`TYPESEL: ${ids.length} × ${typ.toUpperCase()}.`);
+      for (const i of ids) if (selAccept(i)) sel.add(i);
+      logCmd(`TYPESEL: ${sel.size} × ${typ.toUpperCase()}.`);
       draw();
       return;
     }
@@ -11253,6 +11317,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         const e = ents[i];
         if (!e) continue;
         if (hidden.has(e.layer)) continue;
+        if (isLayerLocked(e.layer)) continue;
         sel.add(i);
       }
       logCmd(`SELECTALL: ${sel.size} object(s).`);
@@ -11705,7 +11770,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const layers = new Set(layersOfSelection(ents, [...sel]));
       sel.clear();
       for (let i = 0; i < ents.length; i++) {
-        if (ents[i]?.layer && layers.has(ents[i].layer)) sel.add(i);
+        if (ents[i]?.layer && layers.has(ents[i].layer) && !isLayerLocked(ents[i].layer)) sel.add(i);
       }
       logCmd(`SELBYLAYER: ${sel.size} on ${[...layers].join(", ")}`);
       draw();
@@ -11727,8 +11792,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (!sel.size) { logCmd("ERASEOUT: select the keep region objects first."); return; }
       const b = selectionBounds(ents, [...sel]);
       if (!b) { logCmd("ERASEOUT: no bounds."); return; }
-      const rm = new Set(eraseOutsideBounds(ents, b));
-      if (!rm.size) { logCmd("ERASEOUT: nothing outside selection bounds."); return; }
+      const outside = eraseOutsideBounds(ents, b);
+      // Bulk delete must not touch locked layers.
+      const rm = new Set(outside.filter((i) => !isLayerLocked(ents[i]?.layer ?? "")));
+      if (!rm.size) { logCmd(outside.length ? "ERASEOUT: everything outside the bounds is on a locked layer." : "ERASEOUT: nothing outside selection bounds."); return; }
       const removed: DxfEntity[] = [];
       const keep: DxfEntity[] = [];
       ents.forEach((e, i) => { if (rm.has(i)) removed.push(e); else keep.push(e); });
@@ -11739,7 +11806,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       markDirty();
       idx = M.buildIndex(ents, bounds ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 });
       draw();
-      logCmd(`ERASEOUT: deleted ${removed.length} outside bounds`);
+      logCmd(`ERASEOUT: deleted ${removed.length} outside bounds${outside.length > removed.length ? ` (${outside.length - removed.length} locked-layer object(s) kept)` : ""}`);
       return;
     }
     if (cmd === "FILLETRAD" || cmd === "FILLETR") {
@@ -11781,8 +11848,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     if (cmd === "AUDITZL" || cmd === "PURGEZL") {
-      const rm = new Set(removeZeroLength(ents));
-      if (!rm.size) { logCmd(`AUDITZL: no zero-length lines (${countZeroLength(ents)} found).`); return; }
+      const zeroLen = removeZeroLength(ents);
+      // Bulk delete must not touch locked layers.
+      const rm = new Set(zeroLen.filter((i) => !isLayerLocked(ents[i]?.layer ?? "")));
+      if (!rm.size) { logCmd(zeroLen.length ? `AUDITZL: ${zeroLen.length} zero-length line(s) on locked layer(s) — left in place.` : `AUDITZL: no zero-length lines (${countZeroLength(ents)} found).`); return; }
       const removed: DxfEntity[] = [];
       const keep: DxfEntity[] = [];
       ents.forEach((e, i) => { if (rm.has(i)) removed.push(e); else keep.push(e); });
@@ -11792,7 +11861,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       sel.clear();
       markDirty();
       draw();
-      logCmd(`AUDITZL: removed ${removed.length} zero-length line(s)`);
+      logCmd(`AUDITZL: removed ${removed.length} zero-length line(s)${zeroLen.length > removed.length ? ` (${zeroLen.length - removed.length} locked-layer line(s) kept)` : ""}`);
       return;
     }
     if (cmd === "SNAPUNIT" || cmd === "SNAPU") {
@@ -13761,7 +13830,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (existing) {
       sel.clear();
       let n = 0;
-      for (const i of existing) if (ents[i]) { sel.add(i); n++; }
+      for (const i of existing) if (ents[i] && selAccept(i)) { sel.add(i); n++; }
       draw();
       logCmd(`GROUP ${key}: selected ${n} object${n === 1 ? "" : "s"}.`);
       return;
