@@ -354,46 +354,74 @@ test("family creator: labelled extras from a sheet become parameters with their 
   expect(errors).toEqual([]);
 });
 
-test("family creator: link fetch needs per-use consent, says plainly when the site has it off, and loads a sheet when on", async ({ page }) => {
+test("family creator: link import shows as unavailable when the site has it off, and works with consent when on", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e: Error) => errors.push(e.message));
   const calls: string[] = [];
   let mode: "off" | "on" = "off";
   await page.route("**/api/fetch-sheet", async (route: any) => {
+    if (route.request().method() === "GET") return route.fulfill({ status: mode === "on" ? 405 : 404, body: "" });
     calls.push(route.request().postData() || "");
-    if (mode === "off") return route.fulfill({ status: 404, body: "Not found" });
     return route.fulfill({ status: 200, headers: { "content-type": "text/plain", "x-fetched-host": "vendor.example" }, body: "Wall shelving WS-9\nOverall size: 900 x 300 x 1800 mm\nMiddle shelves: 2" });
   });
   await enterAuthoring(page);
   await openCreator(page);
   const panel = page.getByTestId("family-creator-panel");
+  // Off: one plain line, no link box, no Fetch button, no consent box, nothing sent.
+  await expect(panel.locator('[data-fc="url-box"]')).toContainText("Link import is not available on this site");
+  await expect(panel.locator('[data-f="url"]')).toHaveCount(0);
+  await expect(panel.locator('[data-act="fetch-url"]')).toHaveCount(0);
+  await expect(panel.locator('[data-fc="url-consent"]')).toHaveCount(0);
+  expect(calls.length).toBe(0);
+  await shot(page, "40-url-off.png");
+  // On: reopen the panel, and the link box returns with per-use consent.
+  mode = "on";
+  await panel.locator('[data-act="close"]').click();
+  await openCreator(page);
   const btn = panel.locator('[data-act="fetch-url"]');
-  const url = panel.locator('[data-f="url"]');
-  await url.fill("https://vendor.example/sheet.txt");
-  // No consent: the button is disabled and nothing is sent.
+  await expect(btn).toBeVisible();
+  await panel.locator('[data-f="url"]').fill("https://vendor.example/sheet.txt");
   await expect(btn).toBeDisabled();
   await expect(panel.locator('[data-fc="url-box"]')).toContainText("The site's operator can see the link");
   await panel.locator('[data-fc="url-consent"]').check();
   await expect(btn).toBeEnabled();
   await btn.click();
-  await expect(panel.locator('[data-fc="url-note"]')).toContainText("not switched on for this site");
-  expect(calls.length).toBe(1);
-  expect(JSON.parse(calls[0])).toEqual({ url: "https://vendor.example/sheet.txt", consent: true });
-  // Consent is per use: it is cleared after the attempt.
-  await expect(panel.locator('[data-fc="url-consent"]')).not.toBeChecked();
-  await expect(btn).toBeDisabled();
-  await shot(page, "40-url-off.png");
-  mode = "on";
-  await panel.locator('[data-fc="url-consent"]').check();
-  await btn.click();
   await expect(panel.locator('[data-fc="file-note"]')).toContainText("sheet.txt");
   await expect(panel.locator('[data-fc="url-note"]')).toContainText("Fetched from vendor.example");
+  expect(JSON.parse(calls[0])).toEqual({ url: "https://vendor.example/sheet.txt", consent: true });
+  await expect(panel.locator('[data-fc="url-consent"]')).not.toBeChecked();
   await panel.locator('[data-f="name"]').fill("Wall shelving WS-9");
   await panel.getByRole("button", { name: "Create family" }).click();
   await expect(panel.locator('[data-param="MidShelves"] ~ [data-tag]')).toHaveText("(from sheet)");
-  expect(calls.length).toBe(2);
-  await expect(panel.locator('[data-fc="url-consent"]')).not.toBeChecked();
+  expect(calls.length).toBe(1);
   await shot(page, "41-url-on.png");
+  expect(errors).toEqual([]);
+});
+
+test("family creator: typing a width and pressing Add this size in one go saves that width and keeps the size name", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e: Error) => errors.push(e.message));
+  await enterAuthoring(page);
+  await openCreator(page);
+  const panel = page.getByTestId("family-creator-panel");
+  await panel.locator('[data-f="name"]').fill("Base unit");
+  await panel.locator('[data-f="templateId"]').selectOption("cabinet");
+  await panel.locator('[data-f="wMm"]').fill("800");
+  await panel.locator('[data-f="dMm"]').fill("500");
+  await panel.locator('[data-f="hMm"]').fill("700");
+  await panel.getByRole("button", { name: "Create family" }).click();
+  await panel.getByRole("button", { name: "Add to family library" }).click();
+  await panel.locator('[data-fc="size-name"]').fill("1500 wide");
+  // Type the new width and click Add this size straight away: the blur redraws the panel under the click.
+  const width = panel.locator('[data-param="Width"]');
+  await width.click();
+  await width.fill("1500");
+  await panel.locator('[data-act="add-size"]').click();
+  const row = panel.locator('[data-fc="size-row"]', { hasText: "1500 wide" });
+  await expect(row).toContainText("1500 x 500 x 700 mm");
+  await expect(panel.locator('[data-fc="size-row"]')).toHaveCount(2);
+  await expect(panel.locator('[data-fc="size-name"]')).toHaveValue("");
+  await shot(page, "42-size-one-click.png");
   expect(errors).toEqual([]);
 });
 
