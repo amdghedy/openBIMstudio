@@ -539,12 +539,25 @@ export async function placeText(api: CadStyleApi, p: { x: number; y: number }): 
 
 /* ───────────────────────────── layer property editing ───────────────────────────── */
 
-export type LayerField = "color" | "lineType" | "lineweight";
+export type LayerField = "color" | "lineType" | "lineweight" | "transparency";
 
 /** Edit one property of a layer through a small dialog. Returns true if it changed. */
 export async function editLayerProperty(api: CadStyleApi, layerName: string, field: LayerField): Promise<boolean> {
   const doc = api.doc(); const lyr = doc?.layers.find((l) => l.name === layerName);
   if (!doc || !lyr) return false;
+  if (field === "transparency") {
+    const v = await openFormModal({
+      title: `Layer "${layerName}" transparency`,
+      fields: [{ kind: "number", key: "pct", label: "Transparency (0-90%)", default: lyr.transparency ?? 0, min: 0, max: 90, step: 1, hint: "0 = opaque, 90 = most transparent (DXF group 440)" }],
+      submitLabel: "Set transparency",
+    });
+    if (!v) return false;
+    const pct = Math.round(Number(v.pct));
+    if (!Number.isInteger(pct) || pct < 0 || pct > 90) return false;
+    if (pct === 0) delete lyr.transparency;
+    else lyr.transparency = pct;
+    return true;
+  }
   if (field === "color") {
     const v = await openFormModal({
       title: `Layer "${layerName}" colour`,

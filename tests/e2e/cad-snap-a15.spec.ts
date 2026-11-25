@@ -119,7 +119,9 @@ test('2D editor: nearest-in-aperture snap, apparent intersection, G14 overrides,
   await run('ZOOM E');
   await page.waitForTimeout(600);
   const box = (await page.locator('[data-r=cv]').first().boundingBox())!;
-  const map = await calibrate(page, box);
+  // `map` is re-solved before step 3 (see there): the canvas can resize
+  // between this calibration and the raw pick, which shifts the map in Y.
+  let map = await calibrate(page, box);
   const toScreen = (wx: number, wy: number) => ({ x: (wx - map.ox) / map.sx, y: (wy - map.oy) / map.sy });
   // The aperture is 14 px; the click geometry below was designed for
   // 11–45 world units. Outside that range the test cannot tell the old
@@ -168,6 +170,18 @@ test('2D editor: nearest-in-aperture snap, apparent intersection, G14 overrides,
   await focusCanvas();
   await page.keyboard.type('se');
   await expect.poll(hist, { timeout: 10000 }).toContain('Snap override: Endpoint');
+  // Re-solve the screen→world map from the live canvas box right before
+  // the raw pick. The canvas can resize between the initial calibration
+  // and here (a few px of layout settling); the view keeps its centre
+  // and scale but updates view.h, so screenToWorld shifts in Y only and
+  // the frozen map puts the raw pick ~7 world units low — the CI failure
+  // (raw y −3.83 instead of 3, raw x exact). The snap-based steps above
+  // are immune (the snap point is exact); only this raw pick needs a
+  // current map. The re-solve hovers are far from any endpoint (239+
+  // world units, aperture ~40), so the armed SE override cannot snap
+  // them, and hovering never consumes the one-shot override.
+  const box3 = (await page.locator('[data-r=cv]').first().boundingBox())!;
+  map = await calibrate(page, box3);
   await page.mouse.move(toScreen(500, 3).x, toScreen(500, 3).y);
   await page.waitForTimeout(200);
   const raw = await readCoords(page);
