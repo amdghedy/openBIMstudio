@@ -1,6 +1,8 @@
 /**
- * Converts a (large) IFC File to FRAG off the main thread WITHOUT ever
- * materialising the whole file as one JS ArrayBuffer.
+ * Converts a (large) IFC File to FRAG off the main thread. web-ifc reads the
+ * file through a chunked callback, so the CONVERSION never holds the whole file
+ * as one JS ArrayBuffer. NOTE: the STEP preflight below DOES make one transient
+ * whole-file read (see Safety), so peak memory is still ~file size briefly.
  *
  * The @thatopen/fragments IfcImporter accepts `readFromCallback` + a
  * synchronous `readCallback(offset, size)` (web-ifc OpenModelFromCallback).
@@ -18,7 +20,8 @@
  * terminated. If the browser cannot allocate that transient buffer the
  * conversion fails visibly; it never skips the check.
  *
- * Honest limit: this removes the whole-file JS copy and keeps the page
+ * Honest limit: this removes the whole-file JS copy during conversion (not
+ * during the preflight) and keeps the page
  * responsive/terminable. It does NOT by itself guarantee that the parsed
  * model of a multi-GB IFC fits the 32-bit WASM heap.
  */
