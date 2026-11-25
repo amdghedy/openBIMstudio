@@ -227,7 +227,11 @@ export interface ReconstructOptions {
   endFace?: "start" | "end";
   /** Scale the end view by its own stated height instead of the side view's scale. Off by default; needs heightMm. */
   calibrateEnd?: boolean;
+  /** Boxes drawn by the person around the side and the end view, as fractions (0-1) of the picture given. Both or none. They replace the automatic view split. */
+  sideBox?: FracBox; endBox?: FracBox;
 }
+
+export interface FracBox { x0: number; y0: number; x1: number; y1: number }
 
 export interface DimensionLine { name: string; state: "entered" | "checked"; mm: number; measuredMm?: number; /** Size of the same thing in the built parts. */ modelMm?: number; note?: string }
 
@@ -257,11 +261,15 @@ export function detectViews(img: RGBA): { views: ViewBox[]; widthsPx: number[]; 
 }
 
 export function reconstructElevations(img: RGBA, o: ReconstructOptions): Reconstruction {
-  const ink = inkFromImage(img), views = splitViews(ink), warnings: string[] = [];
+  const ink = inkFromImage(img), warnings: string[] = [];
+  const drawn = o.sideBox && o.endBox;
+  const px = (b: FracBox): ViewBox => ({ x0: Math.max(0, Math.min(ink.w - 2, Math.floor(b.x0 * ink.w))), x1: Math.max(1, Math.min(ink.w - 1, Math.ceil(b.x1 * ink.w) - 1)), y0: Math.max(0, Math.min(ink.h - 2, Math.floor(b.y0 * ink.h))), y1: Math.max(1, Math.min(ink.h - 1, Math.ceil(b.y1 * ink.h) - 1)) });
+  const views = drawn ? [px(o.sideBox!), px(o.endBox!)] : splitViews(ink);
   if (views.length < 2) throw new Error("Need a side view and an end view in the picture.");
   const order = views.map((b, i) => ({ i, w: b.x1 - b.x0 })).sort((a, b) => b.w - a.w);
-  const si = o.sideView ?? order[0].i, ei = o.endView ?? order.find((v) => v.i !== si)!.i;
-  if (o.sideView === undefined) warnings.push("Side view assumed to be the widest view in the picture.");
+  const si = drawn ? 0 : o.sideView ?? order[0].i, ei = drawn ? 1 : o.endView ?? order.find((v) => v.i !== si)!.i;
+  if (drawn) warnings.push("The side view and end view are the boxes drawn by the person, not found automatically.");
+  else if (o.sideView === undefined) warnings.push("Side view assumed to be the widest view in the picture.");
   const side = makeView(ink, views[si]), end = makeView(ink, views[ei]);
   const sp = (v: ViewBox, b: ViewBox): ViewBox => ({ x0: v.x0 + b.x0, x1: v.x0 + b.x1, y0: v.y0 + b.y0, y1: v.y0 + b.y1 });
   const extent = (v: View) => { let x0 = v.w, x1 = 0, y0 = v.h, y1 = 0; for (let y = 0; y < v.h; y++) for (let x = 0; x < v.w; x++) if (v.sil[y * v.w + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } return { x0, x1, y0, y1 }; };
