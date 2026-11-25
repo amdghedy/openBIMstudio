@@ -1345,7 +1345,7 @@ async function runTask(t: ImportTask) {
       const hdr = parseStepHeader(head);
       if (!hdr.ok) throw new Error(`This file is not a valid IFC (STEP) file: ${hdr.error}. It was not opened.`);
       assertValidStepFileHeader(hdr.value, t.file.name);
-      t.schema = detectSchema(head);
+      { const headSchema = detectSchema(head); t.schema = headSchema; }
       t.largeFileMode = true;
       console.warn(
         `[importer] ${t.file.name} (${t.sizeMB.toFixed(0)} MB) uses the large-file worker path: the STEP preflight runs inside the worker; ` +
