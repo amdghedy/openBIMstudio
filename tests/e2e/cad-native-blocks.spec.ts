@@ -52,3 +52,27 @@ test('2D editor: native BLOCK / EXPLODE / UNDO / REDO', async ({ page }) => {
   await expect.poll(async () => (await census()).INSERT ?? 0, { timeout: 10000 }).toBe(1);
   expect(errors, 'page errors: ' + errors.join(' | ')).toEqual([]);
 });
+
+// ATTDEF authoring: definitions are collected from the command line, validated, listed and discarded on request.
+test('2D editor: ATTDEF collects attribute definitions for the next BLOCK', async ({ page }) => {
+  test.setTimeout(120000);
+  await page.goto('/');
+  await page.locator('#obs-hero-3d').click({ timeout: 30000 });
+  await expect.poll(() => page.evaluate(() => !!(window as any).__OBS_CTX__), { timeout: 30000 }).toBe(true);
+  await openPaletteWith(page, 'Drawing Editor');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.obs-cad-shell, .obs-cad-viewer').first()).toBeVisible({ timeout: 30000 });
+  const cmd = page.locator('[data-r=cmd]').first();
+  const run = async (c: string) => { await cmd.fill(c); await cmd.press('Enter'); };
+  const hist = async () => page.locator('[data-r=cmdhist]').first().innerText();
+  await run('ATTDEF');
+  await expect.poll(hist).toContain('ATTDEF: none waiting');
+  await run('ATTDEF ROOMNO 1,2 2.5 101');
+  await expect.poll(hist).toContain('"ROOMNO" at 1,2');
+  await run('ATTDEF BAD');
+  await expect.poll(hist).toContain('ATTDEF: ATTDEF needs an insertion point');
+  await run('ATTDEF LIST');
+  await expect.poll(hist).toContain('1 waiting for the next BLOCK: ROOMNO@1,2');
+  await run('ATTDEF CLEAR');
+  await expect.poll(hist).toContain('discarded 1 waiting definition');
+});
