@@ -9,6 +9,8 @@ export interface SessionUi {
   bg?: string;
   cmode?: SessionColorMode;
   snapOn?: boolean;
+  /** Grid snap (F9 / SNAP) — a separate master from the OSNAP master above. */
+  gridSnapOn?: boolean;
   orthoOn?: boolean;
   polarOn?: boolean;
   polarAngle?: number;
@@ -25,7 +27,7 @@ export interface SessionUi {
   lockedLayers?: string[];
 }
 
-const BOOLS = ["snapOn", "orthoOn", "polarOn", "otrackOn", "dynOn", "lwtOn", "showGrid", "showText", "showHatch", "showLt"] as const;
+const BOOLS = ["snapOn", "gridSnapOn", "orthoOn", "polarOn", "otrackOn", "dynOn", "lwtOn", "showGrid", "showText", "showHatch", "showLt"] as const;
 const MODES: SessionColorMode[] = ["layer", "bw", "invert", "style"];
 const strArr = (v: unknown, max: number, maxLen = 200): string[] | undefined =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.length > 0 && x.length <= maxLen).slice(0, max) : undefined;
