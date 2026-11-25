@@ -5,6 +5,7 @@
 // projects. When no project is open, it falls back to a global library.
 
 import type { FamilyDefinition, FamilyType } from "./types";
+import { notify } from "../../core/notify";
 import { getCurrentProject, onProjectChanged } from "../projects/projects";
 import { CURRENT_FAMILY_SCHEMA_VERSION, migrateFamilyDefinition } from "./migration";
 import {
@@ -32,6 +33,21 @@ class FamilyStore {
   private byId = new Map<string, FamilyDefinition>();
   private listeners = new Set<() => void>();
   private booted = false;
+  /**
+   * Unedited shipped catalog families, by id -> the exact object the store
+   * holds. They are re-created from the catalog on every boot, so they are
+   * not written to localStorage (3,000+ of them filled the 5 MB quota and
+   * made every later save of the user's own families fail). Editing one
+   * replaces its object, which drops it from this check and so it is
+   * saved like any user family. A family loaded from storage that is not
+   * registered here is always kept: when unsure, save it.
+   */
+  private pristineSeeds = new Map<string, FamilyDefinition>();
+  private emitQueued = false;
+  private batchDepth = 0;
+  private pendingPersist = false;
+  private pendingEmit = false;
+  private storageFullReported = false;
 
   boot(seedBuiltIns: FamilyDefinition[]): void {
     if (this.booted) return;
@@ -178,9 +194,49 @@ class FamilyStore {
     const family = migrated.family;
     for (const w of migrated.warnings) console.warn(`[families] ${w}`);
     this.byId.set(family.id, family);
-    this.persist();
-    this.emit();
+    // Seeds come back from the catalog on every boot: do not write them (the
+    // old per-seed write was O(n^2) and filled localStorage) and tell
+    // listeners once per burst, not once per family.
+    this.pristineSeeds.set(family.id, family);
+    this.emitSoon();
     return family;
+  }
+
+  /**
+   * The loader found this stored family already present and identical to
+   * its catalog entry: mark it as an unedited shipped copy so it is not
+   * written back to localStorage. Never marks an edited family.
+   */
+  markPristineSeed(existing: FamilyDefinition, sameAsCatalog: boolean): void {
+    if (!sameAsCatalog) return;
+    if (this.byId.get(existing.id) !== existing) return;
+    if (existing.origin !== "seed-catalog") return;
+    this.pristineSeeds.set(existing.id, existing);
+  }
+
+  /** Rewrite the saved copy now (drops stored unedited catalog copies once the loader has marked them). */
+  flushToStorage(): void {
+    this.persist();
+  }
+
+  /** Run many edits as one: a single save and one change notice at the end. */
+  batch<T>(fn: () => T): T {
+    this.batchDepth++;
+    try {
+      return fn();
+    } finally {
+      this.batchDepth--;
+      if (this.batchDepth === 0) {
+        if (this.pendingPersist) { this.pendingPersist = false; this.persist(); }
+        if (this.pendingEmit) { this.pendingEmit = false; this.emit(); }
+      }
+    }
+  }
+
+  private emitSoon(): void {
+    if (this.emitQueued) return;
+    this.emitQueued = true;
+    setTimeout(() => { this.emitQueued = false; this.emit(); }, 50);
   }
 
   update(id: string, patch: Partial<FamilyDefinition>): FamilyDefinition | null {
@@ -263,17 +319,23 @@ class FamilyStore {
   }
 
   private emit(): void {
+    if (this.batchDepth > 0) { this.pendingEmit = true; return; }
     for (const cb of this.listeners) { try { cb(); } catch { /* */ } }
   }
 
   private persist(): void {
+    if (this.batchDepth > 0) { this.pendingPersist = true; return; }
     try {
-      // Built-ins are re-seeded on boot - only persist user families to save quota.
-      const arr = [...this.byId.values()].filter((d) => !d.builtIn);
+      // Built-ins are re-seeded on boot. Unedited shipped catalog copies are
+      // re-created from the catalog too. Everything else is the user's work
+      // and is always written, never trimmed.
+      const arr = [...this.byId.values()].filter(
+        (d) => !d.builtIn && this.pristineSeeds.get(d.id) !== d,
+      );
       const key = getStorageKey();
       try {
         localStorage.setItem(key, JSON.stringify(arr));
-        return;
+        this.storageFullReported = false;
       } catch (err: any) {
         const isQuota =
           err?.name === "QuotaExceededError" ||
@@ -284,30 +346,22 @@ class FamilyStore {
           console.warn("[families] persist failed", err);
           return;
         }
-        // Free space from other project family keys first
-        try {
-          const doomed: string[] = [];
-          for (let i = 0; i < localStorage.length; i++) {
-            const k = localStorage.key(i);
-            if (k && k.startsWith("obs.families.v1.") && k !== key) doomed.push(k);
-          }
-          for (const k of doomed) localStorage.removeItem(k);
-        } catch { /* */ }
-        let working = arr.slice();
-        while (working.length) {
+        // Do NOT delete other projects' family keys or drop families to fit:
+        // the previous copy in storage stays as it was, the families stay in
+        // memory (and in the project document on save), and the user is told.
+        if (!this.storageFullReported) {
+          this.storageFullReported = true;
+          console.warn(`[families] browser storage is full: ${arr.length} families not saved locally this session. Save the project to keep them.`);
           try {
-            localStorage.setItem(key, JSON.stringify(working));
-            if (working.length < arr.length) {
-              console.warn(`[families] quota: persisted ${working.length}/${arr.length} user families`);
-            }
-            return;
-          } catch {
-            working = working.slice(0, Math.max(0, working.length - 1));
-          }
+            window.dispatchEvent(new CustomEvent("obs:families-storage-full", { detail: { count: arr.length } }));
+          } catch { /* */ }
+          // Visible, not console-only: the user keeps working, so tell them how to keep the work.
+          notify(
+            "warn",
+            `Browser storage is full, so ${arr.length} of your families are not saved in this browser yet. Keep your work: the File menu item Project → JSON saves a backup copy that includes them. Do not clear site data.`,
+            { timeout: 90000 },
+          );
         }
-        try { localStorage.removeItem(key); } catch { /* */ }
-        // One quiet warning - session continues in-memory
-        console.warn("[families] localStorage full - family edits work this session only");
       }
     } catch (err) {
       console.warn("[families] persist failed", err);
