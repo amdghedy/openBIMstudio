@@ -153,6 +153,7 @@ import { HATCH_PATTERN_NAMES, DEFAULT_HATCH_PATTERN, isKnownHatchPattern, patter
 import { collectHatchGeometry, detectLoopAt, type BoundaryResult } from "../modules/drawings/hatch-boundary";
 import * as P from "./cad-params";
 import * as DIM from "../modules/cad-viewer/dimension-system";
+import * as LayerMgr from "../modules/cad-viewer/cad-layer-manager";
 import { fmtTime } from "../core/region";
 import { strokeFontFor, strokeLinePolylines, strokeLineWidth, CAP_UNITS, type StrokeFont } from "../modules/drawings/stroke-font";
 
@@ -501,6 +502,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "BREAKLINE", aliases: ["BRKLN"], description: "Draw a break line with the standard zig-zag symbol" },
   { name: "LAYMRG", aliases: ["LAYMERGE"], description: "Merge one layer into another and remove it" },
   { name: "LAYDEL", aliases: ["LAYDELETE"], description: "Delete a layer and everything on it" },
+  { name: "LAYREN", aliases: ["LAYRENAME"], description: "Rename a layer: LAYREN <old> <new>" },
   { name: "LAYWALK", aliases: ["LWALK"], description: "Walk the drawing layer by layer" },
   { name: "LAYFRZ", aliases: ["LFRZ"], description: "Freeze the layers of the selected objects" },
   { name: "LAYTHW", aliases: ["LTHW"], description: "Thaw every frozen layer" },
@@ -2044,6 +2046,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     ui?: SessionUi;
     /** Objects hidden one by one (Hide Objects), by entity-list position. */
     hiddenEnts?: SessionHiddenEntities;
+    /** Named layer states (full property snapshots), persisted per drawing (A16). */
+    layerStates?: Record<string, LayerMgr.LayerStateSnapshot>;
     at: number;
   };
   function sessionKeyFor(fileName: string): string {
@@ -2104,6 +2108,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       offLayers: doc.layers.filter((l) => l.off).map((l) => l.name),
       ui: currentUi(),
       hiddenEnts: hiddenEntityIndexes(doc.entities, hiddenEntities),
+      layerStates: layerStates.size ? LayerMgr.serializeLayerStates(layerStates) : undefined,
       at: Date.now(),
     };
     const map = loadSessionMap();
@@ -2135,6 +2140,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
     // Objects hidden one by one (only when the drawing has the same number of entities as when saved)
     try { for (const i of sanitizeHiddenEntities(sess.hiddenEnts, doc.entities.length)) hiddenEntities.add(doc.entities[i]); } catch { /* */ }
+
+    // Named layer states (validated; a malformed state is dropped, never applied)
+    if (sess.layerStates) {
+      layerStates.clear();
+      for (const [k, v] of Object.entries(LayerMgr.sanitizeLayerStates(sess.layerStates))) layerStates.set(k, v);
+    }
 
     // Working settings (validated; anything unknown or malformed is ignored)
     try {
@@ -2227,8 +2238,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   const inv = () => cmode === "invert";
   const fg = () => (bg === "white" || inv() ? 0x000000 : 0xffffff);
   const visible = (e: DxfEntity) => !hidden.has(e.layer) && !hiddenEntities.has(e) && (typeFilter.size === 0 || typeFilter.has(e.type));
+  /** True only while doPlot renders: non-plotting layers are skipped
+   * from the plot output (A16) but stay visible on screen, in picks
+   * and in exports — the flag is set around the single synchronous
+   * render() call, so no other path can observe it. */
+  let plotting = false;
   const shown = (e: DxfEntity) =>
-    visible(e) && !(e.type === "TEXT" && !showText) && !(e.type === "LWPOLYLINE" && e.hatch && !showHatch);
+    visible(e) && !(e.type === "TEXT" && !showText) && !(e.type === "LWPOLYLINE" && e.hatch && !showHatch) &&
+    !(plotting && !LayerMgr.layerPlots(layerOf(e.layer)));
   const layerOf = (n: string) => doc?.layers.find((l) => l.name === n);
   /**
    * AutoCAD layer lock (parity A3): locked layers stay visible and rendered —
@@ -4923,8 +4940,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let tableDims = { rows: 3, cols: 4 };
   /** Named views: name → view snapshot (VIEW S / VIEW R). */
   const namedViews = new Map<string, M.View>();
-  /** Layer state snapshots: name → off/frozen layer names (LAYERSTATE S / R). */
-  const layerStates = new Map<string, { off: string[]; frozen: string[] }>();
+  /** Layer state snapshots: name → full per-layer property set + current layer (LAYERSTATE S / R, A16). */
+  const layerStates = new Map<string, LayerMgr.LayerStateSnapshot>();
 
   const isPickTool = (t: Tool): t is PickKind =>
     t === "trim" || t === "extend" || t === "break" || t === "fillet" || t === "chamfer" ||
@@ -5250,6 +5267,59 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   /** Central staged-pick pointer-down handler. Returns true when consumed. */
+  /* ── Layer rename / delete shared by LAYREN, LAYDEL and the Layer
+   * Properties Manager (A16). The pure rules live in cad-layer-manager;
+   * these helpers own the undo action, the live-list rebind (ents /
+   * modelEnts — see saveDxf: doc.entities goes stale after rebind) and
+   * the selection/index refresh. Deleting refuses layer "0" and the
+   * current layer (AutoCAD refuses both) — the old LAYDEL pick path
+   * did not guard them, so a pick on the current layer silently left
+   * currentLayer pointing at a deleted layer. */
+  function deleteLayerByName(name: string): boolean {
+    if (!doc) return false;
+    const res = LayerMgr.deleteLayer(doc, name, currentLayer);
+    if (!res.ok) {
+      logCmd(`LAYER: cannot delete — ${res.reason}`);
+      status(`Cannot delete layer: ${res.reason}`);
+      return false;
+    }
+    const doomed = res.deleted;
+    const keep = ents.filter((e) => !doomed.includes(e));
+    pushUndoAct({ type: "delete", entities: doomed });
+    markDirty();
+    redoStack.length = 0;
+    ents = keep;
+    if (layoutI < 0) modelEnts = keep;
+    hidden.delete(name);
+    sel.clear();
+    selected = -1;
+    rebuildIndex();
+    logCmd(`LAYER: deleted layer "${name}" and ${doomed.length} object(s).`);
+    return true;
+  }
+
+  /** Rename via prompt flow; returns false when refused or cancelled. */
+  async function renameLayerByName(oldName: string, newName?: string): Promise<boolean> {
+    if (!doc) return false;
+    const target = newName ?? (await promptLine("Rename layer", "New name", oldName));
+    if (target == null) return false;
+    const res = LayerMgr.renameLayer(doc, oldName, target, currentLayer, hidden);
+    if (!res.ok) {
+      logCmd(`LAYER: cannot rename — ${res.reason}`);
+      status(`Cannot rename layer: ${res.reason}`);
+      return false;
+    }
+    currentLayer = res.current;
+    for (const snap of layerVisStack) {
+      const i = snap.indexOf(oldName);
+      if (i >= 0) snap[i] = target.trim();
+    }
+    markDirty();
+    scheduleSessionSave();
+    logCmd(`LAYER: renamed "${oldName}" to "${target.trim()}".`);
+    return true;
+  }
+
   function onPickClick(wp: M.Pt): boolean {
     if (!pick) return false;
     // Layer-state tools (LAYISO / LAYOFF / LAYLCK / LAYUNLCK) act on the layer,
@@ -5873,22 +5943,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         }
         const src = ents[hit];
         if (!src) return true;
-        const lyr = src.layer;
-        const doomed = ents.filter((e) => e.layer.toUpperCase() === lyr.toUpperCase());
-        const keep = ents.filter((e) => e.layer.toUpperCase() !== lyr.toUpperCase());
-        if (doc) {
-          doc.layers = doc.layers.filter((l) => l.name.toUpperCase() !== lyr.toUpperCase());
-          hidden.delete(lyr);
-        }
-        pushUndoAct({ type: "delete", entities: doomed });
-        markDirty();
-        redoStack.length = 0;
-        ents = keep;
-        if (layoutI < 0) modelEnts = keep;
-        sel.clear();
-        selected = -1;
-        rebuildIndex();
-        logCmd(`LAYDEL: deleted layer "${lyr}" and ${doomed.length} object(s).`);
+        // Shared with the manager's delete button (A16): same guards
+        // (layer "0" / current layer are refused) and same undo shape.
+        deleteLayerByName(src.layer);
         clearPickState();
         setTool("select");
         draw();
@@ -6687,19 +6744,34 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           hidden.has(n) ? "" : "checked"
         }><span class="sw" style="background:${col}"></span><span data-zl="${escapeHtml(
           n,
-        )}" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(
+        )}" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap${currentLayer === n ? ";font-weight:700" : ""}" title="${escapeHtml(
           n,
-        )} (double-click to zoom to layer)">${escapeHtml(n)}</span><span style="color:#778">${
+        )} (click to make current · double-click to zoom to layer)">${escapeHtml(n)}</span><span style="color:#778">${
           counts.get(n) ?? 0
         }</span></label>`;
       })
       .join("");
     layersEl
       .querySelectorAll<HTMLElement>("[data-zl]")
-      .forEach((el) => (el.ondblclick = (ev) => {
-        ev.preventDefault();
-        zoomLayer(el.dataset.zl!);
-      }));
+      .forEach((el) => {
+        // A16: single click makes the layer current. The name sits inside
+        // a <label>, so preventDefault stops the click from also toggling
+        // the row's visibility checkbox.
+        el.onclick = (ev) => {
+          ev.preventDefault();
+          const n = el.dataset.zl!;
+          if (currentLayer === n) return;
+          currentLayer = n;
+          buildLayers();
+          updateStatus();
+          scheduleSessionSave();
+          logCmd(`LAYER: current layer is now "${n}".`);
+        };
+        el.ondblclick = (ev) => {
+          ev.preventDefault();
+          zoomLayer(el.dataset.zl!);
+        };
+      });
     layersEl
       .querySelectorAll<HTMLInputElement>("input[data-l]")
       .forEach((i) => (i.onchange = () => {
@@ -6776,16 +6848,17 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
         return `
         <tr data-row-l="${escapeHtml(n)}">
-          <td style="text-align:center">${isCurrent ? "✔" : ""}</td>
-          <td style="font-weight:600">${escapeHtml(n)}</td>
+          <td style="text-align:center;cursor:pointer" data-act="make-current" title="Click to make current">${isCurrent ? "✔" : ""}</td>
+          <td style="font-weight:600;cursor:default" data-act="rename" title="Double-click to rename">${escapeHtml(n)}</td>
           <td style="text-align:center;cursor:pointer" data-act="toggle-on">${isOff ? "💡❌" : "💡"}</td>
           <td style="text-align:center;cursor:pointer" data-act="toggle-freeze">${isFrozen ? "❄️" : "☀️"}</td>
           <td style="text-align:center;cursor:pointer" data-act="toggle-lock">${isLocked ? "🔒" : "🔓"}</td>
           <td style="cursor:pointer" data-act="edit-color" title="Click to change colour${lyr?.rgb != null ? ` (true colour #${lyr.rgb.toString(16).padStart(6, "0").toUpperCase()})` : ""}"><span class="sw" style="display:inline-block;background:${col};vertical-align:middle;margin-inline-end:4px"></span>${lyr?.color ?? 7}${lyr?.rgb != null ? " ᵀ" : ""}</td>
           <td style="cursor:pointer" data-act="edit-lt" title="Click to change linetype">${escapeHtml(lyr?.lineType ?? "Continuous")}</td>
           <td style="cursor:pointer" data-act="edit-lw" title="Click to change lineweight">${lyr?.lineweight != null ? escapeHtml(lineweightLabel(lyr.lineweight)) : "Default"}</td>
-          <td style="text-align:center">${transp ? `${transp}%` : "—"}</td>
-          <td style="text-align:center">${plots ? "🖨️" : "🚫"}</td>
+          <td style="text-align:center;cursor:pointer" data-act="edit-transparency" title="Click to change transparency (0-90%)">${transp ? `${transp}%` : "—"}</td>
+          <td style="text-align:center;cursor:pointer" data-act="toggle-plot" title="Click to toggle plotting">${plots ? "🖨️" : "🚫"}</td>
+          <td style="text-align:center"><button data-act="delete" title="Delete layer and its objects" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0 4px">🗑</button></td>
         </tr>`;
       })
       .join("");
@@ -6802,7 +6875,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         <table style="width:100%;font-size:12px;border-collapse:collapse">
           <thead>
             <tr style="color:#9aa4b2;text-align:start;border-bottom:1px solid #334155">
-              <th>Status</th><th>Name</th><th>On</th><th>Freeze</th><th>Lock</th><th>Color</th><th>Linetype</th><th>Lineweight</th><th>Transp.</th><th>Plot</th>
+              <th>Status</th><th>Name</th><th>On</th><th>Freeze</th><th>Lock</th><th>Color</th><th>Linetype</th><th>Lineweight</th><th>Transp.</th><th>Plot</th><th>Delete</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -6884,6 +6957,83 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         draw();
         scheduleSessionSave();
       });
+      // A16: click the Status cell to make the layer current.
+      tr.querySelector("[data-act=make-current]")?.addEventListener("click", () => {
+        if (currentLayer === lname) return;
+        currentLayer = lname;
+        closeOverlay();
+        buildLayers();
+        openLayerPropertiesManager();
+        draw();
+        scheduleSessionSave();
+        logCmd(`LAYER: current layer is now "${lname}".`);
+      });
+      // A16: double-click the Name cell to rename (layer "0" is refused,
+      // like AutoCAD; duplicates and forbidden characters are refused).
+      tr.querySelector("[data-act=rename]")?.addEventListener("dblclick", () => {
+        void renameLayerByName(lname).then((ok) => {
+          if (!ok) return;
+          closeOverlay();
+          buildLayers();
+          openLayerPropertiesManager();
+          draw();
+        });
+      });
+      // A16: click the Plot cell to toggle plotting for the layer.
+      // doPlot honours the flag (non-plotting layers are skipped while
+      // plotting); the DXF writer already persists it as group 290.
+      tr.querySelector("[data-act=toggle-plot]")?.addEventListener("click", () => {
+        const lyr = layerOf(lname);
+        if (!lyr) return;
+        LayerMgr.setLayerPlot(doc!, lname, !LayerMgr.layerPlots(lyr));
+        closeOverlay();
+        buildLayers();
+        openLayerPropertiesManager();
+        markDirty();
+        draw();
+        scheduleSessionSave();
+        logCmd(`LAYER: "${lname}" ${LayerMgr.layerPlots(layerOf(lname)) ? "will plot" : "will not plot"}.`);
+      });
+      // A16: click the Transparency cell to edit it (0-90%, 0 = opaque).
+      tr.querySelector("[data-act=edit-transparency]")?.addEventListener("click", () => {
+        void editLayerProperty(styleApi, lname, "transparency").then((changed) => {
+          if (!changed) return;
+          closeOverlay();
+          buildLayers();
+          openLayerPropertiesManager();
+          markDirty();
+          draw();
+        });
+      });
+      // A16: delete the layer (and its objects) from the manager.
+      // The guards (layer "0", current layer) are checked BEFORE the
+      // confirmation prompt, so a refused delete never asks first.
+      // Same undo shape as LAYDEL.
+      tr.querySelector("[data-act=delete]")?.addEventListener("click", () => {
+        const guard = LayerMgr.deleteGuard(doc!, lname, currentLayer);
+        if (guard) {
+          logCmd(`LAYER: cannot delete — ${guard}`);
+          status(`Cannot delete layer: ${guard}`);
+          return;
+        }
+        const count = (doc?.entities ?? []).filter((e) => e.layer.toUpperCase() === lname.toUpperCase()).length +
+          (doc?.layouts ?? []).reduce((n, l) => n + l.entities.filter((e) => e.layer.toUpperCase() === lname.toUpperCase()).length, 0);
+        const go = async (): Promise<void> => {
+          if (count > 0) {
+            const yes = await confirmDialog(
+              `Delete layer "${lname}"?`,
+              `Layer "${lname}" holds ${count} object(s). Delete the layer and its objects?`,
+            );
+            if (!yes) return;
+          }
+          if (!deleteLayerByName(lname)) return;
+          closeOverlay();
+          buildLayers();
+          openLayerPropertiesManager();
+          draw();
+        };
+        void go();
+      });
     });
   }
 
@@ -6927,7 +7077,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const m = M.entityMetrics(e),
       rows: string[] = [
         row("Type", e.type),
-        row("Layer", e.layer),
+        // A16: the Layer row is a control, not read-only text — picking
+        // another layer moves the object there (undoable, via commitModify).
+        `<tr><td>Layer</td><td><select data-props-layer title="Move object to layer" style="max-width:180px">${allLayers()
+          .map((n) => `<option value="${escapeHtml(n)}"${n === e.layer ? " selected" : ""}>${escapeHtml(n)}</option>`)
+          .join("")}</select></td></tr>`,
         row(
           "Colour",
           e.rgb != null
@@ -6981,6 +7135,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (m.area != null) rows.push(row("Area", fmt(m.area, 2)));
     rows.push(row("Lineweight", lineweightLabel(e.lineweight ?? layerOf(e.layer)?.lineweight)));
     propsEl.innerHTML = `<table>${rows.join("")}</table>`;
+    // A16: layer change for the single selected object (undoable).
+    propsEl.querySelector<HTMLSelectElement>("[data-props-layer]")?.addEventListener("change", (ev) => {
+      const v = (ev.target as HTMLSelectElement).value;
+      const cur = ents[selected];
+      if (!cur || !v || v === cur.layer) return;
+      commitModify([cur], [{ ...cur, layer: v }]);
+      showProps();
+      draw();
+    });
     const hostOne = document.createElement("div");
     propsEl.append(hostOne);
     renderAppearanceEditor(hostOne, styleApi);
@@ -7474,7 +7637,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ) +
       rg(
         "Layer States",
-        rb("layer-state", "Save State", `data-a="lssave"`, "Snapshot which layers are off / frozen (LAYERSTATE S)") +
+        rb("layer-state", "Save State", `data-a="lssave"`, "Snapshot all layer properties (LAYERSTATE S)") +
           rb("show-all", "Restore State", `data-a="lsrestore"`, "Restore a saved layer state (LAYERSTATE R)"),
         "",
         "",
@@ -12412,6 +12575,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (cmd === "BREAKLINE" || cmd === "BRKLN") { setTool("breakline"); return; }
     if (cmd === "LAYMRG" || cmd === "LAYMERGE") { setTool("laymrg"); return; }
     if (cmd === "LAYDEL" || cmd === "LAYDELETE") { setTool("laydel"); return; }
+    if (cmd === "LAYREN" || cmd === "LAYRENAME") {
+      const args = parts.slice(1);
+      const done = (ok: boolean) => { if (ok) { buildLayers(); draw(); } };
+      if (args.length >= 2) void renameLayerByName(args[0], args.slice(1).join(" ")).then(done);
+      else if (args.length === 1) void renameLayerByName(args[0]).then(done);
+      else {
+        void promptLine("Rename layer", "Layer to rename", currentLayer).then((old) => {
+          if (old == null) return;
+          void renameLayerByName(old).then(done);
+        });
+      }
+      return;
+    }
     if (cmd === "LAYWALK" || cmd === "LWALK") { openLayWalk(); return; }
     if (cmd === "LAYFRZ" || cmd === "LFRZ") { runLayFrz(); return; }
     if (cmd === "LAYTHW" || cmd === "LTHW") { runLayThw(); return; }
@@ -13029,9 +13205,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // Loaded CTB/STB pen table maps every entity through its plot styles.
     cmode = o.mono ? "bw" : plotStyle ? "style" : "layer";
     lw = Math.max(lw, px.w / 1200);
+    plotting = true;
     try {
       render(x, pv, false);
     } finally {
+      plotting = false;
       bg = keep.bg;
       cmode = keep.cmode;
       lw = keep.lw;
@@ -13660,17 +13838,36 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     logCmd(names.length ? `VIEW: saved views — ${names.join(", ")}` : "VIEW: no saved views (VIEW S <name>).");
   }
 
-  /* ── Layer states (LAYERSTATE S / R) ── */
+  /* ── Layer states (LAYERSTATE S / R, A16) ──
+   * A state captures the FULL property set of every layer (off, frozen,
+   * locked, colour, linetype, lineweight, transparency, plot) plus the
+   * current layer — not just off/frozen as before — and is persisted
+   * with the drawing through the per-drawing session store. */
+  function applyLayerStateSnapshot(snap: LayerMgr.LayerStateSnapshot): void {
+    if (!doc) return;
+    const r = LayerMgr.applyLayerState(doc, snap);
+    hidden.clear();
+    for (const n of [...r.off, ...r.frozen]) hidden.add(n);
+    for (const l of doc.layers) {
+      if (r.off.includes(l.name) || r.frozen.includes(l.name)) hidden.add(l.name);
+      else if (!l.off && !l.frozen) hidden.delete(l.name);
+    }
+    if (r.current) currentLayer = r.current;
+    buildLayers();
+    draw();
+    if (r.missing.length) logCmd(`LAYERSTATE: restored "${snap.name}" (${r.applied.length} layers; ${r.missing.length} missing in this drawing: ${r.missing.join(", ")}).`);
+    else logCmd(`LAYERSTATE: restored "${snap.name}" (${r.applied.length} layers).`);
+  }
+
   function saveLayerState(): void {
     void promptLine("Layer State", "State name", `State${layerStates.size + 1}`).then((nm) => {
       const k = (nm ?? "").trim();
       if (!k || !doc) return;
-      layerStates.set(k, {
-        off: doc.layers.filter((l) => l.off).map((l) => l.name),
-        frozen: doc.layers.filter((l) => l.frozen).map((l) => l.name),
-      });
-      const st = layerStates.get(k)!;
-      logCmd(`LAYERSTATE: saved "${k}" (${st.off.length} off, ${st.frozen.length} frozen).`);
+      const snap = LayerMgr.captureLayerState(doc, currentLayer);
+      snap.name = k;
+      layerStates.set(k, snap);
+      logCmd(`LAYERSTATE: saved "${k}" (${doc.layers.length} layers, current "${currentLayer}").`);
+      scheduleSessionSave();
     });
   }
 
@@ -13683,19 +13880,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     void promptLine("Restore Layer State", `Name — ${names.join(", ")}`, names[0]).then((nm) => {
       const k = (nm ?? "").trim();
       const st = layerStates.get(k);
-      if (!st || !doc) {
+      if (!st) {
         logCmd(`LAYERSTATE: "${k}" not found.`);
         return;
       }
-      for (const l of doc.layers) {
-        l.off = st.off.includes(l.name);
-        l.frozen = st.frozen.includes(l.name);
-        if (l.off || l.frozen) hidden.add(l.name);
-        else hidden.delete(l.name);
-      }
-      buildLayers();
-      draw();
-      logCmd(`LAYERSTATE: restored "${k}".`);
+      applyLayerStateSnapshot(st);
+      scheduleSessionSave();
     });
   }
 
@@ -13704,11 +13894,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const k = rest.slice(1).join(" ").trim();
     if (sub === "S" || sub === "SAVE") {
       if (k && doc) {
-        layerStates.set(k, {
-          off: doc.layers.filter((l) => l.off).map((l) => l.name),
-          frozen: doc.layers.filter((l) => l.frozen).map((l) => l.name),
-        });
-        logCmd(`LAYERSTATE: saved "${k}".`);
+        const snap = LayerMgr.captureLayerState(doc, currentLayer);
+        snap.name = k;
+        layerStates.set(k, snap);
+        logCmd(`LAYERSTATE: saved "${k}" (${doc.layers.length} layers, current "${currentLayer}").`);
+        scheduleSessionSave();
       } else saveLayerState();
       return;
     }
@@ -13719,15 +13909,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           logCmd(`LAYERSTATE: "${k}" not found.`);
           return;
         }
-        for (const l of doc.layers) {
-          l.off = st.off.includes(l.name);
-          l.frozen = st.frozen.includes(l.name);
-          if (l.off || l.frozen) hidden.add(l.name);
-          else hidden.delete(l.name);
-        }
-        buildLayers();
-        draw();
-        logCmd(`LAYERSTATE: restored "${k}".`);
+        applyLayerStateSnapshot(st);
+        scheduleSessionSave();
       } else restoreLayerState();
       return;
     }
@@ -14360,6 +14543,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         return Number.isFinite(b.minX + b.maxX + b.minY + b.maxY);
       });
       if (!incoming.length) throw new Error("the file has no drawable geometry");
+      // A16: importing into a blank drawing IS the drawing (the file
+      // input is the only open path most drawings take) — remember that
+      // before the merge, so the session can be adopted below.
+      const wasEmpty = modelEnts.length === 0 && ents.length === 0;
       // Merge the layer table — existing definitions win.
       const have = new Set(doc.layers.map((l) => l.name));
       for (const l of r.doc.layers) if (!have.has(l.name)) doc.layers.push({ ...l });
@@ -14371,6 +14558,18 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd(`IMPORT: merged ${f.name} — ${incoming.length} entities, ${r.doc.layers.length} layer definitions.`);
       status(`${f.name} merged: ${incoming.length} entities`);
       setTimeout(() => status(""), 5000);
+      // A16: a merge into a blank drawing adopts the file as the drawing.
+      // Without a name, captureDrawingSession() early-returns and no
+      // session (view, visibility, layer states) is ever persisted for
+      // imported drawings; restoring the file's session brings its layer
+      // states back. Merging into a non-empty drawing keeps the host's
+      // name and states untouched.
+      if (wasEmpty) {
+        name = f.name;
+        hooks.onTitle(name);
+        restoreDrawingSession(f.name);
+        scheduleSessionSave();
+      }
     } catch (err) {
       logCmd(`IMPORT failed: ${(err as Error).message}`);
       status(`Could not import ${f.name}: ${(err as Error).message}`);
