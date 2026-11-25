@@ -18,11 +18,12 @@ import { renderThreeViews } from "../modules/families/creator/preview-svg";
 interface State {
   fileName: string; imgUrl: string; rgba: { data: Uint8ClampedArray; width: number; height: number } | null;
   name: string; length: string; width: string; height: string; pipe: string;
-  sideFace: "+" | "-" | "both"; endFace: "start" | "end"; calEnd: "side" | "height";
+  sideFace: "+" | "-" | "both"; endFace: "start" | "end"; calEnd: "side" | "height"; mode: "crop" | "side" | "end"; vb: { side: Fb | null; end: Fb | null };
   crop: { l: string; r: string; t: string; b: string }; cropUrl: string; confirmed: boolean; views: { widthsPx: number[]; side: number; end: number } | null; sideView: string; endView: string;
   busy: boolean; stale: boolean; error: string; notice: string; result: Reconstruction | null; off: Set<number>;
 }
-const S: State = { fileName: "", imgUrl: "", rgba: null, name: "", length: "", width: "", height: "", pipe: "", sideFace: "+", endFace: "start", calEnd: "side", crop: { l: "", r: "", t: "", b: "" }, cropUrl: "", confirmed: false, views: null, sideView: "auto", endView: "auto", busy: false, stale: false, error: "", notice: "", result: null, off: new Set() };
+interface Fb { x0: number; y0: number; x1: number; y1: number }
+const S: State = { fileName: "", imgUrl: "", rgba: null, name: "", length: "", width: "", height: "", pipe: "", sideFace: "+", endFace: "start", calEnd: "side", mode: "crop", vb: { side: null, end: null }, crop: { l: "", r: "", t: "", b: "" }, cropUrl: "", confirmed: false, views: null, sideView: "auto", endView: "auto", busy: false, stale: false, error: "", notice: "", result: null, off: new Set() };
 
 const esc = (s: string) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" } as Record<string, string>)[c]);
 const num = (v: string): number | null => { const n = Number(v.trim().replace(",", ".")); return v.trim() !== "" && Number.isFinite(n) && n > 0 ? n : null; };
@@ -52,6 +53,13 @@ function effective(): { rgba: NonNullable<State["rgba"]>; url: string } | null {
   const c = document.createElement("canvas"); c.width = w; c.height = h;
   c.getContext("2d")!.putImageData(new ImageData(out, w, h), 0, 0);
   return { rgba: { data: out, width: w, height: h }, url: c.toDataURL("image/png") };
+}
+/** The drawn view boxes, converted from fractions of the whole picture to fractions of the cropped picture. Both or none. */
+function viewBoxOpts(): { sideBox?: Fb; endBox?: Fb } {
+  if (!S.vb.side || !S.vb.end) return {};
+  const l = pct(S.crop.l) / 100, r = pct(S.crop.r) / 100, tp = pct(S.crop.t) / 100, b = pct(S.crop.b) / 100, w = 1 - l - r, h = 1 - tp - b;
+  const cv = (q: Fb): Fb => ({ x0: Math.min(1, Math.max(0, (q.x0 - l) / w)), x1: Math.min(1, Math.max(0, (q.x1 - l) / w)), y0: Math.min(1, Math.max(0, (q.y0 - tp) / h)), y1: Math.min(1, Math.max(0, (q.y1 - tp) / h)) });
+  return { sideBox: cv(S.vb.side), endBox: cv(S.vb.end) };
 }
 function refreshViews() { const e = effective(); S.views = null; if (e) { try { const dv = detectViews(e.rgba); S.views = { widthsPx: dv.widthsPx, side: dv.side, end: dv.end }; } catch { S.views = null; } } S.sideView = "auto"; S.endView = "auto"; }
 
@@ -104,7 +112,7 @@ function resultHtml(r: Reconstruction): string {
 function cropFields(): string {
   const c = (k: "l" | "r" | "t" | "b", key: string) => `<label class="obs-fc-detail" style="display:inline-block;margin-inline-end:6px">${esc(t("familyCreator.drawing." + key))}<input class="obs-fc-in" style="width:4.5em" data-dcrop="${k}" inputmode="decimal" dir="ltr" value="${esc(S.crop[k])}"></label>`;
   const L = pct(S.crop.l), R = pct(S.crop.r), T = pct(S.crop.t), B = pct(S.crop.b);
-  const picker = `<div data-fc="drawing-crop-pick" dir="ltr" style="position:relative;margin:4px 0;touch-action:none;cursor:crosshair;user-select:none;background:#fff;border-radius:4px"><img src="${esc(S.imgUrl)}" alt="" draggable="false" style="display:block;width:100%;height:auto;pointer-events:none"><div data-fc="drawing-crop-box" style="position:absolute;left:${L}%;right:${R}%;top:${T}%;bottom:${B}%;border:2px solid #22d3ee;background:rgba(34,211,238,.12);pointer-events:none"></div></div><div class="obs-fc-detail">${esc(t("familyCreator.drawing.cropDrag"))} <button type="button" class="obs-fc-btn" data-dcrop-reset>${esc(t("familyCreator.drawing.cropReset"))}</button></div>`;
+  const picker = `<div data-fc="drawing-crop-pick" dir="ltr" style="position:relative;margin:4px 0;touch-action:none;cursor:crosshair;user-select:none;background:#fff;border-radius:4px"><img src="${esc(S.imgUrl)}" alt="" draggable="false" style="display:block;width:100%;height:auto;pointer-events:none"><div data-fc="drawing-crop-box" style="position:absolute;left:${L}%;right:${R}%;top:${T}%;bottom:${B}%;border:2px solid #22d3ee;background:rgba(34,211,238,.12);pointer-events:none"></div>${S.vb.side ? `<div data-fc="drawing-vbox-side" style="position:absolute;left:${S.vb.side.x0 * 100}%;right:${(1 - S.vb.side.x1) * 100}%;top:${S.vb.side.y0 * 100}%;bottom:${(1 - S.vb.side.y1) * 100}%;border:2px dashed #f59e0b;pointer-events:none"></div>` : ""}${S.vb.end ? `<div data-fc="drawing-vbox-end" style="position:absolute;left:${S.vb.end.x0 * 100}%;right:${(1 - S.vb.end.x1) * 100}%;top:${S.vb.end.y0 * 100}%;bottom:${(1 - S.vb.end.y1) * 100}%;border:2px dashed #34d399;pointer-events:none"></div>` : ""}</div><div class="obs-fc-detail">${esc(t("familyCreator.drawing.cropDrag"))}</div><label class="obs-fc-detail" style="display:block">${esc(t("familyCreator.drawing.dragMode"))}<select class="obs-fc-in" data-dfield="mode"><option value="crop"${S.mode === "crop" ? " selected" : ""}>${esc(t("familyCreator.drawing.modeCrop"))}</option><option value="side"${S.mode === "side" ? " selected" : ""}>${esc(t("familyCreator.drawing.modeSide"))}</option><option value="end"${S.mode === "end" ? " selected" : ""}>${esc(t("familyCreator.drawing.modeEnd"))}</option></select></label><div class="obs-fc-detail" data-fc="drawing-vb-state">${esc(t(S.vb.side && S.vb.end ? "familyCreator.drawing.vbBoth" : S.vb.side || S.vb.end ? "familyCreator.drawing.vbOne" : "familyCreator.drawing.vbNone"))} <button type="button" class="obs-fc-btn" data-dcrop-reset>${esc(t("familyCreator.drawing.cropReset"))}</button> <button type="button" class="obs-fc-btn" data-dvb-reset>${esc(t("familyCreator.drawing.vbReset"))}</button></div>`;
   return `<div data-fc="drawing-crop"><div class="obs-fc-detail">${esc(t("familyCreator.drawing.cropHelp"))}</div>${picker}${c("l", "cropL")}${c("r", "cropR")}${c("t", "cropT")}${c("b", "cropB")}</div>`;
 }
 
@@ -176,7 +184,7 @@ function read(root: HTMLElement) {
   // The work is synchronous; yield once so the "reading" state is painted before it starts.
   setTimeout(() => {
     try {
-      S.result = reconstructElevations(eff.rgba, { lengthMm: len, widthMm: num(S.width) ?? undefined, heightMm: num(S.height) ?? undefined, pipeDiameterMm: num(S.pipe) ?? undefined, sideFace: S.sideFace, endFace: S.endFace, calibrateEnd: S.calEnd === "height", ...(S.sideView !== "auto" ? { sideView: Number(S.sideView) } : {}), ...(S.endView !== "auto" ? { endView: Number(S.endView) } : {}) });
+      S.result = reconstructElevations(eff.rgba, { lengthMm: len, widthMm: num(S.width) ?? undefined, heightMm: num(S.height) ?? undefined, pipeDiameterMm: num(S.pipe) ?? undefined, sideFace: S.sideFace, endFace: S.endFace, calibrateEnd: S.calEnd === "height", ...viewBoxOpts(), ...(S.sideView !== "auto" ? { sideView: Number(S.sideView) } : {}), ...(S.endView !== "auto" ? { endView: Number(S.endView) } : {}) });
       S.off = new Set(); S.result.parts.forEach((q, k) => { if (q.candidate) S.off.add(k); });
     } catch (e) { S.error = t("familyCreator.drawing.errFailed", { message: (e as Error).message }); }
     S.busy = false; redraw(root);
@@ -209,7 +217,7 @@ export function bindDrawing(root: HTMLElement) {
     });
   });
   root.querySelectorAll<HTMLInputElement>("[data-dcrop]").forEach((el) => el.addEventListener("change", () => {
-    S.crop[el.dataset.dcrop as "l" | "r" | "t" | "b"] = el.value; S.result = null; S.confirmed = false; S.off = new Set(); S.notice = ""; refreshViews(); redraw(root);
+    S.crop[el.dataset.dcrop as "l" | "r" | "t" | "b"] = el.value; S.vb = { side: null, end: null }; S.result = null; S.confirmed = false; S.off = new Set(); S.notice = ""; refreshViews(); redraw(root);
   }));
   const pick = root.querySelector<HTMLElement>('[data-fc="drawing-crop-pick"]');
   if (pick) {
@@ -226,18 +234,20 @@ export function bindDrawing(root: HTMLElement) {
       if (!a) return; const b = at(ev), x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y); a = null;
       // A click or a sliver is not a crop: keep the previous one. The side fields cap at 90%, so keep >= 10% of each axis.
       if (x1 - x0 < 0.1 || y1 - y0 < 0.1) return redraw(root);
+      if (S.mode !== "crop") { S.vb[S.mode] = { x0, y0, x1, y1 }; S.result = null; S.confirmed = false; S.off = new Set(); S.notice = ""; redraw(root); return; }
       const f = (v: number) => String(Math.round(v * 1000) / 10);
-      S.crop = { l: f(x0), r: f(1 - x1), t: f(y0), b: f(1 - y1) };
+      S.crop = { l: f(x0), r: f(1 - x1), t: f(y0), b: f(1 - y1) }; S.vb = { side: null, end: null };
       S.result = null; S.confirmed = false; S.off = new Set(); S.notice = ""; refreshViews(); redraw(root);
     });
     pick.addEventListener("pointercancel", () => { a = null; redraw(root); });
   }
   root.querySelector<HTMLElement>("[data-dcrop-reset]")?.addEventListener("click", () => {
-    S.crop = { l: "", r: "", t: "", b: "" }; S.result = null; S.confirmed = false; S.off = new Set(); S.notice = ""; refreshViews(); redraw(root);
+    S.crop = { l: "", r: "", t: "", b: "" }; S.vb = { side: null, end: null }; S.result = null; S.confirmed = false; S.off = new Set(); S.notice = ""; refreshViews(); redraw(root);
   });
+  root.querySelector<HTMLElement>("[data-dvb-reset]")?.addEventListener("click", () => { S.vb = { side: null, end: null }; S.result = null; S.confirmed = false; S.off = new Set(); S.notice = ""; redraw(root); });
   root.querySelector<HTMLInputElement>("[data-dfile]")?.addEventListener("change", async (ev) => {
     const f = (ev.target as HTMLInputElement).files?.[0]; if (!f) return;
-    try { await decode(f); S.result = null; S.error = ""; S.notice = ""; S.confirmed = false; S.length = ""; S.width = ""; S.height = ""; S.pipe = ""; S.crop = { l: "", r: "", t: "", b: "" }; S.cropUrl = ""; S.off = new Set(); refreshViews(); } catch (e) { S.error = t("familyCreator.drawing.errFailed", { message: (e as Error).message }); }
+    try { await decode(f); S.result = null; S.error = ""; S.notice = ""; S.confirmed = false; S.length = ""; S.width = ""; S.height = ""; S.pipe = ""; S.crop = { l: "", r: "", t: "", b: "" }; S.vb = { side: null, end: null }; S.cropUrl = ""; S.off = new Set(); refreshViews(); } catch (e) { S.error = t("familyCreator.drawing.errFailed", { message: (e as Error).message }); }
     redraw(root);
   });
   root.querySelectorAll<HTMLElement>("[data-dact]").forEach((el) => el.addEventListener("click", () => {
