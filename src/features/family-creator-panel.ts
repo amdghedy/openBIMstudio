@@ -25,6 +25,14 @@ import type { FamilyDefinition } from "../modules/families/types";
 
 let panel: HTMLElement | null = null;
 let visible = false;
+/** Link import is only offered when the Worker has it switched on: GET answers 405 when on, 404 when off. */
+let urlAvail: "unknown" | "on" | "off" = "unknown";
+let probing = false;
+/** The size name survives a re-render (a parameter edit commits on blur and redraws the panel). */
+let sizeName = "";
+/** A button press that started just before a blur-triggered redraw would otherwise be lost. */
+let pendingPress: { act: string; at: number } | null = null;
+let handledPress: { act: string; at: number } | null = null;
 
 interface FormState { name: string; manufacturer: string; model: string; text: string; pages: string[]; fromOcr: boolean; templateId: string; fileName: string; fileNote: string; url: string; urlConsent: boolean; urlNote: string; wMm: string; dMm: string; hMm: string }
 const form: FormState = { name: "", manufacturer: "", model: "", text: "", pages: [], fromOcr: false, templateId: "", fileName: "", fileNote: "", url: "", urlConsent: false, urlNote: "", wMm: "", dMm: "", hMm: "" };
@@ -295,6 +303,27 @@ function partsHtml(parts: ReturnType<typeof resolveParts>): string {
     `<div class="obs-fc-detail" data-fc="export-scope">${esc(scope)}${nHidden && exportShownOnly ? " " + esc(t("familyCreator.parts.countsNote")) : ""}</div></div>`;
 }
 
+function urlBoxHtml(): string {
+  if (urlAvail !== "on") return `<div data-fc="url-box" data-state="unavailable" class="obs-fc-detail" style="margin:6px 0">${esc(t("familyCreator.url.unavailable"))}</div>`;
+  return `<div data-fc="url-box" style="margin:6px 0"><div style="display:flex;gap:6px"><input class="obs-fc-in" data-f="url" type="url" dir="ltr" placeholder="${esc(t("familyCreator.url.placeholder"))}" value="${esc(form.url)}"><button type="button" class="obs-fc-btn" data-act="fetch-url"${form.urlConsent && form.url.trim() ? "" : " disabled"}>${esc(t("familyCreator.url.fetch"))}</button></div>
+        <label class="obs-fc-detail" style="display:flex;gap:6px;align-items:flex-start;margin-top:3px"><input type="checkbox" data-fc="url-consent"${form.urlConsent ? " checked" : ""}><span>${esc(t("familyCreator.url.consent"))}</span></label>
+        <div class="obs-fc-detail" data-fc="url-note">${esc(form.urlNote)}</div></div>`;
+}
+
+async function probeUrlIntake() {
+  if (probing || urlAvail === "on") return;
+  probing = true;
+  let next: "on" | "off" = "off";
+  try {
+    const r = await fetch("/api/fetch-sheet", { method: "GET", cache: "no-store", credentials: "same-origin" });
+    next = r.status === 405 ? "on" : "off";
+  } catch { next = "off"; }
+  probing = false;
+  const changed = next !== urlAvail;
+  urlAvail = next;
+  if (changed && visible) render();
+}
+
 function render() {
   if (!panel) return;
   panel.innerHTML = `
@@ -305,9 +334,7 @@ function render() {
       <input class="obs-fc-in" data-f="name" placeholder="${esc(t("familyCreator.name"))}" value="${esc(form.name)}">
       <div style="display:flex;gap:6px"><input class="obs-fc-in" data-f="manufacturer" placeholder="${esc(t("familyCreator.manufacturer"))}" value="${esc(form.manufacturer)}"><input class="obs-fc-in" data-f="model" placeholder="${esc(t("familyCreator.model"))}" value="${esc(form.model)}"></div>
       <div style="display:flex;gap:6px;align-items:center;margin:3px 0"><label class="obs-fc-btn" style="cursor:pointer">${esc(t("familyCreator.file.choose"))}<input type="file" accept=".pdf,.txt,.png,.jpg,.jpeg,.webp,.bmp,application/pdf,text/plain,image/png,image/jpeg,image/webp,image/bmp" data-fc="file" style="display:none"></label><span class="obs-fc-detail" data-fc="file-note">${esc(form.fileNote)}</span></div>
-      <div data-fc="url-box" style="margin:6px 0"><div style="display:flex;gap:6px"><input class="obs-fc-in" data-f="url" type="url" dir="ltr" placeholder="${esc(t("familyCreator.url.placeholder"))}" value="${esc(form.url)}"><button type="button" class="obs-fc-btn" data-act="fetch-url"${form.urlConsent && form.url.trim() ? "" : " disabled"}>${esc(t("familyCreator.url.fetch"))}</button></div>
-        <label class="obs-fc-detail" style="display:flex;gap:6px;align-items:flex-start;margin-top:3px"><input type="checkbox" data-fc="url-consent"${form.urlConsent ? " checked" : ""}><span>${esc(t("familyCreator.url.consent"))}</span></label>
-        <div class="obs-fc-detail" data-fc="url-note">${esc(form.urlNote)}</div></div>
+      ${urlBoxHtml()}
       <textarea class="obs-fc-in" data-f="text" rows="4" placeholder="${esc(t("familyCreator.textPlaceholder"))}">${esc(form.text)}</textarea>
       <label class="obs-fc-detail" style="display:block;margin-top:4px">${esc(t("familyCreator.shape"))}
         <select class="obs-fc-in" data-f="templateId"><option value="">${esc(t("familyCreator.shapeAuto"))}</option>${TPL_IDS.map((id) => `<option value="${id}"${form.templateId === id ? " selected" : ""}>${esc(TEMPLATES[id].label)}</option>`).join("")}</select></label>
@@ -325,8 +352,19 @@ function render() {
     });
   });
   panel.querySelectorAll<HTMLElement>("[data-act]").forEach((el) => {
-    el.addEventListener("click", () => act(el.dataset.act as string));
+    el.addEventListener("click", () => {
+      const a = el.dataset.act as string;
+      if (handledPress && handledPress.act === a && Date.now() - handledPress.at < 1500) { handledPress = null; return; }
+      act(a);
+    });
   });
+  if (!panel.dataset.pressGuard) {
+    panel.dataset.pressGuard = "1";
+    panel.addEventListener("mousedown", (ev) => {
+      const b = (ev.target as Element | null)?.closest?.("[data-act]") as HTMLElement | null;
+      pendingPress = b && !(b as HTMLButtonElement).disabled ? { act: b.dataset.act as string, at: Date.now() } : null;
+    }, true);
+  }
   panel.querySelector<HTMLInputElement>('[data-fc="file"]')?.addEventListener("change", (ev) => {
     const f = (ev.target as HTMLInputElement).files?.[0];
     if (f) void loadFile(f);
@@ -345,6 +383,7 @@ function render() {
     const ts = panel?.querySelector<HTMLSelectElement>('[data-fc="reopen-type"]');
     if (ts && fam) ts.innerHTML = fam.types.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("");
   });
+  panel.querySelector<HTMLInputElement>('[data-fc="size-name"]')?.addEventListener("input", (ev) => { sizeName = (ev.target as HTMLInputElement).value; });
   panel.querySelectorAll<HTMLElement>("[data-rm-size]").forEach((el) => el.addEventListener("click", () => {
     if (libId && familyStore.removeType(libId, el.dataset.rmSize as string)) { notice = t("familyCreator.lib.sizeRemoved"); render(); }
   }));
@@ -360,7 +399,13 @@ function render() {
     exportShownOnly = el.dataset.scope === "shown"; render();
   }));
   panel.querySelectorAll<HTMLInputElement>("[data-param]").forEach((el) => {
-    el.addEventListener("change", () => editParam(el.dataset.param as string, el.dataset.int === "1" ? Number(el.value) : Number(el.value) / 1000));
+    el.addEventListener("change", () => {
+      const press = pendingPress && Date.now() - pendingPress.at < 1500 ? pendingPress : null;
+      pendingPress = null;
+      editParam(el.dataset.param as string, el.dataset.int === "1" ? Number(el.value) : Number(el.value) / 1000);
+      // The edit redraws the panel, which drops the button the user was pressing. Run that press once, on the new state.
+      if (press) { handledPress = press; act(press.act); }
+    });
   });
 }
 
@@ -460,7 +505,8 @@ function saveToLibrary() {
 
 function addSize() {
   const inp = panel?.querySelector<HTMLInputElement>('[data-fc="size-name"]');
-  const name = (inp?.value ?? "").trim();
+  const name = (inp ? inp.value : sizeName).trim();
+  sizeName = name;
   const fam = libId ? familyStore.get(libId) : null;
   if (!fam?.creatorSpec || !result?.family || !result.spec) return;
   if (!name) { notice = t("familyCreator.lib.sizeNeedsName"); render(); return; }
@@ -470,6 +516,7 @@ function addSize() {
   if (countChanged) { notice = t("familyCreator.lib.sizeCountDiffers"); render(); return; }
   familyStore.createType(fam.id, name, { ...(result.family.types[0].values as Record<string, unknown>) });
   notice = t("familyCreator.lib.sizeAdded", { name });
+  sizeName = "";
   render();
 }
 
@@ -484,7 +531,7 @@ function libraryHtml(): string {
       (fam.types.length > 1 ? ` <button type="button" class="obs-fc-btn" data-rm-size="${esc(ty.id)}">${esc(t("familyCreator.lib.removeSize"))}</button>` : "") + `</div>`;
   }).join("");
   return `<div class="obs-fc-sec" data-fc="library"><div class="obs-fc-h">${esc(t("familyCreator.lib.sizesTitle", { name: fam.name }))}</div>${rows}` +
-    `<div style="display:flex;gap:6px;margin-top:4px"><input class="obs-fc-in" data-fc="size-name" placeholder="${esc(t("familyCreator.lib.sizeName"))}"><button type="button" class="obs-fc-btn" data-act="add-size">${esc(t("familyCreator.lib.addSize"))}</button></div>` +
+    `<div style="display:flex;gap:6px;margin-top:4px"><input class="obs-fc-in" data-fc="size-name" placeholder="${esc(t("familyCreator.lib.sizeName"))}" value="${esc(sizeName)}"><button type="button" class="obs-fc-btn" data-act="add-size">${esc(t("familyCreator.lib.addSize"))}</button></div>` +
     `<div class="obs-fc-detail">${esc(t("familyCreator.lib.sizeHelp"))}</div>` +
     (reopened ? `<div style="margin-top:6px"><button type="button" class="obs-fc-btn" data-act="save-lib">${esc(t("familyCreator.lib.save"))}</button> <span class="obs-fc-detail">${esc(t("familyCreator.lib.saveHelp"))}</span></div>` : "") + `</div>`;
 }
@@ -574,7 +621,7 @@ function ensurePanel(): HTMLElement {
 export function setVisible(on: boolean) {
   visible = on;
   ensurePanel().style.display = on ? "block" : "none";
-  if (on) render();
+  if (on) { render(); void probeUrlIntake(); }
 }
 export function toggleFamilyCreatorPanel() { setVisible(!visible); }
 export function isFamilyCreatorPanelVisible() { return visible; }
