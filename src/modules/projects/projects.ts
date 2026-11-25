@@ -9,7 +9,7 @@
  */
 import { getNorthState, loadNorth, resetNorth } from "../north/north";
 import { ctx } from "../../core/context";
-import { services } from "../../core/services";
+import { services, register as registerService } from "../../core/services";
 import * as store from "./store";
 import type { ProjectDoc, ProjectTemplate, ProjectStatus, ProjectUnits } from "./types";
 import {
@@ -900,12 +900,17 @@ export function setupProjects() {
     });
     workPlaneListenerInstalled = true;
   }
-  ctx.features.projects = {
+  const api = {
     getCurrentProject, isDirty, createProject, openProject,
     deleteProjectById, saveProject, onModelImported, markDirty,
     listProjectRecoverySnapshots, restoreProjectRecoverySnapshot,
     getSaveState, isTransitioning,
   };
+  ctx.features.projects = api;
+  // Register on the typed service registry too. Without this the boot
+  // watchdog warned "core service(s) still unregistered: projects" on every
+  // load and services.tryUse("projects") returned null.
+  registerService("projects", api);
   onIssuesChanged(() => markDirty());
   onCostChanged(() => markDirty());
   window.addEventListener("keydown", (e) => {
@@ -917,4 +922,4 @@ export function setupProjects() {
   // NOTE: the autosave interval intentionally lives in ./persistence.ts
   // (setupProjectPersistence), which adds an in-flight guard, a transition
   // guard and unload safety. All time-based writes stay behind one owner.
-}
+        }
