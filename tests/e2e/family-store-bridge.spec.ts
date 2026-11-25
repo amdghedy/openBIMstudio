@@ -62,9 +62,11 @@ async function countName(page: Page, name: string): Promise<number> {
 }
 
 async function openCreator(page: Page): Promise<void> {
-  // The "Family Creator" button lives on the Insert tab's strip
-  // ("Load from Library" group), not the Architecture tab.
-  const tab = page.locator('button.obs-ribbon__tab[data-tab="insert"]');
+  // A12: the "Family Creator" button lives on the Parametric tab's strip
+  // ("Families" group) — it moved there from the Insert tab's
+  // "Load from Library" group. (A separate "Family Creator" panel toggle
+  // also exists on the Manage tab, but that is not the engine this opens.)
+  const tab = page.locator('button.obs-ribbon__tab[data-tab="parametric"]');
   if (await tab.count()) await tab.first().click();
   await page.getByRole("button", { name: "Family Creator", exact: true }).first().click();
   await expect(page.locator(".obs-fe-backdrop.is-open")).toBeVisible({ timeout: 15000 });
