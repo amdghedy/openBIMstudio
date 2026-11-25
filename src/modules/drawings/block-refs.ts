@@ -78,7 +78,10 @@ function walk(blocks: BlockTable | undefined, ins: DxfInsert, stack: string[], o
       const xf = xformOf(ins, blk, c, r);
       for (const child of blk.entities) {
         if (budget.left <= 0) { rep.truncated = true; break; }
-        const base: DxfEntity = child.layer === "0" ? ({ ...child, layer: ins.layer } as DxfEntity) : child;
+        let base: DxfEntity = child.layer === "0" ? ({ ...child, layer: ins.layer } as DxfEntity) : child;
+        // BYBLOCK colour (ACI 0): the child takes the reference's own colour. A BYLAYER reference leaves it
+        // to resolve through the layer, which for layer-0 children is the reference's layer (substituted above).
+        if (base.color === 0) base = { ...base, color: ins.color, ...(ins.rgb != null ? { rgb: ins.rgb } : {}) } as DxfEntity;
         if (base.type === "INSERT") {
           // Compose: the nested reference is itself placed by this reference's transform.
           const placed = transformInsert(base, xf);
