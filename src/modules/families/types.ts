@@ -122,6 +122,12 @@ export interface FamilyDefinition {
    * Authoring transforms these through the rendered instance world matrix.
    */
   connectorDefs?: ConnectorDefinition[];
+  /**
+   * Set only for families made by the Family Creator. Holds the product spec
+   * (sizes, template, counts and the cut-sheet source lines) so the family can
+   * be reopened in the creator with its sourced / edited values intact.
+   */
+  creatorSpec?: Record<string, unknown>;
   parameters: FamilyParameter[];
   geometry: FamilyGeometrySpec;
   types: FamilyType[];

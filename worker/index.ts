@@ -1,3 +1,4 @@
+import { handleFetchSheet, parseAllowedHosts } from "./fetch-sheet";
 import { handleLinkedInRequest, LinkedInVault, type LinkedInEnv } from "./linkedin";
 import { AuthVault, googleStartUrl, googleCallback, googleSetupPage, googleStatus, googlePopupCallbackPage, sendResetEmail, newOauthNonce, oauthNonceCookie, clearOauthNonceCookie, oauthStateValid, parseOauthState } from "./auth";
 
@@ -58,6 +59,10 @@ interface CounterNamespace {
 }
 
 interface Env extends LinkedInEnv {
+  /** "1" switches on POST /api/fetch-sheet. Unset means the route is 404. */
+  FETCH_SHEET_ENABLED?: string;
+  /** Comma list of exact host names the link fetch may reach. Empty keeps it off. */
+  FETCH_SHEET_ALLOWED_HOSTS?: string;
   /** Static Assets binding (wrangler.jsonc → assets.binding). */
   ASSETS: { fetch: (request: Request) => Promise<Response> };
   /** Durable Object namespace holding the visit counters. */
@@ -191,6 +196,19 @@ export default {
     const linkedInResponse = await handleLinkedInRequest(request, env);
     if (linkedInResponse) return linkedInResponse;
     const url = new URL(request.url);
+    // Draft cut-sheet link fetch. Answers 404 unless FETCH_SHEET_ENABLED is "1" and FETCH_SHEET_ALLOWED_HOSTS is set.
+    const sheetResponse = await handleFetchSheet(request, {
+      enabled: env.FETCH_SHEET_ENABLED === "1",
+      allowedHosts: parseAllowedHosts(env.FETCH_SHEET_ALLOWED_HOSTS),
+      admit: async (req) => {
+        try {
+          const stub = env.AUTH.get(env.AUTH.idFromName("global"));
+          const r = await stub.fetch(new Request("https://do/api/auth/fetch-slot", { method: "POST", headers: { cookie: req.headers.get("cookie") || "" } }));
+          return r.status === 200 ? "ok" : r.status === 429 ? "limited" : "signin";
+        } catch { return "signin"; }
+      },
+    });
+    if (sheetResponse) return sheetResponse;
     if (url.pathname === "/api/visits") {
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_PREFLIGHT });
       try {

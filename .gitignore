@@ -85,3 +85,6 @@ public/rvt/.gitignore
 test-results/
 .v69-engine-ui-test-
 .type-swap-test-
+
+# Generated OCR runtime (scripts/sync-ocr-assets.mjs)
+public/ocr/

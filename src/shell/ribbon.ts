@@ -123,6 +123,7 @@ import { toggleTimelinePanel, isTimelinePanelVisible, openTimelineTab, pickAndIm
 // ── Sheets / Production + Automation ───────────────────────────────────
 import { toggleSheetsPanel, isSheetsPanelVisible } from "../features/sheets-panel";
 import { toggleAutomationPanel, isAutomationPanelVisible } from "../features/automation-panel";
+import { toggleFamilyCreatorPanel, isFamilyCreatorPanelVisible } from "../features/family-creator-panel";
 
 // ── Object snaps (all modes) ───────────────────────────────────────────
 import { toggleSnapSettings, isSnapSettingsVisible, snapping } from "../features/snapping";
@@ -2759,6 +2760,9 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("tools-panel", "Automate", safe(() => toggleAutomationPanel(), "Automation rules"), {
         active: isAutomationPanelVisible(),
       }),
+      b("tools-panel", "Family Creator", safe(() => toggleFamilyCreatorPanel(), "Create an editable family from a product size"), {
+        active: isFamilyCreatorPanelVisible(),
+      }),
       b("tools-panel", "BIM Center", safe(() => toggleBimToolbox(), "BIM Command Center"), {
         active: isBimToolboxVisible(),
         title: "Cross-discipline BIM-style BIM command order and graphics controls",
@@ -3906,4 +3910,4 @@ export function setupRibbon() {
     const timeout = d.timeout ?? d.ms ?? (kind === "error" ? 6000 : 2400);
     toast(message, kind, timeout);
   }) as EventListener);
-}
+  }
