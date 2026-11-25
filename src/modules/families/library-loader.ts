@@ -39,10 +39,24 @@
 
 import type { FamilyDefinition } from "./types";
 import { familyStore } from "./store";
+import { CURRENT_FAMILY_SCHEMA_VERSION, migrateFamilyDefinition } from "./migration";
 import {
   dedupeSeedCatalogCopies,
   findExistingSeedFamily,
+  seedFamilySignature,
 } from "./seed-catalog-dedupe";
+
+/** True when a stored family is the catalog entry unchanged (as shipped, or as the store migrates it). */
+function isCatalogCopy(fam: FamilyDefinition, def: FamilyDefinition): boolean {
+  const sig = seedFamilySignature(fam);
+  if (sig === seedFamilySignature(def)) return true;
+  try {
+    const migrated = migrateFamilyDefinition({ ...def, schemaVersion: CURRENT_FAMILY_SCHEMA_VERSION, builtIn: false }).family;
+    return sig === seedFamilySignature(migrated);
+  } catch {
+    return false;
+  }
+}
 
 /** Catalog index entry — one per family in `public/families/`. */
 interface CatalogEntry {
@@ -176,7 +190,9 @@ async function doLoad(): Promise<number> {
       // catalog id, or as a legacy copy persisted under a random id
       // (same name + same content). A same-name family whose content
       // differs is a user edit: it does not count as present.
-      if (findExistingSeedFamily(familyStore, entry, def)) {
+      const present = findExistingSeedFamily(familyStore, entry, def);
+      if (present) {
+        familyStore.markPristineSeed(present, isCatalogCopy(present, def));
         skipped++;
         continue;
       }
@@ -200,21 +216,33 @@ async function doLoad(): Promise<number> {
   // share a catalog name is stamped as well; the only consequence is
   // that it is not exported to the editor library — it stays fully
   // usable in the panel and browser.
-  for (const entry of entries) {
-    for (const fam of familyStore.list()) {
-      if (fam.name === entry.name && fam.origin !== "seed-catalog") {
-        try {
-          familyStore.update(fam.id, { origin: "seed-catalog" });
-        } catch { /* keep going */ }
+  // One save and one change notice for all of this cleanup: with thousands of
+  // old copies, a save per family froze the page and filled browser storage.
+  const deduped = familyStore.batch(() => {
+    const all = familyStore.list();
+    for (const entry of entries) {
+      for (const fam of all) {
+        if (fam.name === entry.name && fam.origin !== "seed-catalog") {
+          try {
+            familyStore.update(fam.id, { origin: "seed-catalog" });
+            const cat = catalogByName.get(entry.name);
+            const now = familyStore.get(fam.id);
+            if (cat && now) familyStore.markPristineSeed(now, isCatalogCopy(now, cat.def));
+          } catch { /* keep going */ }
+        }
       }
     }
-  }
 
-  // Clean up exact duplicates left by earlier boots (each reload used
-  // to re-add the whole catalog under fresh random ids). Only
-  // byte-identical seed copies are removed — one identical copy
-  // remains — and a same-name user edit is never touched.
-  const deduped = dedupeSeedCatalogCopies(familyStore, catalogByName);
+    // Clean up exact duplicates left by earlier boots (each reload used
+    // to re-add the whole catalog under fresh random ids). Only
+    // byte-identical seed copies are removed - one identical copy
+    // remains - and a same-name user edit is never touched.
+    return dedupeSeedCatalogCopies(familyStore, catalogByName);
+  });
+
+  // Older builds saved the whole catalog and filled the browser's storage:
+  // rewrite the saved copy now that unedited catalog copies are marked.
+  familyStore.flushToStorage();
 
   console.log(
     `[families:library] catalog loaded: ${added} added, ${skipped} skipped (already present), ${failed} failed, ${deduped} legacy duplicate(s) removed.`,
