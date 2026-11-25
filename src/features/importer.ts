@@ -126,6 +126,8 @@ interface ImportTask {
   elements?: number;
   /** Per-entity STEP inventory (ifc-import-export Phase 4 report). */
   interop?: IfcInteropReport;
+  /** Converted via the large-file Worker path (STEP preflight runs in the worker; no interop/fidelity inventory). */
+  largeFileMode?: boolean;
 }
 
 export type IfcSettings = {
@@ -1233,6 +1235,48 @@ function recordImportPhase(t: ImportTask, convertMs: number, fragLoadMs: number,
   } catch { /* diagnostics must never break the import */ }
 }
 
+/**
+ * Files at or above this size convert in a dedicated Worker that streams the
+ * File through web-ifc's OpenModelFromCallback (FileReaderSync chunks), so the
+ * whole file is never one main-thread ArrayBuffer and a stalled/crashed
+ * conversion can be terminated. Lower it (ifcSettings.chunkedWorkerMinMB) to
+ * exercise the path with small fixtures. NOT a guarantee that any given
+ * multi-GB model fits the WASM heap.
+ */
+const CHUNKED_WORKER_MIN_MB_DEFAULT = 400;
+function chunkedWorkerMinMB(): number {
+  const v = Number((ifcSettings as any).chunkedWorkerMinMB);
+  return Number.isFinite(v) && v > 0 ? v : CHUNKED_WORKER_MIN_MB_DEFAULT;
+}
+
+function convertFileInWorker(
+  file: File,
+  opts: {
+    onProgress: (progress: any, data?: any) => void;
+    onPhase?: (text: string) => void;
+    coordToPlace?: number[];
+    setAbort: (abort: ((e: Error) => void) | null) => void;
+  },
+): Promise<Uint8Array> {
+  return new Promise<Uint8Array>((resolve, reject) => {
+    const worker = new Worker(new URL("../workers/ifc-chunked.worker.ts", import.meta.url), {
+      type: "module",
+      name: "obs-ifc-chunked",
+    });
+    const finish = () => { opts.setAbort(null); try { worker.terminate(); } catch { /* */ } };
+    opts.setAbort((e) => { finish(); reject(e); });
+    worker.onmessage = (ev: MessageEvent) => {
+      const m = ev.data;
+      if (m?.type === "progress") opts.onProgress(m.progress, m.data);
+      else if (m?.type === "phase") opts.onPhase?.(String(m.text));
+      else if (m?.type === "ready") { finish(); resolve(m.frag as Uint8Array); }
+      else if (m?.type === "error") { finish(); reject(new Error(String(m.message))); }
+    };
+    worker.onerror = (ev) => { finish(); reject(new Error(ev.message || "IFC worker crashed")); };
+    worker.postMessage({ type: "convert", file, wasmPath: wasmPath(), coordToPlace: opts.coordToPlace });
+  });
+}
+
 async function runTask(t: ImportTask) {
   const t0 = performance.now();
   cancelRequested = false;
@@ -1259,7 +1303,7 @@ async function runTask(t: ImportTask) {
         t.phase = "loaded from FRAG cache";
         t.progress = 100;
         // Inventory even on cache hits: the source file is still on hand.
-        try {
+        if (t.sizeMB < chunkedWorkerMinMB()) try {
           const cacheBytes = new Uint8Array(await t.file.arrayBuffer());
           t.interop = attachFidelity(buildInteropReport(t.file.name, cacheBytes), cacheBytes);
         } catch { /* optional */ }
@@ -1290,6 +1334,78 @@ async function runTask(t: ImportTask) {
       // before the tab is committed.
       t.phase = `⚠️ ${t.sizeMB.toFixed(0)} MB — high risk of tab crash`;
       refreshTaskRow(t);
+    }
+
+    if (!fragBytes && t.sizeMB >= chunkedWorkerMinMB() && typeof Worker !== "undefined") {
+      // Large file: header-only read on the main thread, whole-file work (STEP preflight + conversion) in a Worker.
+      t.status = "reading"; t.progress = 0; t.phase = "reading header…";
+      refreshTaskRow(t);
+      assertFileAllowed("ifc", t.file.name, t.file.size);
+      const head = new Uint8Array(await t.file.slice(0, 4 * 1024 * 1024).arrayBuffer());
+      const hdr = parseStepHeader(head);
+      if (!hdr.ok) throw new Error(`This file is not a valid IFC (STEP) file: ${hdr.error}. It was not opened.`);
+      assertValidStepFileHeader(hdr.value, t.file.name);
+      t.schema = detectSchema(head);
+      t.largeFileMode = true;
+      console.warn(
+        `[importer] ${t.file.name} (${t.sizeMB.toFixed(0)} MB) uses the large-file worker path: the STEP preflight runs inside the worker; ` +
+        "the per-entity interop/fidelity inventory is NOT run for this size.",
+      );
+      refreshTaskRow(t);
+      t.status = "converting"; t.phase = "checking WASM…"; refreshTaskRow(t);
+      await ensureWasmAvailable();
+      t.phase = "streaming file into web-ifc worker…"; refreshTaskRow(t);
+      const cancelPromiseW = new Promise<never>((_, rej) => { rejectActive = rej; });
+      // The worker keeps the page's timers alive while web-ifc is silent inside
+      // one long WASM call (opening/parsing a multi-GB STEP file emits no
+      // progress). The default 120 s stall bound was tuned for the old path
+      // where such a silent phase froze the timers too, so scale it with file
+      // size here: a merely slow valid file must not be failed as "stalled".
+      // A user-set stall bound of 0 (disabled) stays disabled; an explicit
+      // larger value is kept.
+      const baseStall = ifcSettings.importStallTimeoutMs;
+      const scaledStall = baseStall === 0
+        ? 0
+        : Math.max(baseStall ?? 0, 120_000 + 5_000 * t.sizeMB);
+      importTimeout = new ImportTimeout(
+        t.file.name,
+        computeImportTimeoutMs(t.sizeMB, {
+          stallMs: scaledStall,
+          totalMs: ifcSettings.importTotalTimeoutMs || undefined,
+        }),
+        { onTimeout: (error) => timeoutActiveConversion(error) },
+      );
+      const convertT0W = performance.now();
+      let abortWorker: ((e: Error) => void) | null = null;
+      const workerPromise = convertFileInWorker(t.file, {
+        setAbort: (a) => { abortWorker = a; },
+        onPhase: (text) => { if (importTimedOut || cancelRequested) return; importTimeout?.poke(); t.phase = text; refreshTaskRow(t); },
+        coordToPlace: ifcSettings.useCoord ? [ifcSettings.coordX, ifcSettings.coordY, ifcSettings.coordZ] : undefined,
+        onProgress: (progress, data) => {
+          if (importTimedOut || cancelRequested) return;
+          importTimeout?.poke();
+          if (importTimedOut || cancelRequested) return;
+          t.progress = normalizeProgress(progress);
+          t.phase = describePhase(data);
+          t.elapsedMs = performance.now() - t0;
+          refreshTaskRow(t);
+          loader?.set?.(`${t.phase} · ${t.progress}%`, 0.15 + 0.7 * (t.progress / 100));
+        },
+      });
+      workerPromise.catch(() => { /* handled via race */ });
+      // Cancel / watchdog reject through rejectActive; also terminate the worker
+      // (unlike main-thread WASM, a worker stuck in one call CAN be killed).
+      const prevReject = rejectActive;
+      rejectActive = (e: any) => { try { abortWorker?.(e instanceof Error ? e : new Error(String(e))); } catch { /* */ } prevReject?.(e); };
+      importTimeout.start();
+      const rawW: any = await Promise.race([workerPromise, cancelPromiseW]);
+      importTimeout.clear();
+      rejectActive = null;
+      convertMs = performance.now() - convertT0W;
+      if (cancelRequested) throw new Error("Cancelled by user");
+      fragBytes = snapshotBytes(rawW);
+      if (!fragBytes.byteLength) throw new Error("Converter returned empty data (often out-of-memory on large IFC).");
+      try { if (cacheKey) await setCachedFrag(cacheKey, fragBytes); } catch { /* */ }
     }
 
     if (!fragBytes) {
@@ -1442,7 +1558,8 @@ async function runTask(t: ImportTask) {
 
     t.elapsedMs = performance.now() - t0;
     t.status = "done";
-    t.phase = geomCount > 0 ? `done · ${geomCount} elements` : "done";
+    t.phase = (geomCount > 0 ? `done · ${geomCount} elements` : "done") +
+      (t.largeFileMode ? " · large-file mode: interop inventory not run" : "");
     refreshTaskRow(t);
 
     recordImportPhase(t, convertMs, fragLoadMs, geomCount);
@@ -1938,4 +2055,4 @@ export function setupImporter() {
   };
 
   console.log("[importer] ready · positioning modes + live offset control");
-}
+                             }
