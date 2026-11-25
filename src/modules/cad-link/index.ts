@@ -277,6 +277,16 @@ export interface ReadCadOptions {
   requireComplete?: boolean;
 }
 
+/** DXF text, refused up front when the caller requires a structurally complete file (merge/attach paths). */
+async function readDxfText(file: File, opts: ReadCadOptions): Promise<string> {
+  const text = await file.text();
+  if (opts.requireComplete) {
+    const c = dxfCompleteness(text);
+    if (!c.complete) throw new Error(`${c.reason}. Nothing was imported.`);
+  }
+  return text;
+}
+
 export async function readCadFile(file: File, opts: ReadCadOptions = {}): Promise<{ doc: DxfDocument; summary: string; format: "dxf" | "dwg" }> {
   const e = ext(file.name);
   // .bak and .sv$ are DWG drawing backup / autosave files — same DWG
@@ -289,12 +299,7 @@ export async function readCadFile(file: File, opts: ReadCadOptions = {}): Promis
   }
   if (e === "dxf") {
     assertFileAllowed("dxf", file.name, file.size, await readHead(file, 256));
-    const text = await file.text();
-    if (opts.requireComplete) {
-      const c = dxfCompleteness(text);
-      if (!c.complete) throw new Error(`${c.reason}. Nothing was imported.`);
-    }
-    const doc = parseDxf(text, { nativeBlocks: opts.nativeBlocks === true });
+    const doc = parseDxf(await readDxfText(file, opts), { nativeBlocks: opts.nativeBlocks === true });
     const skipped = doc.skipped
       ? Object.entries(doc.skipped).map(([k, v]) => `${v}×${k}`).join(", ") : "";
     const summary = `${doc.entities.length} drawable entities on ${doc.layers.length} layers` +
