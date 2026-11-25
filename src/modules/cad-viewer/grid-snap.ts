@@ -25,11 +25,11 @@
  * grid intersection. `origin` is a parameter so the rule stays testable
  * with a non-zero origin; the viewer passes the drawing origin.
  *
- * Relationship to cad-snap-engine.ts: that module's `applyGridSnap`
- * rounds to (0,0) with no origin and no float clean-up, and its
- * `resolveDraftPoint` applies grid snap AFTER an object snap (the grid
- * step would move an object-snapped point off the object). The viewer
- * does not use that engine; this module is the wired decision point.
+ * Relationship to the removed duplicate snap engine (A14): that module's
+ * `applyGridSnap` rounded to (0,0) with no origin and no float clean-up,
+ * and its `resolveDraftPoint` applied grid snap AFTER an object snap (the
+ * grid step would move an object-snapped point off the object). The viewer
+ * never used that engine; this module is the wired decision point.
  *
  * Pure functions; no DOM, no viewer state — node-testable.
  */

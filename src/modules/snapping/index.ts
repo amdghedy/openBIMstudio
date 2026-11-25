@@ -6,4 +6,3 @@ export * from "./state-machine";
 export * from "./wall-column";
 export * from "./alignment";
 export * from "./smart-perp-snap";
-export * from "./spatial-index";

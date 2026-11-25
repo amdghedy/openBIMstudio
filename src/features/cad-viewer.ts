@@ -1680,8 +1680,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   // Default OFF: the viewer shipped with no grid snap, so default-off
   // preserves every existing click/drag (and the auto step follows zoom,
   // which would otherwise move first clicks by hundreds of units on a
-  // fitted large drawing). The user turns it on like in AutoCAD; this
-  // also matches DEFAULT_CAD_SNAP_SETTINGS.gridSnapOn in cad-snap-engine.
+  // fitted large drawing). The user turns it on like in AutoCAD.
   let snapOn = true;
   let gridSnapOn = false;
   let userGridStep: number | null = null;

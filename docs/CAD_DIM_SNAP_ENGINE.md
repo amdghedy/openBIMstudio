@@ -2,11 +2,17 @@
 
 Complete AutoCAD-parity **object snap (OSNAP)** modes and **dimension tools** for the OpenBIMStudio CAD 2D editor.
 
+> **A14 (2026-11-26):** the duplicate snap engine `src/modules/cad-viewer/cad-snap-engine.ts`
+> was removed — it had zero product importers and duplicated the live snapper with
+> different behaviour. The live OSNAP pipeline is `viewer-math.ts` `findSnap`
+> (+ `grid-snap.ts` for the grid step). The snap-mode tables below describe the
+> modes the live snapper supports; the "Integration into cad-viewer.ts" section
+> still describes the removed engine's API and is kept for history only.
+
 ## Modules
 
 | File | Role |
 |------|------|
-| `src/modules/cad-viewer/cad-snap-engine.ts` | Full OSNAP modes, settings, polar / ortho / grid, resolve pipeline |
 | `src/modules/cad-viewer/cad-dimension-engine.ts` | All dimension kinds, geometry, continue / baseline, scenarios |
 | `src/modules/cad-viewer/viewer-math.ts` | Extended `SnapKind` + `findSnap` (extension, tangent, parallel, …) |
 
@@ -81,7 +87,7 @@ import { DEFAULT_CAD_DIM_STYLE, buildLinearMarkup, continueDimension } from "../
 ## Tests
 
 ```bash
-node tests/cad-snap-dimension.test.cjs
+node --experimental-strip-types tests/cad-dimension.test.mjs
 ```
 
 ## Integration into cad-viewer.ts
