@@ -390,4 +390,4 @@ export function toResolvedParts(parts: PartOut[]): Array<{ id: string; name: str
   return parts.map((p, i) => p.kind === "pipe"
     ? { id: `p${i}`, name: p.name, shape: "cylinder" as const, cx: m((p.x0 + p.x1) / 2 - xm), cy: m((p.z0 + p.z1) / 2), cz: m((p.y0 + p.y1) / 2), w: 0, d: 0, h: m(p.z1 - p.z0), r: m((p.x1 - p.x0) / 2) }
     : { id: `p${i}`, name: p.name, shape: "box" as const, cx: m((p.x0 + p.x1) / 2 - xm), cy: m((p.z0 + p.z1) / 2), cz: m((p.y0 + p.y1) / 2), w: m(p.x1 - p.x0), d: m(p.y1 - p.y0), h: m(p.z1 - p.z0), r: 0 });
-    }
+}
