@@ -91,4 +91,20 @@ t("DXF round trip keeps native blocks, attributes and arrays", () => {
   assert.ok(i && back.blocks.T); assert.strictEqual(i.columns, 2); assert.strictEqual(i.attributes[0].value, "Z"); near(i.rotation, 30);
   assert.strictEqual(B.resolvedOf(i).filter((e) => e.type === "LINE").length, 4);
 });
+t("parseAttdefArgs: tag/point/height/default, rejects bad input", () => {
+  const a = E.parseAttdefArgs(["roomno", "3,4.5", "2", "Room", "101"], "WALLS");
+  assert.strictEqual(a.tag, "ROOMNO"); assert.strictEqual(a.prompt, "ROOMNO"); assert.strictEqual(a.defaultValue, "Room 101");
+  assert.deepStrictEqual([a.position.x, a.position.y, a.height, a.layer], [3, 4.5, 2, "WALLS"]);
+  assert.strictEqual(E.parseAttdefArgs(["T", "0,0"]).height, 2.5);
+  assert.strictEqual(E.parseAttdefArgs(["T", "0,0", "x"]).defaultValue, "x", "a non-numeric word is default text, not a height");
+  for (const bad of [[], ["T"], ["T", "1 2"], ["T", "a,b"], ["T", "0,0", "0"]]) assert.throws(() => E.parseAttdefArgs(bad), Error);
+});
+t("createBlock keeps attdefs (base-shifted) and INSERT carries them as attribute slots", () => {
+  const doc = { layers: [], entities: [] };
+  const def = E.createBlock(doc, "ROOM", [{ type: "LINE", layer: "0", start: { x: 10, y: 10, z: 0 }, end: { x: 14, y: 10, z: 0 } }],
+    { base: { x: 10, y: 10, z: 0 }, attdefs: [E.parseAttdefArgs(["NO", "11,12", "1", "101"])] });
+  assert.strictEqual(def.attdefs.length, 1); near(def.attdefs[0].position.x, 1); near(def.attdefs[0].position.y, 2);
+  const ins = E.makeInsert(doc, "ROOM", { x: 0, y: 0, z: 0 }, { values: { NO: "7" } });
+  assert.strictEqual(ins.attributes[0].tag, "NO"); assert.strictEqual(ins.attributes[0].value, "7");
+});
 console.log(`\ncad-block-edit: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

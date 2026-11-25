@@ -41,7 +41,7 @@ import {
   parseClip,
   type CadClip,
 } from "../modules/cad-viewer/clipboard";
-import type { DxfBlockDef, DxfDimStyle, DxfDocument, DxfEntity, DxfPoint } from "../modules/drawings/dxf-types";
+import type { DxfAttDef, DxfBlockDef, DxfDimStyle, DxfDocument, DxfEntity, DxfPoint } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
 import { safeLoad, MarkupsFileSchema } from "../core/safeLoad";
 import { setCadHotkeyOwner } from "../core/cad-hotkey-ownership";
@@ -475,6 +475,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "DCRADIUS", aliases: ["DCRAD"], description: "Set a circle or arc to an exact radius" },
   { name: "DCDIAMETER", aliases: ["DCDIA"], description: "Set a circle or arc to an exact diameter" },
   { name: "DCANGULAR", aliases: ["DCANG"], description: "Set the angle between two lines" },
+  { name: "ATTDEF", aliases: [], description: "Define an attribute for the next BLOCK: ATTDEF <tag> <x,y> [height] [default text]; ATTDEF LIST / ATTDEF CLEAR. Attributes are asked for when the block is inserted" },
   { name: "GCSOLVE", aliases: ["SOLVE"], description: "Re-solve every recorded constraint together (deterministic solver); reports degrees of freedom, redundant and conflicting relations" },
   { name: "GCADD", aliases: [], description: "Record a constraint on the selected objects and solve it: GCADD H|V|PAR|PERP|EQ|CONC|TAN, or GCADD LEN|RAD <value> / ANG <degrees>" },
   { name: "GCLIST", aliases: ["GCSTATUS"], description: "List the recorded constraints and whether they are satisfied" },
@@ -1818,6 +1819,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let selectionCycleOutside: ((event: PointerEvent) => void) | null = null;
   /** FIX constraint: entities pinned by the Parametric tab (object identity — survives index shifts). */
   const fixedEnts = new Set<DxfEntity>();
+  /** Attribute definitions waiting for the next BLOCK (ATTDEF). Consumed by BLOCK. */
+  let pendingAttdefs: DxfAttDef[] = [];
   /* Recorded constraints (Phase 4). Entities get a stable id the first time a relation names them; the id follows
      the object through every undoable edit (replaceEntity). Session scoped — not written to DXF/DWG. */
   const entUid = new WeakMap<DxfEntity, string>();
@@ -10482,13 +10485,6 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       detachXref(xn);
       return;
     }
-    if (cmd === "ATTDEF" || cmd === "ATT") {
-      const tag = parts[1] || "TAG1";
-      const prompt = parts[2] || tag;
-      const def = parts.slice(3).join(" ") || "";
-      logCmd(`ATTDEF: ${tag} / ${prompt} / default "${def}" — definition is not yet persisted or linked to block attributes.`);
-      return;
-    }
     if (cmd === "QLEADER" || cmd === "QLE") {
       setTool("leader");
       logCmd("QLEADER: specify leader start point.");
@@ -11514,6 +11510,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (cmd === "AUTOCONSTRAIN" || cmd === "ACON") { runAutoConstrain(); return; }
     if (cmd === "CONSTRAINTBAR" || cmd === "CONBAR") { toggleConBar(); return; }
     if (cmd === "DELCONSTRAINT" || cmd === "DELCON") { unfixAll(); return; }
+    if (cmd === "ATTDEF" || cmd === "ATT") {
+      const sub = (parts[1] ?? "").toUpperCase();
+      if (sub === "LIST" || sub === "") {
+        logCmd(pendingAttdefs.length ? `ATTDEF: ${pendingAttdefs.length} waiting for the next BLOCK: ${pendingAttdefs.map((a) => `${a.tag}@${fmt(a.position.x)},${fmt(a.position.y)}`).join("; ")}` : "ATTDEF: none waiting. Usage: ATTDEF <tag> <x,y> [height] [default text]");
+        return;
+      }
+      if (sub === "CLEAR") { const n = pendingAttdefs.length; pendingAttdefs = []; logCmd(`ATTDEF: discarded ${n} waiting definition(s).`); return; }
+      try {
+        const a = BE.parseAttdefArgs(parts.slice(1), currentLayer);
+        pendingAttdefs = pendingAttdefs.filter((x) => x.tag !== a.tag).concat(a);
+        logCmd(`ATTDEF: "${a.tag}" at ${fmt(a.position.x)},${fmt(a.position.y)} height ${fmt(a.height)}${a.defaultValue ? ` default "${a.defaultValue}"` : ""} — will be stored by the next BLOCK (${pendingAttdefs.length} waiting).`);
+      } catch (err) { logCmd(`ATTDEF: ${(err as Error).message}`); }
+      return;
+    }
     if (cmd === "GCSOLVE" || cmd === "SOLVE") { runSolveRelations(); return; }
     if (cmd === "GCADD") { addRelationFromSelection(parts.slice(1)); return; }
     if (cmd === "GCLIST" || cmd === "GCSTATUS") { listRelations(); return; }
@@ -13710,7 +13720,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       blockLib.add(def, true);
       // Native definition in the drawing's own block table (one transaction with the entity change).
       const bBefore = snapBlocks();
-      BE.createBlock(doc, nm, list, { base: baseP, description: String(r.desc || "") || undefined, overwrite: true });
+      BE.createBlock(doc, nm, list, { base: baseP, description: String(r.desc || "") || undefined, overwrite: true, attdefs: pendingAttdefs.map((a) => ({ ...a, position: { ...a.position } })) });
+      if (pendingAttdefs.length) { logCmd(`BLOCK: ${pendingAttdefs.length} attribute definition(s) stored in "${nm}" — INSERT will ask for their values.`); pendingAttdefs = []; }
       const bAfter = snapBlocks();
       if (r.remove) {
         const ref = BE.makeInsert(doc, nm, baseP, { layer: currentLayer });

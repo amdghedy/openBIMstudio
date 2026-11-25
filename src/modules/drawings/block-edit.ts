@@ -213,3 +213,26 @@ export function purgeBlocks(doc: DxfDocument): string[] {
 export function redefineTouched(doc: DxfDocument): void {
   if (doc.blocks) touchBlocks(doc.blocks);
 }
+
+/**
+ * Parse `ATTDEF <tag> <x,y> [height] [default text...]` into an attribute definition. Pure; throws a readable Error.
+ * Tags are stored upper-case without spaces (as AutoCAD does); the prompt defaults to the tag.
+ */
+export function parseAttdefArgs(args: readonly string[], layer?: string): DxfAttDef {
+  const tag = (args[0] ?? "").trim().toUpperCase();
+  if (!tag) throw new Error("ATTDEF needs a tag, e.g. ATTDEF ROOMNO 0,0 2.5 101");
+  if (/\s/.test(tag) || tag.length > 255) throw new Error("ATTDEF tag must be one word of at most 255 characters.");
+  const pt = /^(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)[,;](-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)$/i.exec((args[1] ?? "").trim());
+  if (!pt) throw new Error("ATTDEF needs an insertion point as x,y (no spaces), e.g. ATTDEF ROOMNO 0,0");
+  const x = Number(pt[1]), y = Number(pt[2]);
+  let rest = args.slice(2);
+  let height = 2.5;
+  if (rest.length && /^\d+(?:\.\d+)?$/.test(rest[0]!)) {
+    height = Number(rest[0]);
+    rest = rest.slice(1);
+  }
+  if (!(height > 0) || !Number.isFinite(x) || !Number.isFinite(y)) throw new Error("ATTDEF height must be positive and the point finite.");
+  const def: DxfAttDef = { tag, prompt: tag, defaultValue: rest.join(" "), position: { x, y, z: 0 }, height };
+  if (layer) def.layer = layer;
+  return def;
+}
