@@ -184,7 +184,7 @@ t("BYBLOCK colour: children with ACI 0 take the reference's colour (native and l
     const txt = file(blk, insCol(c));
     const nat = B.flattenInserts(parseDxf(txt, NATIVE)), leg = parseDxf(txt);
     const cols = (d) => d.map((e) => e.color).sort((a, b) => (a ?? -1) - (b ?? -1));
-    assert.deepEqual(cols(nat), cols(leg), "native and legacy colours agree");
+    assert.deepEqual(cols(nat), cols(leg.entities), "native and legacy colours agree");
     // children: BYBLOCK -> insert colour (3, or 0/undefined-> layer), explicit red stays 1, ByLayer stays undefined
     const byLen = (d, len) => d.find((e) => Math.abs(e.end.x - len) < 1e-9);
     assert.equal(byLen(nat, 2).color, 1); assert.equal(byLen(nat, 3).color, undefined);
