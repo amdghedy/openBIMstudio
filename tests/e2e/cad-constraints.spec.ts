@@ -44,6 +44,10 @@ test('2D editor: constraints are recorded and solvable from the ribbon', async (
   await expect.poll(hist).toMatch(/#2 length = 10(\.0+)?( \w+)? — ok/);
   await page.locator('[data-a=gc-solve]').first().click();
   await expect.poll(hist).toContain('GCSOLVE:');
+  await run('GCDEL 9');
+  await expect.poll(hist).toContain('GCDEL: give a constraint number between 1 and 2');
+  await run('GCDEL 2');
+  await expect.poll(hist).toContain('GCDEL: removed #2 length; 1 constraint(s) remain');
   expect(errors, errors.join('\n')).toEqual([]);
 });
 

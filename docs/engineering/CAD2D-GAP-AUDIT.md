@@ -88,7 +88,7 @@ objects stay put (centre and radius). A conflicting or diverged set is refused â
 `tests/cad-constraint-bridge.test.cjs` (9) and the browser spec `cad-constraints.spec.ts`.
 *Limits:* relations are session-scoped (not written to DXF/DWG), so they are lost on reload; COINCIDENT, SYMMETRIC and
 DCANGULAR still apply once without being tracked; relations do not re-solve automatically while dragging; ARC angles and
-polylines/splines are not solved; no per-relation delete yet (GCCLEAR clears all).
+polylines/splines are not solved; `GCDEL <n>` removes one relation (GCCLEAR clears all).
 
 **Not done (honest):** no editor integration yet (no commands, no on-canvas constraint creation, no persistence into the
 DXF file â€” constraints live only in the model/JSON); arcs are modelled as centre+radius+end points but arc-angle
