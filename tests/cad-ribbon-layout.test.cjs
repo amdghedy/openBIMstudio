@@ -21,6 +21,7 @@ const ROOT = path.join(__dirname, "..");
 let pass = 0, fail = 0;
 const t = (name, fn) => { try { fn(); pass++; console.log("  PASS " + name); } catch (e) { fail++; console.log("  FAIL " + name + ": " + e.message); } };
 const src = fs.readFileSync(path.join(ROOT, "src/features/cad-viewer.ts"), "utf8");
+const parity = fs.readFileSync(path.join(ROOT, "src/modules/cad-viewer/acad-parity.ts"), "utf8");
 const icons = fs.readFileSync(path.join(ROOT, "src/features/icon-set.ts"), "utf8");
 
 // ── 1. Shell stacking order: ribbon tabs row → ribbon panels → drawing tabs → pages ──
@@ -222,10 +223,22 @@ t("new drawings boot into a live empty document with a replace-aware undo stack"
   assert.ok(src.includes("function startBlank()"), "startBlank missing");
   assert.ok(/buildBar\(\);\s*\n\s*buildBar2\(\);[\s\S]{0,120}startBlank\(\);/.test(src), "startBlank must run at engine init");
   assert.ok(src.includes('type: "add" | "delete" | "modify" | "replace"'), "UndoAction must support replace");
+  // A13 moved the replace handling out of undo()/redo() into the pure
+  // helpers AcadParity.undoEntityList / redoEntityList (acad-parity.ts) —
+  // the literal `act.type === "replace"` no longer lives in undo()/redo(),
+  // so pin the handling where it now lives, plus the delegation to it.
+  // The behaviour itself is covered by test:cad-layouts ("undo/redo of a
+  // replace swaps before/after sets").
   const undoFn = src.slice(src.indexOf("function undo()"), src.indexOf("function redo()"));
-  assert.ok(undoFn.includes('act.type === "replace"'), "undo must handle replace actions");
+  assert.ok(undoFn.includes("AcadParity.undoEntityList"), "undo must delegate to AcadParity.undoEntityList");
   const redoFn = src.slice(src.indexOf("function redo()"));
-  assert.ok(redoFn.includes('act.type === "replace"'), "redo must handle replace actions");
+  assert.ok(redoFn.includes("AcadParity.redoEntityList"), "redo must delegate to AcadParity.redoEntityList");
+  const undoHelper = parity.slice(parity.indexOf("export function undoEntityList"), parity.indexOf("export function redoEntityList"));
+  assert.ok(undoHelper.includes('case "replace":'), "undoEntityList must handle replace actions");
+  assert.ok(undoHelper.includes("!after.has(e)") && undoHelper.includes("act.before"), "undo of a replace must drop after and restore before");
+  const redoHelper = parity.slice(parity.indexOf("export function redoEntityList"));
+  assert.ok(redoHelper.includes('case "replace":'), "redoEntityList must handle replace actions");
+  assert.ok(redoHelper.includes("!before.has(e)") && redoHelper.includes("act.after"), "redo of a replace must drop before and restore after");
 });
 t("the 33 native-engine icons exist in the union and the path table", () => {
   const names = ["cut", "paste", "polygon", "spline", "ellipse", "donut", "point", "hatch", "wipeout",
