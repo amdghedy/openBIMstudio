@@ -11,9 +11,11 @@
  *     each tag mode calls its own tool, Insulation emits batting segments.
  *
  * What is pinned, and why it matters (audit §2 G7):
- * - Tag modes: Material / Room / Space / Multi-Category / Area no longer
- *   all call setTool("tag"). Room tags only tag rooms, Area tags only tag
- *   areas, Space tags nothing (no space model exists — recorded, not faked).
+ * - Tag modes: Material / Room / Multi-Category / Area no longer all call
+ *   setTool("tag"). Room tags only tag rooms, Area tags only tag areas.
+ *   No Space tag is offered at all (no space model exists — A12 removed
+ *   the honest stub instead of keeping a dead button; the model still
+ *   records why a Space tag is not done, not faked).
  * - Continuous chains segments end-to-end; Baseline measures every target
  *   from the first picked boundary.
  * - Diameter is its own dimension type (Ø = 2R, solid line) — the engine
@@ -215,10 +217,22 @@ pin("ribbon: Material activates tag-material", /"Material"[\s\S]{0,400}?setTool\
 pin("ribbon: Room tag activates room-tag", /"Room tag"[\s\S]{0,400}?setTool\?\.\("room-tag"\)/, ribbon);
 pin("ribbon: Multi-Cat activates tag-multi", /"Multi-Cat"[\s\S]{0,400}?setTool\?\.\("tag-multi"\)/, ribbon);
 pin("ribbon: Area activates tag-area", /"Area"[\s\S]{0,400}?setTool\?\.\("tag-area"\)/, ribbon);
-pin("ribbon: Space is an honest stub, not the generic tag tool", /planned\("room-tag", "Space", "Space tags need a space model/, ribbon);
-t("ribbon: only the plain Tag button still uses the generic tag tool", () => {
+// A12: the Space button is gone entirely — no space model exists, so the
+// ribbon offers no Space tag at all instead of an honest stub. The model
+// still records why a Space tag is not done (see "space tag records why
+// it is not done" above); only the ribbon entry was removed.
+t("ribbon: no Space tag button is offered (no space model exists)", () => {
+  assert.ok(!/planned\("room-tag", "Space"/.test(ribbon), "Space planned() stub is back");
+  assert.ok(!/b\("[^"]*", "Space"/.test(ribbon), "a Space tag button exists");
+});
+// A12: the plain Tag button is offered on two tabs — Home (Annotate
+// essentials) and Annotate — and both call the generic tag tool, as in
+// AutoCAD where one tool is reachable from several tabs. The tag MODES
+// (Material / Room / Multi-Cat / Area) still each have their own tool and
+// do not collapse into the generic one; only the plain Tag buttons use it.
+t("ribbon: only the plain Tag buttons use the generic tag tool (Home + Annotate)", () => {
   const uses = ribbon.match(/setTool\?\.\("tag"\)/g) ?? [];
-  assert.strictEqual(uses.length, 1, `expected 1 generic tag use, found ${uses.length}`);
+  assert.strictEqual(uses.length, 2, `expected 2 generic tag uses (Home + Annotate), found ${uses.length}`);
 });
 pin("ribbon: Insulation routes to the insulation plan tool", /"Insulation"[\s\S]{0,400}?setTool\?\.\("insulation"\)/, ribbon);
 pin("panel: setTool handles dim-continuous / dim-baseline / dim-slope", /tool === "dim-continuous" \|\| tool === "dim-baseline"/, panel);

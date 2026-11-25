@@ -113,7 +113,7 @@ function exportProjectJson() {
   });
 }
 
-function printView() {
+export function printView() {
   const url = captureThumbnail(1800);
   const w = window.open("", "_blank");
   if (!w) { uiAlert("Popup blocked — allow popups to print."); return; }

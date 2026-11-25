@@ -79,7 +79,8 @@ import {
   toggleSavedViewsPanel, isSavedViewsPanelVisible,
   saveCurrentView, listSavedViews,
 } from "../features/saved-views";
-import { toggleFileMenu, isFileMenuVisible } from "./file-menu";
+import { toggleFileMenu, isFileMenuVisible, printView } from "./file-menu";
+import { history } from "../features/history";
 import { pickAndImport } from "../features/file-interop";
 import { svgIcon, type IconName } from "../features/icon-set";
 import { mountLanguageButton } from "../features/language-button";
@@ -314,7 +315,6 @@ const esc = (s: string) =>
 interface BtnOpts {
   active?: boolean;
   title?: string;
-  planned?: boolean;
   kbd?: string;
   /** Rendered as a native disabled button (used by the linked-selection
    *  Modify tab: transforms are shown but disabled, with the reason as
@@ -339,7 +339,6 @@ function b(
   el.title = tip;
   el.setAttribute("aria-label", label);
   if (opts.active) el.dataset.active = "1";
-  if (opts.planned) el.dataset.planned = "1";
   if (opts.disabled) { el.disabled = true; el.dataset.disabled = "1"; }
   el.innerHTML =
     `<span class="obs-rb__icon">${svgIcon(icon)}</span>` +
@@ -354,14 +353,6 @@ function b(
     renderStrip();
   };
   return el;
-}
-
-function planned(
-  icon: IconName,
-  label: string,
-  hint = "This tool is planned for a future release.",
-): HTMLButtonElement {
-  return b(icon, label, () => toast(hint, "info"), { planned: true, title: `${label} — planned` });
 }
 
 /* ── Shared In-Place Mass flows (Edit tab + Massing & Site tab) ──────────
@@ -780,6 +771,92 @@ function parametricToolkitButton(): HTMLButtonElement {
   return btn;
 }
 
+/* Shared by the Architecture Constraints group and the Parametric tab:
+ * the same buttons, the same handlers — not copies with drift. */
+function lockDimensionButton(): HTMLButtonElement {
+  return b("dim-aligned", "Lock Dim", safe(async () => {
+    const c = (window as any).__obsConstraints;
+    if (!c) { toast("Constraints module not loaded", "warn"); return; }
+    const auth = (ctx.features as any).authoring;
+    const ids = auth?.getSelectedIds?.() ?? [];
+    if (ids.length < 2) { toast("Select 2 elements to lock the dimension between them", "warn"); return; }
+    const { promptLine } = await import("../features/form-modal");
+    const v = await promptLine(
+      "Lock Dimension",
+      "Distance between elements",
+      "3.0",
+      "m",
+      "Distance in metres (e.g. 3.0 = 3 m)",
+    );
+    if (v == null) return;
+    const val = parseFloat(v);
+    if (isNaN(val)) { toast("Invalid number", "warn"); return; }
+    c.lock(ids[0], ids[1], val);
+    toast(`Dimension locked at ${val}m`, "success");
+  }, "Lock dimension"), { title: "Lock the distance between two selected elements" });
+}
+
+function equalityButton(): HTMLButtonElement {
+  return b("dim-aligned", "Equality", safe(() => {
+    const c = (window as any).__obsConstraints;
+    if (!c) { toast("Constraints module not loaded", "warn"); return; }
+    const auth = (ctx.features as any).authoring;
+    const ids = auth?.getSelectedIds?.() ?? [];
+    if (ids.length < 3) { toast("Select 3+ elements to set equal spacing", "warn"); return; }
+    c.equality(ids, "spacing");
+    toast(`Equal spacing applied to ${ids.length} elements`, "success");
+  }, "Equality"), { title: "Make spacing between selected elements equal" });
+}
+
+/* Global undo/redo (A12) — the real history stack (features/history.ts),
+ * not the Group-1 one. Disabled state comes from history.canUndo() /
+ * canRedo() at build time and is refreshed in place by
+ * updateHistoryButtons() (subscribed to history.onChange), so keyboard
+ * undo/redo stays reflected too. */
+function historyUndoButton(): HTMLButtonElement {
+  const el = b("undo", "Undo", safe(async () => { await history.undo(); }, "Undo"), {
+    disabled: !history.canUndo(),
+    title: history.undoLabel() ? `Undo ${history.undoLabel()}` : "Nothing to undo",
+    kbd: "Ctrl+Z",
+  });
+  el.dataset.historyUndo = "1";
+  return el;
+}
+
+function historyRedoButton(): HTMLButtonElement {
+  const el = b("undo", "Redo", safe(async () => { await history.redo(); }, "Redo"), {
+    disabled: !history.canRedo(),
+    title: history.redoLabel() ? `Redo ${history.redoLabel()}` : "Nothing to redo",
+    kbd: "Ctrl+Y",
+  });
+  el.dataset.historyRedo = "1";
+  return el;
+}
+
+/* Refresh Undo/Redo disabled state in place — Home tab History group and
+ * the QAT — after any history change (ribbon action, keyboard, palette).
+ * Called from history.onChange and after every strip/tabs re-render. */
+function updateHistoryButtons(): void {
+  const setBtn = (
+    scope: ParentNode,
+    sel: string,
+    can: boolean,
+    label: string | null,
+    kbd: string,
+    verb: string,
+  ) => {
+    const el = scope.querySelector(sel) as HTMLButtonElement | null;
+    if (!el) return;
+    el.disabled = !can;
+    el.style.opacity = can ? "1" : "0.35";
+    el.title = can && label ? `${verb} ${label} (${kbd})` : can ? `${verb} (${kbd})` : `Nothing to ${verb.toLowerCase()}`;
+  };
+  setBtn(strip, "[data-history-undo]", history.canUndo(), history.undoLabel(), "Ctrl+Z", "Undo");
+  setBtn(strip, "[data-history-redo]", history.canRedo(), history.redoLabel(), "Ctrl+Y", "Redo");
+  setBtn(tabsRow, '[data-qat="undo"]', history.canUndo(), history.undoLabel(), "Ctrl+Z", "Undo");
+  setBtn(tabsRow, '[data-qat="redo"]', history.canRedo(), history.redoLabel(), "Ctrl+Y", "Redo");
+}
+
 function pidModelerButton(): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.className = "obs-rb";
@@ -877,7 +954,7 @@ function schedulesButton(): HTMLButtonElement {
 /* ═════════════════════════════════════════════════════════════════════════
    State
    ═════════════════════════════════════════════════════════════════════════ */
-let activeTab = "file";
+let activeTab = "home"; // A12: Home is the default tab (AutoCAD parity).
 let boundsOn = false;
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -893,9 +970,15 @@ const WORKSPACES = [
 ] as const;
 type WorkspaceId = typeof WORKSPACES[number]["id"];
 let activeWorkspace: WorkspaceId = "coordination";
+// True only when the user explicitly picked a workspace before: a saved
+// workspace still lands on its tab at startup; a first boot lands on Home.
+let workspaceSaved = false;
 try {
   const saved = localStorage.getItem("obs.workspace");
-  if (WORKSPACES.some((w) => w.id === saved)) activeWorkspace = saved as WorkspaceId;
+  if (WORKSPACES.some((w) => w.id === saved)) {
+    activeWorkspace = saved as WorkspaceId;
+    workspaceSaved = true;
+  }
 } catch { /* private browsing / storage blocked */ }
 function getWorkspaceDefinition(id: WorkspaceId) {
   return WORKSPACES.find((w) => w.id === id) ?? WORKSPACES[2];
@@ -910,12 +993,82 @@ function setActiveWorkspace(id: string) {
    Tabs
    ═════════════════════════════════════════════════════════════════════════ */
 /* Tab order is Revit order (see src/shell/ribbon-order.ts, the testable
-   order model — tests/ribbon-tab-order.test.cjs pins TABS to that model).
+   order model — tests/ribbon-tab-order.test.cjs pins TABS to that model),
+   with the AutoCAD-parity tabs from A12: Home first (the default tab),
+   Parametric after Annotate, Output after Manage.
    Deviations from Revit, all documented in ribbon-order.ts: File is kept
    as the browser equivalent of the application menu; Edit stays permanent
    because its dialog launchers are selection-independent; Coordinate /
    Clash Detective / X Dim are product tabs kept after Manage. */
 const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
+  // ════════════════════════════════ HOME ═══════════════════════════════
+  // AutoCAD parity (A12): the default tab — draw/modify essentials, all
+  // reusing the same tool builders as their home tabs (no new tool logic).
+  {
+    id: "home",
+    label: "Home",
+    items: () => [
+      groupLabel("Draw"),
+      toolBtn("wall", "Wall", "wall", "WA"),
+      toolBtn("door", "Door", "door", "DR"),
+      toolBtn("window", "Window", "window", "WN"),
+      toolBtn("column", "Column", "column", "CM"),
+      toolBtn("floor", "Floor", "slab", "SL"),
+      toolBtn("grid", "Grid", "grid", "GR"),
+      toolBtn("level", "Level", "level", "LV"),
+      toolBtn("mline", "Model Line", "mline"),
+      sep(),
+      groupLabel("Modify"),
+      toolBtn("select-all", "Select", "select", "Esc"),
+      toolBtn("move", "Move", "move", "G"),
+      toolBtn("copy", "Copy", "copy"),
+      toolBtn("rotate", "Rotate", "rotate", "R"),
+      toolBtn("mirror", "Mirror", "mirror"),
+      toolBtn("array", "Array", "array"),
+      toolBtn("offset", "Offset", "offset"),
+      b("delete", "Delete", safe(() => deleteSelectedElement(), "Delete"), { kbd: "Del" }),
+      sep(),
+      groupLabel("Annotate"),
+      b("dim-aligned", "Aligned", safe(() => {
+        if (!isPlanViewVisible()) togglePlanView();
+        setTimeout(() => (ctx.features as any).planView?.setTool?.("dim-aligned"), 40);
+      }, "Aligned dimension"), {
+        kbd: "DI", title: "Aligned Dimension: pick two model boundaries",
+      }),
+      b("dim-linear", "Linear", safe(() => {
+        if (!isPlanViewVisible()) togglePlanView();
+        setTimeout(() => (ctx.features as any).planView?.setTool?.("dim-linear"), 40);
+      }, "Linear dimension"), {
+        title: "Linear Dimension: horizontal / vertical between two boundaries",
+      }),
+      b("tag", "Tag", safe(() => {
+        const pv = (ctx.features as any).planView;
+        if (pv?.isVisible?.()) { pv.setTool?.("tag"); return; }
+        toast("Tag: select an element — properties show category / type / id", "info");
+        try { (ctx.features as any).propertyPalette?.show?.(); } catch { /* */ }
+      }, "Tag")),
+      b("text", "Text", safe(async () => {
+        const pv = (ctx.features as any).planView;
+        if (pv?.isVisible?.()) { pv.setTool?.("text"); return; }
+        const { promptLine } = await import("../features/form-modal");
+        const t = await promptLine(
+          "Text Note",
+          "Annotation text",
+          "Note",
+          "Type your note here",
+        );
+        if (t != null && t.trim()) toast(`Text note saved: “${t.trim()}”`, "success");
+      }, "Text note")),
+      sep(),
+      groupLabel("History"),
+      historyUndoButton(),
+      historyRedoButton(),
+      sep(),
+      groupLabel("Properties"),
+      propertiesButton(),
+    ],
+  },
+
   // ════════════════════════════════ FILE ═══════════════════════════════
   {
     id: "file",
@@ -1097,36 +1250,8 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Clear sweeps"), { title: "Remove baseboards, cornices, wainscots and reveals from the selected walls" }),
       sep(),
       groupLabel("Constraints"),
-      b("dim-aligned", "Lock Dim", safe(async () => {
-        const c = (window as any).__obsConstraints;
-        if (!c) { toast("Constraints module not loaded", "warn"); return; }
-        const auth = (ctx.features as any).authoring;
-        const ids = auth?.getSelectedIds?.() ?? [];
-        if (ids.length < 2) { toast("Select 2 elements to lock the dimension between them", "warn"); return; }
-        const { promptLine } = await import("../features/form-modal");
-        const v = await promptLine(
-          "Lock Dimension",
-          "Distance between elements",
-          "3.0",
-          "m",
-          "Distance in metres (e.g. 3.0 = 3 m)",
-        );
-        if (v == null) return;
-        const val = parseFloat(v);
-        if (isNaN(val)) { toast("Invalid number", "warn"); return; }
-        c.lock(ids[0], ids[1], val);
-        toast(`Dimension locked at ${val}m`, "success");
-      }, "Lock dimension"), { title: "Lock the distance between two selected elements" }),
-      b("dim-aligned", "Equality", safe(() => {
-        const c = (window as any).__obsConstraints;
-        if (!c) { toast("Constraints module not loaded", "warn"); return; }
-        const auth = (ctx.features as any).authoring;
-        const ids = auth?.getSelectedIds?.() ?? [];
-        if (ids.length < 3) { toast("Select 3+ elements to set equal spacing", "warn"); return; }
-        c.equality(ids, "spacing");
-        toast(`Equal spacing applied to ${ids.length} elements`, "success");
-      }, "Equality"), { title: "Make spacing between selected elements equal" }),
-      parametricToolkitButton(),
+      lockDimensionButton(),
+      equalityButton(),
       sep(),
       // groupLabel("Modify") REPLACED BY CONTEXTUAL TAB,
       toolBtn("select-all", "Select", "select", "Esc"),
@@ -1429,19 +1554,10 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Fittings"), { title: "Pick a fabrication fitting by type" }),
       sep(),
       groupLabel("Load from Library"),
-      b("new-family", "Family Creator", safe(() => openFamilyCreatorEngine(), "Family Creator engine"), {
-        title: "Parametric Family Creator — parameters, constraints, extrusion / revolve / sweep geometry, library save",
-      }),
+      // Family Creator / Sketch Family / Family Panel moved to the
+      // Parametric tab (A12); Family + Materials stay here.
       b("new-family", "Family", safe(() => openFamilyLibrary(), "Types & materials"), {
         title: "Element types and materials library",
-      }),
-      b("component", "Sketch Family", safe(() => {
-        void import("../features/family-sketch-editor").then((m) => m.openFamilySketchEditor());
-      }, "Sketch family"), {
-        title: "Draw a plan outline and create a parametric family from it",
-      }),
-      b("component", "Family Panel", safe(() => openParamFamilyPanel(), "Parametric family panel"), {
-        title: "Inspect and edit family parameters, rebuild geometry, open sketch",
       }),
       b("component", "Materials", safe(async () => {
         const m = (window as any).__obsMaterials;
@@ -1827,19 +1943,6 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         if (pv?.isVisible?.()) { pv.setTool?.("tag-area"); return; }
         toast("Area tag: place an area marker", "info");
       }, "Area tag")),
-      // G7: Space tags are NOT wired to the generic tag tool any more —
-      // there is no space model in the repo, so a Space tag would have
-      // tagged any element with a wrong label. Honest stub until a space
-      // model exists.
-      planned("room-tag", "Space", "Space tags need a space model — rooms and areas are tagged separately; no MEP space model exists yet."),
-      // Honest placeholders: these annotate actions had toast-only handlers
-      // that pretended success. planned() labels them truthfully until the
-      // capability ships (see the feature-maturity table in the UI menu).
-      planned("view", "View Ref", "View Reference annotation is planned for a future release."),
-      planned("stairs", "Tread", "Tread Number annotation is planned for a future release."),
-      planned("component", "Group", "Detail Group annotation is planned for a future release."),
-      planned("check", "Spell", "Check Spelling is planned for a future release."),
-      planned("report", "Find / Replace", "Find / Replace across annotations is planned for a future release."),
       sep(),
       groupLabel("Legend"),
       b("text", "Keynote", safe(() => {
@@ -1849,10 +1952,6 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         if (!legend.length) { toast("No keynotes assigned yet — assign a keynote to a selected element first", "info"); return; }
         exportKeynoteLegendCsv(legend.length);
       }, "Keynote")),
-      planned("duct", "Duct", "Duct Legend placement is planned for a future release. System colors are available via MEP coloring."),
-      planned("pipe", "Pipe", "Pipe Legend placement is planned for a future release. System colors are available via MEP coloring."),
-      planned("color-legend", "Color Fill", "Color Fill Legend placement is planned for a future release."),
-      planned("symbol", "Symbol", "Legend Symbol placement is planned for a future release."),
       sep(),
       b("clear", "Clear", safe(() => {
         const pv = (ctx.features as any).planView;
@@ -1860,6 +1959,37 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         try { ctx.features.measure?.clear?.(); } catch { /* */ }
         toast("Annotations / measures cleared", "info");
       }, "Clear")),
+    ],
+  },
+
+  // ═══════════════════════════ PARAMETRIC ══════════════════════════════
+  // AutoCAD parity (A12): the parametric toolkit moves here from the
+  // Architecture Constraints group; the family tools move here from the
+  // Insert "Load from Library" group; the constraint tools are shared
+  // with Architecture (same builders, same handlers — not copies).
+  {
+    id: "parametric",
+    label: "Parametric",
+    items: () => [
+      groupLabel("Parametric"),
+      parametricToolkitButton(),
+      sep(),
+      groupLabel("Families"),
+      b("new-family", "Family Creator", safe(() => openFamilyCreatorEngine(), "Family Creator engine"), {
+        title: "Parametric Family Creator — parameters, constraints, extrusion / revolve / sweep geometry, library save",
+      }),
+      b("component", "Sketch Family", safe(() => {
+        void import("../features/family-sketch-editor").then((m) => m.openFamilySketchEditor());
+      }, "Sketch family"), {
+        title: "Draw a plan outline and create a parametric family from it",
+      }),
+      b("component", "Family Panel", safe(() => openParamFamilyPanel(), "Parametric family panel"), {
+        title: "Inspect and edit family parameters, rebuild geometry, open sketch",
+      }),
+      sep(),
+      groupLabel("Constraints"),
+      lockDimensionButton(),
+      equalityButton(),
     ],
   },
 
@@ -2081,7 +2211,6 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
           ],
         });
       }, "Property line"), { title: "Create property line from bearings + distances" }),
-      planned("property", "Subregion", "Subregion definition inside a toposurface is planned for a future release."),
       sep(),
       groupLabel("Site"),
       b("parking", "Parking", safe(() => {
@@ -2674,7 +2803,13 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
           members.map((m: any) => [m.id, m.sourceType, m.startNodeId, m.endNodeId, Number(m.area).toFixed(4)]),
           `${nodes.length} nodes, ${members.length} members`);
       }, "Analytical model"), { title: "View structural analytical model (FEM nodes + members)" }),
-      planned("energy", "Energy", "Energy analysis needs room/space thermal zones, which can't be created in the UI yet."),
+      // A12: wired to the same real heat-loss report as Analyze ▸ Heat Loss
+      // (energy-ui.ts) — zonesFromRooms() builds thermal zones from the
+      // authored rooms, so the old stub's claim no longer holds.
+      b("energy", "Energy", safe(async () => {
+        const m = await import("../features/energy-ui");
+        await m.runHeatLossReport();
+      }, "Heat loss"), { title: "Run steady-state heat loss per room" }),
       sep(),
       groupLabel("Marketplace"),
       b("component", "Browse Plugins", safe(async () => {
@@ -2813,6 +2948,52 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       b("folder-recent", "Edits", safe(() => toggleFragEditPanel(), "FRAG edits panel"), {
         active: isFragEditPanelVisible(),
         title: "Show the FRAG edits panel",
+      }),
+    ],
+  },
+
+  // ════════════════════════════════ OUTPUT ══════════════════════════════
+  // AutoCAD parity (A12): plot + export + sheets in one tab. Every button
+  // reuses an existing handler (File tab export, file-menu Print, batch
+  // plot panel, sheets panel) — no new output logic.
+  {
+    id: "output",
+    label: "Output",
+    items: () => [
+      groupLabel("Plot"),
+      b("print", "Print", safe(() => printView(), "Print"), {
+        title: "Print the current view",
+      }),
+      b("print", "Batch Plot", safe(async () => {
+        (await import("../features/batch-plot-panel")).openBatchPlotPanel();
+      }, "Batch plot"), {
+        title: "Batch-plot sheets to PDF",
+      }),
+      sep(),
+      groupLabel("Export"),
+      b("file", "IFC4", safe(async () => {
+        const mod = await import("../modules/bim-gaps/bim-gaps-boot");
+        await mod.exportIfc("IFC4");
+      }, "Export IFC4"), { title: "Export the authored model as IFC4 STEP file" }),
+      b("file", "IFC2X3", safe(async () => {
+        const mod = await import("../modules/bim-gaps/bim-gaps-boot");
+        await mod.exportIfc("IFC2X3");
+      }, "Export IFC2X3"), { title: "Export the authored model as IFC2X3 STEP file" }),
+      b("file-frag", "FRAG", safe(async () => {
+        const mod = await import("../modules/export/frag");
+        await mod.exportFragFromMenu();
+      }, "Export FRAG"), {
+        title: "Export loaded model(s) as ThatOpen Fragments (.frag) — official binary format",
+      }),
+      sep(),
+      groupLabel("Sheets"),
+      b("new-sheet", "Sheets", safe(() => toggleSheetsPanel(), "Sheets"), { active: isSheetsPanelVisible() }),
+      b("new-sheet", "New Sheet", safe(() => {
+        toggleSheetsPanel();
+        toast("Sheets panel open — create production sheets", "info");
+      }, "New sheet")),
+      b("report", "Drawing Register", safe(() => openDrawingRegisterPanel(), "Drawing register"), {
+        title: "Formal sheet register + transmittal table with CSV / HTML export",
       }),
     ],
   },
@@ -3026,8 +3207,6 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         setSelectionPref("pinned", next);
         toast("Select pinned: " + (next ? "ON" : "OFF — pinned elements are skipped by every pick"), "info");
       }, "Select pinned"), { title: "Allow selecting pinned elements (Modify ▸ Pin to pin)" }),
-      planned("check", "By Face", "Face sub-selection is planned for a future release. Element-level selection and FRAG edit (vertex editing) are available today."),
-      planned("check", "Drag Sel", "Drag-on-selection is planned for a future release. Move is available via grips, the Move tool and Modify ▸ Move."),
       sep(),
 
       groupLabel("Clipboard"),
@@ -3593,8 +3772,43 @@ function renderTabs() {
     tabsRow.appendChild(btn);
   }
 
+  // ── Quick access toolbar (A12) ──────────────────────────────────────
+  // New / Open / Save / Undo / Redo, always visible, mirroring the CAD
+  // viewer's QAT in its tabs row. Built here — not once at setup — because
+  // renderTabs() rebuilds the whole tabs row on every tab switch.
+  const qat = document.createElement("div");
+  qat.className = "obs-qat";
+  const qatBtn = (icon: IconName, action: string, title: string, flip = false): HTMLButtonElement => {
+    const el = document.createElement("button");
+    el.className = "obs-qat__btn" + (flip ? " obs-qat__btn--flip" : "");
+    el.dataset.qat = action;
+    el.title = title;
+    el.setAttribute("aria-label", title);
+    el.innerHTML = svgIcon(icon);
+    return el;
+  };
+  qat.append(
+    qatBtn("new-file", "new", "New project (home screen)"),
+    qatBtn("folder", "open", "Open a file (any format)"),
+    qatBtn("save", "save", "Save project (Ctrl+S)"),
+    qatBtn("undo", "undo", "Undo (Ctrl+Z)"),
+    qatBtn("undo", "redo", "Redo (Ctrl+Y)", true),
+  );
+  qat.addEventListener("click", (e) => {
+    const t = (e.target as HTMLElement | null)?.closest?.("[data-qat]") as HTMLElement | null;
+    const a = t?.dataset.qat;
+    if (!a) return;
+    if (a === "new") showHome();
+    else if (a === "open") void pickAndImport();
+    else if (a === "save") void saveProject();
+    else if (a === "undo") void history.undo().then(() => updateHistoryButtons());
+    else if (a === "redo") void history.redo().then(() => updateHistoryButtons());
+  });
+  tabsRow.appendChild(qat);
+
   tabsRow.appendChild(pill);
   updatePill();
+  updateHistoryButtons();
 }
 
 function renderStrip() {
@@ -3608,6 +3822,7 @@ function renderStrip() {
       `${err instanceof Error ? err.message : String(err)}\n\n` +
       `Open the browser console (F12) for the full trace.</div>`;
   }
+  updateHistoryButtons();
 }
 
 function renderStripImpl() {
@@ -3883,9 +4098,14 @@ export function setupRibbon() {
 
   onProjectChanged(updatePill);
   updatePill();
-  activeTab = getWorkspaceDefinition(activeWorkspace).tab;
+  // A12: Home is the default tab. A workspace the user explicitly saved
+  // still lands on its tab; a first boot lands on Home.
+  activeTab = workspaceSaved ? getWorkspaceDefinition(activeWorkspace).tab : "home";
   renderTabs();
   renderStrip();
+  // A12: keep Undo/Redo state (Home tab + QAT) fresh when history changes
+  // from anywhere — keyboard, palette, or another panel.
+  history.onChange(() => updateHistoryButtons());
   onNorthChanged(() => renderStrip());
   onAuthoringChange(syncContextTab);
   syncContextTab();

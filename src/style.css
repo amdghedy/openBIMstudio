@@ -432,6 +432,34 @@ body.obs-fullscreen-peek .obs-ribbon { display: flex !important; }
 }
 .obs-ribbon__pill .dot.dirty { background: var(--warning); box-shadow: 0 0 5px var(--warning); }
 
+/* Quick access toolbar (A12) — New / Open / Save / Undo / Redo, icon-only,
+ * sitting in the ribbon tabs row before the project pill. */
+.obs-qat {
+  margin-inline-start: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-inline: var(--sp-2);
+  border-inline-start: 1px solid var(--border-subtle);
+}
+.obs-qat__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.obs-qat__btn:hover { background: var(--bg-hover); }
+.obs-qat__btn:disabled { opacity: 0.35; cursor: default; }
+.obs-qat__btn svg { width: 16px; height: 16px; }
+.obs-qat__btn--flip svg { transform: scaleX(-1); }
+
 .obs-ribbon__strip {
   display: flex;
   align-items: stretch;
