@@ -10393,13 +10393,6 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       detachXref(xn);
       return;
     }
-    if (cmd === "ATTDEF" || cmd === "ATT") {
-      const tag = parts[1] || "TAG1";
-      const prompt = parts[2] || tag;
-      const def = parts.slice(3).join(" ") || "";
-      logCmd(`ATTDEF: ${tag} / ${prompt} / default "${def}" — definition is not yet persisted or linked to block attributes.`);
-      return;
-    }
     if (cmd === "QLEADER" || cmd === "QLE") {
       setTool("leader");
       logCmd("QLEADER: specify leader start point.");
@@ -11425,7 +11418,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (cmd === "AUTOCONSTRAIN" || cmd === "ACON") { runAutoConstrain(); return; }
     if (cmd === "CONSTRAINTBAR" || cmd === "CONBAR") { toggleConBar(); return; }
     if (cmd === "DELCONSTRAINT" || cmd === "DELCON") { unfixAll(); return; }
-    if (cmd === "ATTDEF") {
+    if (cmd === "ATTDEF" || cmd === "ATT") {
       const sub = (parts[1] ?? "").toUpperCase();
       if (sub === "LIST" || sub === "") {
         logCmd(pendingAttdefs.length ? `ATTDEF: ${pendingAttdefs.length} waiting for the next BLOCK: ${pendingAttdefs.map((a) => `${a.tag}@${fmt(a.position.x)},${fmt(a.position.y)}`).join("; ")}` : "ATTDEF: none waiting. Usage: ATTDEF <tag> <x,y> [height] [default text]");
