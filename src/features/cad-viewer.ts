@@ -473,6 +473,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "GCSOLVE", aliases: ["SOLVE"], description: "Re-solve every recorded constraint together (deterministic solver); reports degrees of freedom, redundant and conflicting relations" },
   { name: "GCADD", aliases: [], description: "Record a constraint on the selected objects and solve it: GCADD H|V|PAR|PERP|EQ|CONC|TAN, or GCADD LEN|RAD <value> / ANG <degrees>" },
   { name: "GCLIST", aliases: ["GCSTATUS"], description: "List the recorded constraints and whether they are satisfied" },
+  { name: "GCDEL", aliases: [], description: "Delete one recorded constraint by its number from GCLIST (GCDEL 2); geometry is left as is" },
   { name: "GCCLEAR", aliases: [], description: "Forget every recorded constraint (geometry is left as is)" },
   { name: "CONSTRAINTBAR", aliases: ["CONBAR"], description: "Show or hide the FIX constraint markers" },
   { name: "DELCONSTRAINT", aliases: ["DELCON"], description: "Release every FIX constraint" },
@@ -11126,6 +11127,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (cmd === "GCSOLVE" || cmd === "SOLVE") { runSolveRelations(); return; }
     if (cmd === "GCADD") { addRelationFromSelection(parts.slice(1)); return; }
     if (cmd === "GCLIST" || cmd === "GCSTATUS") { listRelations(); return; }
+    if (cmd === "GCDEL") {
+      const k = parseInt(parts[1] ?? "", 10);
+      if (!Number.isInteger(k) || k < 1 || k > relations.length) { logCmd(`GCDEL: give a constraint number between 1 and ${relations.length} (see GCLIST).`); return; }
+      const [gone] = relations.splice(k - 1, 1);
+      logCmd(`GCDEL: removed #${k} ${gone?.kind ?? ""}; ${relations.length} constraint(s) remain (numbers shift down). Geometry unchanged.`);
+      return;
+    }
     if (cmd === "GCCLEAR") { const n = relations.length; relations.length = 0; logCmd(`GCCLEAR: forgot ${n} recorded constraint(s); geometry unchanged.`); return; }
     if (cmd === "FIX" || cmd === "CONSTRAINTFIX") { setTool("confix"); return; }
     if (cmd === "UNFIX" || cmd === "CONSTRAINTUNFIX") { setTool("confix"); return; }
