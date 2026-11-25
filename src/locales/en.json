@@ -156,7 +156,7 @@
       "tagThickness": "thickness",
       "tagPlacement": "placed on",
       "tagDepth": "depth",
-      "fromPicture": "read from the picture",
+      "fromPicture": "estimated from the picture's pixels",
       "face": {
         "plus": "the + width face",
         "minus": "the - width face",
@@ -171,8 +171,8 @@
       "exportNote": "Panels and grilles are flat plates of an assumed thickness, placed inside the overall size. Not added to the family library. Opening in Revit has not been tested.",
       "partsSelected": "Parts ({kept} of {n} selected, not confirmed yet)",
       "partsConfirmed": "Parts ({kept} of {n} confirmed)",
-      "selectedNote": "Every part found in the picture starts selected. Nothing is confirmed until you press Confirm selected parts. Changing the selection removes the confirmation.",
-      "confirmedNote": "You confirmed this selection. Each part keeps its tags: read from the picture, entered, or assumed.",
+      "selectedNote": "The main parts found in the picture start selected. Possible handles, hinges, fittings and lifting eyes are guesses and start off; tick any you want. Nothing is confirmed until you press Confirm selected parts. Changing the selection removes the confirmation.",
+      "confirmedNote": "You confirmed this selection. Each part keeps its tags: size estimated from the picture's pixels, entered, or assumed.",
       "confirmBtn": "Confirm selected parts",
       "confirmedBtn": "Selection confirmed",
       "onlyDoors": "Leave out panels that do not look like doors",
@@ -203,7 +203,15 @@
         "side": "Same as the side view (default)",
         "height": "Use the entered height of the end view"
       },
-      "candidate": "guess from shape, not confirmed, off until you tick it"
+      "candidate": "guess from shape, not confirmed, off until you tick it",
+      "dragMode": "Dragging on the picture sets",
+      "modeCrop": "The part of the picture to use (crop)",
+      "modeSide": "The side view box",
+      "modeEnd": "The end view box",
+      "vbNone": "Views are found automatically. To set them yourself, draw both the side view box and the end view box.",
+      "vbOne": "One view box drawn. Draw the other too; until both exist the views are found automatically.",
+      "vbBoth": "Both view boxes drawn: they replace the automatic views.",
+      "vbReset": "Clear view boxes"
     },
     "title": "Family Creator",
     "intro": "Choose a PDF, picture or text file, paste text, or type the overall size. Free. Files you choose, pasted text and typed sizes are read on this device and are not uploaded; pictures and scanned PDFs are read here too (OCR, English), so check the numbers it finds. A pasted link is the exception: it goes through this site's server, only if you agree each time and only where the site has switched that on. The parts come from a ready-made shape for your product, not from tracing the drawing.",
@@ -350,7 +358,15 @@
     "preview3d": "3D preview",
     "fit": "Fit",
     "preview3dHelp": "Drag to rotate, scroll to zoom, right-drag to pan.",
-    "preview3dUnavailable": "3D preview needs WebGL, which this browser does not provide. The views below still work."
+    "preview3dUnavailable": "3D preview needs WebGL, which this browser does not provide. The views below still work.",
+    "review": {
+      "needed": "Look over the parts, sizes and warnings above. Adding to the library needs your review of this result.",
+      "done": "You reviewed this result. Any change or new run takes the review back.",
+      "btn": "I reviewed this result"
+    },
+    "taskState": {
+      "title": "Task state (read only)"
+    }
   },
   "counts": {
     "elements": "{n, plural, one{# element} other{# elements}}",
