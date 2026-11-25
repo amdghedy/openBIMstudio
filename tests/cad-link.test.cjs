@@ -107,16 +107,6 @@ t("DXF: layer table (colour, frozen, off) and true colour", () => {
   assert.strictEqual(d.entities[0].rgb, 0xff8800);
 });
 
-t("DXF: LWPOLYLINE bulge becomes a true arc (semicircle)", () => {
-  const d = parseDxf(file(entities(
-    ent("LWPOLYLINE", [8, "0"], [70, 0], [90, 2], [10, 0], [20, 0], [42, 1], [10, 2], [20, 0]),
-  )));
-  const pts = d.entities[0].points;
-  assert.ok(pts.length > 8, "tessellated");
-  for (const p of pts) near(Math.hypot(p.x - 1, p.y), 1, 1e-9);
-  near(Math.min(...pts.map((p) => p.y)), -1, 1e-6); // positive bulge = CCW, dips below the chord
-});
-
 t("DXF: old-style POLYLINE with VERTEX records, closed", () => {
   const d = parseDxf(file(entities(
     ent("POLYLINE", [8, "0"], [70, 1]) +
@@ -361,6 +351,32 @@ t("geometry: circles/arcs tessellate, text keeps world height and rotation", () 
   const g = core.buildGeometry(doc, pl, opts({ rotationDeg: 30 }), "light");
   assert.ok(g.segmentCount >= 24);
   near(g.texts[0].height, 0.25); near(g.texts[0].rotation, 40);
+});
+
+t("DXF: LWPOLYLINE bulge becomes a true arc (semicircle)", () => {
+  const d = parseDxf(file(entities(
+    ent("LWPOLYLINE", [8, "0"], [70, 0], [90, 2], [10, 0], [20, 0], [42, 1], [10, 2], [20, 0]),
+  )));
+  // A7: the reader keeps raw vertices + the bulge on the entity instead of
+  // expanding it at read time — the arc survives the import as data.
+  const e = d.entities[0];
+  assert.strictEqual(e.points.length, 2, "raw vertices kept");
+  assert.strictEqual(e.bulges?.[0], 1, "bulge preserved on the entity");
+  // ... and the link tessellates the bulge back into a true arc in the model.
+  const doc = { layers: d.layers, units: "mm", entities: d.entities };
+  const pl = core.computePlacement(doc, opts({}), env);
+  const g = core.buildGeometry(doc, pl, opts({}), "light");
+  assert.ok(g.segmentCount > 8, "tessellated");
+  const segs = g.groups[0].segs;
+  let minZ = Infinity;
+  for (let i = 0; i < segs.length; i += 6) {
+    for (const j of [i, i + 3]) {
+      // world: drawing centre (1, 0), r = 1 mm -> (0.001, 0), r = 0.001 m
+      near(Math.hypot(segs[j] - 0.001, segs[j + 2]), 0.001, 1e-9);
+      if (segs[j + 2] < minZ) minZ = segs[j + 2];
+    }
+  }
+  near(minZ, -0.001, 1e-6); // positive bulge = CCW, dips below the chord
 });
 
 t("collectLayerSegments filters layer, short and duplicate lines", () => {

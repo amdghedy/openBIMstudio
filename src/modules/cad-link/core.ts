@@ -13,7 +13,7 @@
  *   manual  - Manual offset from the project origin
  */
 import type { DxfDocument, DxfEntity, DxfUnits } from "../drawings/dxf-types";
-import { arcPoints, robustExtents, UNIT_TO_METRES } from "../drawings/dxf-geometry";
+import { arcPoints, robustExtents, tessellatePolyline, UNIT_TO_METRES } from "../drawings/dxf-geometry";
 import { aciToRgb } from "../drawings/aci";
 
 export type CadUnits = "auto" | DxfUnits;
@@ -245,7 +245,11 @@ export function buildGeometry(
         break;
       case "LWPOLYLINE":
         if (e.hatch) break; // hatch boundaries are fills, not linework: keeps the linked underlay clean
-        chain(e.points, !!e.closed);
+        // A7 keeps raw vertices + bulges on the entity (never pre-tessellated),
+        // so the link tessellates them back here: without this a bulged
+        // segment arrives in the model as its straight chord. This restores
+        // exactly the point sequence the reader used to expand at read time.
+        chain(tessellatePolyline(e.points, e.bulges, !!e.closed), !!e.closed);
         break;
       case "CIRCLE":
         chain(arcPoints(e.center.x, e.center.y, e.radius, 0, Math.PI * 2, e.center.z ?? 0), false);
