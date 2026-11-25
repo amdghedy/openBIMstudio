@@ -1021,6 +1021,19 @@ export function segSegIntersection(a: Pt, b: Pt, c: Pt, d: Pt): Pt | null {
   return { x: a.x + t * r.x, y: a.y + t * r.y };
 }
 
+/** Intersection of the infinite lines through AB and CD (no bounds check); null when parallel. */
+export function lineLineIntersection(a: Pt, b: Pt, c: Pt, d: Pt): Pt | null {
+  const r = { x: b.x - a.x, y: b.y - a.y }, s = { x: d.x - c.x, y: d.y - c.y };
+  const den = r.x * s.y - r.y * s.x;
+  if (Math.abs(den) < 1e-14) return null;
+  const t = ((c.x - a.x) * s.y - (c.y - a.y) * s.x) / den;
+  return { x: a.x + t * r.x, y: a.y + t * r.y };
+}
+
+// Priority tiers are a TIE-BREAK only (A15): AutoCAD picks the nearest
+// snap candidate inside the aperture, so a higher-priority snap no longer
+// beats a closer lower-priority one. Two candidates the same distance
+// apart (within TIE_EPS) fall back to tier order.
 const TIER: Record<SnapKind, number> = {
   endpoint: 0, midpoint: 0, center: 0, quadrant: 0, node: 0, insertion: 0, "geometric-center": 0,
   intersection: 1, apparent: 1, extension: 1, perpendicular: 1, tangent: 1, parallel: 1, nearest: 2,
@@ -1055,11 +1068,15 @@ export function findSnap(
   const on = new Set(modes);
   const ids = queryIndex(idx, x, y, tol).filter((i) => visible(entities[i]) && !isHatchEntity(entities[i]));
   let best: Snap | null = null, bd = tol;
+  // Nearest inside the aperture wins; tiers only break (near-)ties.
+  const TIE_EPS = 1e-9;
   const consider = (s: Snap) => {
     if (!on.has(s.kind)) return;
     const d = Math.hypot(s.x - x, s.y - y);
     if (d > tol) return;
-    if (!best || TIER[s.kind] < TIER[best.kind] || (TIER[s.kind] === TIER[best.kind] && d < bd)) { best = s; bd = d; }
+    if (!best) { best = s; bd = d; return; }
+    if (d < bd - TIE_EPS) { best = s; bd = d; return; }
+    if (d <= bd + TIE_EPS && TIER[s.kind] < TIER[best.kind]) { best = s; bd = d; }
   };
   // Parallel references live near the anchor point, not the cursor — the
   // cursor may sit far from the entity being paralleled.
@@ -1078,6 +1095,19 @@ export function findSnap(
     for (let i = 0; i < segs.length && i < 80; i++) for (let j = i + 1; j < segs.length && j < 80; j++) {
       const p = segSegIntersection(segs[i][0], segs[i][1], segs[j][0], segs[j][1]);
       if (p) consider({ ...p, kind: "intersection" });
+    }
+    // APPARENT INTERSECTION (A15): the crossing of the infinite lines
+    // through two segments that do not meet within their bounds. The
+    // mode was accepted but could never fire — only bounded crossings
+    // were ever computed. A bounded crossing is an "intersection",
+    // never "apparent"; only the extension crossing is offered, and
+    // only when it lands inside the aperture.
+    if (on.has("apparent")) {
+      for (let i = 0; i < segs.length && i < 80; i++) for (let j = i + 1; j < segs.length && j < 80; j++) {
+        if (segSegIntersection(segs[i][0], segs[i][1], segs[j][0], segs[j][1])) continue;
+        const p = lineLineIntersection(segs[i][0], segs[i][1], segs[j][0], segs[j][1]);
+        if (p) consider({ ...p, kind: "apparent" });
+      }
     }
   }
   // EXTENSION: project cursor onto infinite rays past endpoints

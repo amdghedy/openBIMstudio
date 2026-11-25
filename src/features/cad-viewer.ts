@@ -50,6 +50,14 @@ import { sanitizeSessionUi, sessionUiSignature, hiddenEntityIndexes, sanitizeHid
 import * as M from "../modules/cad-viewer/viewer-math";
 import * as LayerLock from "../modules/cad-viewer/layer-lock";
 import * as GridSnap from "../modules/cad-viewer/grid-snap";
+import {
+  createCadSnapOverride,
+  resolveOverrideKeys as resolveCadOverrideKeys,
+  isOverrideFirstKey as isCadOverrideFirstKey,
+  CAD_SNAP_OVERRIDE_ENTRIES,
+  cadSnapOverrideLabel,
+  type CadSnapOverrideKind,
+} from "../modules/cad-viewer/cad-snap-override";
 import { resolvedOf, bindDocumentBlocks, setActiveBlocks, touchBlocks, explodeInsert } from "../modules/drawings/block-refs";
 import * as BE from "../modules/drawings/block-edit";
 import { XrefStore, composeXrefs, compareXref, type ComposedXref } from "../modules/drawings/xref-engine";
@@ -1660,6 +1668,42 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let userGridStep: number | null = null;
   let userSnapStep: number | null = null;
   const snapModes = new Set<M.SnapKind>(M.ALL_SNAPS);
+  // One-shot snap overrides (A15, G14 in the CAD viewer): SE/SM/SC/SI/SN
+  // restrict the NEXT snap pick to one kind, then clear. The armed kind
+  // bypasses `snapModes` — that is the point of an override. State lives
+  // in the pure module; the viewer owns the key buffer, the prompt and
+  // the consume/clear sites.
+  const cadSnapOverride = createCadSnapOverride();
+  let cadOverrideKeyFirst: string | null = null;
+  let cadOverrideKeyTimer: number | null = null;
+  /** Tools that pick objects, not points — a snap override never applies to them. */
+  const CAD_OBJECT_PICK_TOOLS: ReadonlySet<Tool> = new Set([
+    "radius", "match", "erase", "hatch", "dimarc", "dimdia", "arpath", "dimcenter", "explode",
+  ]);
+  /** True while a CAD tool is awaiting a point (the override keys only fire then). */
+  const isCadOverrideToolActive = (): boolean =>
+    tool !== "select" && tool !== "box" && tool !== "pan" && tool !== "zoomwin" &&
+    !pick && !mod && !CAD_OBJECT_PICK_TOOLS.has(tool);
+  /** Show the armed override in the status-bar prompt, else the tool prompt (no log spam). */
+  const refreshSnapOverridePrompt = (): void => {
+    acadPromptText = cadSnapOverride.active
+      ? `Snap override: ${cadSnapOverrideLabel(cadSnapOverride.active)} — next pick only · Esc cancels`
+      : toolPrompt();
+    try { updateStatus(cursor ?? undefined); } catch { /* */ }
+  };
+  const armCadSnapOverride = (kind: CadSnapOverrideKind): void => {
+    cadSnapOverride.arm(kind);
+    showAcadPrompt(`Snap override: ${cadSnapOverrideLabel(kind)} — next pick only · Esc cancels`);
+  };
+  const clearCadSnapOverride = (): void => {
+    if (!cadSnapOverride.active) return;
+    cadSnapOverride.clear();
+    refreshSnapOverridePrompt();
+  };
+  const clearCadOverrideKeyBuffer = (): void => {
+    cadOverrideKeyFirst = null;
+    if (cadOverrideKeyTimer != null) { window.clearTimeout(cadOverrideKeyTimer); cadOverrideKeyTimer = null; }
+  };
   let orthoOn = false;
   let polarOn = true; // on by default for accurate orthogonal chains
   let polarAngle = 90;
@@ -5438,6 +5482,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         const s2 = snapped(wp);
         const after = X.lengthenTo(e, pick.nearEnd, s2 ? { x: s2.x, y: s2.y } : wp);
         if (!after) return true;
+        // A one-shot override is consumed by the snap pick it restricted.
+        if (s2) cadSnapOverride.consumeAfterSnap();
         commitModify([e], [after]);
         logCmd(`LENGTHEN: new length = ${fmt(X.entitySpanLength(after))}.`);
         clearPickState();
@@ -6569,6 +6615,46 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     addItem("Object Properties",()=>{showProps();});
     addItem("Undo",undo,undoStack.length===0,false,"Ctrl+Z");
     addItem("Redo",redo,redoStack.length===0,false,"Ctrl+Y");
+    document.body.appendChild(menu);
+    const rect=menu.getBoundingClientRect();
+    menu.style.left=`${Math.max(6,Math.min(ev.clientX,window.innerWidth-rect.width-6))}px`;
+    menu.style.top=`${Math.max(6,Math.min(ev.clientY,window.innerHeight-rect.height-6))}px`;
+    const close=(e:PointerEvent)=>{if(!menu.contains(e.target as Node)){menu.remove();document.removeEventListener("pointerdown",close,true);}};
+    document.addEventListener("pointerdown",close,true);
+    menu.addEventListener("keydown",(e)=>{if(e.key==="Escape"){menu.remove();}});
+  }
+
+  /**
+   * Right-click Snap Overrides menu (A15): shown while a point-awaiting
+   * CAD tool is active, instead of the idle menu. Same visual style as
+   * showCadContextMenu; the five override entries arm the one-shot
+   * override for the next pick, and "Clear override" disarms it.
+   */
+  function showCadSnapOverrideMenu(ev: MouseEvent): void {
+    ev.preventDefault();
+    ev.stopPropagation();
+    document.querySelectorAll(".obs-cad-context-menu").forEach((n) => n.remove());
+    const menu = document.createElement("div");
+    menu.className = "obs-cad-context-menu";
+    menu.setAttribute("data-obs-ui", "1");
+    menu.style.cssText = "position:fixed;z-index:20000;min-width:245px;max-height:80vh;overflow:auto;padding:5px 0;background:#171d27;color:#f2f6fb;border:1px solid #354254;border-radius:7px;box-shadow:0 12px 32px rgba(0,0,0,.48);font:12px 'Segoe UI',system-ui,sans-serif";
+    menu.addEventListener("mousedown", (e) => e.stopPropagation());
+    const addSep = () => { const d=document.createElement("div"); d.style.cssText="height:1px;background:#303b4b;margin:4px 7px"; menu.appendChild(d); };
+    const addLabel = (label: string) => { const d=document.createElement("div"); d.textContent=label; d.style.cssText="padding:5px 11px 3px;color:#aebccd;font-size:9px;font-weight:700;letter-spacing:.08em"; menu.appendChild(d); };
+    const addItem = (label: string, run: () => void, disabled = false, shortcut = "", snapKind = "") => {
+      const b=document.createElement("button"); b.type="button"; b.disabled=disabled; b.textContent=label;
+      if (snapKind) b.setAttribute("data-snap-override", snapKind);
+      b.style.cssText="display:flex;align-items:center;width:100%;gap:18px;padding:7px 11px;border:0;border-radius:0;background:transparent;text-align:start;color:inherit;font:inherit;cursor:"+(disabled?"default":"pointer")+";opacity:"+(disabled?".55":"1");
+      if(shortcut){const k=document.createElement("span");k.textContent=shortcut;k.style.cssText="margin-inline-start:auto;color:#a7b5c6;font-size:10px";b.appendChild(k);}
+      b.onmouseenter=()=>{if(!disabled)b.style.background="#263447";}; b.onmouseleave=()=>b.style.background="transparent";
+      b.onclick=()=>{menu.remove();run();}; menu.appendChild(b);
+    };
+    addLabel("SNAP OVERRIDES — NEXT PICK ONLY");
+    for (const entry of CAD_SNAP_OVERRIDE_ENTRIES) {
+      addItem(entry.label, () => armCadSnapOverride(entry.kind), cadSnapOverride.active === entry.kind, entry.keys.toUpperCase(), entry.kind);
+    }
+    addSep();
+    addItem("Clear override", () => clearCadSnapOverride(), !cadSnapOverride.active, "Esc");
     document.body.appendChild(menu);
     const rect=menu.getBoundingClientRect();
     menu.style.left=`${Math.max(6,Math.min(ev.clientX,window.innerWidth-rect.width-6))}px`;
@@ -8130,6 +8216,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     closeSelectionCycle();
     clearModState();
     clearPickState();
+    // A tool change ends any armed one-shot snap override (and a
+    // half-typed override key sequence) — the override applies to the
+    // next pick of the tool it was armed under, nothing later.
+    clearCadSnapOverride();
+    clearCadOverrideKeyBuffer();
     matchSrc = null;
     tool = t;
     if (t !== "circle") circleMode = "center";
@@ -8263,7 +8354,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (!idx || !snapOn) return null;
     // drawing workspace: when a point is already picked, enable PERP against that base
     const from = pts.length ? pts[pts.length - 1] : mod?.base ? mod.base : null;
-    return M.findSnap(idx, ents, wp.x, wp.y, 14 / view.scale, [...snapModes], visible, from);
+    // An armed one-shot override restricts the pick to its kind alone —
+    // it bypasses the mode set (that is what an override is for).
+    const modes = cadSnapOverride.active ? [cadSnapOverride.active] : [...snapModes];
+    return M.findSnap(idx, ents, wp.x, wp.y, 14 / view.scale, modes, visible, from);
   };
 
   const constrainInputPoint = (point: M.Pt, anchor: M.Pt | null, hasObjectSnap: boolean): M.Pt => {
@@ -8396,6 +8490,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const anchor = mod?.base && mod.stage === "second" ? mod.base : null;
       mp = constrainInputPoint(mp, anchor, !!snapPoint);
       if (onModPointerDown(mp)) {
+        // A one-shot override is consumed by the snap pick it restricted.
+        if (snapPoint && cadSnapOverride.consumeAfterSnap()) refreshSnapOverridePrompt();
         draw();
         return;
       }
@@ -9161,6 +9257,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       default:
         break;
     }
+    // A one-shot override is consumed by the snap pick it restricted.
+    // Object-pick tools never take a snap pick, so they never consume.
+    if (snapPoint && !CAD_OBJECT_PICK_TOOLS.has(tool) && cadSnapOverride.consumeAfterSnap()) refreshSnapOverridePrompt();
     draw();
   });
 
@@ -9276,6 +9375,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     // In idle selection mode, right-click opens the complete CAD context menu.
     if (tool === "select") { showCadContextMenu(ev); return; }
+    // A15: during a point-awaiting drafting tool, right-click offers the
+    // one-shot snap overrides instead of cancelling. Pick/mod steps and
+    // the offset pickSide step keep their confirm/cancel behaviour above.
+    if (isCadOverrideToolActive()) { showCadSnapOverrideMenu(ev); return; }
     ev.preventDefault();
   });
 
@@ -9518,9 +9621,59 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (!/^[a-zA-Z0-9._+-]$/.test(ev.key)) return;
     if (isUiTextField(ev.target)) return;
     if (dynCommandEl && dynCommandInput && document.activeElement === dynCommandInput) return;
+    // One-shot snap overrides (A15): two-letter keys while a drafting
+    // tool is active. Mirrors the plan-view G14 handler: the first "s"
+    // is buffered (800 ms); a lone "s" opens the command line with "s"
+    // exactly as the unmodified handler would have, and a non-override
+    // pair opens it with both letters. SC resolves to snap-centre here
+    // — the SCALE command alias and the G8 gizmo scale never see the
+    // pair while a CAD tool is active; with no tool active SC falls
+    // through below to the command line as SCALE.
+    if (/^[a-zA-Z]$/.test(ev.key) && isCadOverrideToolActive()) {
+      const k = ev.key.toLowerCase();
+      if (cadOverrideKeyFirst === null) {
+        if (isCadOverrideFirstKey(k)) {
+          cadOverrideKeyFirst = k;
+          if (cadOverrideKeyTimer != null) window.clearTimeout(cadOverrideKeyTimer);
+          cadOverrideKeyTimer = window.setTimeout(() => {
+            cadOverrideKeyFirst = null;
+            cadOverrideKeyTimer = null;
+            if (screenTypeActive && page.isConnected) openDynamicCommand("s");
+          }, 800);
+          ev.preventDefault();
+          ev.stopImmediatePropagation();
+          return;
+        }
+      } else {
+        const first = cadOverrideKeyFirst;
+        clearCadOverrideKeyBuffer();
+        const kind = resolveCadOverrideKeys(first, k, true);
+        if (kind) {
+          armCadSnapOverride(kind);
+          ev.preventDefault();
+          ev.stopImmediatePropagation();
+          return;
+        }
+        // Not an override pair: open the command line with both letters,
+        // exactly as the unmodified handler would have opened it with
+        // the first (so "sl" still reaches the command line).
+        openDynamicCommand(first + k);
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        return;
+      }
+    }
+    // A buffered first "s" must not be lost — or worse, replayed by its
+    // 800 ms timer over what the user typed next. A digit or punctuation
+    // after "s" opens the command line with both characters ("s5"),
+    // exactly like a non-override second letter opens it with both.
+    // (openDynamicCommand overwrites the input value on every call, so
+    // leaving the timer armed here would clobber the digit.)
+    const pendingFirst = cadOverrideKeyFirst;
+    clearCadOverrideKeyBuffer();
     ev.preventDefault();
     ev.stopImmediatePropagation();
-    openDynamicCommand(ev.key);
+    openDynamicCommand(pendingFirst ? pendingFirst + ev.key : ev.key);
   };
   window.addEventListener("keydown", onAnywhereCommandType, true);
   const stageEl = root.querySelector<HTMLElement>("[data-r=stage]");
@@ -12536,10 +12689,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       { id: "center", label: "Center", detail: "Circle and arc centers" },
       { id: "quadrant", label: "Quadrant", detail: "Circle and arc 0° / 90° / 180° / 270° points" },
       { id: "intersection", label: "Intersection", detail: "Crossings between supported line segments" },
+      { id: "apparent", label: "Apparent Intersection", detail: "Crossings of two entities' extensions inside the aperture" },
+      { id: "extension", label: "Extension", detail: "Points along a line or arc extended past its endpoint" },
       { id: "perpendicular", label: "Perpendicular", detail: "Projection from the last picked point" },
       { id: "tangent", label: "Tangent", detail: "Tangent snap candidates" },
       { id: "parallel", label: "Parallel", detail: "Parallel snap candidates" },
       { id: "nearest", label: "Nearest", detail: "Nearest point on supported geometry" },
+      { id: "node", label: "Node", detail: "Point objects" },
+      { id: "insertion", label: "Insertion", detail: "Block insertion points" },
+      { id: "geometric-center", label: "Geometric Center", detail: "Centroid of a closed polyline or region" },
     ];
     const panel = openOverlay(`
       <b style="font-size:15px;color:#38bdf8">Object Snap Modes (OSNAPSET)</b>
@@ -12575,7 +12733,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     });
     panel.querySelector("[data-r=snap-all]")?.addEventListener("click", () => refresh(M.ALL_SNAPS));
     panel.querySelector("[data-r=snap-none]")?.addEventListener("click", () => refresh([]));
-    panel.querySelector("[data-r=snap-default]")?.addEventListener("click", () => refresh(M.ALL_SNAPS));
+    // A15: Defaults used to refresh ALL_SNAPS — identical to All, so it
+    // never restored the defaults. It restores DEFAULT_SNAP_MODES now.
+    panel.querySelector("[data-r=snap-default]")?.addEventListener("click", () => refresh(M.DEFAULT_SNAP_MODES));
     panel.querySelector("[data-r=snap-close]")?.addEventListener("click", closeOverlay);
   }
 
