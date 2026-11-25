@@ -54,6 +54,7 @@ import { resolvedOf, bindDocumentBlocks, setActiveBlocks, touchBlocks, explodeIn
 import * as BE from "../modules/drawings/block-edit";
 import { XrefStore, composeXrefs, compareXref, type ComposedXref } from "../modules/drawings/xref-engine";
 import * as X from "../modules/cad-viewer/modify-math";
+import * as FC from "../modules/cad-viewer/fillet-chamfer";
 import { solveRelations, describeBridge, relationArity, validateRelation, type Relation, type RelationKind } from "../modules/cad-viewer/constraint-bridge";
 import * as AcadParity from "../modules/cad-viewer/acad-parity"
 import {
@@ -333,8 +334,9 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "TRIM", aliases: ["TR", "TRIM"], description: "Trim objects at cutting edges" },
   { name: "EXTEND", aliases: ["EX"], description: "Extend objects to boundary edges" },
   { name: "BREAK", aliases: ["BR"], description: "Break an object between two points" },
-  { name: "FILLET", aliases: ["F"], description: "Fillet two lines with a tangent arc (FILLET R <radius>)" },
-  { name: "CHAMFER", aliases: ["CHA"], description: "Bevel two lines (CHAMFER <d1> <d2>)" },
+  { name: "FILLET", aliases: ["F"], description: "Fillet two lines, arcs or polyline segments with a tangent arc — type a radius at the prompt, R to re-prompt, T for Trim/No trim (FILLET R <radius>, FILLET NOTRIM)" },
+  { name: "CHAMFER", aliases: ["CHA"], description: "Bevel two lines, arcs or polyline segments — type the distances at the prompt, D to re-prompt, T for Trim/No trim (CHAMFER <d1> <d2>, CHAMFER NOTRIM)" },
+  { name: "TRIMMODE", aliases: [], description: "Trim mode for FILLET / CHAMFER / TRIM / EXTEND — 1 trims to the tangent points, 0 keeps the originals full length" },
   { name: "JOIN", aliases: ["J"], description: "Join collinear lines / polylines into one polyline" },
   { name: "EXPLODE", aliases: ["X"], description: "Explode polylines into individual segments" },
   { name: "STRETCH", aliases: ["S"], description: "Stretch objects through a crossing window" },
@@ -4692,14 +4694,151 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     ghost: DxfEntity | null;
     /** MLEADER: landing end point (text goes there). */
     landing: M.Pt | null;
+    /** FILLET / CHAMFER: world point where each object was picked (disambiguates corners / polyline segments). */
+    pickPts: M.Pt[];
     /** CONSTRAINT: which one-shot constraint is being applied (see startConstraint). */
     con: string;
     /** CONSTRAINT: first picked entity (source of the relation). */
     conSrc: number;
   }
   let pick: PickOp | null = null;
-  let filletR = 10;
-  let chamferD = [5, 5];
+  /**
+   * FILLET / CHAMFER settings — ONE shared source of truth. The live values
+   * below are initialised from the persisted store (FILLETRAD / CHAMFERD)
+   * and every writer goes through applyFilletRadius / applyChamferDistances,
+   * which update the live value AND the store together. Before A6 the
+   * command-line setters wrote only the store while the tool read only
+   * these locals, so FILLETRAD never changed the radius the tool used.
+   */
+  let filletR = getFilletRadiusStore(10);
+  let chamferD: [number, number] = (() => {
+    const [a, b] = getChamferDistStore();
+    return a > 0 || b > 0 ? [a, b] : [5, 5];
+  })();
+  /** AutoCAD TRIMMODE (1 = trim, 0 = no trim) for FILLET / CHAMFER. */
+  let trimMode = true;
+
+  function applyFilletRadius(v: number): void {
+    filletR = v;
+    setFilletRadiusStore(v);
+  }
+  function applyChamferDistances(d1: number, d2: number): void {
+    chamferD = [d1, d2];
+    setChamferDistStore(d1, d2);
+  }
+
+  /**
+   * FILLET / CHAMFER in-tool prompts (A6). These are pendingNumeric
+   * handlers — the same machinery DIVIDE / MEASURE / OFFSET use: the user
+   * types a value in the command line and Enter submits it, Esc cancels
+   * the whole tool (resetDrawingSession clears pendingNumeric), and
+   * clicking an object instead just proceeds with the current value, so
+   * the default is preserved when the user picks the two entities
+   * directly. Each handler re-arms itself: executeDrawingCommand clears
+   * pendingNumeric before invoking it, so a handler that wants to stay
+   * live must set it again.
+   */
+  function onFilletRadiusTyped(v: number): void {
+    if (!Number.isFinite(v) || v < 0) {
+      logCmd("Fillet radius must be ≥ 0.");
+    } else {
+      applyFilletRadius(v);
+      logCmd(v === 0 ? "Fillet radius = 0 — corners will be trimmed square (no arc)." : `Fillet radius = ${fmt(v)}`);
+    }
+    pendingNumeric = onFilletRadiusTyped;
+    showAcadPrompt();
+  }
+  function onChamferD2Typed(v: number): void {
+    if (!Number.isFinite(v) || v <= 0) {
+      logCmd("Chamfer distances must be greater than zero.");
+    } else {
+      applyChamferDistances(chamferD[0], v);
+      logCmd(`Second chamfer distance = ${fmt(v)}`);
+    }
+    pendingNumeric = onChamferD1Typed;
+    showAcadPrompt();
+  }
+  function onChamferD1Typed(v: number): void {
+    if (!Number.isFinite(v) || v <= 0) {
+      logCmd("Chamfer distances must be greater than zero.");
+      pendingNumeric = onChamferD1Typed;
+    } else {
+      applyChamferDistances(v, chamferD[1]);
+      logCmd(`First chamfer distance = ${fmt(v)} — specify second chamfer distance <${fmt(chamferD[1])}>:`);
+      pendingNumeric = onChamferD2Typed;
+    }
+    showAcadPrompt();
+  }
+  function armFilletRadiusPrompt(): void {
+    pendingNumeric = onFilletRadiusTyped;
+    logCmd(`Specify fillet radius <${fmt(filletR)}>: (type a value + Enter, or pick the first object)`);
+    showAcadPrompt();
+  }
+  function armChamferDistancePrompt(): void {
+    pendingNumeric = onChamferD1Typed;
+    logCmd(`Specify first chamfer distance <${fmt(chamferD[0])}>: (type a value + Enter, or pick the first object)`);
+    showAcadPrompt();
+  }
+  function trimModeLabel(): string {
+    return trimMode ? "Trim" : "No trim";
+  }
+
+  /**
+   * In-tool option keywords while a FILLET / CHAMFER pick is active (A6):
+   * R [value] re-prompts / sets the radius, D [d1 [d2]] re-prompts / sets
+   * the distances, T toggles Trim, TRIM / NOTRIM set it explicitly. Returns
+   * true when the entry was consumed here, so it never reaches the generic
+   * command dispatcher — "T" must not start another tool mid-fillet.
+   * Anything else returns false and dispatches normally.
+   */
+  function handleFilletChamferOption(trimmed: string): boolean {
+    if (!pick || (pick.kind !== "fillet" && pick.kind !== "chamfer")) return false;
+    const act = FC.parseFilletChamferOption(trimmed, pick.kind);
+    switch (act.action) {
+      case "none":
+        return false;
+      case "invalid":
+        logCmd(act.message);
+        showAcadPrompt();
+        return true;
+      case "promptRadius":
+        armFilletRadiusPrompt();
+        return true;
+      case "setRadius":
+        applyFilletRadius(act.value);
+        logCmd(act.value === 0 ? "Fillet radius = 0 — corners will be trimmed square (no arc)." : `Fillet radius = ${fmt(act.value)}`);
+        pendingNumeric = onFilletRadiusTyped;
+        showAcadPrompt();
+        return true;
+      case "promptDistances":
+        armChamferDistancePrompt();
+        return true;
+      case "setDistance1":
+        applyChamferDistances(act.value, chamferD[1]);
+        logCmd(`First chamfer distance = ${fmt(act.value)} — specify second chamfer distance <${fmt(chamferD[1])}>:`);
+        pendingNumeric = onChamferD2Typed;
+        showAcadPrompt();
+        return true;
+      case "setDistances":
+        applyChamferDistances(act.d1, act.d2);
+        logCmd(`Chamfer distances = ${fmt(act.d1)} and ${fmt(act.d2)}`);
+        pendingNumeric = onChamferD1Typed;
+        showAcadPrompt();
+        return true;
+      case "toggleTrim":
+        trimMode = !trimMode;
+        logCmd(`Trim mode: ${trimModeLabel()} — FILLET / CHAMFER will ${trimMode ? "trim" : "keep"} the originals.`);
+        showAcadPrompt();
+        return true;
+      case "setTrim":
+        trimMode = act.value;
+        logCmd(`Trim mode: ${trimModeLabel()} — FILLET / CHAMFER will ${trimMode ? "trim" : "keep"} the originals.`);
+        showAcadPrompt();
+        return true;
+      default:
+        return false;
+    }
+  }
   let polySides = 6;
   let tableDims = { rows: 3, cols: 4 };
   /** Named views: name → view snapshot (VIEW S / VIEW R). */
@@ -4731,9 +4870,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       case "break":
         return pick.stage === "obj" ? "Select object:" : "Specify second break point:";
       case "fillet":
-        return "Select first object:";
+        return pick.edges.length === 0
+          ? `Select first object or [Radius/Trim]: (R ${fmt(filletR)} · ${trimModeLabel()})`
+          : `Select second object or [Radius/Trim]: (R ${fmt(filletR)} · ${trimModeLabel()})`;
       case "chamfer":
-        return "Select first line:";
+        return pick.edges.length === 0
+          ? `Select first object or [Distance/Trim]: (${fmt(chamferD[0])} × ${fmt(chamferD[1])} · ${trimModeLabel()})`
+          : `Select second object or [Distance/Trim]: (${fmt(chamferD[0])} × ${fmt(chamferD[1])} · ${trimModeLabel()})`;
       case "join":
         return "Select objects to join: (click · Enter / right-click to join)";
       case "stretch":
@@ -4817,13 +4960,24 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       lenVal: 0,
       ghost: null,
       landing: null,
+      pickPts: [],
       con: "",
       conSrc: -1,
     };
     // laymrg reuses the "edges" stage for the source-layer pick
     if (kind === "laymrg") pick.stage = "obj";
-    if (kind === "fillet") logCmd(`Current fillet radius = ${fmt(filletR)} (FILLET R <value> to change)`);
-    if (kind === "chamfer") logCmd(`Current chamfer distances = ${fmt(chamferD[0])} and ${fmt(chamferD[1])} (CHAMFER <d1> <d2> to change)`);
+    // FILLET / CHAMFER prompt in-tool for the radius / distances (A6): the
+    // prompt is armed as a pendingNumeric handler, so typing a value + Enter
+    // sets it and Esc cancels the tool — while clicking an object straight
+    // away keeps the current value (the default is preserved).
+    if (kind === "fillet") {
+      logCmd(`Current fillet radius = ${fmt(filletR)} · ${trimModeLabel()} — type a radius + Enter, R to re-prompt, T to toggle Trim, or pick the first object.`);
+      pendingNumeric = onFilletRadiusTyped;
+    }
+    if (kind === "chamfer") {
+      logCmd(`Current chamfer distances = ${fmt(chamferD[0])} and ${fmt(chamferD[1])} · ${trimModeLabel()} — type d1 + Enter, then d2 + Enter, D to re-prompt, T to toggle Trim, or pick the first object.`);
+      pendingNumeric = onChamferD1Typed;
+    }
     logCmd(pickPrompt());
   }
 
@@ -4946,38 +5100,69 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
   }
 
-  /** Commits the staged FILLET / CHAMFER between two picked LINE entities. */
+  /** Commits the staged FILLET / CHAMFER between two picked entities (LINE, ARC or a picked LWPOLYLINE segment). */
   function commitFilletChamfer(a: DxfEntity, b: DxfEntity): void {
     if (!pick) return;
-    if (a.type !== "LINE" || b.type !== "LINE") {
-      logCmd("FILLET / CHAMFER supports two LINE entities.");
-      pick.stage = "targets";
-      pick.edges = [];
+    const pk = pick;
+    const fail = (msg: string): void => {
+      logCmd(msg);
+      pk.stage = "targets";
+      pk.edges = [];
+      pk.pickPts = [];
       logCmd(pickPrompt());
+    };
+    // commitReplace would refuse a locked-layer / fixed object after
+    // logging; fail fast here so no success message is ever printed for a
+    // commit that did not happen. (Locked-layer picks are already gated by
+    // `pickable`, but a fixed object can still be picked.)
+    for (const e of [a, b]) {
+      if (fixedEnts.has(e)) {
+        fail("CONSTRAINT: a fixed object is in the selection (FIX). Run UNFIX on it to allow edits.");
+        return;
+      }
+      if (isLayerLocked(e.layer)) {
+        fail("LAYER: an object is on a locked layer — unlock the layer to edit it.");
+        return;
+      }
+    }
+    const operandOf = (e: DxfEntity, pickPt: M.Pt | undefined): FC.FilletOperand => {
+      const fallback: M.Pt =
+        e.type === "LINE"
+          ? { x: (e.start.x + e.end.x) / 2, y: (e.start.y + e.end.y) / 2 }
+          : e.type === "ARC"
+            ? { x: e.center.x + e.radius * Math.cos((((e.startAngle + e.endAngle) / 2) * Math.PI) / 180), y: e.center.y + e.radius * Math.sin((((e.startAngle + e.endAngle) / 2) * Math.PI) / 180) }
+            : e.type === "LWPOLYLINE" && e.points.length
+              ? { ...e.points[0] }
+              : { x: 0, y: 0 };
+      const at = pickPt ?? fallback;
+      if (e.type === "LWPOLYLINE") {
+        return { entity: e, pick: at, segmentIndex: FC.nearestPolylineSegment(e.points, at, !!e.closed).index };
+      }
+      return { entity: e, pick: at };
+    };
+    const res =
+      pk.kind === "fillet"
+        ? FC.filletEntities(operandOf(a, pk.pickPts[0]), operandOf(b, pk.pickPts[1]), filletR, { trim: trimMode })
+        : FC.chamferEntities(operandOf(a, pk.pickPts[0]), operandOf(b, pk.pickPts[1]), chamferD[0], chamferD[1], { trim: trimMode });
+    if (!res.ok) {
+      fail(res.reason);
       return;
     }
-    if (pick.kind === "fillet") {
-      const r = X.filletTwoLines(a, b, filletR);
-      if (!r) {
-        logCmd("Fillet radius is too large for those lines.");
-        pick.stage = "targets";
-        pick.edges = [];
-        logCmd(pickPrompt());
-        return;
-      }
-      commitReplace([a, b], [...r.lines, r.arc]);
-      logCmd(`FILLET: R = ${fmt(filletR)} — 2 line(s) trimmed, 1 arc added.`);
+    commitReplace(res.before, res.after);
+    if (pk.kind === "fillet") {
+      logCmd(
+        res.addedKind === null
+          ? `FILLET: R = 0 — ${res.before.length} object(s) trimmed square to the corner (no arc).`
+          : trimMode
+            ? `FILLET: R = ${fmt(filletR)} — ${res.before.length} object(s) trimmed, 1 arc added.`
+            : `FILLET: R = ${fmt(filletR)} — ${res.before.length} object(s) kept full length (No trim), 1 arc added.`,
+      );
     } else {
-      const c = X.chamferTwoLines(a, b, chamferD[0], chamferD[1]);
-      if (!c) {
-        logCmd("Chamfer distances are too large for those lines.");
-        pick.stage = "targets";
-        pick.edges = [];
-        logCmd(pickPrompt());
-        return;
-      }
-      commitReplace([a, b], [...c.lines, c.bar]);
-      logCmd(`CHAMFER: ${fmt(chamferD[0])} × ${fmt(chamferD[1])} — 2 line(s) trimmed, 1 bevel added.`);
+      logCmd(
+        trimMode
+          ? `CHAMFER: ${fmt(chamferD[0])} × ${fmt(chamferD[1])} — ${res.before.length} object(s) trimmed, 1 bevel added.`
+          : `CHAMFER: ${fmt(chamferD[0])} × ${fmt(chamferD[1])} — ${res.before.length} object(s) kept full length (No trim), 1 bevel added.`,
+      );
     }
     clearPickState();
     setTool("select");
@@ -5065,10 +5250,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           return true;
         }
         pick.edges.push(hit);
+        pick.pickPts.push({ x: wp.x, y: wp.y });
         setSel([hit], true);
         if (pick.edges.length === 1) {
           pick.stage = "targets";
-          logCmd("Select second line:");
+          logCmd(pickPrompt());
         } else commitFilletChamfer(ents[pick.edges[0]], ents[pick.edges[1]]);
         return true;
       }
@@ -9916,6 +10102,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         return;
       }
     }
+    // FILLET / CHAMFER in-tool options while the tool is picking (A6):
+    // R = radius, D = distances, T / TRIM / NOTRIM = trim mode.
+    if (handleFilletChamferOption(trimmed)) {
+      draw();
+      return;
+    }
     // CIRCLE option keywords while CIRCLE is active
     if (tool === "circle" && pts.length === 0) {
       const k = cmd;
@@ -10449,6 +10641,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           const k = n.toUpperCase();
           if (k === "ORTHOMODE") return orthoOn ? 1 : 0;
           if (k === "SNAPMODE") return gridSnapOn ? 1 : 0;
+          if (k === "TRIMMODE") return trimMode ? 1 : 0;
           if (k === "GRIDMODE") return showGrid ? 1 : 0;
           if (k === "CLAYER") return currentLayer;
           return null;
@@ -10457,6 +10650,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           const k = n.toUpperCase();
           if (k === "ORTHOMODE") orthoOn = Number(v) !== 0;
           if (k === "SNAPMODE") gridSnapOn = Number(v) !== 0;
+          if (k === "TRIMMODE") trimMode = Number(v) !== 0;
           if (k === "GRIDMODE") showGrid = Number(v) !== 0;
           if (k === "CLAYER") currentLayer = String(v);
           updateStatus();
@@ -10898,15 +11092,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (cmd === "FILLET" || cmd === "F") {
       const ri = parts.indexOf("R") >= 0 ? parts.indexOf("R") : parts.indexOf("RADIUS");
       const rv = ri >= 0 ? parseFloat(parts[ri + 1] ?? "") : NaN;
-      if (Number.isFinite(rv) && rv > 0) filletR = rv;
-      else if (parts.length === 2 && Number.isFinite(parseFloat(parts[1]))) filletR = Math.abs(parseFloat(parts[1]));
+      if (Number.isFinite(rv) && rv >= 0) applyFilletRadius(rv);
+      else if (parts.length === 2 && Number.isFinite(parseFloat(parts[1]))) applyFilletRadius(Math.abs(parseFloat(parts[1])));
+      if (parts.some((p) => p.toUpperCase() === "NOTRIM")) trimMode = false;
+      else if (parts.some((p) => p.toUpperCase() === "TRIM")) trimMode = true;
       setTool("fillet");
       return;
     }
     if (cmd === "CHAMFER" || cmd === "CHA") {
       const nums = parts.slice(1).map(parseFloat).filter((v) => Number.isFinite(v) && v > 0);
-      if (nums.length >= 2) chamferD = [nums[0], nums[1]];
-      else if (nums.length === 1) chamferD = [nums[0], nums[0]];
+      if (nums.length >= 2) applyChamferDistances(nums[0], nums[1]);
+      else if (nums.length === 1) applyChamferDistances(nums[0], nums[0]);
+      if (parts.some((p) => p.toUpperCase() === "NOTRIM")) trimMode = false;
+      else if (parts.some((p) => p.toUpperCase() === "TRIM")) trimMode = true;
       setTool("chamfer");
       return;
     }
@@ -11854,23 +12052,30 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     if (cmd === "FILLETRAD" || cmd === "FILLETR") {
-      if (!arg) { logCmd(`FILLETRAD = ${getFilletRadiusStore()}`); return; }
+      if (!arg) { logCmd(`FILLETRAD = ${filletR}`); return; }
       const r = Number(arg);
       if (!(r >= 0)) { logCmd("FILLETRAD: specify radius ≥ 0"); return; }
-      setFilletRadiusStore(r);
+      applyFilletRadius(r);
       logCmd(`FILLETRAD = ${r}`);
       return;
     }
     if (cmd === "CHAMFERD" || cmd === "CHAMFERDIST") {
       if (!arg) {
-        const [a, b] = getChamferDistStore();
-        logCmd(`CHAMFERD = ${a}, ${b}`);
+        logCmd(`CHAMFERD = ${chamferD[0]}, ${chamferD[1]}`);
         return;
       }
       const parts = arg.trim().split(/\s+/).map(Number);
       if (!Number.isFinite(parts[0])) { logCmd("CHAMFERD: CHAMFERD <d1> [d2]"); return; }
-      setChamferDistStore(parts[0], parts[1]);
+      applyChamferDistances(parts[0], parts[1] ?? parts[0]);
       logCmd(`CHAMFERD = ${parts[0]}, ${parts[1] ?? parts[0]}`);
+      return;
+    }
+    if (cmd === "TRIMMODE") {
+      if (!arg) { logCmd(`TRIMMODE = ${trimMode ? 1 : 0} (${trimModeLabel()})`); return; }
+      const t = arg.trim().toUpperCase();
+      if (t === "1" || t === "ON") { trimMode = true; logCmd("TRIMMODE = 1 (Trim)"); }
+      else if (t === "0" || t === "OFF") { trimMode = false; logCmd("TRIMMODE = 0 (No trim)"); }
+      else logCmd("TRIMMODE: specify 0 (No trim) or 1 (Trim)");
       return;
     }
     if (cmd === "XPLODEPL" || cmd === "XPL") {

@@ -697,6 +697,10 @@ export function setFilletRadiusStore(r: number): void {
 }
 export function getFilletRadiusStore(def = 0): number {
   try {
+    // A missing key is "never set", not "radius 0": return the caller's
+    // default so the viewer can tell an unset radius from a deliberate 0
+    // (radius 0 is a real AutoCAD fillet — trim square, no arc).
+    if (localStorage.getItem("obs.cad.filletR") === null) return def;
     const v = Number(localStorage.getItem("obs.cad.filletR"));
     return Number.isFinite(v) && v >= 0 ? v : def;
   } catch { return def; }
