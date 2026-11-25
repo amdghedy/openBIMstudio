@@ -4,7 +4,8 @@
  */
 import * as THREE from "three";
 import { ctx } from "../core/context";
-import { translateSelected, getActiveTool, onAuthoringChange } from "./authoring";
+import { translateSelected, duplicateSelected, getActiveTool, onAuthoringChange } from "./authoring";
+import { inputRouter, type Gesture } from "../core/input-router";
 
 type Any = Record<string, any>;
 type Phase = "idle" | "awaiting-base" | "previewing";
@@ -19,6 +20,21 @@ let selBox: THREE.Box3 = new THREE.Box3();
 let saved: SavedPos[] = [];
 let copyMode = false;
 let pointerId = -1;
+let unsubRouter: (() => void) | null = null;
+
+/**
+ * While a multi-move/copy preview is in flight, this tool owns every plain
+ * canvas click. Without the claim, the input router dispatches the click to
+ * the authoring gesture handler, whose pickSelect() treats an empty-space
+ * base-point click as a deselect — clearing the selection before the commit
+ * runs, so Copy/Move would duplicate/move nothing while reporting success.
+ * Priority 50 sits below the drag/gizmo handlers (80–100, which decline a
+ * stationary click) and above the authoring handler (10).
+ */
+function claimClicks(g: Gesture): boolean {
+  if (phase === "idle") return false;
+  return g.kind === "click" || g.kind === "dblclick";
+}
 
 const CANVAS = (): HTMLCanvasElement | null => {
   const r = (ctx as Any).world?.renderer?.three ?? (ctx as Any).world?.renderer;
@@ -162,12 +178,11 @@ function onDown(ev: PointerEvent): void {
   } else if (phase === "previewing" && baseWorld) {
     const dx = w.x - baseWorld.x, dz = w.z - baseWorld.z;
     if (copyMode) {
-      // duplicate selection before translating (simplified: translate original, then restore)
-      // For a full copy, authoring would need a duplicateSelected() primitive.
-      // We translate, then restore originals, leaving copies at the new position.
-      // (Requires duplicateSelected to exist; skip if not available.)
+      // Copy: duplicate the selection at the target; the originals stay put.
+      duplicateSelected(dx, dz);
+    } else {
+      translateSelected(dx, dz);
     }
-    translateSelected(dx, dz);
     baseWorld = null;
     phase = "awaiting-base";
     updateGhost(0, 0);
@@ -220,6 +235,8 @@ export function startMultiMove(copy = false): void {
   copyMode = copy;
   phase = "awaiting-base";
   makeGhost(selBox);
+  if (unsubRouter) { unsubRouter(); unsubRouter = null; }
+  unsubRouter = inputRouter.subscribe(claimClicks, 50);
   canvas.style.cursor = "crosshair";
   canvas.addEventListener("pointerdown", onDown, true);
   canvas.addEventListener("pointermove", onMove, true);
@@ -247,6 +264,7 @@ export function cancel(): void {
   canvas?.removeEventListener("pointerup", onUp, true);
   window.removeEventListener("keydown", onKey, true);
   window.removeEventListener("keyup", onKeyUp, true);
+  if (unsubRouter) { unsubRouter(); unsubRouter = null; }
   if (canvas) canvas.style.cursor = "";
   destroyGhost();
   phase = "idle";

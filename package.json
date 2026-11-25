@@ -310,6 +310,7 @@
     "test:feature-registry": "node tests/feature-registry.test.cjs",
     "test:review-links": "tsx tests/review-links.test.ts",
     "test:escape-all": "node tests/escape-all.test.cjs",
+    "test:multi-move-copy": "node tests/multi-move-copy.test.cjs",
     "test:autocad-parity": "node tests/autocad-parity.test.cjs",
     "test:cad-dim-tools": "node tests/cad-dim-tools.test.cjs",
     "test:spatial-index": "node tests/spatial-index.test.cjs",

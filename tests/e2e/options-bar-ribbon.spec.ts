@@ -102,3 +102,64 @@ test('options bar sits below the ribbon; tabs stay clickable with a selection ac
 
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('options-bar Copy leaves the original in place and drops a copy at the target (AutoCAD parity A2)', async ({ page }) => {
+  test.setTimeout(180000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+
+  await page.goto('/');
+  await expect(page.locator('.obs-ribbon')).toBeVisible({ timeout: 60000 });
+  await enterPlatform(page);
+  await expect.poll(() => page.evaluate(() => !!(window as any).__obsAuthoring), { timeout: 30000 }).toBe(true);
+
+  // A wall selected, so the Modify options bar shows.
+  const wallId = await page.evaluate(async () => {
+    const a = (window as any).__obsAuthoring;
+    return a.createElementByType('wall', { start: [-4, 0], end: [4, 0] }) as string;
+  });
+  expect(wallId, 'authored wall created').toBeTruthy();
+  await page.evaluate((id) => {
+    (window as any).__OBS_CTX__.features.authoring.selectAllAuthored([id]);
+  }, wallId);
+  const bar = page.locator('#obs-options-bar');
+  await expect.poll(async () => page.evaluate(() =>
+    getComputedStyle(document.querySelector('#obs-options-bar')!).display,
+  ), { timeout: 15000 }).toBe('flex');
+
+  // Copy, then two canvas clicks: base point, then target point.
+  await bar.getByRole('button', { name: 'Copy', exact: true }).click();
+  const canvas = page.locator('#viewport canvas').first();
+  await expect(canvas).toBeVisible({ timeout: 15000 });
+  const box = await canvas.boundingBox();
+  expect(box, 'canvas has a box').toBeTruthy();
+  const baseX = box!.x + box!.width / 2;
+  const baseY = box!.y + box!.height * 0.55;
+  await page.mouse.click(baseX, baseY);
+  await page.mouse.click(baseX + 120, baseY);
+
+  // The original must be unmoved; exactly one new wall must exist,
+  // shifted from the original by one consistent displacement.
+  await expect.poll(async () => page.evaluate((id) => {
+    const els = (window as any).__OBS_CTX__.features.authoring.getElements() as any[];
+    return els.length;
+  }, wallId), { timeout: 15000 }).toBe(2);
+  const { orig, copies } = await page.evaluate((id) => {
+    const els = (window as any).__OBS_CTX__.features.authoring.getElements() as any[];
+    const orig = els.find((e) => String(e.id) === id);
+    const copies = els.filter((e) => String(e.id) !== id && e.params?.start && e.params?.end);
+    return { orig: orig?.params ?? null, copies: copies.map((c) => c.params) };
+  }, wallId);
+  expect(orig.start).toEqual([-4, 0]);
+  expect(orig.end).toEqual([4, 0]);
+  expect(copies, 'exactly one copy').toHaveLength(1);
+  const dx = copies[0].start[0] - orig.start[0];
+  const dz = copies[0].start[1] - orig.start[1];
+  expect(dx, 'copy must land away from the original').not.toBe(0);
+  expect(copies[0].end[0]).toBeCloseTo(orig.end[0] + dx, 6);
+  expect(copies[0].end[1]).toBeCloseTo(orig.end[1] + dz, 6);
+
+  // The tool stays active until Esc; cancel it and confirm a clean page.
+  await page.keyboard.press('Escape');
+  expect(errors, errors.join('\n')).toEqual([]);
+});
