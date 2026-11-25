@@ -216,6 +216,7 @@
     },
     "tag": { "sheet": "from sheet", "default": "default", "edited": "edited by you", "typed": "typed by you" },
     "url": {
+      "unavailable": "Link import is not available on this site. Download the file and choose it above instead.",
       "placeholder": "Or paste a link to the sheet (https)",
       "fetch": "Fetch",
       "consent": "I agree this link is sent to this site's server, which downloads the file for me. The site's operator can see the link. PDF, PNG, JPEG or text, up to 8 MB.",
