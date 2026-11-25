@@ -15,6 +15,7 @@ import { runCreator, writeCreatorIfc, checkIfcStructure, type CreatorResult, typ
 import { templateFor, type ProductSpec } from "../modules/families/creator/build";
 import { TEMPLATES } from "../modules/families/creator/templates";
 import { resolveParts } from "../modules/families/creator/layout";
+import { checkPartMap } from "../modules/families/creator/part-map";
 import { extractPdfPages, renderPdfPages, MAX_OCR_PAGES } from "../modules/families/creator/pdf-text";
 import { fetchSheetFromUrl } from "../modules/families/creator/url-intake";
 import { recognizeImage, tidyOcrText } from "../modules/families/creator/ocr";
@@ -98,14 +99,18 @@ function currentParts(): PartView | null {
     return { parts: resolveParts(templateFor(result.spec), params), params };
   } catch { return null; }
 }
-/** The preview nodes in part order, only when each node sits at its part's centre; otherwise null and parts cannot be switched. */
+/** The preview nodes in part order, only when each node sits at its part's centre; otherwise null and the parts cannot be switched. */
 function partNodes(obj: THREE.Object3D, parts: ReturnType<typeof resolveParts>): THREE.Object3D[] | null {
-  if (parts.length !== obj.children.length) return null;
-  for (let i = 0; i < parts.length; i++) {
-    const k = obj.children[i], q = parts[i];
-    if (Math.hypot(k.position.x - q.cx, k.position.y - q.cy, k.position.z - q.cz) >= 1e-6) return null;
-  }
-  return [...obj.children];
+  return checkPartMap(obj.children, parts).ok ? [...obj.children] : null;
+}
+/** Whether the parts of the current result can be switched on and off safely. */
+function partsSwitchable(): boolean {
+  const pv = currentParts();
+  if (!pv || !result?.family) return false;
+  try {
+    const obj = deps.buildInEngine(result.family, result.family.types[0]).object;
+    return !!obj && checkPartMap(obj.children, pv.parts).ok;
+  } catch { return false; }
 }
 function pruneHidden(parts: ReturnType<typeof resolveParts>) {
   const names = new Set(parts.map((q) => q.name));
@@ -122,6 +127,7 @@ function updatePreview(fit: boolean) {
   if (obj && result?.spec) {
     const pv = currentParts();
     const nodes = pv ? partNodes(obj, pv.parts) : null;
+    if (pv && !nodes) hiddenParts.clear();
     if (pv && nodes) { pruneHidden(pv.parts); nodes.forEach((k, i) => { k.visible = !hiddenParts.has(pv.parts[i].name); }); }
   }
   preview.setObject(obj, fit || previewFit);
@@ -274,6 +280,7 @@ function resultHtml(r: CreatorResult): string {
 
 
 function partsHtml(parts: ReturnType<typeof resolveParts>): string {
+  if (!partsSwitchable()) { hiddenParts.clear(); exportShownOnly = false; return `<div class="obs-fc-sec" data-fc="parts"><div class="obs-fc-h">${esc(t("familyCreator.parts.title"))}</div><div class="obs-fc-detail" data-fc="parts-unavailable" style="color:#f59e0b">${esc(t("familyCreator.parts.unavailable"))}</div></div>`; }
   const nHidden = parts.filter((q) => hiddenParts.has(q.name)).length;
   const boxes = parts.map((q) => `<label class="obs-fc-part" style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" data-part="${esc(q.name)}"${hiddenParts.has(q.name) ? "" : " checked"}> <bdi>${esc(q.name)}</bdi></label>`).join("");
   const scope = nHidden === 0 ? t("familyCreator.parts.scopeAll", { n: parts.length })
@@ -387,7 +394,8 @@ async function downloadGlb() {
       });
     }
     let omitted = 0;
-    if (exportShownOnly && hiddenParts.size && parts.length === obj.children.length) {
+    if (exportShownOnly && hiddenParts.size && !checkPartMap(obj.children, parts).ok) throw new Error(t("familyCreator.parts.unavailable"));
+    if (exportShownOnly && hiddenParts.size) {
       const drop = obj.children.filter((_k, i) => hiddenParts.has(parts[i].name));
       if (drop.length === parts.length) throw new Error(t("familyCreator.parts.allHidden"));
       drop.forEach((k) => obj.remove(k));
@@ -514,6 +522,7 @@ function act(a: string) {
   else if (a === "ifc" && result?.ifcText && result.spec) {
     let text = result.ifcText, omittedNote = "";
     const pv = exportShownOnly && hiddenParts.size ? currentParts() : null;
+    if (exportShownOnly && hiddenParts.size && !partsSwitchable()) { notice = t("familyCreator.parts.unavailable"); render(); return; }
     if (pv && result.family) {
       const keep = pv.parts.filter((q) => !hiddenParts.has(q.name));
       if (!keep.length) { notice = t("familyCreator.parts.allHidden"); render(); return; }
