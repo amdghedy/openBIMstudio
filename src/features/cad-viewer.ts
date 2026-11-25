@@ -158,6 +158,7 @@ import * as DIM from "../modules/cad-viewer/dimension-system";
 import * as Ann from "../modules/cad-viewer/cad-annotation";
 import * as LayerMgr from "../modules/cad-viewer/cad-layer-manager";
 import * as Poly from "../modules/cad-viewer/cad-polyline";
+import * as Sel11 from "../modules/cad-viewer/cad-selection-a11";
 import { fmtTime } from "../core/region";
 import { strokeFontFor, strokeLinePolylines, strokeLineWidth, CAP_UNITS, type StrokeFont } from "../modules/drawings/stroke-font";
 
@@ -165,6 +166,8 @@ type Tool =
   | "pan"
   | "select"
   | "box"
+  | "fence"
+  | "lasso"
   | "zoomwin"
   | "dist"
   | "chain"
@@ -377,7 +380,9 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "QSELECT", aliases: ["QSI"], description: "Quick select by type, layer, ACI/RGB colour, linetype, lineweight, text content or all visible objects" },
   { name: "FILTER", aliases: [], description: "Selection filter — restrict clicking and window/crossing selection to chosen entity types (FILTER CLEAR resets)" },
   { name: "SELECTSIMILAR", aliases: ["SELSIM"], description: "Select objects matching the selected set by type, layer, colour, linetype or lineweight" },
-  { name: "SELECTIONCYCLING", aliases: ["SELCYCLE"], description: "Choose which overlapping object is selected at the cursor (Ctrl+W)" },
+  { name: "SELECTIONCYCLING", aliases: ["SELCYCLE"], description: "Choose which overlapping object is selected at the cursor (Ctrl+W); Ctrl+click cycles them one at a time" },
+  { name: "FENCE", aliases: ["FE"], description: "Select objects crossed by a fence polyline — click fence points, Enter / right-click to finish" },
+  { name: "LASSO", aliases: ["LSO"], description: "Freehand loop selection — press and drag to draw the loop; left-to-right is window, right-to-left is crossing" },
   { name: "ARRAYPOLAR", aliases: ["ARP"], description: "Create a polar array around a centre point; choose item count, sweep angle and whether items rotate" },
   { name: "ARRAYPATH", aliases: ["ARPATH"], description: "Place copies of the selection along a LINE, polyline, ARC or CIRCLE path; choose item count and whether copies align to the path tangent" },
   { name: "PEDIT", aliases: ["PE"], description: "Edit polylines: PEDIT J (join selection) · PEDIT C (close) · PEDIT O (open) · PEDIT R (reverse) · PEDIT W <width>" },
@@ -1874,7 +1879,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   /** Last paper layout entered, so MODEL/PAPER returns to it (A13). */
   let lastPaperLayoutI = 0;
   const layoutIdxCache = new Map<number, M.SpatialIndex>();
-  let press: { x: number; y: number; moved: boolean; id: number; band?: boolean; add?: boolean } | null = null;
+  let press: { x: number; y: number; moved: boolean; id: number; band?: boolean; add?: boolean; cycle?: boolean; lasso?: boolean } | null = null;
   const sel = new Set<number>();
   let multipleMode = false;
   let lastCommandRaw = "";
@@ -4482,6 +4487,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     orig: DxfEntity; // untouched pre-drag object (undo "before")
     startW: M.Pt; // world point where the drag started (Shift axis lock)
     moved: boolean;
+    /** A11 grip mode — STRETCH is the historical grip drag. */
+    mode: Sel11.GripMode;
+    /** World position of the gripped hotspot: base point for move / rotate / scale / mirror. */
+    baseW: M.Pt;
+    /** Rotate / scale zero reference (angle / distance of the first significant move). */
+    refAngle: number | null;
+    refDist: number | null;
   }
   let gripDrag: GripDrag | null = null;
   let gripHover: { i: number; gi: number } | null = null;
@@ -4577,6 +4589,114 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     if (candidates.length) chooseSelectionCandidate(candidates[0].index, add);
     else if (!add) setSel([]);
+    // A plain click restarts any Ctrl+click cycle at this spot.
+    cycleState = null;
+  }
+
+  /* ── A11: fence / lasso selection, Ctrl+click cycling, grip modes ── */
+  let cycleState: Sel11.CycleState | null = null;
+
+  /** Ctrl+click on overlapping objects: cycle them one at a time (AutoCAD). */
+  function handleCycleClick(sp: M.Pt, wp: M.Pt): void {
+    const candidates = idx ? M.pickEntities(idx, ents, wp.x, wp.y, 8 / view.scale, pickable, 32) : [];
+    // The key is the SCREEN spot (3 px buckets): the world point of the
+    // same screen click drifts when the canvas shifts a few pixels after
+    // the first pick populates the Properties panel, and a world key
+    // rounded fine would restart the cycle instead of advancing it.
+    const key = `${Math.round(sp.x / 3)},${Math.round(sp.y / 3)}`;
+    const next = Sel11.cycleNext(candidates.map((c) => c.index), cycleState, key);
+    if (!next) {
+      cycleState = null;
+      setSel([]);
+      return;
+    }
+    cycleState = next.state;
+    chooseSelectionCandidate(next.index, false);
+    if (next.state.candidates.length > 1) {
+      logCmd(`Ctrl+click cycle: ${next.state.pos + 1} of ${next.state.candidates.length} — Ctrl+click again for the next object.`);
+    }
+  }
+
+  /** Finish FENCE: select everything the fence polyline crossed. */
+  function finishFence(): void {
+    const fencePts = [...pts];
+    pts = [];
+    if (fencePts.length >= 2 && idx) {
+      const ids = Sel11.selectByFence(idx, ents, fencePts, pickable, 8 / view.scale);
+      setSel(ids);
+      logCmd(`FENCE selected ${ids.length} object(s).`);
+    }
+    setTool("select");
+    logCmd("Command: *Complete*");
+  }
+
+  /** Finish LASSO: select by the freehand loop (window / crossing by drag direction). */
+  function finishLasso(): void {
+    const loop = [...pts];
+    pts = [];
+    if (loop.length >= 3 && idx) {
+      const mode = Sel11.lassoModeFromPath(loop, loop[0], 8 / view.scale);
+      const ids = Sel11.selectByLasso(idx, ents, loop, mode, pickable);
+      setSel(ids);
+      logCmd(`${mode === "window" ? "Lasso window" : "Lasso crossing"} selected ${ids.length} object(s).`);
+    }
+    setTool("select");
+    logCmd("Command: *Complete*");
+  }
+
+  /** Switch the in-progress grip drag to another mode (preview restarts from the pre-drag object). */
+  function setGripMode(mode: Sel11.GripMode): void {
+    if (!gripDrag || gripDrag.mode === mode) return;
+    ents[gripDrag.i] = gripDrag.orig;
+    gripDrag.mode = mode;
+    gripDrag.refAngle = null;
+    gripDrag.refDist = null;
+    gripDrag.moved = false;
+    showAcadPrompt(`Grip mode: ${Sel11.GRIP_MODE_LABELS[mode]} — drag to ${mode === "stretch" ? "stretch the grip" : mode === "move" ? "move the object" : mode === "rotate" ? "rotate about the grip" : mode === "scale" ? "scale about the grip" : "mirror across the grip"} (Enter cycles, right-click for the menu).`);
+    draw();
+  }
+
+  /** Enter / Space during a grip drag cycles Stretch → Move → Rotate → Scale → Mirror. */
+  function cycleGripMode(): void {
+    if (!gripDrag) return;
+    setGripMode(Sel11.nextGripMode(gripDrag.mode));
+  }
+
+  /**
+   * Grip right-click menu (A11): the five grip modes for the drag in
+   * progress, styled like the snap-override menu. Picking a mode keeps
+   * the drag alive — the next pointer move drags in the new mode.
+   */
+  function showGripModeMenu(ev: MouseEvent): void {
+    ev.preventDefault();
+    ev.stopPropagation();
+    document.querySelectorAll(".obs-cad-context-menu").forEach((n) => n.remove());
+    const menu = document.createElement("div");
+    menu.className = "obs-cad-context-menu";
+    menu.setAttribute("data-obs-ui", "1");
+    menu.style.cssText = "position:fixed;z-index:20000;min-width:245px;max-height:80vh;overflow:auto;padding:5px 0;background:#171d27;color:#f2f6fb;border:1px solid #354254;border-radius:7px;box-shadow:0 12px 32px rgba(0,0,0,.48);font:12px 'Segoe UI',system-ui,sans-serif";
+    menu.addEventListener("mousedown", (e) => e.stopPropagation());
+    const addLabel = (label: string) => { const d = document.createElement("div"); d.textContent = label; d.style.cssText = "padding:5px 11px 3px;color:#aebccd;font-size:9px;font-weight:700;letter-spacing:.08em"; menu.appendChild(d); };
+    const addItem = (mode: Sel11.GripMode) => {
+      const b = document.createElement("button"); b.type = "button";
+      b.setAttribute("data-grip-mode", mode);
+      b.disabled = gripDrag?.mode === mode;
+      b.textContent = (gripDrag?.mode === mode ? "✓ " : "") + Sel11.GRIP_MODE_LABELS[mode];
+      b.style.cssText = "display:flex;align-items:center;width:100%;gap:18px;padding:7px 11px;border:0;border-radius:0;background:transparent;text-align:start;color:inherit;font:inherit;cursor:" + (b.disabled ? "default" : "pointer") + ";opacity:" + (b.disabled ? ".55" : "1");
+      b.onmouseenter = () => { if (!b.disabled) b.style.background = "#263447"; };
+      b.onmouseleave = () => { b.style.background = "transparent"; };
+      b.onclick = () => { menu.remove(); setGripMode(mode); };
+      menu.appendChild(b);
+    };
+    addLabel("GRIP MODE — " + (gripDrag ? Sel11.GRIP_MODE_LABELS[gripDrag.mode].toUpperCase() : ""));
+    for (const mode of Sel11.GRIP_MODES) addItem(mode);
+    document.body.appendChild(menu);
+    const rect = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(6, Math.min(ev.clientX, window.innerWidth - rect.width - 6))}px`;
+    menu.style.top = `${Math.max(6, Math.min(ev.clientY, window.innerHeight - rect.height - 6))}px`;
+    const close = (e: PointerEvent) => { if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener("pointerdown", close, true); } };
+    document.addEventListener("pointerdown", close, true);
+    menu.addEventListener("keydown", (e) => { if (e.key === "Escape") { menu.remove(); } });
   }
 
   const isModTool = (t: Tool): t is ModKind =>
@@ -6975,6 +7095,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     addItem("Select Similar (Type + Layer)",()=>{const first=ents[[...sel][0]];if(first)setSel(ents.map((e,i)=>e.type===first.type&&e.layer===first.layer&&visible(e)?i:-1).filter(i=>i>=0));},!hasSelection);
     addItem("Invert Selection",()=>setSel(ents.map((e,i)=>visible(e)&&!sel.has(i)?i:-1).filter(i=>i>=0)),ents.length===0);
     addItem("Deselect All",()=>setSel([]),!hasSelection);
+    addItem("Fence Select…",()=>setTool("fence"),ents.length===0);
+    addItem("Lasso Select…",()=>setTool("lasso"),ents.length===0);
     addSep();
     addLabel("VISIBILITY");
     addItem("Hide Selected",()=>hideCadSelection(false),!hasSelection);
@@ -7579,6 +7701,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     ["dimlinear", "Linear Dimension", "DLI"],
     ["erase", "Erase", "E"],
     ["box", "Box", "B"],
+    ["fence", "Fence", "FE"],
+    ["lasso", "Lasso", "LSO"],
     ["zoomwin", "Zoom Window", "W"],
     ["coord", "Coordinates", "ID"],
     ["radius", "Radius", "R"],
@@ -7668,7 +7792,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           tb("erase", "delete", "Erase") +
           rb("clear", "Erase Sel", `data-a="erase"`, "Erase selected (DEL / E)") +
           rb("select-all", "Similar", `data-a="selsim"`, "Select objects matching the selected set by type, layer, colour, linetype or lineweight (SELECTSIMILAR)") +
-          rb("select-all", "Cycle", `data-a="selection-cycle"`, "Choose between overlapping entities (SELECTIONCYCLING / Ctrl+W)", "on"),
+          rb("select-all", "Cycle", `data-a="selection-cycle"`, "Choose between overlapping entities (SELECTIONCYCLING / Ctrl+W)", "on") +
+          tb("fence", "select-all", "Fence") +
+          tb("lasso", "select-all", "Lasso"),
         "",
         "",
         "home",
@@ -8645,6 +8771,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       case "area":
       case "chain":
         return n === 0 ? "Specify first point:" : "Specify next point or [Undo]:";
+      case "fence":
+        return n === 0 ? "Specify first fence point:" : "Specify next fence point or [Enter to finish]:";
+      case "lasso":
+        return "Press and drag to draw the lasso loop:";
       case "select":
         return "Select objects:";
       case "pan":
@@ -8743,6 +8873,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   /** End the current drawing command (Enter / space when no distance applies). */
   function endCurrentCommand(): void {
+    // A11: ending FENCE finishes the fence instead of cancelling it.
+    if (tool === "fence") {
+      finishFence();
+      return;
+    }
     if (tool === "line" || tool === "poly" || tool === "cloud" || tool === "spline" || tool === "wipeout" || tool === "area" || tool === "chain") {
       if (pts.length >= 2 && (tool === "poly" || tool === "cloud" || tool === "area" || tool === "chain" || tool === "spline" || tool === "wipeout")) {
         try {
@@ -8840,6 +8975,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd(`Command: _${t.toUpperCase()}`);
     } else if (t === "spline" || t === "wipeout" || t === "cloud") {
       logCmd(`Command: _${t.toUpperCase()} — click points, Enter / double-click to finish`);
+    } else if (t === "fence") {
+      logCmd("Command: _FENCE — click fence points, Enter / right-click to finish");
+    } else if (t === "lasso") {
+      logCmd("Command: _LASSO — press and drag a freehand loop, release to select");
     } else if (t === "polygon") {
       logCmd(`Command: _POLYGON — ${polySides} sides (type POLYGON <n> to change)`);
     } else {
@@ -9029,6 +9168,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
     if (ev.button !== 0) return;
 
+    // A11 LASSO: press-drag a freehand loop; release selects (window /
+    // crossing by drag direction). The loop reuses `pts`, so the live
+    // in-progress polyline preview draws it for free.
+    if (tool === "lasso") {
+      pts = [{ x: wp.x, y: wp.y }];
+      press = { x: sp.x, y: sp.y, moved: false, id: ev.pointerId, lasso: true };
+      capture(ev.pointerId);
+      return;
+    }
     // drawing workspace SELECT: left-click drag always starts a selection rectangle.
     // Left → right  = WINDOW (solid blue) — only entities fully inside
     // Right → left  = CROSSING (dotted green) — any entity that touches the box
@@ -9036,11 +9184,21 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (tool === "box" || tool === "select") {
       // Grip editing: a click on a hotspot of the selection starts a grip drag
       // (drawing workspace blue-grip behaviour) instead of a rubber band.
-      if (!mod && !pick) {
+      // A11: Ctrl+click is selection cycling, not gripping — the grip
+      // check must not swallow it (the crossing of two lines is usually
+      // also both lines' midpoint grip).
+      if (!mod && !pick && !ev.ctrlKey) {
         const g = gripAt(sp);
         if (g && ents[g.i]) {
           const w0 = M.screenToWorld(view, sp.x, sp.y);
-          gripDrag = { i: g.i, gi: g.gi, orig: ents[g.i], startW: { x: w0.x, y: w0.y }, moved: false };
+          const grips = M.entityGrips(ents[g.i]);
+          const gp = grips[g.gi];
+          gripDrag = {
+            i: g.i, gi: g.gi, orig: ents[g.i], startW: { x: w0.x, y: w0.y }, moved: false,
+            mode: "stretch",
+            baseW: gp ? { x: gp.x, y: gp.y } : { x: w0.x, y: w0.y },
+            refAngle: null, refDist: null,
+          };
           gripHover = null;
           capture(ev.pointerId);
           cv.style.cursor = "grabbing";
@@ -9054,6 +9212,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         id: ev.pointerId,
         band: true,
         add: ev.shiftKey || ev.ctrlKey,
+        // A11: Ctrl+click (no Shift) cycles overlapping objects instead
+        // of adding; Ctrl+drag still adds through the band.
+        cycle: ev.ctrlKey && !ev.shiftKey,
       };
       capture(ev.pointerId);
       return;
@@ -9376,6 +9537,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         drawn.push({ kind: "coord", pts: [p] });
         showMeas();
         logCmd(msg);
+        break;
+      }
+      case "fence": {
+        pts.push(p);
+        showAcadPrompt();
         break;
       }
       case "poly": {
@@ -9968,6 +10134,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         }
         return;
       }
+      // A11 LASSO: record the freehand path (one point per ~3 screen px).
+      if (press.lasso) {
+        if (Math.hypot(sp.x - press.x, sp.y - press.y) > 4) press.moved = true;
+        const last = pts[pts.length - 1];
+        if (last && Math.hypot(wp.x - last.x, wp.y - last.y) * view.scale > 3) {
+          pts.push({ x: wp.x, y: wp.y });
+          draw();
+        }
+        return;
+      }
       if (!press.moved && Math.hypot(sp.x - press.x, sp.y - press.y) > 4) {
         press.moved = true;
         pushView();
@@ -10001,10 +10177,27 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const e = ents[gripDrag.i];
       if (e) {
         let to: M.Pt = { x: cur.x, y: cur.y };
-        if (ev.shiftKey) to = M.orthoConstrain(gripDrag.startW, to);
-        const moved = M.applyGripDrag(e, gripDrag.gi, to);
-        if (moved) ents[gripDrag.i] = moved;
-        gripDrag.moved = true;
+        // A11: Shift axis-lock applies to the point-driven modes (stretch /
+        // move), like the old grip drag; rotate / scale / mirror read the
+        // raw cursor so their angle / factor / mirror line stay true.
+        if (ev.shiftKey && (gripDrag.mode === "stretch" || gripDrag.mode === "move")) {
+          to = M.orthoConstrain(gripDrag.startW, to);
+        }
+        const res = Sel11.applyGripMode(
+          gripDrag.orig,
+          gripDrag.mode,
+          gripDrag.baseW,
+          gripDrag.refAngle === null ? null : { angleDeg: gripDrag.refAngle, dist: gripDrag.refDist ?? 0 },
+          to,
+          gripDrag.gi,
+          4 / view.scale,
+        );
+        if (res) {
+          ents[gripDrag.i] = res.entity;
+          gripDrag.refAngle = res.ref ? res.ref.angleDeg : null;
+          gripDrag.refDist = res.ref ? res.ref.dist : null;
+          gripDrag.moved = true;
+        }
       }
       draw();
       return;
@@ -10053,6 +10246,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       draw();
       return;
     }
+    // A11: during a grip drag, right-click offers the grip modes instead
+    // of the idle menu; during FENCE it finishes the fence (AutoCAD).
+    if (gripDrag) { ev.preventDefault(); showGripModeMenu(ev); return; }
+    if (tool === "fence") { ev.preventDefault(); finishFence(); return; }
     // In idle selection mode, right-click opens the complete CAD context menu.
     if (tool === "select") { showCadContextMenu(ev); return; }
     // A15: during a point-awaiting drafting tool, right-click offers the
@@ -10088,7 +10285,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     if (press && press.id === ev.pointerId) {
-      if (press.band && press.moved && rband && idx && ev.type === "pointerup") {
+      // A11 LASSO: release finishes the loop; a cancelled pointer abandons it.
+      if (press.lasso) {
+        if (ev.type === "pointerup") finishLasso();
+        else { pts = []; setTool("select"); draw(); }
+      } else if (press.band && press.moved && rband && idx && ev.type === "pointerup") {
         // Screen X direction decides mode (drawing workspace): L→R window, R→L crossing
         const isWindow = rband.b.x >= rband.a.x;
         const mode: "window" | "crossing" = isWindow ? "window" : "crossing";
@@ -10099,6 +10300,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         const screenW = Math.abs(rband.b.x - rband.a.x);
         const screenH = Math.abs(rband.b.y - rband.a.y);
         if (screenW >= 4 || screenH >= 4) {
+          // A band selection restarts any Ctrl+click cycle.
+          cycleState = null;
           const ids = M.selectInRect(idx, ents, rect, mode, pickable);
           setSel(ids, !!press.add);
           logCmd(
@@ -10108,11 +10311,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           );
         } else {
           const { wp, sp } = rawPoint(ev);
-          handleSelectionClick(sp, wp, !!press.add);
+          if (press.cycle) handleCycleClick(sp, wp);
+          else handleSelectionClick(sp, wp, !!press.add);
         }
       } else if (!press.moved && doc && ev.type === "pointerup") {
         const { wp, sp } = rawPoint(ev);
-        handleSelectionClick(sp, wp, !!press.add);
+        if (press.cycle) handleCycleClick(sp, wp);
+        else handleSelectionClick(sp, wp, !!press.add);
       }
       rband = null;
       draw();
@@ -10148,6 +10353,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   cv.addEventListener("pointercancel", endDrag);
 
   cv.addEventListener("dblclick", () => {
+    if (tool === "fence") {
+      pts.pop(); // the double-click's second point duplicates the last fence point
+      finishFence();
+      return;
+    }
     if (tool === "poly" || tool === "area" || tool === "chain" || tool === "cloud" || tool === "spline" || tool === "wipeout") {
       pts.pop();
       finishMeasure();
@@ -10535,6 +10745,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
     // Enter / Space: finish current op, end drawing command, or repeat last (drawing workspace)
     if (key === "Enter" || key === " ") {
+      // A11: Enter / Space during a grip drag cycles the grip mode.
+      if (gripDrag) {
+        ev.preventDefault();
+        cycleGripMode();
+        return;
+      }
       if (pick) {
         ev.preventDefault();
         confirmPickStep();
@@ -10543,6 +10759,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (mod) {
         ev.preventDefault();
         confirmModStep();
+        return;
+      }
+      // A11: Enter finishes the fence and selects what it crossed.
+      if (tool === "fence") {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        finishFence();
         return;
       }
       if (tool === "offset") {
@@ -12064,6 +12287,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     if (cmd === "STRETCH" || cmd === "S") {
       setTool("stretch");
+      return;
+    }
+    if (cmd === "FENCE" || cmd === "FE") {
+      setTool("fence");
+      return;
+    }
+    if (cmd === "LASSO" || cmd === "LSO") {
+      setTool("lasso");
       return;
     }
     if (cmd === "ALIGN" || cmd === "AL") {
