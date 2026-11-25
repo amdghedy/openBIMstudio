@@ -118,6 +118,19 @@ t("small shapes inside doors are candidates: flagged, unconfirmed, flush inside 
   for (const q of d) { assert.ok(q.x0 >= body.x0 - 1 && q.x1 <= body.x1 + 1 && q.y0 >= body.y0 - 1 && q.y1 <= body.y1 + 1); }
   assert.ok(r.warnings.some((m) => /guesses from shape/.test(m)));
 });
+t("views drawn by the person replace the automatic split and give the same parts when drawn around the same views", () => {
+  const sw = r.sheet.w, sh = r.sheet.h, pad = 3;
+  const si = r.views.reduce((a, v, i) => (v.x1 - v.x0 > r.views[a].x1 - r.views[a].x0 ? i : a), 0), ei = r.views.reduce((a, v, i) => (i !== si && (a < 0 || v.x1 - v.x0 > r.views[a].x1 - r.views[a].x0) ? i : a), -1);
+  const fr = (v) => ({ x0: Math.max(0, v.x0 - pad) / sw, x1: Math.min(sw, v.x1 + 1 + pad) / sw, y0: Math.max(0, v.y0 - pad) / sh, y1: Math.min(sh, v.y1 + 1 + pad) / sh });
+  const d = E.reconstructElevations(picture, { lengthMm: 2000, sideBox: fr(r.views[si]), endBox: fr(r.views[ei]) });
+  assert.ok(d.warnings.some((m) => /boxes drawn by the person/.test(m)));
+  near(d.checks.widthMm, r.checks.widthMm, r.checks.widthMm * 0.03);
+  near(d.checks.heightEndMm, r.checks.heightEndMm, r.checks.heightEndMm * 0.03);
+  assert.strictEqual(d.parts.filter((q) => q.kind === "grille").length, r.parts.filter((q) => q.kind === "grille").length);
+  // One box alone is not used: the automatic split stays.
+  const one = E.reconstructElevations(picture, { lengthMm: 2000, sideBox: fr(r.views[si]) });
+  assert.ok(!one.warnings.some((m) => /boxes drawn by the person/.test(m)));
+});
 t("a one-view picture is refused", () => {
   const blank = { data: new Uint8ClampedArray(100 * 100 * 4).fill(255), width: 100, height: 100 };
   assert.throws(() => E.reconstructElevations(blank, { lengthMm: 1000 }));
