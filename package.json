@@ -348,6 +348,7 @@
     "test:revit-g3-tab-cycle": "node tests/revit-g3-tab-cycle.test.cjs",
     "test:cad-dwg-roundtrip": "node tests/cad-dwg-roundtrip.test.cjs",
     "test:cad-layout-save": "node tests/cad-layout-save.test.cjs",
+    "test:cad-layouts": "node tests/cad-layouts.test.cjs",
     "test:cad-hatch-save": "node tests/cad-hatch-save.test.cjs",
     "test:wall-reveal-cutter": "node tests/wall-reveal-cutter.test.cjs",
     "test:clash-review-dock": "node tests/clash-review-dock.test.cjs",

@@ -2,7 +2,8 @@
  * AutoCAD-parity helpers for the 2D engine: groups, STATUS/TIME, OPTIONS,
  * SPELL, XREF attach, LAYOUT create — pure data + small UI helpers.
  */
-import type { DxfDocument, DxfEntity, DxfLayer } from "../drawings/dxf-types";
+import type { DxfDocument, DxfEntity, DxfLayer, DxfPoint } from "../drawings/dxf-types";
+import { paperMm } from "./viewer-math";
 
 export interface CadGroup {
   name: string;
@@ -155,8 +156,23 @@ export function selectGroupMembers(groups: Map<string, CadGroup>, name: string):
   return g ? [...g.members] : [];
 }
 
-/** Create a new paper layout shell. */
-export function addLayout(doc: DxfDocument, name?: string): string {
+/** Model-space view shown through a new layout's default viewport. */
+export interface LayoutSheet {
+  /** Model-space point shown at the viewport centre. */
+  viewCenter?: DxfPoint;
+  /** Model-space height shown through the viewport. */
+  viewHeight?: number;
+}
+
+/**
+ * Create a new paper layout shell, with one default viewport on an A3
+ * sheet (10 mm margin) showing the caller's model view — or the origin at
+ * a 100-unit height when no view is given. The viewport is what makes the
+ * layout a real paper space: the viewer draws model geometry through it,
+ * and the DXF writer persists it, so a layout created here shows the
+ * drawing instead of an empty sheet.
+ */
+export function addLayout(doc: DxfDocument, name?: string, sheet?: LayoutSheet): string {
   if (!doc.layouts) doc.layouts = [];
   let n = name?.trim() || `Layout${doc.layouts.length + 1}`;
   const taken = new Set(doc.layouts.map((l) => l.name.toLowerCase()));
@@ -165,8 +181,82 @@ export function addLayout(doc: DxfDocument, name?: string): string {
     while (taken.has(`${n}_${i}`.toLowerCase())) i++;
     n = `${n}_${i}`;
   }
-  doc.layouts.push({ name: n, entities: [], viewports: [] });
+  const { w, h } = paperMm("A3", false);
+  const margin = 10;
+  const viewHeight = sheet?.viewHeight && sheet.viewHeight > 0 ? sheet.viewHeight : 100;
+  doc.layouts.push({
+    name: n,
+    entities: [],
+    viewports: [{
+      center: { x: w / 2, y: h / 2, z: 0 },
+      width: w - 2 * margin,
+      height: h - 2 * margin,
+      viewCenter: sheet?.viewCenter ?? { x: 0, y: 0, z: 0 },
+      viewHeight,
+    }],
+  });
   return n;
+}
+
+/**
+ * One undoable edit, as the CAD viewer records it. `space` is the space
+ * the edit was made in (-1 = model, >= 0 = layout index), stamped at push
+ * time so UNDO / REDO apply in the owning space even after a layout
+ * switch (A13) instead of corrupting whichever space happens to be
+ * current.
+ */
+export interface HistoryAction {
+  type: "add" | "delete" | "modify" | "replace" | "order";
+  entities?: DxfEntity[];
+  before?: DxfEntity[];
+  after?: DxfEntity[];
+  orderBefore?: DxfEntity[];
+  orderAfter?: DxfEntity[];
+  space?: number;
+}
+
+/**
+ * Apply one UNDO step to an entity list (pure: returns the new list).
+ * "modify" is object-level — the viewer mutates the entity objects in
+ * place via replaceEntity — so it returns the list unchanged.
+ */
+export function undoEntityList(list: DxfEntity[], act: HistoryAction): DxfEntity[] {
+  switch (act.type) {
+    case "add": {
+      const added = new Set(act.entities ?? []);
+      return list.filter((e) => !added.has(e));
+    }
+    case "delete":
+      return [...list, ...(act.entities ?? [])];
+    case "modify":
+      return list;
+    case "order":
+      return act.orderBefore ? act.orderBefore.slice() : list;
+    case "replace": {
+      const after = new Set(act.after ?? []);
+      return [...list.filter((e) => !after.has(e)), ...(act.before ?? [])];
+    }
+  }
+}
+
+/** Apply one REDO step to an entity list (pure: returns the new list). */
+export function redoEntityList(list: DxfEntity[], act: HistoryAction): DxfEntity[] {
+  switch (act.type) {
+    case "add":
+      return [...list, ...(act.entities ?? [])];
+    case "delete": {
+      const removed = new Set(act.entities ?? []);
+      return list.filter((e) => !removed.has(e));
+    }
+    case "modify":
+      return list;
+    case "order":
+      return act.orderAfter ? act.orderAfter.slice() : list;
+    case "replace": {
+      const before = new Set(act.before ?? []);
+      return [...list.filter((e) => !before.has(e)), ...(act.after ?? [])];
+    }
+  }
 }
 
 export function prefixXrefLayers(
