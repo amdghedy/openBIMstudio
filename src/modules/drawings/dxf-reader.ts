@@ -92,6 +92,17 @@ function tokenize(text: string): Pair[] {
   return pairs;
 }
 
+/** Numeric geometry group codes (10-59 coordinates/sizes/angles, 140-149, 210-239) holding NaN/Infinity/garbage. */
+function hasNonFiniteGeometry(pairs: { code: number; value: string }[]): boolean {
+  for (const p of pairs) {
+    const c = p.code;
+    if ((c >= 10 && c <= 59) || (c >= 140 && c <= 149) || (c >= 210 && c <= 239)) {
+      if (p.value.trim() !== "" && !Number.isFinite(Number(p.value))) return true;
+    }
+  }
+  return false;
+}
+
 function num(v: string | undefined, d = 0): number {
   if (v == null) return d;
   const n = Number(v);
@@ -675,6 +686,8 @@ function expandRecs(
     const r = recs[i];
     const d = new Data(r.pairs);
     if (!allowPaper && d.n(67) === 1) continue; // paper space (collected separately as layouts)
+    // A coordinate that is NaN/Infinity/garbage used to default to 0 and fabricate geometry at the origin.
+    if (hasNonFiniteGeometry(r.pairs)) { skip(r.type); continue; }
     const c = common(d);
     if (insertLayer && c.layer === "0") c.layer = insertLayer; // layer 0 inside a block inherits
     const outStart = out.length;
