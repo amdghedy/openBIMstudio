@@ -6,13 +6,14 @@ import { registerDirtyCheck } from "../core/dirty-registry"; registerDirtyCheck(
  * - Model Space and Layout / Paper Space views
  * - Full-screen crosshairs with central pickbox
  * - Object Snap support (F3) with colored glyphs and snap tooltips
+ * - Grid snap (F9 / SNAP) to the SNAPUNIT spacing, independent of OSNAP
  * - Dynamic Input HUD (F12) with real-time coordinate & polar @dist<ang readouts
  * - Authentic User Coordinate System (UCS) 2D/3D icon with World (WCS) & custom origin markers
  * - Interactive in-canvas ViewCube (Top/Front/Roll) and Navigation Bar (Pan/Zoom Extents/Window)
  * - Multi-line command window with real-time Autocomplete popup, command history & aliases:
  *   L (LINE), PL (PLINE), C (CIRCLE), REC (RECTANG), A (ARC), E (ERASE), DI (DIST), AA (AREA),
  *   ID, LI (LIST), Z (ZOOM [All/Extents/Window/Previous]), P (PAN), LA (LAYER), PR (PROPERTIES),
- *   RE (REGEN), UN (UNITS), UCS, PU (PURGE), U (UNDO), REDO, ORTHO (F8), OSNAP (F3), GRID (F7), DYN (F12)
+ *   RE (REGEN), UN (UNITS), UCS, PU (PURGE), U (UNDO), REDO, ORTHO (F8), OSNAP (F3), SNAP (F9), GRID (F7), DYN (F12)
  * - Native 2D drawing tools: Line, Polyline, Circle, Rectangle, Arc drafting with Undo/Redo stack
  * - Professional drawing modification tools: MOVE (M), COPY (CO), ROTATE (RO), MIRROR (MI), SCALE (SC),
  *   OFFSET (O) — base-point flows, live ghost preview, dynamic-input prompts, Undo/Redo support
@@ -40,7 +41,7 @@ import {
   parseClip,
   type CadClip,
 } from "../modules/cad-viewer/clipboard";
-import type { DxfBlockDef, DxfDocument, DxfEntity, DxfPoint } from "../modules/drawings/dxf-types";
+import type { DxfBlockDef, DxfDimStyle, DxfDocument, DxfEntity, DxfPoint } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
 import { safeLoad, MarkupsFileSchema } from "../core/safeLoad";
 import { setCadHotkeyOwner } from "../core/cad-hotkey-ownership";
@@ -48,6 +49,7 @@ import { resolveDblClick } from "../shell/ribbon-collapse";
 import { sanitizeSessionUi, sessionUiSignature, hiddenEntityIndexes, sanitizeHiddenEntities, type SessionUi, type SessionHiddenEntities } from "../modules/cad-viewer/session-state";
 import * as M from "../modules/cad-viewer/viewer-math";
 import * as LayerLock from "../modules/cad-viewer/layer-lock";
+import * as GridSnap from "../modules/cad-viewer/grid-snap";
 import { resolvedOf, bindDocumentBlocks, setActiveBlocks, touchBlocks, explodeInsert } from "../modules/drawings/block-refs";
 import * as BE from "../modules/drawings/block-edit";
 import { XrefStore, composeXrefs, compareXref, type ComposedXref } from "../modules/drawings/xref-engine";
@@ -1641,7 +1643,17 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   const visibilityHistory: Array<{ layers: Set<string>; entities: Set<DxfEntity> }> = [];
 
   // Drawing status toggles
+  // `snapOn` is the OSNAP master only (F3 / OSNAP command / OSNAP status
+  // button). Grid snap has its own master, `gridSnapOn` (F9 / SNAP /
+  // SNAPMODE / SNAP status button) — the two used to be one flag, so F9
+  // was a second OSNAP switch and no grid step existed at all.
+  // Default OFF: the viewer shipped with no grid snap, so default-off
+  // preserves every existing click/drag (and the auto step follows zoom,
+  // which would otherwise move first clicks by hundreds of units on a
+  // fitted large drawing). The user turns it on like in AutoCAD; this
+  // also matches DEFAULT_CAD_SNAP_SETTINGS.gridSnapOn in cad-snap-engine.
   let snapOn = true;
+  let gridSnapOn = false;
   let userGridStep: number | null = null;
   let userSnapStep: number | null = null;
   const snapModes = new Set<M.SnapKind>(M.ALL_SNAPS);
@@ -2000,7 +2012,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
   function currentUi(): SessionUi {
     return {
-      bg, cmode, snapOn, orthoOn, polarOn, polarAngle, otrackOn, dynOn, lwtOn, showGrid, showText, showHatch, showLt,
+      bg, cmode, snapOn, gridSnapOn, orthoOn, polarOn, polarAngle, otrackOn, dynOn, lwtOn, showGrid, showText, showHatch, showLt,
       snapModes: [...snapModes], typeFilter: [...typeFilter], currentLayer,
       lockedLayers: doc ? doc.layers.filter((l) => l.locked).map((l) => l.name) : [],
     };
@@ -2070,6 +2082,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (u.bg !== undefined) { bg = u.bg; const sel = document.querySelector<HTMLSelectElement>("[data-a=bg]"); if (sel) sel.value = bg; }
       if (u.cmode !== undefined) cmode = u.cmode;
       if (u.snapOn !== undefined) snapOn = u.snapOn;
+      if (u.gridSnapOn !== undefined) gridSnapOn = u.gridSnapOn;
       if (u.orthoOn !== undefined) orthoOn = u.orthoOn;
       if (u.polarOn !== undefined) polarOn = u.polarOn;
       if (u.polarAngle !== undefined) polarAngle = u.polarAngle;
@@ -3583,7 +3596,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     card.innerHTML =
       `<div style="font-weight:700;margin-bottom:10px">OPTIONS — Drawing preferences</div>` +
       row("grid", "GRID (F7)", showGrid) +
-      row("snap", "SNAP / OSNAP (F3/F9)", snapOn) +
+      row("gridsnap", "SNAP — grid (F9)", gridSnapOn) +
+      row("osnap", "OSNAP — object (F3)", snapOn) +
       row("ortho", "ORTHO (F8)", orthoOn) +
       row("polar", "POLAR (F10)", polarOn) +
       row("dyn", "Dynamic Input (F12)", dynOn) +
@@ -3595,7 +3609,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const apply = () => {
       const g = (id: string) => card.querySelector(`input[data-o="${id}"]`) as HTMLInputElement | null;
       if (g("grid")) showGrid = g("grid")!.checked;
-      if (g("snap")) snapOn = g("snap")!.checked;
+      if (g("gridsnap")) gridSnapOn = g("gridsnap")!.checked;
+      if (g("osnap")) snapOn = g("osnap")!.checked;
       if (g("ortho")) orthoOn = g("ortho")!.checked;
       if (g("polar")) polarOn = g("polar")!.checked;
       if (g("dyn")) dynOn = g("dyn")!.checked;
@@ -7976,8 +7991,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   };
 
   const constrainInputPoint = (point: M.Pt, anchor: M.Pt | null, hasObjectSnap: boolean): M.Pt => {
-    if (!anchor) return point;
-    let p = point;
+    // Grid snap (F9) quantizes the raw cursor point FIRST — see
+    // grid-snap.ts for the order: a real object snap wins (the caller
+    // already substituted it and passes hasObjectSnap), otherwise the
+    // point lands on the snap grid; ortho / polar / OTRACK then operate
+    // on the quantized point. Unlike those constraints, grid snap needs
+    // no anchor, so the first point of a draw snaps too.
+    let p = GridSnap.resolveGridSnapPoint(point, {
+      gridSnapOn,
+      hasObjectSnap,
+      step: GridSnap.effectiveSnapStep(userSnapStep, userGridStep, M.gridStep(view.scale)),
+      origin: GridSnap.DRAWING_ORIGIN,
+    });
+    if (!anchor) return p;
     if (orthoOn) p = M.orthoConstrain(anchor, p);
     else if (polarOn && !hasObjectSnap) p = M.polarConstrain(anchor, p, polarAngle);
     // Reference-line tracking: snap to axis intersections from earlier points in the chain
@@ -9290,6 +9316,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd(`OSNAP: <${snapOn ? "ON" : "OFF"}>`);
       return;
     }
+    if (key === "F9") {
+      ev.preventDefault();
+      setGridSnap(!gridSnapOn);
+      return;
+    }
     if (key === "F7") {
       ev.preventDefault();
       showGrid = !showGrid;
@@ -9503,6 +9534,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     return true;
   }
 
+  /** Grid snap master (F9 / SNAP / SNAPMODE / status-bar SNAP). Toggles the grid-snap state only — the OSNAP master (`snapOn`) is untouched. */
+  function setGridSnap(on: boolean): void {
+    gridSnapOn = on;
+    updateStatus();
+    draw();
+    logCmd(`SNAPMODE: <${gridSnapOn ? "ON" : "OFF"}>`);
+  }
+
   function setQuickMeasure(enabled: boolean): void {
     quick = enabled;
     tools.querySelector("[data-a=quick]")?.classList.toggle("on", quick);
@@ -9567,6 +9606,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       <span class="sep"></span>
       <button class="obs-status-btn active" data-s="space">${layoutI >= 0 ? "PAPER" : "MODEL"}</button>
       <button class="obs-status-btn ${showGrid ? "active" : ""}" data-s="grid" title="Grid (F7)">GRID</button>
+      <button class="obs-status-btn ${gridSnapOn ? "active" : ""}" data-s="gridsnap" title="Snap to grid (F9)">SNAP</button>
       <button class="obs-status-btn ${snapOn ? "active" : ""}" data-s="snap" title="Object Snap (F3)">OSNAP</button>
       <button class="obs-status-btn ${orthoOn ? "active" : ""}" data-s="ortho" title="Ortho (F8)">ORTHO</button>
       <button class="obs-status-btn ${polarOn ? "active" : ""}" data-s="polar" title="Polar Tracking (F10)">POLAR</button>
@@ -9594,6 +9634,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       showGrid = !showGrid;
       updateStatus();
       draw();
+    });
+    statusEl.querySelector("[data-s=gridsnap]")?.addEventListener("click", () => {
+      setGridSnap(!gridSnapOn);
     });
     statusEl.querySelector("[data-s=snap]")?.addEventListener("click", () => {
       snapOn = !snapOn;
@@ -9792,7 +9835,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           if (match) { event.preventDefault(); dynCommandInput.value = match.name; dynCommandInput.dispatchEvent(new Event("input")); }
           return;
         }
-        if (event.key === "F3" || event.key === "F7" || event.key === "F8" || event.key === "F12") {
+        if (event.key === "F3" || event.key === "F7" || event.key === "F8" || event.key === "F9" || event.key === "F12") {
           event.preventDefault();
           const key = event.key;
           closeDynamicCommand();
@@ -10405,7 +10448,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         getvar: (n) => {
           const k = n.toUpperCase();
           if (k === "ORTHOMODE") return orthoOn ? 1 : 0;
-          if (k === "SNAPMODE") return snapOn ? 1 : 0;
+          if (k === "SNAPMODE") return gridSnapOn ? 1 : 0;
           if (k === "GRIDMODE") return showGrid ? 1 : 0;
           if (k === "CLAYER") return currentLayer;
           return null;
@@ -10413,7 +10456,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         setvar: (n, v) => {
           const k = n.toUpperCase();
           if (k === "ORTHOMODE") orthoOn = Number(v) !== 0;
-          if (k === "SNAPMODE") snapOn = Number(v) !== 0;
+          if (k === "SNAPMODE") gridSnapOn = Number(v) !== 0;
           if (k === "GRIDMODE") showGrid = Number(v) !== 0;
           if (k === "CLAYER") currentLayer = String(v);
           updateStatus();
@@ -10668,10 +10711,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     if (cmd === "SNAP" || cmd === "SNAPMODE") {
-      snapOn = !snapOn;
-      updateStatus();
-      draw();
-      logCmd(`SNAPMODE: <${snapOn ? "ON" : "OFF"}>`);
+      // Grid snap only — the OSNAP master (`snapOn`) is untouched.
+      // Bare SNAP toggles, like the other mode commands; SNAP ON / OFF
+      // sets it explicitly (same shape as the POLAR command).
+      const state = (parts[1] ?? "").toUpperCase();
+      setGridSnap(state === "ON" ? true : state === "OFF" ? false : !gridSnapOn);
       return;
     }
     if (cmd === "CLEANSCREEN" || cmd === "CLEAN") {
@@ -12324,6 +12368,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           • Numeric input (angle / factor / distance) is typed in the command line<br>
           • Yellow dashed ghost previews every transform before you click<br>
           • <b>F3</b> — Object Snap ON/OFF · <b>OSNAPSET</b> configures snap modes<br>
+          • <b>F9</b> — Snap to grid ON/OFF · <b>SNAPUNIT</b> sets the grid spacing<br>
           • <b>F8</b> — Ortho mode ON/OFF<br>
           • <b>F10</b> — Polar tracking ON/OFF · <b>POLARANG</b> sets the angle increment<br>
           • <b>F12</b> — Dynamic Input HUD ON/OFF<br>
@@ -12553,6 +12598,53 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     return entities.map((e) => (hiddenEntities.has(e) && !e.invisible ? { ...e, invisible: true } : e));
   }
 
+  /**
+   * DIMENSION entities for the live dimension records (A5): the DXF writer
+   * turns each one into a real DIMENSION entity plus its anonymous block,
+   * so dimensions survive a save as dimensions instead of dumb LINE/TEXT
+   * geometry. Only the four types the reader can measure natively are
+   * emitted — angular, arc-length and centre-mark records stay as plain
+   * tagged geometry, exactly as before. A record with no drawn entities
+   * emits nothing: a bare DIMENSION with no block would re-measure
+   * differently from what the user sees.
+   */
+  function dimensionEntitiesForSave(entities: DxfEntity[]): DxfEntity[] {
+    const out: DxfEntity[] = [];
+    for (const rec of dimRecords.values()) {
+      if (rec.mode !== "linear" && rec.mode !== "aligned" && rec.mode !== "radial" && rec.mode !== "diameter") continue;
+      const geom = entities.filter((e) => e.meta?.dimId === rec.id);
+      if (!geom.length) continue;
+      const textEnt = geom.find((e): e is Extract<DxfEntity, { type: "TEXT" }> => e.type === "TEXT");
+      const radial = rec.mode === "radial" || rec.mode === "diameter";
+      out.push({
+        type: "DIMENSION",
+        layer: rec.layer,
+        dimId: rec.id,
+        dimType: rec.mode === "linear" ? 0 : rec.mode === "aligned" ? 1 : rec.mode === "diameter" ? 3 : 4,
+        styleName: rec.styleName,
+        defPoint: radial ? { ...rec.p1 } : { ...rec.placement },
+        ...(radial ? { curvePoint: { ...rec.p2 } } : { extOrigin1: { ...rec.p1 }, extOrigin2: { ...rec.p2 } }),
+        ...(textEnt ? { text: textEnt.value, textPoint: { ...textEnt.position } } : {}),
+      });
+    }
+    return out;
+  }
+
+  /** DIMSTYLE table for the save: the viewer's live styles over the imported ones. */
+  function dimStyleTableForSave(): Record<string, DxfDimStyle> {
+    const table: Record<string, DxfDimStyle> = { ...(doc?.dimStyleTable ?? {}) };
+    for (const s of dimStyleList) {
+      table[s.name.toUpperCase()] = {
+        textHeight: s.textHeight,
+        arrowSize: s.arrowSize,
+        decimals: s.precision,
+        ...(s.suffix ? { postFix: s.suffix } : {}),
+        ...(s.linearScale !== 1 ? { linearFactor: s.linearScale } : {}),
+      };
+    }
+    return table;
+  }
+
   /** Save the edited drawing back to DXF R2010 (QSAVE / SAVE). */
   function saveDxf(): void {
     if (!doc) {
@@ -12568,7 +12660,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // hidden in this session are stamped with the DXF group 60 Invisible flag
     // so the state survives the save/open round trip without mutating the
     // live entity objects (visibility stays owned by hiddenEntities).
-    const text = writeDxf({ ...doc, entities: stampInvisibleForSave(entities) });
+    const stamped = stampInvisibleForSave(entities);
+    const text = writeDxf({
+      ...doc,
+      entities: [...stamped, ...dimensionEntitiesForSave(stamped)],
+      dimStyleTable: dimStyleTableForSave(),
+    });
     const blob = new Blob([text], { type: "application/dxf" });
     download(blob, fn);
     // Refresh the welcome-screen drawing history with the freshly saved bytes.
@@ -12646,7 +12743,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       // Real HATCH entities and the first paper-space sheet go through the converter;
       // tests/cad-dwg-roundtrip.test.cjs reads the DWG back with the real engine.
       const dwgVersion = currentDwgVersion();
-      const dxf = writeDxf({ ...doc, entities: stampInvisibleForSave(entities) }, { version: dwgVersion, allLayouts: true });
+      const stamped = stampInvisibleForSave(entities);
+      const dxf = writeDxf(
+        { ...doc, entities: [...stamped, ...dimensionEntitiesForSave(stamped)], dimStyleTable: dimStyleTableForSave() },
+        { version: dwgVersion, allLayouts: true },
+      );
       await validateDxfForDwgExport(dxf, entities.length, doc.layers.map((layer) => layer.name));
       const bytes = await exportDxfToDwg(dxf);
       const blobBuffer = new ArrayBuffer(bytes.byteLength);
@@ -12998,6 +13099,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           return `R|${e.layer}|${f(e.start.x)},${f(e.start.y)}|${f(e.direction.x)},${f(e.direction.y)}`;
         case "XLINE":
           return `X|${e.layer}|${f(e.start.x)},${f(e.start.y)}|${f(e.direction.x)},${f(e.direction.y)}`;
+        case "DIMENSION":
+          return `D|${e.layer}|${e.dimType}|${f(e.defPoint.x)},${f(e.defPoint.y)}|${e.extOrigin1 ? `${f(e.extOrigin1.x)},${f(e.extOrigin1.y)}` : ""}|${e.extOrigin2 ? `${f(e.extOrigin2.x)},${f(e.extOrigin2.y)}` : ""}|${e.curvePoint ? `${f(e.curvePoint.x)},${f(e.curvePoint.y)}` : ""}|${e.text ?? ""}`;
       }
     };
     for (const e of before) {
