@@ -314,6 +314,7 @@
     "test:layer-lock-enforcement": "node tests/layer-lock-enforcement.test.cjs",
     "test:dimension-writer": "node tests/dimension-writer.test.cjs",
     "test:grid-snap": "node tests/grid-snap.test.cjs",
+    "test:fillet-chamfer": "node tests/fillet-chamfer.test.cjs",
     "test:autocad-parity": "node tests/autocad-parity.test.cjs",
     "test:cad-dim-tools": "node tests/cad-dim-tools.test.cjs",
     "test:spatial-index": "node tests/spatial-index.test.cjs",
