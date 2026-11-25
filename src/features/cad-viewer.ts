@@ -159,6 +159,7 @@ import * as Ann from "../modules/cad-viewer/cad-annotation";
 import * as LayerMgr from "../modules/cad-viewer/cad-layer-manager";
 import * as Poly from "../modules/cad-viewer/cad-polyline";
 import * as Sel11 from "../modules/cad-viewer/cad-selection-a11";
+import * as Sel18 from "../modules/cad-viewer/cad-selection-a18";
 import { fmtTime } from "../core/region";
 import { strokeFontFor, strokeLinePolylines, strokeLineWidth, CAP_UNITS, type StrokeFont } from "../modules/drawings/stroke-font";
 
@@ -377,8 +378,9 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "LAYLCK", aliases: [], description: "Lock the layer of the picked object" },
   { name: "LAYUNLCK", aliases: ["LAYUNLOCK"], description: "Unlock the layer of the picked object" },
   { name: "MLEADER", aliases: ["MLD", "LE", "LEADER"], description: "Draw a leader line with annotation text: arrow point → landing end → type the text" },
-  { name: "QSELECT", aliases: ["QSI"], description: "Quick select by type, layer, ACI/RGB colour, linetype, lineweight, text content or all visible objects" },
-  { name: "FILTER", aliases: [], description: "Selection filter — restrict clicking and window/crossing selection to chosen entity types (FILTER CLEAR resets)" },
+  { name: "QSELECT", aliases: ["QSI"], description: "Quick select by type and property with operators — QSELECT opens the dialog; QSELECT ALL · TYPE · LAYER · COLOR · LINETYPE · LINEWEIGHT · TEXT on the command line" },
+  { name: "FILTER", aliases: [], description: "Selection filter — restrict clicking and window/crossing selection to chosen entity types and property criteria; save named filters (FILTER <name> applies one, FILTER SAVE <name> saves the current one, FILTER CLEAR resets)" },
+  { name: "PREVIOUS", aliases: ["PREV"], description: "Restore the previous selection set (P at a Select objects prompt, SELECT PREVIOUS)" },
   { name: "SELECTSIMILAR", aliases: ["SELSIM"], description: "Select objects matching the selected set by type, layer, colour, linetype or lineweight" },
   { name: "SELECTIONCYCLING", aliases: ["SELCYCLE"], description: "Choose which overlapping object is selected at the cursor (Ctrl+W); Ctrl+click cycles them one at a time" },
   { name: "FENCE", aliases: ["FE"], description: "Select objects crossed by a fence polyline — click fence points, Enter / right-click to finish" },
@@ -1777,6 +1779,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let origin: M.Pt | null = null;
   let dualUnits = false;
   let typeFilter = new Set<string>();
+  /** A18: FILTER property criteria (AND list on top of the type filter). */
+  let propFilter: Sel18.QSelectCriterion[] = [];
+  /** A18: named FILTERs (whole filter state under a name), persisted per drawing. */
+  let namedFilters = new Map<string, Sel18.NamedFilter>();
+  /** A18: the most recent non-empty selection set (PREVIOUS / P). */
+  let prevSel: number[] = [];
   let scaleCal = 1;
 
   /* ── HATCH 2.0 — pattern hatching, boundary detection, hatch panel ── */
@@ -2071,6 +2079,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     hiddenEnts?: SessionHiddenEntities;
     /** Named layer states (full property snapshots), persisted per drawing (A16). */
     layerStates?: Record<string, LayerMgr.LayerStateSnapshot>;
+    /** Named selection filters (types + property criteria), persisted per drawing (A18). */
+    namedFilters?: Record<string, Sel18.NamedFilter>;
     at: number;
   };
   function sessionKeyFor(fileName: string): string {
@@ -2100,7 +2110,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   function currentUi(): SessionUi {
     return {
       bg, cmode, snapOn, gridSnapOn, orthoOn, polarOn, polarAngle, otrackOn, dynOn, lwtOn, showGrid, showText, showHatch, showLt,
-      snapModes: [...snapModes], typeFilter: [...typeFilter], currentLayer,
+      snapModes: [...snapModes], typeFilter: [...typeFilter], propFilter: propFilter.length ? propFilter.map((c) => ({ ...c })) : undefined, currentLayer,
       lockedLayers: doc ? doc.layers.filter((l) => l.locked).map((l) => l.name) : [],
     };
   }
@@ -2132,6 +2142,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ui: currentUi(),
       hiddenEnts: hiddenEntityIndexes(doc.entities, hiddenEntities),
       layerStates: layerStates.size ? LayerMgr.serializeLayerStates(layerStates) : undefined,
+      namedFilters: namedFilters.size ? Sel18.serializeNamedFilters(namedFilters) : undefined,
       at: Date.now(),
     };
     const map = loadSessionMap();
@@ -2170,6 +2181,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       for (const [k, v] of Object.entries(LayerMgr.sanitizeLayerStates(sess.layerStates))) layerStates.set(k, v);
     }
 
+    // Named selection filters (validated; a malformed filter is dropped, never applied)
+    if (sess.namedFilters) {
+      namedFilters.clear();
+      for (const [k, v] of Object.entries(Sel18.sanitizeNamedFilters(sess.namedFilters))) namedFilters.set(k, v);
+    }
+
     // Working settings (validated; anything unknown or malformed is ignored)
     try {
       const u = sanitizeSessionUi(sess.ui, Object.keys(BG), M.ALL_SNAPS as readonly string[]);
@@ -2189,6 +2206,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (u.showLt !== undefined) showLt = u.showLt;
       if (u.snapModes && u.snapModes.length) { snapModes.clear(); for (const k of u.snapModes) snapModes.add(k as M.SnapKind); }
       if (u.typeFilter) typeFilter = new Set(u.typeFilter);
+      if (u.propFilter) propFilter = Sel18.sanitizeCriteria(u.propFilter);
       if (u.currentLayer && doc.layers.some((l) => l.name === u.currentLayer)) currentLayer = u.currentLayer;
       if (u.lockedLayers) { const lk = new Set(u.lockedLayers); for (const l of doc.layers) l.locked = lk.has(l.name); }
       updateStatus();
@@ -2260,7 +2278,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   const inv = () => cmode === "invert";
   const fg = () => (bg === "white" || inv() ? 0x000000 : 0xffffff);
-  const visible = (e: DxfEntity) => !hidden.has(e.layer) && !hiddenEntities.has(e) && (typeFilter.size === 0 || typeFilter.has(e.type));
+  const visible = (e: DxfEntity) => !hidden.has(e.layer) && !hiddenEntities.has(e) && (typeFilter.size === 0 || typeFilter.has(e.type)) && Sel18.matchesAllCriteria(e, propFilter);
   /** True only while doPlot renders: non-plotting layers are skipped
    * from the plot output (A16) but stay visible on screen, in picks
    * and in exports — the flag is set around the single synchronous
@@ -4727,7 +4745,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (!mod) return "";
     switch (mod.stage) {
       case "select":
-        return "Select objects: (click to add · Enter / right-click to finish)";
+        return "Select objects: (click to add · P = previous selection · Enter / right-click to finish)";
       case "base":
         return mod.kind === "mirror" ? "Specify first point of mirror line:" : "Specify base point:";
       case "eraseAsk":
@@ -7000,9 +7018,24 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (add && allowed.length === 1 && sel.has(allowed[0])) sel.delete(allowed[0]);
     else for (const i of allowed) sel.add(i);
     selected = sel.size ? [...sel][sel.size - 1] : -1;
+    // A18: the most recent non-empty selection set is the previous
+    // selection (PREVIOUS / P). Clearing the selection never erases it.
+    prevSel = Sel18.recordPrevious(prevSel, [...sel]);
     showProps();
     draw();
     if (sel.size) logCmd(`${sel.size} object(s) selected`);
+  }
+
+  /** A18: restore the previous selection set (PREVIOUS / P). */
+  function restorePreviousSelection(): boolean {
+    const live = Sel18.restorePrevious(prevSel, ents.length).filter((i) => ents[i] && visible(ents[i]));
+    if (!live.length) {
+      logCmd("PREVIOUS: no previous selection to restore.");
+      return false;
+    }
+    setSel(live);
+    logCmd(`PREVIOUS: restored ${live.length} object(s) from the previous selection.`);
+    return true;
   }
 
   function zoomToBox(b: M.BBox | null): void {
@@ -7095,6 +7128,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     addItem("Select Similar (Type + Layer)",()=>{const first=ents[[...sel][0]];if(first)setSel(ents.map((e,i)=>e.type===first.type&&e.layer===first.layer&&visible(e)?i:-1).filter(i=>i>=0));},!hasSelection);
     addItem("Invert Selection",()=>setSel(ents.map((e,i)=>visible(e)&&!sel.has(i)?i:-1).filter(i=>i>=0)),ents.length===0);
     addItem("Deselect All",()=>setSel([]),!hasSelection);
+    addItem("Select Previous",()=>restorePreviousSelection(),prevSel.length===0);
+    addItem("Quick Select…",()=>openQSelectDialog(),ents.length===0);
+    addItem("Selection Filter…",()=>openTypeFilterDialog(),ents.length===0);
     addItem("Fence Select…",()=>setTool("fence"),ents.length===0);
     addItem("Lasso Select…",()=>setTool("lasso"),ents.length===0);
     addSep();
@@ -11240,6 +11276,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const cmd = resolveCadToken(parts[0], CAD_COMMANDS);
     const arg = parts.slice(1).join(" ");
 
+    // A18: P at a "Select objects:" prompt restores the previous
+    // selection instead of panning (P is the PAN alias everywhere else).
+    if ((cmd === "P" || cmd === "PAN") && mod?.stage === "select") {
+      restorePreviousSelection();
+      return;
+    }
+
     // Direct numeric entry: tool radius/length, or pending ROTATE/SCALE/OFFSET
     if (/^[-+]?\d*\.?\d+(e[-+]?\d+)?$/i.test(trimmed)) {
       const num = parseFloat(trimmed);
@@ -12435,6 +12478,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (cmd === "QSELECT" || cmd === "QSI") {
       const what = (parts[1] ?? "").toUpperCase();
       const val = parts.slice(2).join(" ").trim();
+      // A18: bare QSELECT opens the dialog (type + property + operator +
+      // include / exclude / append). The command-line form below is unchanged.
+      if (!what) {
+        openQSelectDialog();
+        return;
+      }
       const all = ents.map((_, i) => i).filter((i) => visible(ents[i]));
       const colorKey = (e: DxfEntity): string => e.rgb != null
         ? `rgb:${(e.rgb & 0xffffff).toString(16).padStart(6, "0")}`
@@ -12467,17 +12516,37 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     if (cmd === "FILTER") {
-      if (/^(clear|none|off|reset)$/i.test(arg.trim())) {
+      const rest = arg.trim();
+      if (/^(clear|none|off|reset)$/i.test(rest)) {
         typeFilter = new Set();
+        propFilter = [];
         for (const i of [...sel]) {
           if (!ents[i]) sel.delete(i);
         }
         logCmd("FILTER: selection filter cleared — every object type is selectable again.");
         updateStatus();
         draw();
+      } else if (/^save\b/i.test(rest)) {
+        const nm = rest.slice(4).trim();
+        if (nm) saveNamedFilter(nm, typeFilter, propFilter);
+        else logCmd("FILTER: use FILTER SAVE <name> to save the current filter under a name.");
+      } else if (rest) {
+        // A18: FILTER <name> applies a named filter; anything else opens the dialog.
+        const f = namedFilters.get(rest);
+        if (f) {
+          applyFilterState(new Set(f.types), f.criteria);
+          logCmd(`FILTER: applied named filter "${f.name}" (${f.types.length ? f.types.join(", ") : "all types"}${f.criteria.length ? ` + ${f.criteria.length} criteri${f.criteria.length === 1 ? "on" : "a"}` : ""}).`);
+        } else {
+          logCmd(`FILTER: no named filter "${rest}" — opening the filter dialog.`);
+          openTypeFilterDialog();
+        }
       } else {
         openTypeFilterDialog();
       }
+      return;
+    }
+    if (cmd === "PREVIOUS" || cmd === "PREV" || (cmd === "SELECT" && (parts[1] ?? "").toUpperCase() === "PREVIOUS")) {
+      restorePreviousSelection();
       return;
     }
     if (cmd === "SELECTSIMILAR" || cmd === "SELSIM") {
@@ -13625,17 +13694,153 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
    * FILTER — selection filter dialog. The checked entity types are the only
    * ones picking, window and crossing selection can land on (the `visible`
    * predicate honours `typeFilter`). FILTER CLEAR resets.
+   *
+   * A18: property criteria (an AND list) sit on top of the type filter,
+   * and the whole filter state can be saved under a name and applied or
+   * deleted later (named filters persist per drawing, like A16 layer
+   * states). The same state is what FILTER <name> / FILTER SAVE <name>
+   * use on the command line.
    */
+  function applyFilterState(types: Set<string>, criteria: Sel18.QSelectCriterion[]): void {
+    typeFilter = new Set(types);
+    propFilter = [...criteria];
+    // Deselect anything the filter now excludes.
+    for (const i of [...sel]) {
+      if (!ents[i] || !visible(ents[i])) sel.delete(i);
+    }
+    updateStatus();
+    draw();
+  }
+
+  function saveNamedFilter(name: string, types: Set<string>, criteria: Sel18.QSelectCriterion[]): boolean {
+    const k = name.trim();
+    if (!k || k.length > 100) {
+      logCmd("FILTER: give the named filter a name (up to 100 characters).");
+      return false;
+    }
+    namedFilters.set(k, { name: k, types: [...types], criteria: criteria.map((c) => ({ ...c })) });
+    scheduleSessionSave();
+    logCmd(`FILTER: saved named filter "${k}" (${types.size ? [...types].join(", ") : "all types"}${criteria.length ? ` + ${criteria.length} criteri${criteria.length === 1 ? "on" : "a"}` : ""}).`);
+    return true;
+  }
+
+  /**
+   * A18: QSELECT dialog. Bare QSELECT opens it; the command-line form
+   * (QSELECT ALL · TYPE · LAYER · …) still works. Object type scopes
+   * the property list; the operator list follows the property kind.
+   * Apply runs the criterion through Sel18.applyQSelect and closes.
+   */
+  function openQSelectDialog(): void {
+    const counts = new Map<string, number>();
+    for (const e of ents) counts.set(e.type, (counts.get(e.type) ?? 0) + 1);
+    const types = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
+    const panel = openOverlay(`
+      <b style="font-size:15px;color:#38bdf8">Quick Select (QSELECT)</b>
+      <div style="font-size:11px;color:#9aa4b2;margin:4px 0 12px">Pick objects by type and one property. Include starts a new selection set from the matches, Exclude removes the matches from the whole drawing, Append adds them to the current selection.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">Object Type:</label>
+          <select data-r="qs-type" style="width:100%;background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px">
+            <option value="ALL">All</option>
+            ${types.map((t) => `<option value="${t}">${t}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">Property:</label>
+          <select data-r="qs-prop" style="width:100%;background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px"></select>
+        </div>
+        <div>
+          <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">Operator:</label>
+          <select data-r="qs-op" style="width:100%;background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px"></select>
+        </div>
+        <div>
+          <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">Value:</label>
+          <input data-r="qs-value" style="width:100%;background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px">
+        </div>
+      </div>
+      <div style="margin-top:14px;font-size:11px;color:#94a3b8">How to apply:</div>
+      <div style="display:flex;gap:16px;margin-top:4px;font-size:12px">
+        <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="qs-mode" value="include" checked>Include in new selection set</label>
+        <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="qs-mode" value="exclude">Exclude from new selection set</label>
+        <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="qs-mode" value="append">Append to current selection set</label>
+      </div>
+      <div data-r="qs-error" style="font-size:11px;color:#f87171;min-height:14px;margin-top:8px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+        <button data-r="qs-cancel" style="padding:6px 10px">Cancel</button>
+        <button data-r="qs-apply" style="padding:6px 12px;background:#0284c7;color:white;border:0;border-radius:4px">Apply</button>
+      </div>
+    `);
+    const typeSel = panel.querySelector<HTMLSelectElement>("[data-r=qs-type]");
+    const propSel = panel.querySelector<HTMLSelectElement>("[data-r=qs-prop]");
+    const opSel = panel.querySelector<HTMLSelectElement>("[data-r=qs-op]");
+    const valInput = panel.querySelector<HTMLInputElement>("[data-r=qs-value]");
+    const refreshProps = (): void => {
+      if (!typeSel || !propSel) return;
+      const props = Sel18.propertiesForType(typeSel.value);
+      propSel.innerHTML = props.map((p) => `<option value="${p.id}">${p.label}</option>`).join("");
+      refreshOps();
+    };
+    const refreshOps = (): void => {
+      if (!propSel || !opSel) return;
+      const def = Sel18.propertyDef(propSel.value);
+      opSel.innerHTML = Sel18.operatorsForKind(def?.kind ?? "string")
+        .map((o) => `<option value="${o}">${o === "contains" ? "contains" : o === "not-contains" ? "does not contain" : o}</option>`).join("");
+      if (valInput) valInput.placeholder = def?.placeholder ?? "value";
+    };
+    typeSel?.addEventListener("change", refreshProps);
+    propSel?.addEventListener("change", refreshOps);
+    refreshProps();
+    panel.querySelector("[data-r=qs-cancel]")?.addEventListener("click", closeOverlay);
+    panel.querySelector("[data-r=qs-apply]")?.addEventListener("click", () => {
+      const err = panel.querySelector("[data-r=qs-error]");
+      const criterion = Sel18.sanitizeCriterion({ property: propSel?.value, operator: opSel?.value, value: valInput?.value ?? "" });
+      if (!criterion) {
+        if (err) err.textContent = "That value does not work for this property — check the operator and the value (numbers need digits; colours need an ACI number, #RRGGBB or BYLAYER).";
+        return;
+      }
+      const mode = (panel.querySelector<HTMLInputElement>("input[name=qs-mode]:checked")?.value ?? "include") as Sel18.QSelectApplyMode;
+      let candidates = ents.map((_, i) => i).filter((i) => visible(ents[i]));
+      // The Object Type scopes the match, not just the property list
+      // (AutoCAD: QSELECT with a type only ever returns that type).
+      const type = typeSel?.value ?? "ALL";
+      if (type !== "ALL") candidates = candidates.filter((i) => ents[i].type === type);
+      const ids = Sel18.applyQSelect(ents, candidates, criterion, mode, sel);
+      setSel(ids);
+      logCmd(`QSELECT ${type === "ALL" ? "" : type + " "}${criterion.property} ${criterion.operator} ${criterion.value} (${mode}): ${ids.length} object(s) selected.`);
+      closeOverlay();
+    });
+  }
+
   function openTypeFilterDialog(): void {
     const counts = new Map<string, number>();
     for (const e of ents) counts.set(e.type, (counts.get(e.type) ?? 0) + 1);
     const types = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    // A18: the dialog edits a working copy; Apply commits it.
+    const criteria: Sel18.QSelectCriterion[] = [...propFilter];
+    const propOptions = Sel18.ALL_FILTER_PROPERTIES.map((p) => `<option value="${p.id}">${p.label}</option>`).join("");
+    const opOptions = (kind: Sel18.PropertyKind): string =>
+      Sel18.operatorsForKind(kind).map((o) => `<option value="${o}">${o === "contains" ? "contains" : o === "not-contains" ? "does not contain" : o}</option>`).join("");
     const panel = openOverlay(`
       <b style="font-size:15px;color:#38bdf8">Selection Filter (FILTER)</b>
-      <div style="font-size:11px;color:#9aa4b2;margin:4px 0 12px">Only the checked types are selectable — clicking and window/crossing selection both honour the filter. Clear it to select everything again.</div>
+      <div style="font-size:11px;color:#9aa4b2;margin:4px 0 12px">Only the checked types are selectable — clicking and window/crossing selection both honour the filter. Property criteria narrow it further (every criterion must match). Clear it to select everything again.</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 18px">
         ${types.map(([t, n]) => `<label style="display:flex;gap:8px;align-items:center;padding:7px;border:1px solid #293548;border-radius:6px"><input type="checkbox" data-filter-type="${t}" ${typeFilter.has(t) ? "checked" : ""}><span>${t} <small style="color:#94a3b8">(${n})</small></span></label>`).join("") || "<div style='color:#94a3b8;font-size:12px'>The drawing is empty — place objects first.</div>"}
       </div>
+      <div style="margin-top:16px;font-size:12px;font-weight:600;color:#e8eaf0">Property criteria (all must match)</div>
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+        <select data-r="filter-prop" style="background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px">${propOptions}</select>
+        <select data-r="filter-op" style="background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px"></select>
+        <input data-r="filter-value" placeholder="value" style="flex:1;min-width:120px;background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px">
+        <button data-r="filter-add-criterion" style="padding:5px 10px">Add</button>
+      </div>
+      <div data-r="filter-criterion-error" style="font-size:11px;color:#f87171;min-height:14px;margin-top:2px"></div>
+      <div data-r="filter-criteria" style="margin-top:4px"></div>
+      <div style="margin-top:16px;font-size:12px;font-weight:600;color:#e8eaf0">Named filters</div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <input data-r="filter-name" placeholder="Filter name" style="flex:1;background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px">
+        <button data-r="filter-save" style="padding:5px 10px">Save Filter</button>
+      </div>
+      <div data-r="filter-named" style="margin-top:6px"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
         <button data-r="filter-clear" style="padding:6px 10px">Clear Filter</button>
         <button data-r="filter-apply" style="padding:6px 12px;background:#0284c7;color:white;border:0;border-radius:4px">Apply</button>
@@ -13648,25 +13853,101 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       });
       return next;
     };
+    const renderCriteria = (): void => {
+      const box = panel.querySelector("[data-r=filter-criteria]");
+      if (!box) return;
+      box.innerHTML = criteria.length
+        ? criteria.map((c, i) => {
+            const def = Sel18.propertyDef(c.property);
+            return `<div style="display:flex;gap:8px;align-items:center;padding:5px 8px;border:1px solid #293548;border-radius:6px;margin-top:4px"><span style="flex:1">${def?.label ?? c.property} ${c.operator} ${escapeHtml(c.value)}</span><button data-filter-criterion-remove="${i}" style="padding:2px 8px">✕</button></div>`;
+          }).join("")
+        : `<div style="color:#94a3b8;font-size:11px;margin-top:4px">No property criteria — the type checkboxes alone decide what is selectable.</div>`;
+      box.querySelectorAll("[data-filter-criterion-remove]").forEach((b) => {
+        b.addEventListener("click", () => {
+          const i = Number((b as HTMLElement).dataset.filterCriterionRemove);
+          if (Number.isInteger(i)) criteria.splice(i, 1);
+          renderCriteria();
+        });
+      });
+    };
+    const renderNamed = (): void => {
+      const box = panel.querySelector("[data-r=filter-named]");
+      if (!box) return;
+      const names = [...namedFilters.keys()].sort();
+      box.innerHTML = names.length
+        ? names.map((n) => {
+            const f = namedFilters.get(n)!;
+            return `<div style="display:flex;gap:8px;align-items:center;padding:5px 8px;border:1px solid #293548;border-radius:6px;margin-top:4px"><span style="flex:1">${escapeHtml(n)} <small style="color:#94a3b8">(${f.types.length ? f.types.join(", ") : "all types"}${f.criteria.length ? ` + ${f.criteria.length} criteri${f.criteria.length === 1 ? "on" : "a"}` : ""})</small></span><button data-filter-apply-name="${escapeHtml(n)}" style="padding:2px 8px">Apply</button><button data-filter-delete-name="${escapeHtml(n)}" style="padding:2px 8px">Delete</button></div>`;
+          }).join("")
+        : `<div style="color:#94a3b8;font-size:11px;margin-top:4px">No saved filters yet.</div>`;
+      box.querySelectorAll("[data-filter-apply-name]").forEach((b) => {
+        b.addEventListener("click", () => {
+          const f = namedFilters.get((b as HTMLElement).dataset.filterApplyName ?? "");
+          if (!f) return;
+          applyFilterState(new Set(f.types), f.criteria);
+          logCmd(`FILTER: applied named filter "${f.name}" (${f.types.length ? f.types.join(", ") : "all types"}${f.criteria.length ? ` + ${f.criteria.length} criteri${f.criteria.length === 1 ? "on" : "a"}` : ""}).`);
+          closeOverlay();
+        });
+      });
+      box.querySelectorAll("[data-filter-delete-name]").forEach((b) => {
+        b.addEventListener("click", () => {
+          const n = (b as HTMLElement).dataset.filterDeleteName ?? "";
+          if (namedFilters.delete(n)) {
+            scheduleSessionSave();
+            logCmd(`FILTER: deleted named filter "${n}".`);
+            renderNamed();
+          }
+        });
+      });
+    };
+    const propSel = panel.querySelector<HTMLSelectElement>("[data-r=filter-prop]");
+    const opSel = panel.querySelector<HTMLSelectElement>("[data-r=filter-op]");
+    const valInput = panel.querySelector<HTMLInputElement>("[data-r=filter-value]");
+    const refreshOps = (): void => {
+      if (!propSel || !opSel) return;
+      const def = Sel18.propertyDef(propSel.value);
+      opSel.innerHTML = opOptions(def?.kind ?? "string");
+      if (valInput) valInput.placeholder = def?.placeholder ?? "value";
+    };
+    propSel?.addEventListener("change", refreshOps);
+    refreshOps();
+    renderCriteria();
+    renderNamed();
+    panel.querySelector("[data-r=filter-add-criterion]")?.addEventListener("click", () => {
+      const err = panel.querySelector("[data-r=filter-criterion-error]");
+      const c = Sel18.sanitizeCriterion({ property: propSel?.value, operator: opSel?.value, value: valInput?.value ?? "" });
+      if (!c) {
+        if (err) err.textContent = "That value does not work for this property — check the operator and the value (numbers need digits; colours need an ACI number, #RRGGBB or BYLAYER).";
+        return;
+      }
+      if (err) err.textContent = "";
+      criteria.push(c);
+      if (valInput) valInput.value = "";
+      renderCriteria();
+    });
+    panel.querySelector("[data-r=filter-save]")?.addEventListener("click", () => {
+      const nameInput = panel.querySelector<HTMLInputElement>("[data-r=filter-name]");
+      if (saveNamedFilter(nameInput?.value ?? "", readChecked(), criteria)) {
+        if (nameInput) nameInput.value = "";
+        renderNamed();
+      }
+    });
     panel.querySelector("[data-r=filter-clear]")?.addEventListener("click", () => {
       typeFilter = new Set();
+      propFilter = [];
+      criteria.length = 0;
       panel.querySelectorAll<HTMLInputElement>("[data-filter-type]").forEach((i) => { i.checked = false; });
+      renderCriteria();
       logCmd("FILTER: selection filter cleared.");
       updateStatus();
       draw();
     });
     panel.querySelector("[data-r=filter-apply]")?.addEventListener("click", () => {
-      typeFilter = readChecked();
-      // Deselect anything the filter now excludes.
-      for (const i of [...sel]) {
-        if (!ents[i] || !visible(ents[i])) sel.delete(i);
-      }
-      logCmd(typeFilter.size
-        ? `FILTER: selection filter active — only ${[...typeFilter].join(", ")} selectable.`
+      applyFilterState(readChecked(), criteria);
+      logCmd(typeFilter.size || propFilter.length
+        ? `FILTER: selection filter active — only ${typeFilter.size ? [...typeFilter].join(", ") : "all types"}${propFilter.length ? ` with ${propFilter.length} propert${propFilter.length === 1 ? "y" : "ies"}` : ""} selectable.`
         : "FILTER: no types checked — every object type is selectable.");
       closeOverlay();
-      updateStatus();
-      draw();
     });
   }
 
