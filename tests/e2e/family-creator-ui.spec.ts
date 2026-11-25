@@ -562,3 +562,39 @@ test("family creator: parts can be switched off in the preview, and the exports 
   await expect(panel.locator('[data-fc="notice"]')).toContainText("Every part is switched off");
   expect(errors).toEqual([]);
 });
+
+test("family creator: if parts cannot be matched to the preview, the panel says so and offers no hiding", async ({ page }) => {
+  // Test-only injection: a page-level override of Math.hypot (set after the family exists) makes every
+  // node look off-centre. No production hook is involved; the app code under test is unchanged.
+  await page.addInitScript(() => {
+    const real = Math.hypot;
+    (window as any).__forceOffCentre = false;
+    Math.hypot = (...a: number[]) => ((window as any).__forceOffCentre && a.length === 3 ? 1 : real(...a));
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (e: Error) => errors.push(e.message));
+  await enterAuthoring(page);
+  await openCreator(page);
+  const panel = page.getByTestId("family-creator-panel");
+  await panel.locator('[data-f="name"]').fill("Sideboard MM-1");
+  await panel.locator('[data-f="text"]').fill("Overall size: 1600 x 500 x 900 mm\nDoors: 3\nDrawers: 2");
+  await panel.getByRole("button", { name: "Create family" }).click();
+  await expect(panel.locator('[data-fc="parts"] input[data-part]')).toHaveCount(12);
+  await panel.locator('input[data-part="Handle 1"]').uncheck();
+  await panel.locator('input[data-scope="shown"]').check();
+  await expect(panel.locator('[data-fc="export-scope"]')).toContainText("11 of 12");
+  await page.evaluate(() => { (window as any).__forceOffCentre = true; });
+  // Any re-render: change the width.
+  await panel.locator('[data-param="Width"]').fill("1500");
+  await panel.locator('[data-param="Width"]').dispatchEvent("change");
+  await expect(panel.locator('[data-fc="parts-unavailable"]')).toContainText("cannot be matched to the preview");
+  await expect(panel.locator('[data-fc="parts"] input')).toHaveCount(0);
+  await expect(panel.locator('[data-fc="views"]')).toBeVisible();
+  await panel.locator('[data-fc="parts"]').scrollIntoViewIfNeeded();
+  await shot(page, "82-parts-cannot-be-matched.png");
+  // Downloads contain every part, and the hidden choice is gone.
+  const [d] = await Promise.all([page.waitForEvent("download"), panel.getByRole("button", { name: "Download IFC2X3" }).click()]);
+  const f = path.join(SHOTS ?? "/tmp", "mm-" + Date.now() + ".ifc"); await d.saveAs(f);
+  expect((fs.readFileSync(f, "utf8").match(/IFCEXTRUDEDAREASOLID/g) ?? []).length).toBe(12);
+  expect(errors).toEqual([]);
+});
