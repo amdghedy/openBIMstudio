@@ -86,7 +86,15 @@ DCDIAMETER now also *record* the relation; `GCSOLVE` (ribbon: Manage › Solve A
 undoable edit, `GCLIST` (Manage › Constraints) shows each one as ok / redundant / CONFLICT, `GCCLEAR` forgets them. FIX'd
 objects stay put (centre and radius). A conflicting or diverged set is refused — geometry is not changed. Verified:
 `tests/cad-constraint-bridge.test.cjs` (9) and the browser spec `cad-constraints.spec.ts`.
-*Limits:* relations are session-scoped (not written to DXF/DWG), so they are lost on reload; COINCIDENT, SYMMETRIC and
+**Persistence (Phase 4c).** QSAVE writes recorded relations into the DXF as XRECORDs (named dictionary
+`OPENBIMSTUDIO_CONSTRAINTS`: kind, value, model-space entity positions, one geometry fingerprint per object); opening the file
+restores a relation only if every fingerprint still matches the object at that position, otherwise it is dropped and reported.
+Opening a drawing also clears relations left from the previous one. Verified: `tests/cad-constraint-store.test.cjs` (6) and the
+browser spec "constraints survive save and reopen". *Limits:* DXF only — DWG export goes through the converter and does not carry
+them; other CAD apps ignore the objects (not tested in AutoCAD/BricsCAD); a file edited elsewhere that reorders or changes the
+constrained entities loses those constraints on open (by design); merge-import (IMPORT into an open drawing) does not bring
+constraints in.
+*Limits:* COINCIDENT, SYMMETRIC and
 DCANGULAR still apply once without being tracked; relations do not re-solve automatically while dragging; ARC angles and
 polylines/splines are not solved; `GCDEL <n>` removes one relation (GCCLEAR clears all).
 
