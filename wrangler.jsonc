@@ -43,5 +43,14 @@
         "AuthVault"
       ]
     }
-  ]
+  ],
+  "previews": {
+    "durable_objects": {
+      "bindings": [
+        { "name": "COUNTER", "class_name": "VisitCounter" },
+        { "name": "LINKEDIN_VAULT", "class_name": "LinkedInVault" },
+        { "name": "AUTH", "class_name": "AuthVault" }
+      ]
+    }
+  }
 }
