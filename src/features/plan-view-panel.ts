@@ -6594,6 +6594,8 @@ try {
     toggle: togglePlanView,
     isVisible: isPlanViewVisible,
     regenerate: () => void regenerate(),
+    /** Map client mouse position to world XZ on the plan (null when the plan CTM is unavailable). */
+    clientToWorld,
     /** G12 (a): current dock mode ("modal" | "docked-right" | "docked-bottom"). */
     dockMode: () => planDockMode,
     isDocked: () => planDockMode !== "modal",

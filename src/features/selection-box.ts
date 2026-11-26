@@ -207,7 +207,7 @@ export function isolateSelection(): boolean {
   let hiddenCount = 0;
   for (const el of elements) {
     if (!ids.includes(String(el.id))) {
-      const mesh = (ctx as any).__obsGetElementMesh?.(el.id) ?? el.mesh;
+      const mesh = el.mesh;
       if (mesh) {
         mesh.visible = false;
         hiddenCount++;
@@ -233,7 +233,7 @@ export function resetIsolation(): void {
   const elements = (ctx as any).elements ?? [];
   let shown = 0;
   for (const el of elements) {
-    const mesh = (ctx as any).__obsGetElementMesh?.(el.id) ?? el.mesh;
+    const mesh = el.mesh;
     if (mesh && !mesh.visible) {
       mesh.visible = true;
       shown++;
