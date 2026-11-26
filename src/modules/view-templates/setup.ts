@@ -4,6 +4,7 @@
 
 import { viewTemplatesStore, exposeViewTemplatesGlobal } from "./view-templates-store";
 import { setupVgDialog, openVgDialog } from "./vg-dialog";
+import { ready } from "../../core/services";
 
 // legacy module-local state (formerly on window)
 // eslint-disable-next-line no-unused-vars
@@ -13,33 +14,29 @@ type Any = Record<string, any>;
 
 function registerPaletteCommands(): void {
   try {
-    const palette =
-      (window as Any).__obsCommandPalette ??
-      (window as Any).commandPalette ??
-      (window as Any).__OBS_COMMANDS__;
-    const register =
-      palette?.register ??
-      palette?.add ??
-      (window as Any).registerCommand;
-
+    // Register through the typed palette service once it is up, whatever the
+    // boot order: the old window-global chain (the legacy palette globals)
+    // had no producer anywhere, so these commands never reached the palette.
+    // The legacy commands-map stash had no reader and is gone. Command shape
+    // mapped to the palette's own contract: title → label, keywords → hint.
     const cmds = [
       {
         id: "view.visibilityGraphics",
-        title: "Visibility/Graphics…",
+        label: "Visibility/Graphics…",
         category: "View",
-        keywords: ["vg", "visibility", "graphics", "categories", "halftone"],
+        hint: "vg, visibility, graphics, categories, halftone",
         run: () => openVgDialog(),
       },
       {
         id: "view.viewTemplates",
-        title: "View Templates…",
+        label: "View Templates…",
         category: "View",
-        keywords: ["template", "view template"],
+        hint: "template, view template",
         run: () => openVgDialog({ templateId: viewTemplatesStore.listTemplates()[0]?.id }),
       },
       {
         id: "view.applyArchitecturalTemplate",
-        title: "Apply Template: Architectural Plan",
+        label: "Apply Template: Architectural Plan",
         category: "View",
         run: () => {
           const t = viewTemplatesStore
@@ -56,7 +53,7 @@ function registerPaletteCommands(): void {
       },
       {
         id: "view.applyStructuralTemplate",
-        title: "Apply Template: Structural Plan",
+        label: "Apply Template: Structural Plan",
         category: "View",
         run: () => {
           const t = viewTemplatesStore
@@ -73,7 +70,7 @@ function registerPaletteCommands(): void {
       },
       {
         id: "view.applyCoordinationTemplate",
-        title: "Apply Template: Coordination",
+        label: "Apply Template: Coordination",
         category: "View",
         run: () => {
           const t = viewTemplatesStore
@@ -87,21 +84,11 @@ function registerPaletteCommands(): void {
       },
     ];
 
-    if (typeof register === "function") {
+    void ready("commandPalette").then((palette) => {
       for (const c of cmds) {
-        try {
-          register(c);
-        } catch {
-          try {
-            register(c.id, c);
-          } catch { /* */ }
-        }
+        try { palette.register(c); } catch { /* */ }
       }
-    }
-
-    // Also expose a simple map for bim-compatibility-bridge consumers
-    const map = ((window as Any).__obsPaletteCommands ??= {});
-    for (const c of cmds) map[c.id] = c;
+    });
   } catch (e) {
     console.warn("[view-templates] palette registration skipped", e);
   }

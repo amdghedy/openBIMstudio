@@ -14,7 +14,7 @@ import { confirmDialog } from "./form-modal";
 import { promptLine } from "./form-modal";
 import * as THREE from "three";
 import { ctx } from "../core/context";
-import { services } from "../core/services";
+import { services, register as registerService } from "../core/services";
 import { notify } from "../core/notify";
 import {
   fitAll, goHome, gotoDir, takeScreenshot, setProjection, getProjection,
@@ -889,4 +889,9 @@ export function setupCommandPalette(): void {
     unregister: unregisterCommand,
     list: listCommands,
   };
+  // Typed registry too: ServiceMap declares commandPalette but nothing
+  // registered it, so services.ready("commandPalette") never resolved and
+  // modules registering commands at boot (view-templates, auto-dimensions)
+  // had no working path to the palette.
+  registerService("commandPalette", ctx.features.commandPalette);
 }

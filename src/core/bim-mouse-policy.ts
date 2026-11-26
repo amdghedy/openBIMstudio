@@ -96,7 +96,7 @@ function cancelActiveOperation(): boolean {
   if (s && (typeof s.isEnabled === "function" ? s.isEnabled() : (typeof s.isSectionOn === "function" ? s.isSectionOn() : s.enabled))) {
     s.setSectionOn?.(false); s.disable?.(); canceled = true;
   }
-  const wk = feat.walkMode || W.__obsWalkMode;
+  const wk = feat.walkMode; // the legacy walk-mode window-global had no producer
   if (wk && (typeof wk.isEnabled === "function" ? wk.isEnabled() : (typeof wk.isActive === "function" ? wk.isActive() : wk.enabled))) {
     wk.disable?.(); wk.setActive?.(false); canceled = true;
   }

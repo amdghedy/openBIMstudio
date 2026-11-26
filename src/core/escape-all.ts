@@ -248,7 +248,7 @@ function builtinScopes(getMods: () => Any): EscapeScope[] {
       // Walk mode (first-person).
       id: "walk-mode", priority: 680,
       cancel: () => {
-        const wmode: Any = F()?.walkMode ?? W().__obsWalkMode;
+        const wmode: Any = F()?.walkMode; // the legacy walk-mode window-global had no producer
         try {
           if (wmode?.isEnabled?.() || wmode?.isActive?.()) {
             wmode.disable?.(); wmode.setActive?.(false); return true;
