@@ -8,6 +8,7 @@
 
 import * as THREE from "three";
 import { notify as coreNotify } from "../core/notify";
+import { ready as servicesReady } from "../core/services";
 import { ctx } from "../core/context";
 
 import {
@@ -75,7 +76,7 @@ import {
   type LoadCase, type LoadCombination,
 } from "../modules/structural-loads-ui/structural-loads-ui";
 import { runStudy, type StudyConfig, type StudyResult } from "../modules/generative-design/generative-design";
-import { loadPointCloud, clipPointCloudByPolygon, type PointCloudLoadOptions } from "../modules/point-cloud/point-cloud";
+import { loadPointCloud, type PointCloudLoadOptions } from "../modules/point-cloud/point-cloud";
 import { loadPdfUnderlay, type PdfUnderlayParams } from "../modules/pdf-underlay/pdf-underlay";
 import {
   initWorksets, createWorkset, listWorksets, getWorkset, renameWorkset,
@@ -287,16 +288,27 @@ w.__obsGenerativeDesign = {
 };
 
 // ── Point Cloud ───────────────────────────────────────────────────────────
-w.__obsPointCloud = {
-  load: async (options?: PointCloudLoadOptions) => {
-    const file = await filePicker(".e57,.las,.laz,.pcd,.ply");
-    if (!file) { toast("No file selected", "warn"); return null; }
-    const r = await loadPointCloud(file, options ?? {});
-    addObject(r.points, `Point cloud (${r.actualPoints.toLocaleString()} pts, ${r.header.format})`);
-    return r;
-  },
-  clip: clipPointCloudByPolygon,
-};
+// Point clouds had one window-global stash with no consumer anywhere in
+// the repo — the feature was unreachable. It now lives where users find
+// tools: a typed palette command (same load flow as the old stash).
+async function loadPointCloudInteractive(options?: PointCloudLoadOptions) {
+  const file = await filePicker(".e57,.las,.laz,.pcd,.ply");
+  if (!file) { toast("No file selected", "warn"); return null; }
+  const r = await loadPointCloud(file, options ?? {});
+  addObject(r.points, `Point cloud (${r.actualPoints.toLocaleString()} pts, ${r.header.format})`);
+  return r;
+}
+void servicesReady("commandPalette").then((palette) => {
+  try {
+    palette.register({
+      id: "insert.pointCloud",
+      label: "Point Cloud: Load\u2026",
+      category: "Insert",
+      hint: "point cloud, e57, las, laz, pcd, ply, scan",
+      run: () => { void loadPointCloudInteractive(); },
+    });
+  } catch { /* */ }
+});
 
 // ── PDF Underlay ──────────────────────────────────────────────────────────
 w.__obsPdfUnderlay = {
@@ -403,4 +415,4 @@ w.__obsSelectionBox = {
   },
 };
 
-console.log("[obs] v40 module globals registered: toposurface, building-pad, property-line, site-components, ramps, trusses, structural-connections, fabrication-parts, scope-box, view-filters, matchline, plan-region, dependent-views, model-checker, daylighting, structural-loads-ui, generative-design, point-cloud, pdf-underlay, worksets, scope-box-viz, crop-region, section-box, selection-box");
+console.log("[obs] v40 module globals registered: toposurface, building-pad, property-line, site-components, ramps, trusses, structural-connections, fabrication-parts, scope-box, view-filters, matchline, plan-region, dependent-views, model-checker, daylighting, structural-loads-ui, generative-design, pdf-underlay, worksets, scope-box-viz, crop-region, section-box, selection-box");

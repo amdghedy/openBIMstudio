@@ -49,7 +49,14 @@ serializes FROM the canonical store, and on load it hydrates INTO it.
 2. CAD entities adapter. This is the risky step — the CAD engines keep
    their own selection/undo paths — so it lands behind the existing e2e CAD
    specs.
-3. Family instances adapter.
+3. ~~Family instances adapter.~~ **Finding (2026-11-27):** family instances
+   are authoring elements — placement stores them in the authoring
+   `elements` array with `familyId`/`familyTypeId`, and type edits sync
+   through `syncFamilyInstances` inside the authored kind. The step-1
+   adapter already owns them; a separate family kind would create the
+   duplicate-ownership conflict the store exists to prevent. The family
+   store holds type DEFINITIONS, not element records, so it stays the
+   type catalog for the authored kind. No separate adapter.
 4. Point persistence at the store (save reads it, load writes it); the
    recovery and edit-undo-save e2e specs are the gate.
 5. Ratchet: new element state outside the store fails CI (same style as
