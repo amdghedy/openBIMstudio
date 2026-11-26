@@ -174,8 +174,14 @@ t("dispatch wires the commands to the visibility engine", () => {
 
 t("QSAVE and DWGSAVE stamp the hidden set without mutating live entities", () => {
   assert.ok(/function stampInvisibleForSave\(entities: DxfEntity\[\]\): DxfEntity\[\]/.test(viewerSrc), "stamp helper exists");
-  assert.ok(/writeDxf\(\{ \.\.\.doc, entities: stampInvisibleForSave\(entities\) \}\)/.test(viewerSrc), "saveDxf uses the stamp");
-  assert.ok(/writeDxf\(\{ \.\.\.doc, entities: stampInvisibleForSave\(entities\) \}, \{ version: dwgVersion/.test(viewerSrc), "saveDwg uses the stamp");
+  // A5: the saved entity list is the stamped list plus the dimension
+  // entities derived from it — the old pin expected the stamped list
+  // alone (`entities: stampInvisibleForSave(entities)`), which neither
+  // save path writes any more.
+  assert.strictEqual((viewerSrc.match(/const stamped = stampInvisibleForSave\(entities\);/g) ?? []).length, 2,
+    "both save paths (QSAVE + DWGSAVE) stamp");
+  assert.ok(/writeDxf\(\{\s*\.\.\.doc,\s*entities: \[\.\.\.stamped, \.\.\.dimensionEntitiesForSave\(stamped\)\],\s*dimStyleTable: dimStyleTableForSave\(\),\s*constraints: savedCons\.stored,\s*\}\)/.test(viewerSrc), "saveDxf uses the stamp");
+  assert.ok(/writeDxf\(\s*\{\s*\.\.\.doc, entities: \[\.\.\.stamped, \.\.\.dimensionEntitiesForSave\(stamped\)\], dimStyleTable: dimStyleTableForSave\(\) \},\s*\{\s*version: dwgVersion\s*\},/.test(viewerSrc), "saveDwg uses the stamp");
   assert.ok(/entities\.map\(\(e\) => \(hiddenEntities\.has\(e\) && !e\.invisible \? \{ \.\.\.e, invisible: true \} : e\)\)/.test(viewerSrc),
     "stamping clones, never mutates");
 });
@@ -190,6 +196,12 @@ t("merged files keep their invisible objects hidden (IMPORT / INSERT)", () => {
   assert.ok(/for \(const e of incoming\) if \(e\.invisible\) hiddenEntities\.add\(e\);/.test(viewerSrc),
     "merge path carries the flag into the live visibility set");
 });
+
+// A failure used to print a FAIL line and still exit 0, so CI reported
+// the suite green while the pin was stale (2D-3). The summary + exit
+// below make a failed assertion fail the run.
+console.log(`\n${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);
 
 }
 
