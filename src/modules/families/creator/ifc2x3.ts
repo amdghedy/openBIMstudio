@@ -10,6 +10,8 @@
 // Engine axes (X width, Y up, Z depth) map to IFC (X, Y = -Z, Z = Y).
 // Units are metres.
 
+import { bendFrame } from "./layout";
+import { BEND_RATIO } from "./templates";
 import type { ResolvedPart } from "./layout";
 
 export interface IfcCreatorInput {
@@ -121,6 +123,26 @@ export function writeIfc2x3(input: IfcCreatorInput): IfcWriteResult {
   const solids: number[] = [];
   for (const p of input.parts) {
     // Cylinders may lie along X or Z (engine). Engine X -> IFC X, engine Z -> IFC -Y, engine Y -> IFC Z.
+    if (p.shape === "bend") {
+      // Revolved disc: profile circle centred BEND_RATIO x r from the revolution axis, swept h degrees (IFC2x3 IFCREVOLVEDAREASOLID).
+      // Local frame (engine): profile x -> engine local +Z, profile y -> local +Y; revolve about local Y (right-hand), so +Z turns toward +X.
+      const fr = bendFrame(p.axis ?? "y");
+      const toIfc = (v: [number, number, number]): [number, number, number] => [v[0], -v[2], v[1]];
+      const zl = toIfc(fr.lz), yl = toIfc(fr.ly), xl = toIfc(fr.lx);
+      const origin = add(`IFCCARTESIANPOINT((${f(p.cx)},${f(-p.cz)},${f(p.cy)}))`);
+      const posAxis = add(`IFCDIRECTION((${f(-xl[0])},${f(-xl[1])},${f(-xl[2])}))`);
+      const posRef = add(`IFCDIRECTION((${f(zl[0])},${f(zl[1])},${f(zl[2])}))`);
+      const bpos = add(`IFCAXIS2PLACEMENT3D(${ref(origin)},${ref(posAxis)},${ref(posRef)})`);
+      const cpt = add(`IFCCARTESIANPOINT((${f(BEND_RATIO * p.r)},0.))`);
+      const cpos = add(`IFCAXIS2PLACEMENT2D(${ref(cpt)},$)`);
+      const circ = add(`IFCCIRCLEPROFILEDEF(.AREA.,${stepString(p.name)},${ref(cpos)},${f(p.r)})`);
+      const axLoc = add("IFCCARTESIANPOINT((0.,0.,0.))");
+      const axDir = add("IFCDIRECTION((0.,1.,0.))");
+      const ax1 = add(`IFCAXIS1PLACEMENT(${ref(axLoc)},${ref(axDir)})`);
+      void yl;
+      solids.push(add(`IFCREVOLVEDAREASOLID(${ref(circ)},${ref(bpos)},${ref(ax1)},${f((p.h * Math.PI) / 180)})`));
+      continue;
+    }
     if (p.shape === "prism") {
       // Outline x = engine X = IFC X, outline y = engine Y = IFC Z; extruded along engine Z = IFC -Y, centred on cz.
       const pts = (p.points ?? []).map((q) => [q[0] * p.r, q[1] * p.r] as [number, number]);

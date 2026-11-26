@@ -23,10 +23,16 @@ export interface TemplateParam {
   integer?: boolean;
 }
 
+export const BEND_RATIO = 3;
+
 export interface TemplatePart {
   id: string;
   name: string;
-  shape: "box" | "cylinder" | "prism";
+  shape: "box" | "cylinder" | "prism" | "bend";
+  // bend: a pipe elbow (torus sector). r = pipe radius, h = sweep angle in DEGREES (1..360),
+  // axis = the axis the bend turns about (y: elbow lies in the horizontal plane). The centre-line
+  // radius is fixed at BEND_RATIO x r (a 1.5D elbow), because the engine scales the profile uniformly.
+  // x/y/z = the centre of revolution. Sweep starts on the local +Z side heading +X, then turns.
   // box: w (X), d (Z), h (Y). cylinder: r, h (axis Y).
   // prism: a closed outline (points, profile units, x right, y up) scaled by r and extruded h along Z.
   points?: Array<[number, number]>;
@@ -220,7 +226,7 @@ export const BOOSTER_TEMPLATE: PartTemplate = {
     { id: "bolts-s-r", name: "Suction flange right bolt", shape: "cylinder", axis: "x", r: "0.008", h: "FlangeT * 1.5", x: "ManifoldLength / 2 + FlangeT / 4", y: "SuctionAxisH + ManifoldR * 1.1 * sind(K * 360 / FlangeBolts)", z: "SuctionZ + ManifoldR * 1.1 * cosd(K * 360 / FlangeBolts)", repeat: { count: "FlangeBolts" }, basis: "inferred" },
     { id: "bolts-d-l", name: "Discharge flange left bolt", shape: "cylinder", axis: "x", r: "0.008", h: "FlangeT * 1.5", x: "0 - ManifoldLength / 2 - FlangeT / 4", y: "DischargeY + ManifoldR * 1.1 * sind(K * 360 / FlangeBolts)", z: "DischargeZ + ManifoldR * 1.1 * cosd(K * 360 / FlangeBolts)", repeat: { count: "FlangeBolts" }, basis: "inferred" },
     { id: "bolts-d-r", name: "Discharge flange right bolt", shape: "cylinder", axis: "x", r: "0.008", h: "FlangeT * 1.5", x: "ManifoldLength / 2 + FlangeT / 4", y: "DischargeY + ManifoldR * 1.1 * sind(K * 360 / FlangeBolts)", z: "DischargeZ + ManifoldR * 1.1 * cosd(K * 360 / FlangeBolts)", repeat: { count: "FlangeBolts" }, basis: "inferred" },
-    { id: "valve-handle", name: "Isolation valve handle", shape: "box", w: "0.015", d: "0.14", h: "0.015", x: "0 - ManifoldLength / 2 + (K - 0.5) * ManifoldLength / Pumps", y: "PumpAxisY + RiserLength * 0.75 + 0.06", z: "DischargeZ + 0.07", repeat: { count: "Pumps" }, basis: "inferred" },
+    { id: "valve-handle", name: "Isolation valve lever", shape: "box", w: "0.14", d: "0.015", h: "0.015", x: "0 - ManifoldLength / 2 + (K - 0.5) * ManifoldLength / Pumps - 0.09", y: "PumpAxisY + RiserLength * 0.75 + 0.06", z: "DischargeZ", repeat: { count: "Pumps" }, basis: "inferred" },
     { id: "gauge-stem", name: "Pressure gauge stem", shape: "cylinder", axis: "y", r: "0.008", h: "GaugeStemH", x: "0", y: "DischargeY + ManifoldR + GaugeStemH / 2", z: "DischargeZ", basis: "inferred" },
     { id: "gauge-dial", name: "Pressure gauge dial", shape: "cylinder", axis: "z", r: "0.035", h: "0.02", x: "0", y: "GaugeDialY", z: "DischargeZ - 0.02", basis: "inferred" },
     { id: "motor-rib", name: "Motor cooling rib", shape: "cylinder", axis: "z", r: "MotorRadius * 1.25", h: "MotorLength * 0.05", x: "0 - ManifoldLength / 2 + (floor((K - 1) / FinCount) + 0.5) * ManifoldLength / Pumps", y: "PumpAxisY", z: "MotorZ - MotorLength * 0.38 + (K - FinCount * floor((K - 1) / FinCount) - 0.5) * MotorLength * 0.76 / FinCount", repeat: { count: "RibCount" }, basis: "inferred" },
@@ -232,6 +238,7 @@ export const BOOSTER_TEMPLATE: PartTemplate = {
     { id: "saddle", name: "Suction manifold saddle", shape: "box", w: "0.05", d: "ManifoldR * 2.2", h: "PumpAxisY - RailHeight - 0.012", x: "0 - ManifoldLength / 2 + K * ManifoldLength / Pumps", y: "RailHeight + 0.012 + (PumpAxisY - RailHeight - 0.012) / 2", z: "SuctionZ", repeat: { count: "SaddleCount" }, basis: "inferred" },
     { id: "post", name: "Panel rack post", shape: "cylinder", axis: "y", r: "0.022", h: "PanelBottomY - RailHeight", x: "(K - 2) * PanelW * 0.33", y: "RailHeight + (PanelBottomY - RailHeight) / 2", z: "0 - Depth / 2 + 0.04", repeat: { count: "PostCount" }, basis: "inferred" },
     { id: "door-seam", name: "Panel door seam", shape: "box", w: "0.004", d: "0.004", h: "PanelH", x: "(K - 1.5) * PanelW * 0.34", y: "Height - PanelH / 2", z: "PanelFrontZ + 0.002", repeat: { count: "SeamCount" }, basis: "inferred" },
+    { id: "selector", name: "Panel selector switch", shape: "cylinder", axis: "z", r: "0.024", h: "0.016", x: "(K - 1) * PanelW * 0.32 + PanelW * 0.08", y: "Height - PanelH * 0.12", z: "PanelFrontZ + 0.008", repeat: { count: "SeamCount" }, basis: "inferred" },
     { id: "hmi-window", name: "Panel display window", shape: "box", w: "PanelW * 0.13", d: "0.006", h: "PanelH * 0.19", x: "PanelW * 0.055", y: "Height - PanelH * 0.28", z: "PanelFrontZ + 0.003", basis: "inferred" },
     { id: "panel", name: "Control panel", shape: "box", w: "PanelW", d: "PanelD", h: "PanelH", x: "0", y: "Height - PanelH / 2", z: "0 - Depth / 2 + PanelD / 2", basis: "catalogue" },
   ],

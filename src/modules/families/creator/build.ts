@@ -6,7 +6,7 @@
 // user edits it in OpenBIMStudio like any other family.
 
 import type { FamilyDefinition, FamilyGeometrySpec, FamilyParameter } from "../types";
-import { chooseTemplate, expandTemplate, TEMPLATES, type PartTemplate, type TemplatePart } from "./templates";
+import { BEND_RATIO, chooseTemplate, expandTemplate, TEMPLATES, type PartTemplate, type TemplatePart } from "./templates";
 
 export interface ProductSpec {
   name: string;
@@ -92,11 +92,17 @@ function hash(s: string): string {
 
 const ex = (expr: string) => ({ expr });
 
-function partSpec(p: TemplatePart): FamilyGeometrySpec {
+export function partSpec(p: TemplatePart): FamilyGeometrySpec {
   const transform = { translate: [ex(p.x), ex(p.y), ex(p.z)] as [any, any, any] };
   if (p.shape === "prism") {
     // Outline in unit size, scaled by r (formula) and extruded h along Z (engine extrusion is centred on Z).
     return { kind: "extrusion", profile: { kind: "polygon", points: p.points ?? [] }, depth: ex(p.h as string), transform: { ...transform, scale: [ex(p.r as string), ex(p.r as string), { const: 1 }] as [any, any, any] } };
+  }
+  if (p.shape === "bend") {
+    // Unit pipe circle centred BEND_RATIO from the axis; the uniform scale sets both the pipe and bend radius.
+    const pts: Array<[number, number]> = [];
+    for (let i = 0; i < 32; i++) { const a = (i / 32) * Math.PI * 2; pts.push([BEND_RATIO + Math.cos(a), Math.sin(a)]); }
+    return { kind: "revolve", profile: { kind: "polygon", points: pts }, axis: p.axis ?? "y", angle: ex(`(${p.h}) * 0.017453292519943295`), segments: 32, transform: { ...transform, scale: [ex(p.r as string), ex(p.r as string), ex(p.r as string)] as [any, any, any] } } as any;
   }
   if (p.shape === "cylinder") {
     const rotate = p.axis === "x" ? [{ const: 0 }, { const: 0 }, { const: Math.PI / 2 }] : p.axis === "z" ? [{ const: Math.PI / 2 }, { const: 0 }, { const: 0 }] : undefined;
