@@ -300,6 +300,13 @@ export type DxfInsert = DxfEntityBase & {
   columnSpacing?: number;
   rowSpacing?: number;
   attributes?: DxfAttrib[];
+  /**
+   * Dynamic-block parameter values on this reference (A9): per-instance
+   * overrides of the definition's default parameter values, by parameter
+   * id. Absent = the definition's defaults. Not written to DXF/DWG yet
+   * (follow-up: persist in XDATA) — in-session only.
+   */
+  dynValues?: Record<string, number | string | boolean>;
 };
 
 /** A paper-space viewport showing a window of model space. */
@@ -314,12 +321,80 @@ export interface DxfViewport {
   viewHeight: number;
   /** View twist in degrees. */
   twist?: number;
+  /**
+   * Sheet units per model unit through this viewport (DXF: height / viewHeight).
+   * When set it is the viewport's scale (e.g. 1/50); viewer-math prefers it over
+   * the derived ratio so a viewport keeps its set scale even while its view is
+   * panned. A8: settable via MVIEW / the viewport properties dialog.
+   */
+  scale?: number;
+  /**
+   * Viewport zoom lock (DXF VIEWPORT group 90 bit 16384): a locked viewport
+   * ignores zoom/pan inside it and its scale/clip cannot be edited. A8.
+   */
+  locked?: boolean;
+  /**
+   * Rectangular clip boundary in sheet coordinates: model content outside
+   * this rect is not painted through the viewport. A8 (rectangular only;
+   * non-rectangular clip is a follow-up).
+   */
+  clip?: { minX: number; minY: number; maxX: number; maxY: number };
+}
+
+/** Plot area choices for a page setup / layout (DXF AcDbPlotSettings group 74). */
+export type PlotArea = "display" | "extents" | "window" | "layout";
+
+/**
+ * A named page setup (A8): paper size, orientation, plot scale and plot area,
+ * stored per drawing (DxfDocument.pageSetups) and persisted with the drawing
+ * session. Layouts reference a setup by name (DxfLayout.pageSetup); the DXF
+ * writer stamps the resolved values onto the layout's LAYOUT object.
+ */
+export interface DxfPageSetup {
+  name: string;
+  /** Paper name, e.g. "A3" (see PAPER_MM in viewer-math). */
+  paper: string;
+  /** "landscape" | "portrait". */
+  orient: "landscape" | "portrait";
+  /**
+   * Plot scale as sheet units per model unit (1/50 = 0.02), or "fit" to fit
+   * the plot area onto the paper. Written to the LAYOUT object as the custom
+   * scale numerator/denominator (groups 142/143); "fit" writes 1/1 there —
+   * the fit choice itself lives in the setup, not in the DXF.
+   */
+  scale: number | "fit";
+  /** Which part of the drawing is plotted. */
+  area: PlotArea;
+  /**
+   * Window rectangle (sheet coordinates for a layout plot, model coordinates
+   * for a model plot) used when area is "window".
+   */
+  window?: { minX: number; minY: number; maxX: number; maxY: number };
 }
 
 export interface DxfLayout {
   name: string;
   entities: DxfEntity[];
   viewports: DxfViewport[];
+  /**
+   * Name of the page setup applied to this layout (DxfDocument.pageSetups).
+   * The DXF writer carries it as the LAYOUT object's AcDbPlotSettings
+   * group-1 name; the reader recovers it from there.
+   */
+  pageSetup?: string;
+  /**
+   * Paper size name for this layout's sheet (e.g. "A3"). New layouts are A3;
+   * a named setup or an imported file can change it.
+   */
+  paper?: string;
+  /**
+   * Effective plot scale for this layout (sheet per model unit, or "fit").
+   * Resolved from the named setup when one is applied, else from the file's
+   * LAYOUT object on import.
+   */
+  plotScale?: number | "fit";
+  /** Effective plot area for this layout (see PlotArea). */
+  plotArea?: PlotArea;
 }
 
 /** An external reference declared by a drawing (DXF block flag 4 = xref, 8 = overlay; path in group 1). */
@@ -381,6 +456,13 @@ export interface DxfDocument {
   sourceFormat?: "dxf" | "dwg" | "cad-engine" | "unknown";
   /** Paper-space layouts (sheets). */
   layouts?: DxfLayout[];
+  /**
+   * Named page setups for this drawing (A8), keyed by setup name. A layout
+   * references one by name (DxfLayout.pageSetup). Persisted with the drawing
+   * session; the DXF file itself carries only the resolved values on each
+   * layout's LAYOUT object (the setup name in AcDbPlotSettings group 1).
+   */
+  pageSetups?: Record<string, DxfPageSetup>;
   /** Linetype name (upper case) -> dash pattern in drawing units (+dash, -gap, 0 dot). */
   linetypes?: Record<string, number[]>;
   /** Global linetype scale ($LTSCALE). */

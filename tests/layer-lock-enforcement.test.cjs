@@ -150,7 +150,8 @@ t("wiring: lock predicates defined next to visible()", () => {
 });
 
 t("wiring: locked layers stay rendered — visible() has no lock check", () => {
-  mustContain("const visible = (e: DxfEntity) => !hidden.has(e.layer) && !hiddenEntities.has(e) && (typeFilter.size === 0 || typeFilter.has(e.type));", "visible()");
+  // A18: the predicate also honours the FILTER property criteria.
+  mustContain("const visible = (e: DxfEntity) => !hidden.has(e.layer) && !hiddenEntities.has(e) && (typeFilter.size === 0 || typeFilter.has(e.type)) && Sel18.matchesAllCriteria(e, propFilter);", "visible()");
   mustNotContain("!isLayerLocked(e.layer) && !hidden.has", "lock check inside visible()");
 });
 

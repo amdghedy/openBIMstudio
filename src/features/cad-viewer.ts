@@ -41,7 +41,7 @@ import {
   parseClip,
   type CadClip,
 } from "../modules/cad-viewer/clipboard";
-import type { DxfAttDef, DxfBlockDef, DxfDimStyle, DxfDocument, DxfEntity, DxfPoint } from "../modules/drawings/dxf-types";
+import type { DxfAttDef, DxfBlockDef, DxfDimStyle, DxfDocument, DxfEntity, DxfInsert, DxfPageSetup, DxfPoint, DxfViewport, PlotArea } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
 import { safeLoad, MarkupsFileSchema } from "../core/safeLoad";
 import { setCadHotkeyOwner } from "../core/cad-hotkey-ownership";
@@ -58,7 +58,9 @@ import {
   cadSnapOverrideLabel,
   type CadSnapOverrideKind,
 } from "../modules/cad-viewer/cad-snap-override";
-import { resolvedOf, bindDocumentBlocks, setActiveBlocks, touchBlocks, explodeInsert } from "../modules/drawings/block-refs";
+import { resolvedOf, bindDocumentBlocks, setActiveBlocks, touchBlocks, explodeInsert, findBlock, blocksOf, resolveInsert } from "../modules/drawings/block-refs";
+import { setCurrentCadDoc } from "../modules/cad-viewer/cad-current-doc";
+import { downloadCadLayoutPdf } from "../modules/export/cad-layout-plot";
 import * as BE from "../modules/drawings/block-edit";
 import { XrefStore, composeXrefs, compareXref, type ComposedXref } from "../modules/drawings/xref-engine";
 import * as X from "../modules/cad-viewer/modify-math";
@@ -159,6 +161,11 @@ import * as Ann from "../modules/cad-viewer/cad-annotation";
 import * as LayerMgr from "../modules/cad-viewer/cad-layer-manager";
 import * as Poly from "../modules/cad-viewer/cad-polyline";
 import * as Sel11 from "../modules/cad-viewer/cad-selection-a11";
+import * as Sel18 from "../modules/cad-viewer/cad-selection-a18";
+import * as SpaceAdd from "../modules/cad-viewer/cad-space-add";
+import * as BlockEdit9 from "../modules/cad-viewer/cad-block-edit-a9";
+import * as Dyn9 from "../modules/cad-viewer/cad-dynblock-a9";
+import * as Vp8 from "../modules/cad-viewer/cad-viewport-a8";
 import { fmtTime } from "../core/region";
 import { strokeFontFor, strokeLinePolylines, strokeLineWidth, CAP_UNITS, type StrokeFont } from "../modules/drawings/stroke-font";
 
@@ -255,7 +262,8 @@ type Tool =
   | "textmask"
   | "breakline"
   | "laymrg"
-  | "laydel";
+  | "laydel"
+  | "mview";
 
 type ColorMode = "layer" | "bw" | "invert" | "style";
 interface Markup {
@@ -326,6 +334,9 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "UNDO", aliases: ["U"], description: "Undo the last drafting or modify operation" },
   { name: "REDO", aliases: ["REDO"], description: "Redo the previously undone operation" },
   { name: "PLOT", aliases: ["PRINT"], description: "Plot drawing to PDF or physical paper" },
+  { name: "MVIEW", aliases: ["MV"], description: "Create a viewport on the current paper layout — pick two corners, then a scale" },
+  { name: "VPORT", aliases: ["VP"], description: "Edit the current layout's viewports — scale, lock and clip" },
+  { name: "PAGESETUP", aliases: ["PAGE"], description: "Named page setups (paper, orientation, plot scale, plot area) for layouts" },
   { name: "QSAVE", aliases: ["SAVE"], description: "Save the edited drawing as a DXF file" },
   { name: "SAVEAS", aliases: ["SA"], description: "Choose DXF or DWG for export" },
   { name: "DWGSAVE", aliases: ["EXPORTDWG"], description: "Export the edited drawing as a native DWG file (in the version set by DWGVERSION)" },
@@ -377,8 +388,9 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "LAYLCK", aliases: [], description: "Lock the layer of the picked object" },
   { name: "LAYUNLCK", aliases: ["LAYUNLOCK"], description: "Unlock the layer of the picked object" },
   { name: "MLEADER", aliases: ["MLD", "LE", "LEADER"], description: "Draw a leader line with annotation text: arrow point → landing end → type the text" },
-  { name: "QSELECT", aliases: ["QSI"], description: "Quick select by type, layer, ACI/RGB colour, linetype, lineweight, text content or all visible objects" },
-  { name: "FILTER", aliases: [], description: "Selection filter — restrict clicking and window/crossing selection to chosen entity types (FILTER CLEAR resets)" },
+  { name: "QSELECT", aliases: ["QSI"], description: "Quick select by type and property with operators — QSELECT opens the dialog; QSELECT ALL · TYPE · LAYER · COLOR · LINETYPE · LINEWEIGHT · TEXT on the command line" },
+  { name: "FILTER", aliases: [], description: "Selection filter — restrict clicking and window/crossing selection to chosen entity types and property criteria; save named filters (FILTER <name> applies one, FILTER SAVE <name> saves the current one, FILTER CLEAR resets)" },
+  { name: "PREVIOUS", aliases: ["PREV"], description: "Restore the previous selection set (P at a Select objects prompt, SELECT PREVIOUS)" },
   { name: "SELECTSIMILAR", aliases: ["SELSIM"], description: "Select objects matching the selected set by type, layer, colour, linetype or lineweight" },
   { name: "SELECTIONCYCLING", aliases: ["SELCYCLE"], description: "Choose which overlapping object is selected at the cursor (Ctrl+W); Ctrl+click cycles them one at a time" },
   { name: "FENCE", aliases: ["FE"], description: "Select objects crossed by a fence polyline — click fence points, Enter / right-click to finish" },
@@ -454,6 +466,10 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "TABLE", aliases: ["TB"], description: "Insert a drawing table (rows × columns grid)" },
   { name: "IMPORT", aliases: ["IMP"], description: "Merge a DWG / DXF file into the current drawing" },
   { name: "BLOCK", aliases: ["B", "BMAKE"], description: "Create a native block definition from the selected objects (base point, name); they become one reference" },
+  { name: "BEDIT", aliases: ["BE"], description: "Edit a block definition in place — the model is hidden, the definition's objects are edited, BCLOSE saves it back so every reference updates" },
+  { name: "BCLOSE", aliases: ["BC"], description: "Close the BEDIT session, saving the edited definition; BCLOSE DISCARD abandons it" },
+  { name: "DYNPARAM", aliases: ["DP"], description: "Author dynamic-block parameters on a block: LINEAR / ROTATION / FLIP / VISIBILITY / LOOKUP / LIST / REMOVE — parameters get grips on placed references and in the block editor" },
+  { name: "DYNVIS", aliases: [], description: "In a BEDIT session: DYNVIS <state> hides the selection in that visibility state; DYNVIS <state> SHOW unhides it (or everything, with no selection)" },
   { name: "XATTACH", aliases: ["XA"], description: "Attach an external drawing as a separate reference (not merged into this drawing)" },
   { name: "XOVERLAY", aliases: ["XO"], description: "Overlay an external drawing (not propagated to drawings that reference this one)" },
   { name: "XSTATUS", aliases: ["XST"], description: "List native external references with status, path and nesting level" },
@@ -1542,6 +1558,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   <!-- drawing workspace Layout Tabs (Model, Layout1, Layout2...) -->
   <div data-r="tabs" style="display:none;gap:2px;padding:3px 8px 0;background:#151a23;border-top:1px solid #2a3140"></div>
 
+  <!-- BEDIT session banner (A9): shown while a block definition is being edited in place -->
+  <div data-r="bedit" style="display:none;align-items:center;gap:10px;padding:4px 10px;background:#7c2d12;border-top:1px solid #ea580c;color:#ffedd5;font-size:12px;font-weight:600">
+    <span data-r="bedit-text"></span>
+    <button data-r="bedit-save" style="padding:2px 10px;background:#ea580c;border-color:#fdba74;color:#fff;font-weight:600">Save (BCLOSE)</button>
+    <button data-r="bedit-discard" style="padding:2px 10px;background:transparent;border-color:#fdba74;color:#ffedd5">Discard</button>
+  </div>
+
   <!-- Drawing status-bar tray -->
   <div data-r="status" style="display:flex;align-items:center;gap:12px;padding:3px 10px;background:#0f1218;border-top:1px solid #2a3140;color:#9aa4b2;font-size:11px;font-variant-numeric:tabular-nums"></div>
   `;
@@ -1567,10 +1590,27 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     emptyEl = $("empty"),
     busyEl = $("busy"),
     cmdHistEl = $("cmdhist"),
-    cmdAutoEl = $("cmdauto");
+    cmdAutoEl = $("cmdauto"),
+    beditEl = $("bedit"),
+    beditTextEl = $("bedit-text");
+  $("bedit-save").addEventListener("click", () => closeBlockEdit(false));
+  $("bedit-discard").addEventListener("click", () => closeBlockEdit(true));
 
   let doc: DxfDocument | null = null,
     name = "";
+  /**
+   * A20: publish the live document for the BIM-side panels (batch
+   * plotter, sheets panel). The model list is read through an accessor:
+   * the viewer's modelEnts is rebound on undo/erase, so a snapshot
+   * would go stale (doc.entities has the same problem — see saveDxf).
+   * Called when a document is opened/created and when this tab becomes
+   * active. The entry is the last-opened drawing and deliberately
+   * survives the viewer closing (the panels sit below the viewer shell
+   * and are used with it closed — see cad-current-doc).
+   */
+  function publishCadDoc(): void {
+    setCurrentCadDoc(doc ? { doc, name, getModel: () => modelEnts } : null);
+  }
   /* ── Dimension system state (DIMSTYLE + associativity) ── */
   let dimStyleList: DIM.DimStyle[] = DIM.defaultDimStyles();
   let currentDimStyleName = "ISO-25";
@@ -1656,6 +1696,17 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let view: M.View = { cx: 0, cy: 0, scale: 1, w: 800, h: 600 };
   const history: M.View[] = [];
   let tool: Tool = "select";
+  // A8: the viewport the user double-clicked into on the current paper
+  // layout (index into that layout's viewports), or null. Wheel and drag
+  // inside it zoom/pan the viewport's model view instead of the sheet; a
+  // locked viewport refuses both. Esc, a layout switch and a double-click
+  // outside every viewport clear it.
+  let activeViewport: number | null = null;
+  // A8: a Window plot area picked on the canvas (two corners, sheet or model
+  // units of the space being plotted) and the in-progress pick state.
+  let plotWindow: Vp8.BBox | null = null;
+  let plotWindowPick = false;
+  let plotWindowPts: Array<{ x: number; y: number }> = [];
   // Pending primitive dimensions stay inside this engine instance; avoid cross-feature window globals.
   let box3dDimensions = { w: 1000, d: 1000, h: 1000 };
   let cylinder3dDimensions = { r: 500, h: 1000 };
@@ -1678,8 +1729,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   // Default OFF: the viewer shipped with no grid snap, so default-off
   // preserves every existing click/drag (and the auto step follows zoom,
   // which would otherwise move first clicks by hundreds of units on a
-  // fitted large drawing). The user turns it on like in AutoCAD; this
-  // also matches DEFAULT_CAD_SNAP_SETTINGS.gridSnapOn in cad-snap-engine.
+  // fitted large drawing). The user turns it on like in AutoCAD.
   let snapOn = true;
   let gridSnapOn = false;
   let userGridStep: number | null = null;
@@ -1777,6 +1827,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let origin: M.Pt | null = null;
   let dualUnits = false;
   let typeFilter = new Set<string>();
+  /** A18: FILTER property criteria (AND list on top of the type filter). */
+  let propFilter: Sel18.QSelectCriterion[] = [];
+  /** A18: named FILTERs (whole filter state under a name), persisted per drawing. */
+  let namedFilters = new Map<string, Sel18.NamedFilter>();
+  /** A18: the most recent non-empty selection set (PREVIOUS / P). */
+  let prevSel: number[] = [];
   let scaleCal = 1;
 
   /* ── HATCH 2.0 — pattern hatching, boundary detection, hatch panel ── */
@@ -1846,7 +1902,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let markups: Markup[] = [];
   let hits: M.TextHit[] = [],
     hitI = -1;
-  let dragging: { x: number; y: number } | null = null,
+  let dragging: { x: number; y: number; inViewport?: boolean } | null = null,
     winStart: { x: number; y: number } | null = null,
     winNow: { x: number; y: number } | null = null;
   let raf = 0;
@@ -1858,8 +1914,43 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let mlineWidth = 50;
   let layerVisStack: string[][] = [];
   let refEditName: string | null = null;
+  /**
+   * BEDIT session (A9): while open, `ents` is the session's working copy
+   * (the definition's entities, in block space) and the drawing's live
+   * lists are stashed untouched. The add guards check this first, so no
+   * session entity can leak into the model or a layout; closing restores
+   * the stashed lists and drops the session's undo acts (undo inside a
+   * BEDIT session is a follow-up), so the outer drawing's undo history
+   * is exactly what it was when the session opened.
+   */
+  let blockEdit: {
+    session: BlockEdit9.BlockEditSession;
+    savedEnts: DxfEntity[];
+    savedModelEnts: DxfEntity[];
+    savedLayoutI: number;
+    savedBounds: M.BBox | null;
+    savedModelBounds: M.BBox | null;
+    savedUndoDepth: number;
+  } | null = null;
   const xrefManager = new AcadAdv.XrefManager();
   const dynBlocks = new AcadAdv.DynBlockStore();
+  /** Dynamic-block parameter sets, authored in the editor (A9). Loaded from localStorage at startup; see saveDynParamSet. */
+  const dynParamStore = new Dyn9.DynParamStore();
+  try {
+    const paramKeys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith("obs.dynblock.params.")) paramKeys.push(k);
+    }
+    dynParamStore.loadAll((k) => localStorage.getItem(k), paramKeys);
+  } catch { /* storage unavailable */ }
+  const saveDynParamSet = (name: string): void => {
+    const set = dynParamStore.get(name);
+    try {
+      if (set) localStorage.setItem(Dyn9.DYN_PARAM_KEY(name), Dyn9.DynParamStore.serialize(set));
+      else localStorage.removeItem(Dyn9.DYN_PARAM_KEY(name));
+    } catch { /* storage unavailable */ }
+  };
   let sheetSet = AcadAdv.loadSheetSet();
   const solidMeshes: Array<{ id: string; positions: number[]; indices: number[]; height: number }> = [];
 
@@ -2071,6 +2162,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     hiddenEnts?: SessionHiddenEntities;
     /** Named layer states (full property snapshots), persisted per drawing (A16). */
     layerStates?: Record<string, LayerMgr.LayerStateSnapshot>;
+    /** Named page setups, persisted per drawing (A8). */
+    pageSetups?: Record<string, DxfPageSetup>;
+    /** Named selection filters (types + property criteria), persisted per drawing (A18). */
+    namedFilters?: Record<string, Sel18.NamedFilter>;
     at: number;
   };
   function sessionKeyFor(fileName: string): string {
@@ -2100,7 +2195,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   function currentUi(): SessionUi {
     return {
       bg, cmode, snapOn, gridSnapOn, orthoOn, polarOn, polarAngle, otrackOn, dynOn, lwtOn, showGrid, showText, showHatch, showLt,
-      snapModes: [...snapModes], typeFilter: [...typeFilter], currentLayer,
+      snapModes: [...snapModes], typeFilter: [...typeFilter], propFilter: propFilter.length ? propFilter.map((c) => ({ ...c })) : undefined, currentLayer,
       lockedLayers: doc ? doc.layers.filter((l) => l.locked).map((l) => l.name) : [],
     };
   }
@@ -2132,6 +2227,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ui: currentUi(),
       hiddenEnts: hiddenEntityIndexes(doc.entities, hiddenEntities),
       layerStates: layerStates.size ? LayerMgr.serializeLayerStates(layerStates) : undefined,
+      namedFilters: namedFilters.size ? Sel18.serializeNamedFilters(namedFilters) : undefined,
+      pageSetups: doc.pageSetups && Object.keys(doc.pageSetups).length ? Vp8.serializePageSetups(doc.pageSetups) : undefined,
       at: Date.now(),
     };
     const map = loadSessionMap();
@@ -2170,6 +2267,17 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       for (const [k, v] of Object.entries(LayerMgr.sanitizeLayerStates(sess.layerStates))) layerStates.set(k, v);
     }
 
+    // Named selection filters (validated; a malformed filter is dropped, never applied)
+    if (sess.namedFilters) {
+      namedFilters.clear();
+      for (const [k, v] of Object.entries(Sel18.sanitizeNamedFilters(sess.namedFilters))) namedFilters.set(k, v);
+    }
+
+    // Named page setups (validated; a malformed setup is dropped, never applied)
+    if (sess.pageSetups) {
+      doc.pageSetups = Vp8.sanitizePageSetups(sess.pageSetups);
+    }
+
     // Working settings (validated; anything unknown or malformed is ignored)
     try {
       const u = sanitizeSessionUi(sess.ui, Object.keys(BG), M.ALL_SNAPS as readonly string[]);
@@ -2189,6 +2297,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (u.showLt !== undefined) showLt = u.showLt;
       if (u.snapModes && u.snapModes.length) { snapModes.clear(); for (const k of u.snapModes) snapModes.add(k as M.SnapKind); }
       if (u.typeFilter) typeFilter = new Set(u.typeFilter);
+      if (u.propFilter) propFilter = Sel18.sanitizeCriteria(u.propFilter);
       if (u.currentLayer && doc.layers.some((l) => l.name === u.currentLayer)) currentLayer = u.currentLayer;
       if (u.lockedLayers) { const lk = new Set(u.lockedLayers); for (const l of doc.layers) l.locked = lk.has(l.name); }
       updateStatus();
@@ -2236,6 +2345,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }, 2500);
   window.addEventListener("pagehide", () => { try { captureDrawingSession(); } catch { /* */ } });
   function scheduleSessionSave(): void {
+    // A9: never persist a BEDIT session's view as the drawing's session —
+    // the session's fitted block view is not the drawing's view.
+    if (blockEdit) return;
     if (sessionSaveTimer != null) window.clearTimeout(sessionSaveTimer);
     sessionSaveTimer = window.setTimeout(() => {
       sessionSaveTimer = null;
@@ -2260,7 +2372,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   const inv = () => cmode === "invert";
   const fg = () => (bg === "white" || inv() ? 0x000000 : 0xffffff);
-  const visible = (e: DxfEntity) => !hidden.has(e.layer) && !hiddenEntities.has(e) && (typeFilter.size === 0 || typeFilter.has(e.type));
+  const visible = (e: DxfEntity) => !hidden.has(e.layer) && !hiddenEntities.has(e) && (typeFilter.size === 0 || typeFilter.has(e.type)) && Sel18.matchesAllCriteria(e, propFilter);
   /** True only while doPlot renders: non-plotting layers are skipped
    * from the plot output (A16) but stay visible on screen, in picks
    * and in exports — the flag is set around the single synchronous
@@ -2477,6 +2589,85 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   const nativeBlocksOn = (): boolean => { try { return localStorage.getItem("obs.cad.nativeBlocks") === "1"; } catch { return false; } };
   /** >0 while drawing highlight / ghost overlays: block children then keep the caller's stroke style. */
   let inheritStyle = 0;
+  /**
+   * Resolved geometry of a reference with its dynamic-block parameters applied (A9).
+   * Fast path: no parameter set (or an empty one) → the plain resolver.
+   * Otherwise the definition's entities are evaluated in block space first,
+   * then resolved with the reference transform; param blocks are not cached.
+   * The base definition is never mutated by evaluation.
+   */
+  function resolvedDynOf(ins: DxfInsert): DxfEntity[] {
+    const set = dynParamStore.get(ins.name);
+    if (!set || !set.params.length) return resolvedOf(ins);
+    const table = blocksOf(ins);
+    const def = Dyn9.findDynBlockDef(table, ins.name);
+    if (!def) return resolvedOf(ins);
+    const values = Dyn9.effectiveDynValues(set, ins.dynValues);
+    const evaluated = Dyn9.evaluateDynBlock(def.entities, set.params, values);
+    return resolveInsert(table, ins, undefined, evaluated);
+  }
+
+  /**
+   * Effective values with lookup rows applied (A9): what the Properties
+   * panel, the grips and the canvas all show. The module enforces a
+   * lookup continuously at evaluation time, so the UI must show the
+   * resolved value too — otherwise the panel would show a driven value
+   * the lookup immediately overrides. Consequence: while a lookup is
+   * active, its targets are owned by it — a grip drag or panel edit on
+   * a driven parameter is overridden; change the lookup value instead.
+   */
+  function resolvedDynValues(set: Dyn9.DynParamSet, instance?: Record<string, Dyn9.DynValue>): Record<string, Dyn9.DynValue> {
+    return Dyn9.resolveLookupValues(set.params, Dyn9.effectiveDynValues(set, instance));
+  }
+
+  /**
+   * Entities the current BEDIT session hides for the active visibility state (A9).
+   * The session shows the base definition (editable), so state hiding uses the
+   * established hiddenEntities mechanism rather than removing entities from the list.
+   */
+  const dynHiddenSession = new Set<DxfEntity>();
+  function applyDynVisibilityToSession(): void {
+    if (!blockEdit) return;
+    for (const e of dynHiddenSession) hiddenEntities.delete(e);
+    dynHiddenSession.clear();
+    const set = dynParamStore.get(blockEdit.session.name);
+    if (!set) return;
+    const vis = set.params.find((p): p is Dyn9.DynVisibilityParam => p.kind === "visibility");
+    if (!vis) return;
+    const values = resolvedDynValues(set, undefined);
+    const state = vis.states.find((s) => s.name === String(values[vis.id] ?? ""));
+    if (!state) return;
+    for (const i of state.hidden) {
+      const e = ents[i];
+      if (e) {
+        hiddenEntities.add(e);
+        dynHiddenSession.add(e);
+      }
+    }
+  }
+
+  /** Set a parameter's default value, keeping the param's own `value` and the set's `values` record in sync (A9). */
+  function setDynDefault(set: Dyn9.DynParamSet, paramId: string, value: Dyn9.DynValue): void {
+    set.values[paramId] = value;
+    const p = set.params.find((q) => q.id === paramId);
+    if (p) p.value = value;
+  }
+
+  /** Set a block's visibility parameter to a named state (A9); false when the block has no such state. */
+  function setDynVisibilityState(blockName: string, stateName: string): boolean {
+    const set = dynParamStore.get(blockName);
+    const vis = set?.params.find((p): p is Dyn9.DynVisibilityParam => p.kind === "visibility");
+    const st = vis?.states.find((s) => s.name.toUpperCase() === stateName.toUpperCase());
+    if (!set || !vis || !st) return false;
+    setDynDefault(set, vis.id, st.name);
+    dynParamStore.set(set);
+    saveDynParamSet(blockName);
+    if (blockEdit && blockEdit.session.name.toUpperCase() === blockName.toUpperCase()) applyDynVisibilityToSession();
+    draw();
+    showProps();
+    return true;
+  }
+
   const drawPlain = (c: CanvasRenderingContext2D, e: DxfEntity, v: M.View): void => {
     inheritStyle++;
     try { drawEntity(c, e, v); } finally { inheritStyle--; }
@@ -2487,8 +2678,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     c.beginPath();
     switch (e.type) {
       // Native block reference: geometry is resolved lazily from doc.blocks (never copied into the drawing).
+      // A9: parameters are evaluated in block space first (resolvedDynOf).
       case "INSERT": {
-        const kids = resolvedOf(e);
+        const kids = resolvedDynOf(e);
         if (!kids.length) {
           const p = P(e.position.x, e.position.y);
           c.moveTo(p.x - 4, p.y); c.lineTo(p.x + 4, p.y); c.moveTo(p.x, p.y - 4); c.lineTo(p.x, p.y + 4);
@@ -3255,6 +3447,34 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             drawGrip(g.x, g.y, hot ? "#22c55e" : "#3b82f6");
           }
           if (budget <= 0) break;
+        }
+        c.restore();
+      }
+      // A9: dynamic-block parameter grips — orange diamonds (green under the cursor).
+      // Drawn for the selected INSERTs and, in a BEDIT session, for the edited block.
+      const dynG = dynGrips();
+      if (dynG.length) {
+        c.save();
+        c.setLineDash([]);
+        for (const g of dynG) {
+          const s = M.worldToScreen(v, g.at.x, g.at.y);
+          if (s.x < -8 || s.y < -8 || s.x > v.w + 8 || s.y > v.h + 8) continue;
+          const hot =
+            dynGripHover &&
+            dynGripHover.scope === g.scope &&
+            dynGripHover.i === g.i &&
+            dynGripHover.param.id === g.param.id;
+          c.fillStyle = hot ? "#22c55e" : "#f97316";
+          c.strokeStyle = "rgba(15,23,42,.9)";
+          c.lineWidth = 1;
+          c.beginPath();
+          c.moveTo(s.x, s.y - 5);
+          c.lineTo(s.x + 5, s.y);
+          c.lineTo(s.x, s.y + 5);
+          c.lineTo(s.x - 5, s.y);
+          c.closePath();
+          c.fill();
+          c.stroke();
         }
         c.restore();
       }
@@ -4231,8 +4451,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // In model space ents IS modelEnts (same array) — pushing again would
     // duplicate the entity (it counted twice in CENSUS and saved twice).
     // The guard mirrors addEntities; in paper space the lists differ and
-    // the model list still needs the push.
-    if (layoutI < 0 && modelEnts !== ents) modelEnts.push(e);
+    // the model list still needs the push. Inside a BEDIT session `ents`
+    // is the session's working copy — never mirror into the model (A9).
+    if (layoutI < 0 && modelEnts !== ents && !blockEdit) modelEnts.push(e);
     const eb = M.entityBBox(e);
     bounds = M.extendBounds(bounds, wasEmpty, eb);
     idx = M.buildIndex(ents, bounds);
@@ -4349,6 +4570,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
    * touched the space on screen.
    */
   function undo(): void {
+    // A9: undo inside a BEDIT session is a follow-up — the session's acts
+    // are stamped to model space and would corrupt the stashed model.
+    if (blockEdit) { logCmd("UNDO: not available inside BEDIT — close the session with BCLOSE first."); return; }
     const act = undoStack.pop();
     if (!act) {
       logCmd("Nothing to undo.");
@@ -4386,6 +4610,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   function redo(): void {
+    // A9: see undo() — redo inside a BEDIT session is not available either.
+    if (blockEdit) { logCmd("REDO: not available inside BEDIT — close the session with BCLOSE first."); return; }
     const act = redoStack.pop();
     if (!act) {
       logCmd("Nothing to redo.");
@@ -4514,6 +4740,111 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (budget <= 0) return null;
     }
     return null;
+  }
+
+  /* ── Dynamic-block parameter grips (A9) ──
+   * Orange diamonds on selected INSERTs with a parameter set, and on the
+   * block being edited in a BEDIT session. Linear/rotation grips drag to a
+   * new value (geometry moves live on instances); flip grips toggle on
+   * click; visibility/lookup parameters have no grip — use the Properties
+   * panel or DYNPARAM/DYNVIS. In a BEDIT session the grip changes the
+   * parameter's DEFAULT value (the session shows the base definition, so
+   * its geometry does not move; instances show the evaluated geometry). */
+  interface DynGrip {
+    /** "instance": a placed INSERT in `ents`; "session": the block in the BEDIT session. */
+    scope: "instance" | "session";
+    /** Instance scope: the INSERT's index in `ents`. Session scope: -1. */
+    i: number;
+    param: Dyn9.DynParam;
+    /** World point of the grip. */
+    at: M.Pt;
+  }
+  function dynGrips(): DynGrip[] {
+    const out: DynGrip[] = [];
+    if (blockEdit) {
+      const set = dynParamStore.get(blockEdit.session.name);
+      if (set) {
+        const values = resolvedDynValues(set, undefined);
+        for (const p of set.params) {
+          const at = Dyn9.paramGripPoint(p, values);
+          // A9: the grip sits on the geometry as the OTHER parameters transform it.
+          if (at) out.push({ scope: "session", i: -1, param: p, at: Dyn9.dynPointThroughParams(set.params, values, at, p.id) });
+        }
+      }
+      return out;
+    }
+    if (tool !== "select" && tool !== "box") return out;
+    for (const i of sel) {
+      const e = ents[i];
+      if (!e || e.type !== "INSERT" || !pickable(e)) continue;
+      const set = dynParamStore.get(e.name);
+      if (!set) continue;
+      const def = Dyn9.findDynBlockDef(doc?.blocks, e.name);
+      if (!def) continue;
+      const values = resolvedDynValues(set, e.dynValues);
+      for (const p of set.params) {
+        const bp = Dyn9.paramGripPoint(p, values);
+        if (!bp) continue;
+        out.push({ scope: "instance", i, param: p, at: Dyn9.dynGripWorldPoint(e, def.base, Dyn9.dynPointThroughParams(set.params, values, bp, p.id)) });
+      }
+    }
+    return out;
+  }
+  function dynGripAt(sp: { x: number; y: number }): DynGrip | null {
+    for (const g of dynGrips()) {
+      const s = M.worldToScreen(view, g.at.x, g.at.y);
+      if (Math.abs(s.x - sp.x) <= 7 && Math.abs(s.y - sp.y) <= 7) return g;
+    }
+    return null;
+  }
+  interface DynGripDrag {
+    grip: DynGrip;
+    /** Instance scope: the pre-drag INSERT (for the undo act). */
+    origIns: DxfInsert | null;
+    /** Session scope: the pre-drag default value (restored on a click). */
+    origValue: Dyn9.DynValue;
+    moved: boolean;
+  }
+  let dynDrag: DynGripDrag | null = null;
+  let dynGripHover: DynGrip | null = null;
+
+  /** Apply a dragged value: live on the instance's dynValues, or to the set's default in a session. */
+  function applyDynGripValue(g: DynGrip, value: number | boolean): void {
+    if (g.scope === "instance") {
+      const ins = ents[g.i] as DxfInsert | undefined;
+      if (!ins) return;
+      ents[g.i] = { ...ins, dynValues: { ...(ins.dynValues ?? {}), [g.param.id]: value } };
+    } else if (blockEdit) {
+      const set = dynParamStore.get(blockEdit.session.name);
+      if (!set) return;
+      setDynDefault(set, g.param.id, value);
+      dynParamStore.set(set);
+    }
+  }
+  /** Click on a flip grip toggles it immediately (undoable for instances). */
+  function toggleDynFlip(g: DynGrip): void {
+    if (g.scope === "instance") {
+      const ins = ents[g.i] as DxfInsert | undefined;
+      if (!ins) return;
+      const set = dynParamStore.get(ins.name);
+      if (!set) return;
+      const values = resolvedDynValues(set, ins.dynValues);
+      const next = !(values[g.param.id] === true);
+      commitModify([ins], [{ ...ins, dynValues: { ...(ins.dynValues ?? {}), [g.param.id]: next } }]);
+      logCmd(`Dynamic block "${ins.name}": ${g.param.name} ${next ? "flipped" : "unflipped"}.`);
+      draw();
+      return;
+    }
+    if (!blockEdit) return;
+    const set = dynParamStore.get(blockEdit.session.name);
+    if (!set) return;
+    const values = resolvedDynValues(set, undefined);
+    const next = !(values[g.param.id] === true);
+    setDynDefault(set, g.param.id, next);
+    dynParamStore.set(set);
+    saveDynParamSet(set.blockName);
+    logCmd(`Dynamic block "${set.blockName}": ${g.param.name} default ${next ? "flipped" : "unflipped"}.`);
+    draw();
   }
 
   function closeSelectionCycle(): void {
@@ -4727,7 +5058,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (!mod) return "";
     switch (mod.stage) {
       case "select":
-        return "Select objects: (click to add · Enter / right-click to finish)";
+        return "Select objects: (click to add · P = previous selection · Enter / right-click to finish)";
       case "base":
         return mod.kind === "mirror" ? "Specify first point of mirror line:" : "Specify base point:";
       case "eraseAsk":
@@ -4755,8 +5086,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (!list.length) return;
     const firstNew = ents.length;
     const wasEmpty = firstNew === 0;
-    for (const e of list) ents.push(e);
-    if (modelEnts !== ents) for (const e of list) modelEnts.push(e);
+    // A9: a paper-space add never touches the model list. The mirror push
+    // had no space guard, so an import (or paste / REFEDIT) while a sheet
+    // was on screen baked the entities into the layout AND the model — QSAVE
+    // then wrote each one twice, and a DWG re-import tripled them. Mirrors
+    // addDraftEntity: the model list only needs the push in model space,
+    // when `ents` was rebound away from `modelEnts` by UNDO / DRAWORDER.
+    // Inside a BEDIT session `ents` is the session's working copy — the
+    // model list must never get the push there either.
+    const targets = blockEdit ? [ents] : SpaceAdd.addTargets(layoutI, modelEnts, ents);
+    SpaceAdd.pushToTargets(targets, list);
     let b: M.BBox | null = null;
     for (const e of list) b = b ? M.unionBBox(b, M.entityBBox(e)) : M.entityBBox(e);
     if (b) bounds = M.extendBounds(bounds, wasEmpty, b);
@@ -4767,6 +5106,27 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     markDirty();
     redoStack.length = 0;
     showProps();
+  }
+
+  /**
+   * Add entities to MODEL space while a paper layout is on screen (import /
+   * merge). Incoming entities are model entities: they land in the model
+   * list only, never in the sheet on screen — `addEntities` targets the
+   * current space, so on a layout it would bake them into the sheet instead
+   * (the other half of the A9 DWG baking). The undo act is stamped to model
+   * space, so UNDO removes them from the model even from a sheet; the
+   * offscreen model index is rebuilt now so picks stay correct after the
+   * switch back. In model space this is just `addEntities`.
+   */
+  function addModelEntities(list: DxfEntity[]): void {
+    if (!list.length) return;
+    if (layoutI < 0) { addEntities(list); return; }
+    SpaceAdd.pushToTargets(SpaceAdd.mergeTargets(modelEnts), list);
+    if (doc) doc.entities = modelEnts;
+    refreshOffscreenSpace(-1, modelEnts);
+    pushUndoAct({ type: "add", entities: list, space: -1 });
+    markDirty();
+    redoStack.length = 0;
   }
 
   /** In-place transform commit with a single modify undo action. */
@@ -6738,6 +7098,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       doc = r.doc;
       if (doc.blocks) bindDocumentBlocks(doc);
       name = file.name;
+      publishCadDoc();
       // References declared by the file are listed (missing until the user supplies the file with XRELOAD).
       xrefStore.clear(); xrefFiles.clear(); xview = [];
       if (doc.xrefs?.length) {
@@ -6886,9 +7247,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   function activate(i: number): void {
+    // A9: a layout switch during BEDIT would swap the session's working
+    // copy out from under the editor.
+    if (blockEdit) { logCmd("Switch layouts after closing BEDIT (BCLOSE)."); return; }
     if (!doc) return;
     clearModState();
     layoutI = i;
+    // A8: a layout switch leaves the active viewport behind.
+    activeViewport = null;
     // Remember the last paper layout so MODEL/PAPER can return to it.
     if (i >= 0) lastPaperLayoutI = i;
     sel.clear();
@@ -6933,6 +7299,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   /** Create a layout with a default viewport fitted to the model, switch to it. */
   function createLayoutAndActivate(name?: string): void {
+    if (blockEdit) { logCmd("LAYOUT: not available inside BEDIT — close the session with BCLOSE first."); return; }
     if (!doc) {
       logCmd("LAYOUT: open a drawing first.");
       return;
@@ -6957,6 +7324,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
    * model space. The drawing state follows the toggle — activate() swaps
    * the entity list, index and view — it is not a label change. */
   function toggleSpace(): void {
+    if (blockEdit) { logCmd("MODEL/PAPER: not available inside BEDIT — close the session with BCLOSE first."); return; }
     if (!doc) return;
     if (layoutI >= 0) {
       activate(-1);
@@ -7000,9 +7368,24 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (add && allowed.length === 1 && sel.has(allowed[0])) sel.delete(allowed[0]);
     else for (const i of allowed) sel.add(i);
     selected = sel.size ? [...sel][sel.size - 1] : -1;
+    // A18: the most recent non-empty selection set is the previous
+    // selection (PREVIOUS / P). Clearing the selection never erases it.
+    prevSel = Sel18.recordPrevious(prevSel, [...sel]);
     showProps();
     draw();
     if (sel.size) logCmd(`${sel.size} object(s) selected`);
+  }
+
+  /** A18: restore the previous selection set (PREVIOUS / P). */
+  function restorePreviousSelection(): boolean {
+    const live = Sel18.restorePrevious(prevSel, ents.length).filter((i) => ents[i] && visible(ents[i]));
+    if (!live.length) {
+      logCmd("PREVIOUS: no previous selection to restore.");
+      return false;
+    }
+    setSel(live);
+    logCmd(`PREVIOUS: restored ${live.length} object(s) from the previous selection.`);
+    return true;
   }
 
   function zoomToBox(b: M.BBox | null): void {
@@ -7095,6 +7478,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     addItem("Select Similar (Type + Layer)",()=>{const first=ents[[...sel][0]];if(first)setSel(ents.map((e,i)=>e.type===first.type&&e.layer===first.layer&&visible(e)?i:-1).filter(i=>i>=0));},!hasSelection);
     addItem("Invert Selection",()=>setSel(ents.map((e,i)=>visible(e)&&!sel.has(i)?i:-1).filter(i=>i>=0)),ents.length===0);
     addItem("Deselect All",()=>setSel([]),!hasSelection);
+    addItem("Select Previous",()=>restorePreviousSelection(),prevSel.length===0);
+    addItem("Quick Select…",()=>openQSelectDialog(),ents.length===0);
+    addItem("Selection Filter…",()=>openTypeFilterDialog(),ents.length===0);
     addItem("Fence Select…",()=>setTool("fence"),ents.length===0);
     addItem("Lasso Select…",()=>setTool("lasso"),ents.length===0);
     addSep();
@@ -7644,6 +8030,65 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       showProps();
       draw();
     });
+    // A9: dynamic-block parameter controls for a single selected INSERT (undoable, via commitModify).
+    if (e.type === "INSERT") {
+      const set = dynParamStore.get(e.name);
+      if (set && set.params.length) {
+        const values = resolvedDynValues(set, e.dynValues);
+        const prow: string[] = [];
+        for (const p of set.params) {
+          const cur = values[p.id];
+          if (p.kind === "linear" || p.kind === "rotation") {
+            prow.push(
+              `<tr><td>${escapeHtml(p.name)}</td><td><input type="number" data-dyn-param="${escapeHtml(p.id)}" step="any" style="width:90px" value="${typeof cur === "number" ? cur : ""}"></td></tr>`,
+            );
+          } else if (p.kind === "flip") {
+            prow.push(
+              `<tr><td>${escapeHtml(p.name)}</td><td><input type="checkbox" data-dyn-param="${escapeHtml(p.id)}"${cur === true ? " checked" : ""}></td></tr>`,
+            );
+          } else if (p.kind === "visibility" || p.kind === "lookup") {
+            const options = p.kind === "visibility" ? p.states.map((s) => s.name) : p.table.map((r) => r.value);
+            prow.push(
+              `<tr><td>${escapeHtml(p.name)}</td><td><select data-dyn-param="${escapeHtml(p.id)}" style="max-width:180px">${options
+                .map((o) => `<option value="${escapeHtml(o)}"${String(cur) === o ? " selected" : ""}>${escapeHtml(o)}</option>`)
+                .join("")}</select></td></tr>`,
+            );
+          }
+        }
+        if (prow.length) {
+          const host = document.createElement("div");
+          host.innerHTML = `<div style="margin-top:6px;font-weight:600">Dynamic parameters</div><table>${prow.join("")}</table>`;
+          propsEl.append(host);
+          host.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-dyn-param]").forEach((ctl) => {
+            ctl.addEventListener("change", () => {
+              const cur = ents[selected];
+              if (!cur || cur.type !== "INSERT") return;
+              const s = dynParamStore.get(cur.name);
+              if (!s) return;
+              const param = s.params.find((x) => x.id === ctl.dataset.dynParam);
+              if (!param) return;
+              let next: Dyn9.DynValue;
+              if (param.kind === "linear" || param.kind === "rotation") {
+                const v = Number((ctl as HTMLInputElement).value);
+                if (!Number.isFinite(v)) {
+                  showProps();
+                  return;
+                }
+                next = v;
+              } else if (param.kind === "flip") {
+                next = (ctl as HTMLInputElement).checked;
+              } else {
+                next = (ctl as HTMLSelectElement).value;
+              }
+              commitModify([cur], [{ ...cur, dynValues: { ...(cur.dynValues ?? {}), [param.id]: next } }]);
+              logCmd(`Dynamic block "${cur.name}": ${param.name} = ${String(next)}.`);
+              showProps();
+              draw();
+            });
+          });
+        }
+      }
+    }
     const hostOne = document.createElement("div");
     propsEl.append(hostOne);
     renderAppearanceEditor(hostOne, styleApi);
@@ -7694,6 +8139,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     ["poly", "Pline", "PL"],
     ["circle", "Circle", "C"],
     ["rect", "Rectang", "REC"],
+    ["mview", "MVIEW", "MV"],
     ["arc", "Arc", "A"],
     ["dist", "Distance", "D"],
     ["area", "Area", "AA"],
@@ -7965,6 +8411,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           rb("new-family", "Library", `data-a="blk-lib"`, "List, insert, rename, delete or export blocks (BLOCKLIB)") +
           rb("delete", "Explode", `data-a="blk-explode"`, "Explode the selected polylines or block references (EXPLODE)") +
           rb("text", "Edit Attributes", `data-a="blk-attedit"`, "Edit the attribute values of a selected block reference (ATTEDIT)") +
+          rb("component", "Block Editor", `data-a="blk-edit"`, "Edit a block definition in place — every reference updates (BEDIT, BE)") +
           rb("component", "Native Blocks", `data-a="blk-native"`, "Toggle: keep block references native when a DWG/DXF is opened (NATIVEBLOCKS, experimental). Applies to the next file you open; the log shows the new state.") +
           `<input type="file" data-r="blockfile" accept=".dwg,.dxf" style="display:none">`,
         "",
@@ -8086,6 +8533,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         "Saved Views",
         rb("camera", "Save View", `data-a="vsave"`, "Save the current view under a name (VIEW S <name>)") +
           rb("view", "Restore", `data-a="vrestore"`, "Restore a saved view (VIEW R <name>)"),
+        "",
+        "",
+        "view",
+      ) +
+      rg(
+        "Viewports",
+        tb("mview", "bounds", "MVIEW") +
+          rb("viewcube", "Viewports…", `data-a="vport"`, "Edit the current layout's viewports — scale, lock and clip (VPORT)") +
+          rb("settings", "Page Setup…", `data-a="pagesetup"`, "Named page setups for layouts (PAGESETUP)"),
         "",
         "",
         "view",
@@ -8393,6 +8849,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       "array-polar": () => executeDrawingCommand("ARRAYPOLAR"),
       erase: eraseSelected,
       plot: openPlot,
+      mview: () => executeDrawingCommand("MVIEW"),
+      vport: openVportDialog,
+      pagesetup: openPageSetupDialog,
       "save-dxf": saveDxf,
       "save-dwg": () => void saveDwg(),
       // Clipboard (Home › Clipboard)
@@ -8418,6 +8877,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       "blk-lib": () => void blockLibraryCmd(),
       "blk-explode": () => explodeSelection(),
       "blk-attedit": () => executeDrawingCommand("ATTEDIT"),
+      "blk-edit": () => openBlockEdit(),
       "blk-native": () => executeDrawingCommand(nativeBlocksOn() ? "NATIVEBLOCKS OFF" : "NATIVEBLOCKS ON"),
       "xr-attach": () => executeDrawingCommand("XATTACH"),
       "xr-overlay": () => executeDrawingCommand("XOVERLAY"),
@@ -8758,6 +9218,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         return n === 0 ? "Specify first corner of text column:" : "Specify opposite corner of text column:";
       case "rect":
         return n === 0 ? "Specify first corner point:" : "Specify other corner point:";
+      case "mview":
+        return n === 0 ? "Specify first corner of viewport:" : "Specify opposite corner of viewport:";
       case "poly":
         // A7: the arc option waits for its second point, then its end
         // point; the other options are intercepted by handlePolyOption.
@@ -9141,6 +9603,24 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     lastPointerScreen = sp;
     ptrs.set(ev.pointerId, sp);
 
+    // A8: a pending PLOT Window pick consumes the click (any tool): two
+    // corners set the plot window and the plot dialog re-opens with it.
+    if (plotWindowPick) {
+      if (ev.button !== 0) return;
+      plotWindowPts.push({ x: wp.x, y: wp.y });
+      if (plotWindowPts.length >= 2) {
+        const [a, b] = plotWindowPts;
+        plotWindow = { minX: Math.min(a.x, b.x), minY: Math.min(a.y, b.y), maxX: Math.max(a.x, b.x), maxY: Math.max(a.y, b.y) };
+        plotWindowPts = [];
+        plotWindowPick = false;
+        logCmd(`PLOT window: ${fmt(plotWindow.maxX - plotWindow.minX)} × ${fmt(plotWindow.maxY - plotWindow.minY)}.`);
+        openPlot();
+      } else {
+        logCmd("PLOT window: specify the opposite corner.");
+      }
+      return;
+    }
+
     if (ptrs.size === 2) {
       const [a, b] = [...ptrs.values()];
       pinch = Math.hypot(a.x - b.x, a.y - b.y);
@@ -9159,7 +9639,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
     if (ev.button === 1 || (ev.button === 2 && tool === "pan")) {
       ev.preventDefault();
-      dragging = { x: sp.x, y: sp.y };
+      dragging = { x: sp.x, y: sp.y, inViewport: pointInActiveViewport(sp.x, sp.y) };
       capture(ev.pointerId);
       cv.style.cursor = "grabbing";
       pushView();
@@ -9188,6 +9668,28 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       // check must not swallow it (the crossing of two lines is usually
       // also both lines' midpoint grip).
       if (!mod && !pick && !ev.ctrlKey) {
+        // A9: dynamic-block parameter grips (orange diamonds) take
+        // precedence over entity grips; a flip grip toggles on click.
+        const dg = dynGripAt(sp);
+        if (dg) {
+          if (dg.param.kind === "flip") {
+            toggleDynFlip(dg);
+            return;
+          }
+          const ins = dg.scope === "instance" ? (ents[dg.i] as DxfInsert | undefined) : undefined;
+          const set = dynParamStore.get(dg.scope === "instance" ? (ins?.name ?? "") : (blockEdit?.session.name ?? ""));
+          const values = set ? resolvedDynValues(set, ins?.dynValues) : {};
+          dynDrag = {
+            grip: dg,
+            origIns: ins ? { ...ins, dynValues: { ...(ins.dynValues ?? {}) } } : null,
+            origValue: values[dg.param.id] ?? Dyn9.defaultDynValue(dg.param),
+            moved: false,
+          };
+          dynGripHover = null;
+          capture(ev.pointerId);
+          cv.style.cursor = "grabbing";
+          return;
+        }
         const g = gripAt(sp);
         if (g && ents[g.i]) {
           const w0 = M.screenToWorld(view, sp.x, sp.y);
@@ -9449,6 +9951,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           });
           logCmd(`Rectangle added: ${fmt(Math.abs(p2.x - p1.x))} × ${fmt(Math.abs(p2.y - p1.y))}`);
           pts = [];
+        }
+        break;
+      }
+      case "mview": {
+        pts.push(p);
+        if (pts.length === 2) {
+          const rect = {
+            minX: Math.min(pts[0].x, pts[1].x),
+            minY: Math.min(pts[0].y, pts[1].y),
+            maxX: Math.max(pts[0].x, pts[1].x),
+            maxY: Math.max(pts[0].y, pts[1].y),
+          };
+          pts = [];
+          openMviewDialog(rect);
         }
         break;
       }
@@ -10148,11 +10664,27 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         press.moved = true;
         pushView();
         cv.style.cursor = "grabbing";
-        dragging = { x: press.x, y: press.y };
+        dragging = { x: press.x, y: press.y, inViewport: pointInActiveViewport(press.x, press.y) };
       }
     }
 
     if (dragging) {
+      // A8: a drag that started inside the active viewport pans the
+      // viewport's model view instead of the sheet; a locked viewport refuses.
+      if (dragging.inViewport && activeViewport !== null && layoutI >= 0 && doc?.layouts?.[layoutI]) {
+        const vp = doc.layouts[layoutI].viewports[activeViewport];
+        if (vp) {
+          const next = Vp8.panViewportBy(vp, view.scale, sp.x - dragging.x, sp.y - dragging.y);
+          if (next !== vp) {
+            doc.layouts[layoutI].viewports[activeViewport] = next;
+            markDirty();
+          }
+          dragging = { x: sp.x, y: sp.y, inViewport: true };
+          draw();
+          updateStatus(wp);
+          return;
+        }
+      }
       view = M.panBy(view, sp.x - dragging.x, sp.y - dragging.y);
       dragging = { x: sp.x, y: sp.y };
       draw();
@@ -10202,6 +10734,35 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       draw();
       return;
     }
+    // A9: dynamic-block parameter grip drag — the value follows the cursor
+    // (linear: projection on the axis; rotation: angle about the base).
+    if (dynDrag) {
+      const dg = dynDrag.grip;
+      let bp: M.Pt = { x: cur.x, y: cur.y };
+      if (dg.scope === "instance") {
+        const ins = ents[dg.i] as DxfInsert | undefined;
+        const def = ins ? Dyn9.findDynBlockDef(doc?.blocks, ins.name) : undefined;
+        if (def && ins) {
+          bp = Dyn9.dynWorldToBlockPoint(ins, def.base, cur);
+          // A9: undo the OTHER parameters' actions first, so the dragged
+          // value is read in the grip's own (untransformed) space.
+          const set = dynParamStore.get(ins.name);
+          if (set) bp = Dyn9.dynPointInverseThroughParams(set.params, resolvedDynValues(set, ins.dynValues), bp, dg.param.id);
+        }
+      } else if (blockEdit) {
+        const set = dynParamStore.get(blockEdit.session.name);
+        if (set) bp = Dyn9.dynPointInverseThroughParams(set.params, resolvedDynValues(set, undefined), bp, dg.param.id);
+      }
+      const v = Dyn9.paramValueFromPoint(dg.param, bp);
+      if (v !== null) {
+        // Round to 2 decimals: the screen-calibrated readout cannot deliver more.
+        const rounded = Math.round(v * 100) / 100;
+        applyDynGripValue(dg, rounded);
+        dynDrag.moved = true;
+      }
+      draw();
+      return;
+    }
     // LENGTHEN dynamic: stretch preview follows the cursor.
     if (pick && pick.kind === "lengthen" && pick.stage === "newend") {
       const e = ents[pick.obj];
@@ -10209,6 +10770,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     // Grip hover highlight (unselected tool state only — cheap cap keeps it that way).
     gripHover = !mod && !pick && (tool === "select" || tool === "box") ? gripAt(sp) : null;
+    // A9: dynamic-block parameter grip hover (same tools, no drag in progress).
+    dynGripHover = !mod && !pick && !dynDrag && (tool === "select" || tool === "box") ? dynGripAt(sp) : null;
     updateStatus(cursor);
     draw();
   });
@@ -10249,6 +10812,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // A11: during a grip drag, right-click offers the grip modes instead
     // of the idle menu; during FENCE it finishes the fence (AutoCAD).
     if (gripDrag) { ev.preventDefault(); showGripModeMenu(ev); return; }
+    // A9: a right-click mid-parameter-drag does nothing (no mode menu).
+    if (dynDrag) { ev.preventDefault(); return; }
     if (tool === "fence") { ev.preventDefault(); finishFence(); return; }
     // In idle selection mode, right-click opens the complete CAD context menu.
     if (tool === "select") { showCadContextMenu(ev); return; }
@@ -10280,6 +10845,45 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         ents[gripDrag.i] = gripDrag.orig; // click without drag — nothing changed
       }
       gripDrag = null;
+      cv.style.cursor = tool === "pan" ? "grab" : "crosshair";
+      draw();
+      return;
+    }
+    // A9: dynamic-block parameter grip release — commit as a single modify
+    // undo action for instances; persist the new default for a session.
+    if (dynDrag) {
+      const dg = dynDrag.grip;
+      if (dynDrag.moved) {
+        if (dg.scope === "instance" && dynDrag.origIns) {
+          const after = ents[dg.i] as DxfInsert | undefined;
+          if (after && after !== dynDrag.origIns) {
+            const ext = withAssociativeDims([dynDrag.origIns], [after]);
+            for (let i = 0; i < ext.before.length; i++) replaceEntity(ext.before[i], ext.after[i]);
+            pushUndoAct({ type: "modify", before: ext.before, after: ext.after });
+            markDirty();
+            redoStack.length = 0;
+            rebuildIndex();
+            showProps();
+            const set = dynParamStore.get(after.name);
+            const cur = set ? resolvedDynValues(set, after.dynValues)[dg.param.id] : undefined;
+            logCmd(`Dynamic block "${after.name}": ${dg.param.name} = ${String(cur ?? "")} (Ctrl+Z to undo).`);
+          }
+        } else if (dg.scope === "session" && blockEdit) {
+          saveDynParamSet(blockEdit.session.name);
+          const set = dynParamStore.get(blockEdit.session.name);
+          const cur = set ? resolvedDynValues(set, undefined)[dg.param.id] : undefined;
+          logCmd(`Dynamic block "${blockEdit.session.name}": ${dg.param.name} default = ${String(cur ?? "")} (instances update on close).`);
+        }
+      } else if (dg.scope === "instance" && dynDrag.origIns) {
+        ents[dg.i] = dynDrag.origIns; // click without drag — nothing changed
+      } else if (dg.scope === "session" && blockEdit) {
+        const set = dynParamStore.get(blockEdit.session.name);
+        if (set) {
+          setDynDefault(set, dg.param.id, dynDrag.origValue);
+          dynParamStore.set(set);
+        }
+      }
+      dynDrag = null;
       cv.style.cursor = tool === "pan" ? "grab" : "crosshair";
       draw();
       return;
@@ -10352,7 +10956,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   cv.addEventListener("pointerup", endDrag);
   cv.addEventListener("pointercancel", endDrag);
 
-  cv.addEventListener("dblclick", () => {
+  cv.addEventListener("dblclick", (ev) => {
     if (tool === "fence") {
       pts.pop(); // the double-click's second point duplicates the last fence point
       finishFence();
@@ -10361,13 +10965,72 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (tool === "poly" || tool === "area" || tool === "chain" || tool === "cloud" || tool === "spline" || tool === "wipeout") {
       pts.pop();
       finishMeasure();
+      return;
+    }
+    // A9: double-click a block reference in model space to edit its
+    // definition in place (BEDIT) — the reference's geometry is resolved
+    // lazily, so saving the session updates every instance.
+    if (tool === "select" && layoutI < 0 && !blockEdit) {
+      const { wp } = rawPoint(ev);
+      const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, pickable) : -1;
+      const e = i >= 0 ? ents[i] : undefined;
+      if (e?.type === "INSERT") { openBlockEdit(e.name); draw(); updateStatus(); return; }
+    }
+    // A8: double-click a viewport to work inside it (wheel / drag zoom and
+    // pan the viewport's model view); double-click outside every viewport
+    // to leave it. A locked viewport activates but refuses zoom / pan.
+    if (tool === "select" && layoutI >= 0 && doc?.layouts?.[layoutI]) {
+      const { wp } = rawPoint(ev);
+      const vps = doc.layouts[layoutI].viewports;
+      const i = Vp8.viewportAtSheetPoint(vps, { x: wp.x, y: wp.y });
+      if (i >= 0) {
+        activeViewport = i;
+        const vp = vps[i];
+        logCmd(
+          vp.locked
+            ? `Viewport #${i + 1} active (locked — zoom / pan inside it is ignored).`
+            : `Viewport #${i + 1} active — wheel and drag zoom / pan inside it. Double-click outside to leave.`,
+        );
+      } else if (activeViewport !== null) {
+        activeViewport = null;
+        logCmd("Left the viewport — back to the sheet.");
+      }
+      draw();
+      updateStatus();
     }
   });
+
+  /** Is a screen point inside the active viewport's (clipped) sheet rect? */
+  function pointInActiveViewport(sx: number, sy: number): boolean {
+    if (activeViewport === null || layoutI < 0 || !doc?.layouts?.[layoutI]) return false;
+    const vp = doc.layouts[layoutI].viewports[activeViewport];
+    if (!vp) return false;
+    const wp = M.screenToWorld(view, sx, sy);
+    const r = Vp8.clipViewportRect(vp);
+    return wp.x >= r.minX && wp.x <= r.maxX && wp.y >= r.minY && wp.y <= r.maxY;
+  }
 
   cv.addEventListener("wheel", (ev) => {
     if (!doc) return;
     ev.preventDefault();
     const { sp } = rawPoint(ev);
+    // A8: the wheel inside the active viewport zooms the viewport's model
+    // view (its centre stays under the cursor); a locked viewport refuses.
+    if (activeViewport !== null && layoutI >= 0 && doc.layouts?.[layoutI] && pointInActiveViewport(sp.x, sp.y)) {
+      const vp = doc.layouts[layoutI].viewports[activeViewport];
+      if (vp) {
+        const factor = Math.exp(-Math.max(-300, Math.min(300, ev.deltaY * (ev.deltaMode === 1 ? 16 : 1))) * 0.0018);
+        const ctr = M.worldToScreen(view, vp.center.x, vp.center.y);
+        const next = Vp8.zoomViewportAt(vp, view.scale, { x: ctr.x, y: ctr.y }, sp, factor);
+        if (next !== vp) {
+          doc.layouts[layoutI].viewports[activeViewport] = next;
+          markDirty();
+        }
+        draw();
+        updateStatus();
+        return;
+      }
+    }
     view = M.zoomAt(
       view,
       sp.x,
@@ -10414,6 +11077,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     offsetEntity = -1;
     offDist = null;
     pts = [];
+    // A8: Esc also leaves the active viewport and cancels a PLOT Window pick.
+    activeViewport = null;
+    plotWindowPick = false;
+    plotWindowPts = [];
     winStart = winNow = null;
     rband = null;
     press = null;
@@ -10954,6 +11621,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       <span data-s="quick-readout" style="display:${quick ? "inline-flex" : "none"};max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#a7f3d0;font-size:10px">${escapeHtml(quickMeasureText(c))}</span>
       <span class="sep"></span>
       <span>${escapeHtml(unit)} · ${zoomPct}%</span>
+      ${activeViewport !== null && layoutI >= 0 ? `<span class="sep"></span><span data-s="viewport" style="color:#38bdf8;font-weight:600" title="Double-click outside a viewport to leave it">Viewport #${activeViewport + 1} active</span>` : ""}
       <span style="flex:1"></span>
       <span>${sel.size ? sel.size + " selected" : ""}</span>
     `;
@@ -11240,6 +11908,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const cmd = resolveCadToken(parts[0], CAD_COMMANDS);
     const arg = parts.slice(1).join(" ");
 
+    // A18: P at a "Select objects:" prompt restores the previous
+    // selection instead of panning (P is the PAN alias everywhere else).
+    if ((cmd === "P" || cmd === "PAN") && mod?.stage === "select") {
+      restorePreviousSelection();
+      return;
+    }
+
     // Direct numeric entry: tool radius/length, or pending ROTATE/SCALE/OFFSET
     if (/^[-+]?\d*\.?\d+(e[-+]?\d+)?$/i.test(trimmed)) {
       const num = parseFloat(trimmed);
@@ -11316,6 +11991,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (cmd === "AGENT" || cmd === "AGENTBRIDGE" || cmd === "BRIDGE" || cmd === "ALPHACLI" || cmd === "ALPHACODE") {
       logCmd("AGENT — AI Agent Bridge");
       void import("../features/agent-bridge").then((m) => m.openAgentPanel()).catch(() => {});
+      return;
+    }
+
+    // A9 BEDIT session guard: document-level commands are refused while a
+    // block is being edited in place — saving, plotting, undo/redo, a new
+    // drawing, closing, importing, purging or switching layouts would act
+    // on the session's working copy instead of the drawing. Drawing and
+    // editing commands pass through (they edit the session's entities);
+    // BCLOSE / BEDIT are handled below in the main chain. The same guard
+    // lives in the underlying functions (undo, saveDxf, activate, ...) so
+    // ribbon buttons and keyboard shortcuts are covered too.
+    if (blockEdit && ["QSAVE", "SAVE", "SAVEAS", "SA", "DWGSAVE", "EXPORTDWG", "SVGSAVE", "EXPORTSVG", "PLOT", "PRINT", "UNDO", "U", "REDO", "REFEDIT", "REFCLOSE", "RCLOSE", "NEW", "CLOSE", "LAYOUT", "LO", "IMPORT", "IMP", "PURGE", "PU"].includes(cmd)) {
+      logCmd(`${cmd}: not available inside BEDIT — close the session with BCLOSE first.`);
       return;
     }
 
@@ -11632,6 +12320,233 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       markDirty();
       return;
     }
+    if (cmd === "BEDIT" || cmd === "BE") {
+      openBlockEdit(parts[1]);
+      return;
+    }
+    if (cmd === "BCLOSE" || cmd === "BC") {
+      const a = (parts[1] ?? "").toUpperCase();
+      if (a === "DISCARD" || a === "D") closeBlockEdit(true);
+      else if (!a) closeBlockEdit(false);
+      else logCmd("BCLOSE: BCLOSE saves the block; BCLOSE DISCARD abandons the session.");
+      return;
+    }
+    // A9: author dynamic-block parameters (linear / rotation / flip /
+    // visibility / lookup) on a block definition. Values are evaluated in
+    // block space and shown on every instance; the base definition is
+    // never rewritten by evaluation. Imported DWG parameters are out of
+    // reach (Rust-side dynamic-block evaluation) — this is the authored
+    // in-editor model only.
+    if (cmd === "DYNPARAM" || cmd === "DP") {
+      const bn = parts[1];
+      const sub = (parts[2] || "").toUpperCase();
+      if (!bn || !sub) {
+        logCmd("DYNPARAM: DYNPARAM <block> LIST | LINEAR <name> <bx> <by> <angle> <baseValue> [indices…] | ROTATION <name> <bx> <by> <baseValue> [indices…] | FLIP <name> <bx> <by> <X|Y> [indices…] | VISIBILITY <name> <state1> <state2> […] | LOOKUP <name> <value> <param>=<value> […] | REMOVE <id>");
+        return;
+      }
+      const def = doc?.blocks ? Dyn9.findDynBlockDef(doc.blocks, bn) : undefined;
+      if (!def) { logCmd(`DYNPARAM: no block "${bn}".`); return; }
+      let set = dynParamStore.get(bn);
+      if (sub === "LIST") {
+        if (!set || !set.params.length) { logCmd(`DYNPARAM "${bn}": no parameters.`); return; }
+        logCmd(`DYNPARAM "${bn}":`);
+        for (const p of set.params) {
+          const cur = resolvedDynValues(set, undefined)[p.id];
+          logCmd(`  ${p.id}  ${p.kind}  ${p.name}  = ${String(cur)}${p.kind === "visibility" ? `  states: ${p.states.map((s) => s.name).join(", ")}` : ""}`);
+        }
+        return;
+      }
+      if (sub === "REMOVE") {
+        if (!set) { logCmd(`DYNPARAM "${bn}": no parameters.`); return; }
+        const id = parts[3];
+        if (!set.params.some((p) => p.id === id)) { logCmd(`DYNPARAM: no parameter "${id}" on "${bn}".`); return; }
+        set.params = set.params.filter((p) => p.id !== id);
+        delete set.values[id];
+        dynParamStore.set(set);
+        saveDynParamSet(bn);
+        logCmd(`DYNPARAM: removed "${id}" from "${bn}".`);
+        draw();
+        showProps();
+        return;
+      }
+      if (!set) {
+        set = { blockName: def.name, params: [], values: {} };
+        dynParamStore.set(set);
+      }
+      const slug = (name: string): string => {
+        let base = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "param";
+        let id = base;
+        let n = 2;
+        while (set!.params.some((p) => p.id === id)) id = `${base}_${n++}`;
+        return id;
+      };
+      // Entity indices the action applies to: explicit trailing numbers,
+      // else the session selection when editing this block, else all.
+      const indices = (from: number): number[] => {
+        const explicit: number[] = [];
+        for (let k = from; k < parts.length; k++) {
+          const v = Number(parts[k]);
+          if (Number.isFinite(v) && Number.isInteger(v) && v >= 0 && v < def.entities.length) explicit.push(v);
+        }
+        if (explicit.length) return [...new Set(explicit)].sort((a, b) => a - b);
+        if (blockEdit && blockEdit.session.name.toUpperCase() === bn.toUpperCase() && sel.size) return [...sel].sort((a, b) => a - b);
+        return def.entities.map((_, i) => i);
+      };
+      if (sub === "LINEAR") {
+        const pname = parts[3];
+        const bx = Number(parts[4]), by = Number(parts[5]), ang = Number(parts[6]), base = Number(parts[7]);
+        if (!pname || ![bx, by, ang, base].every(Number.isFinite)) { logCmd("DYNPARAM LINEAR: DYNPARAM <block> LINEAR <name> <bx> <by> <angle> <baseValue> [indices…]"); return; }
+        const param: Dyn9.DynLinearParam = { kind: "linear", id: slug(pname), name: pname, basePoint: { x: bx, y: by }, angle: ang, value: base, baseValue: base, selection: indices(8) };
+        const err = Dyn9.validateDynParam(param, set.params);
+        if (err) { logCmd(`DYNPARAM: ${err}`); return; }
+        set.params.push(param);
+        set.values[param.id] = base;
+        dynParamStore.set(set);
+        saveDynParamSet(bn);
+        logCmd(`DYNPARAM: linear "${pname}" on "${bn}" — base (${bx}, ${by}) angle ${ang}°, value ${base}, ${param.selection.length} object(s).`);
+        draw();
+        showProps();
+        return;
+      }
+      if (sub === "ROTATION") {
+        const pname = parts[3];
+        const bx = Number(parts[4]), by = Number(parts[5]), base = Number(parts[6]);
+        if (!pname || ![bx, by, base].every(Number.isFinite)) { logCmd("DYNPARAM ROTATION: DYNPARAM <block> ROTATION <name> <bx> <by> <baseValue> [indices…]"); return; }
+        const param: Dyn9.DynRotationParam = { kind: "rotation", id: slug(pname), name: pname, basePoint: { x: bx, y: by }, value: base, baseValue: base, selection: indices(7) };
+        const err = Dyn9.validateDynParam(param, set.params);
+        if (err) { logCmd(`DYNPARAM: ${err}`); return; }
+        set.params.push(param);
+        set.values[param.id] = base;
+        dynParamStore.set(set);
+        saveDynParamSet(bn);
+        logCmd(`DYNPARAM: rotation "${pname}" on "${bn}" — base (${bx}, ${by}), value ${base}°, ${param.selection.length} object(s).`);
+        draw();
+        showProps();
+        return;
+      }
+      if (sub === "FLIP") {
+        const pname = parts[3];
+        const bx = Number(parts[4]), by = Number(parts[5]);
+        const axis = (parts[6] || "X").toLowerCase() === "y" ? "y" : "x";
+        if (!pname || ![bx, by].every(Number.isFinite)) { logCmd("DYNPARAM FLIP: DYNPARAM <block> FLIP <name> <bx> <by> <X|Y> [indices…]"); return; }
+        const param: Dyn9.DynFlipParam = { kind: "flip", id: slug(pname), name: pname, basePoint: { x: bx, y: by }, axis, value: false, selection: indices(7) };
+        const err = Dyn9.validateDynParam(param, set.params);
+        if (err) { logCmd(`DYNPARAM: ${err}`); return; }
+        set.params.push(param);
+        set.values[param.id] = false;
+        dynParamStore.set(set);
+        saveDynParamSet(bn);
+        logCmd(`DYNPARAM: flip "${pname}" on "${bn}" — axis ${axis.toUpperCase()} through (${bx}, ${by}), ${param.selection.length} object(s).`);
+        draw();
+        showProps();
+        return;
+      }
+      if (sub === "VISIBILITY") {
+        const pname = parts[3];
+        const states = parts.slice(4);
+        if (!pname || states.length < 2) { logCmd("DYNPARAM VISIBILITY: DYNPARAM <block> VISIBILITY <name> <state1> <state2> […] (≥2 states)"); return; }
+        const param: Dyn9.DynVisibilityParam = { kind: "visibility", id: slug(pname), name: pname, states: states.map((s) => ({ name: s, hidden: [] })), value: states[0], selection: [] };
+        const err = Dyn9.validateDynParam(param, set.params);
+        if (err) { logCmd(`DYNPARAM: ${err}`); return; }
+        set.params.push(param);
+        set.values[param.id] = states[0];
+        dynParamStore.set(set);
+        saveDynParamSet(bn);
+        logCmd(`DYNPARAM: visibility "${pname}" on "${bn}" — states: ${states.join(", ")} (default ${states[0]}; DYNVIS hides objects per state).`);
+        draw();
+        showProps();
+        return;
+      }
+      if (sub === "LOOKUP") {
+        const pname = parts[3];
+        const value = parts[4];
+        if (!pname || !value) { logCmd("DYNPARAM LOOKUP: DYNPARAM <block> LOOKUP <name> <value> <param>=<value> […]"); return; }
+        const coerce = (target: Dyn9.DynParam, raw: string): Dyn9.DynValue | null => {
+          if (target.kind === "linear" || target.kind === "rotation") {
+            const n = Number(raw);
+            return Number.isFinite(n) ? n : null;
+          }
+          if (target.kind === "flip") {
+            if (raw.toLowerCase() === "true") return true;
+            if (raw.toLowerCase() === "false") return false;
+            return null;
+          }
+          if (target.kind === "visibility") return target.states.some((s) => s.name === raw) ? raw : null;
+          return raw;
+        };
+        const sets: Record<string, Dyn9.DynValue> = {};
+        for (let k = 5; k < parts.length; k++) {
+          const eq = parts[k].indexOf("=");
+          if (eq <= 0) { logCmd(`DYNPARAM LOOKUP: "${parts[k]}" is not <param>=<value>.`); return; }
+          const pid = parts[k].slice(0, eq);
+          const raw = parts[k].slice(eq + 1);
+          const target = set.params.find((p) => p.id === pid || p.name.toUpperCase() === pid.toUpperCase());
+          if (!target) { logCmd(`DYNPARAM LOOKUP: no parameter "${pid}" on "${bn}".`); return; }
+          if (target.kind === "lookup") { logCmd("DYNPARAM LOOKUP: a lookup cannot drive another lookup."); return; }
+          const v = coerce(target, raw);
+          if (v === null) { logCmd(`DYNPARAM LOOKUP: "${raw}" is not a valid value for ${target.kind} "${target.name}".`); return; }
+          sets[target.id] = v;
+        }
+        if (!Object.keys(sets).length) { logCmd("DYNPARAM LOOKUP: DYNPARAM <block> LOOKUP <name> <value> <param>=<value> […]"); return; }
+        const existing = set.params.find((p): p is Dyn9.DynLookupParam => p.kind === "lookup" && p.name.toUpperCase() === pname.toUpperCase());
+        if (existing) {
+          if (existing.table.some((r) => r.value === value)) { logCmd(`DYNPARAM LOOKUP: "${bn}" already has a row "${value}" in "${pname}".`); return; }
+          existing.table.push({ value, sets });
+          const err = Dyn9.validateDynParam(existing, set.params.filter((p) => p !== existing));
+          if (err) { logCmd(`DYNPARAM: ${err}`); return; }
+          dynParamStore.set(set);
+          saveDynParamSet(bn);
+          logCmd(`DYNPARAM: lookup "${pname}" on "${bn}" — row "${value}" added (drives ${Object.keys(sets).map((id) => set.params.find((q) => q.id === id)?.name ?? id).join(", ")}; change the lookup value to change them).`);
+        } else {
+          const param: Dyn9.DynLookupParam = { kind: "lookup", id: slug(pname), name: pname, table: [{ value, sets }], value, selection: [] };
+          const err = Dyn9.validateDynParam(param, set.params);
+          if (err) { logCmd(`DYNPARAM: ${err}`); return; }
+          set.params.push(param);
+          set.values[param.id] = value;
+          dynParamStore.set(set);
+          saveDynParamSet(bn);
+          logCmd(`DYNPARAM: lookup "${pname}" on "${bn}" — row "${value}" added (drives ${Object.keys(sets).map((id) => set.params.find((q) => q.id === id)?.name ?? id).join(", ")}; change the lookup value to change them).`);
+        }
+        draw();
+        showProps();
+        return;
+      }
+      logCmd(`DYNPARAM: unknown form "${sub}". DYNPARAM ${bn} LIST`);
+      return;
+    }
+    // A9: hide / show objects in a visibility state, inside a BEDIT session.
+    // DYNVIS <state> hides the selection in that state; DYNVIS <state> SHOW
+    // unhides the selection (or everything, with no selection).
+    if (cmd === "DYNVIS") {
+      if (!blockEdit) { logCmd("DYNVIS: open a block for editing first (BEDIT)."); return; }
+      const set = dynParamStore.get(blockEdit.session.name);
+      const vis = set?.params.find((p): p is Dyn9.DynVisibilityParam => p.kind === "visibility");
+      if (!set || !vis) { logCmd(`DYNVIS: no visibility parameter on "${blockEdit.session.name}" (DYNPARAM … VISIBILITY).`); return; }
+      const state = vis.states.find((s) => s.name.toUpperCase() === (parts[1] ?? "").toUpperCase());
+      if (!state) { logCmd(`DYNVIS: unknown state "${parts[1]}". States: ${vis.states.map((s) => s.name).join(", ")}.`); return; }
+      const show = (parts[2] ?? "").toUpperCase() === "SHOW";
+      if (show && !sel.size) {
+        state.hidden = [];
+        logCmd(`DYNVIS: state "${state.name}" now shows all ${blockEdit.session.entities.length} object(s).`);
+      } else if (show) {
+        const idx = [...sel].sort((a, b) => a - b);
+        state.hidden = state.hidden.filter((i) => !idx.includes(i));
+        logCmd(`DYNVIS: showed ${idx.length} object(s) in state "${state.name}".`);
+      } else {
+        if (!sel.size) { logCmd("DYNVIS: select the objects to hide in this state first (or DYNVIS <state> SHOW)."); return; }
+        const idx = [...sel].sort((a, b) => a - b);
+        state.hidden = [...new Set([...state.hidden, ...idx])].sort((a, b) => a - b);
+        logCmd(`DYNVIS: hid ${idx.length} object(s) in state "${state.name}".`);
+      }
+      // The edited state becomes the current state so the session preview follows.
+      setDynDefault(set, vis.id, state.name);
+      dynParamStore.set(set);
+      saveDynParamSet(set.blockName);
+      applyDynVisibilityToSession();
+      draw();
+      showProps();
+      return;
+    }
     if (cmd === "REGION" || cmd === "REG") {
       const closed = ents.filter((e) => AcadParity.isClosedPoly(e));
       if (!closed.length) { logCmd("REGION: no closed polylines found."); return; }
@@ -11695,13 +12610,34 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       })();
       return;
     }
+    if (cmd === "MVIEW" || cmd === "MV") {
+      if (!doc) { logCmd("MVIEW: open a drawing first."); return; }
+      if (layoutI < 0 || !doc.layouts?.[layoutI]) {
+        logCmd("MVIEW: switch to a paper layout first (LAYOUT NEW / layout tab).");
+        return;
+      }
+      setTool("mview");
+      logCmd("MVIEW: specify the first corner of the viewport.");
+      return;
+    }
+    if (cmd === "VPORT" || cmd === "VP") {
+      openVportDialog();
+      return;
+    }
     if (cmd === "PAGESETUP" || cmd === "PAGE") {
-      const size = (parts[1] || "A3").toUpperCase();
-      const orient = (parts[2] || "LANDSCAPE").toUpperCase();
-      logCmd(`PAGESETUP: paper=${size} orientation=${orient} (used on PLOT / PDF).`);
-      try {
-        localStorage.setItem("obs.cad.pageSetup", JSON.stringify({ size, orient }));
-      } catch { /* */ }
+      const nm = parts.slice(1).join(" ").trim();
+      if (nm) {
+        // PAGESETUP <name>: apply that named setup to the current layout.
+        const s = doc?.pageSetups?.[nm];
+        if (!s) { logCmd(`PAGESETUP: no setup named "${nm}" — use PAGESETUP to create one.`); return; }
+        if (!doc || layoutI < 0 || !doc.layouts?.[layoutI]) { logCmd("PAGESETUP: switch to a paper layout first."); return; }
+        doc.layouts[layoutI] = Vp8.applyPageSetupToLayout(doc.layouts[layoutI], s);
+        markDirty();
+        draw();
+        logCmd(`PAGESETUP: "${nm}" applied to "${doc.layouts[layoutI].name}" (${s.paper}, ${Vp8.plotScaleLabel(s.scale)}, ${s.area}).`);
+        return;
+      }
+      openPageSetupDialog();
       return;
     }
     if (cmd === "HATCHBOUNDARY" || cmd === "HB") {
@@ -11858,19 +12794,29 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         return;
       }
       if (dynBlocks.setState(bn, parts[2])) {
-        // Apply stretch/flip to selected block instances if any
-        const rich = AcadAdv.loadDynBlockRich(bn);
-        if (rich && sel.size) {
-          for (const i of sel) {
-            const e = ents[i];
-            if (e?.type === "LWPOLYLINE" && e.points) {
-              const pts = AcadAdv.applyDynActionsToPoints(e.points, rich.actions, parts[2]);
-              (e as any).points = pts;
+        // A9: a visibility parameter with a state of this name drives the
+        // switch instead of the legacy destructive polyline stretch below
+        // (the evaluated geometry follows; the definition is untouched).
+        if (setDynVisibilityState(bn, parts[2])) {
+          logCmd(`DYNBLOCK: "${bn}" → "${parts[2]}" (visibility parameter).`);
+        } else {
+          // Apply stretch/flip to selected block instances if any
+          const rich = AcadAdv.loadDynBlockRich(bn);
+          if (rich && sel.size) {
+            for (const i of sel) {
+              const e = ents[i];
+              if (e?.type === "LWPOLYLINE" && e.points) {
+                const pts = AcadAdv.applyDynActionsToPoints(e.points, rich.actions, parts[2]);
+                (e as any).points = pts;
+              }
             }
+            draw();
           }
-          draw();
+          logCmd(`DYNBLOCK: "${bn}" → "${parts[2]}"`);
         }
-        logCmd(`DYNBLOCK: "${bn}" → "${parts[2]}"`);
+      } else if (setDynVisibilityState(bn, parts[2])) {
+        // A9: a visibility-parameter state needs no DynBlockStore record.
+        logCmd(`DYNBLOCK: "${bn}" → "${parts[2]}" (visibility parameter).`);
       } else logCmd(`DYNBLOCK: unknown state. DYNBLOCK ${bn} STRETCH 100 0`);
       return;
     }
@@ -12435,6 +13381,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (cmd === "QSELECT" || cmd === "QSI") {
       const what = (parts[1] ?? "").toUpperCase();
       const val = parts.slice(2).join(" ").trim();
+      // A18: bare QSELECT opens the dialog (type + property + operator +
+      // include / exclude / append). The command-line form below is unchanged.
+      if (!what) {
+        openQSelectDialog();
+        return;
+      }
       const all = ents.map((_, i) => i).filter((i) => visible(ents[i]));
       const colorKey = (e: DxfEntity): string => e.rgb != null
         ? `rgb:${(e.rgb & 0xffffff).toString(16).padStart(6, "0")}`
@@ -12467,17 +13419,37 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       return;
     }
     if (cmd === "FILTER") {
-      if (/^(clear|none|off|reset)$/i.test(arg.trim())) {
+      const rest = arg.trim();
+      if (/^(clear|none|off|reset)$/i.test(rest)) {
         typeFilter = new Set();
+        propFilter = [];
         for (const i of [...sel]) {
           if (!ents[i]) sel.delete(i);
         }
         logCmd("FILTER: selection filter cleared — every object type is selectable again.");
         updateStatus();
         draw();
+      } else if (/^save\b/i.test(rest)) {
+        const nm = rest.slice(4).trim();
+        if (nm) saveNamedFilter(nm, typeFilter, propFilter);
+        else logCmd("FILTER: use FILTER SAVE <name> to save the current filter under a name.");
+      } else if (rest) {
+        // A18: FILTER <name> applies a named filter; anything else opens the dialog.
+        const f = namedFilters.get(rest);
+        if (f) {
+          applyFilterState(new Set(f.types), f.criteria);
+          logCmd(`FILTER: applied named filter "${f.name}" (${f.types.length ? f.types.join(", ") : "all types"}${f.criteria.length ? ` + ${f.criteria.length} criteri${f.criteria.length === 1 ? "on" : "a"}` : ""}).`);
+        } else {
+          logCmd(`FILTER: no named filter "${rest}" — opening the filter dialog.`);
+          openTypeFilterDialog();
+        }
       } else {
         openTypeFilterDialog();
       }
+      return;
+    }
+    if (cmd === "PREVIOUS" || cmd === "PREV" || (cmd === "SELECT" && (parts[1] ?? "").toUpperCase() === "PREVIOUS")) {
+      restorePreviousSelection();
       return;
     }
     if (cmd === "SELECTSIMILAR" || cmd === "SELSIM") {
@@ -13625,17 +14597,153 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
    * FILTER — selection filter dialog. The checked entity types are the only
    * ones picking, window and crossing selection can land on (the `visible`
    * predicate honours `typeFilter`). FILTER CLEAR resets.
+   *
+   * A18: property criteria (an AND list) sit on top of the type filter,
+   * and the whole filter state can be saved under a name and applied or
+   * deleted later (named filters persist per drawing, like A16 layer
+   * states). The same state is what FILTER <name> / FILTER SAVE <name>
+   * use on the command line.
    */
+  function applyFilterState(types: Set<string>, criteria: Sel18.QSelectCriterion[]): void {
+    typeFilter = new Set(types);
+    propFilter = [...criteria];
+    // Deselect anything the filter now excludes.
+    for (const i of [...sel]) {
+      if (!ents[i] || !visible(ents[i])) sel.delete(i);
+    }
+    updateStatus();
+    draw();
+  }
+
+  function saveNamedFilter(name: string, types: Set<string>, criteria: Sel18.QSelectCriterion[]): boolean {
+    const k = name.trim();
+    if (!k || k.length > 100) {
+      logCmd("FILTER: give the named filter a name (up to 100 characters).");
+      return false;
+    }
+    namedFilters.set(k, { name: k, types: [...types], criteria: criteria.map((c) => ({ ...c })) });
+    scheduleSessionSave();
+    logCmd(`FILTER: saved named filter "${k}" (${types.size ? [...types].join(", ") : "all types"}${criteria.length ? ` + ${criteria.length} criteri${criteria.length === 1 ? "on" : "a"}` : ""}).`);
+    return true;
+  }
+
+  /**
+   * A18: QSELECT dialog. Bare QSELECT opens it; the command-line form
+   * (QSELECT ALL · TYPE · LAYER · …) still works. Object type scopes
+   * the property list; the operator list follows the property kind.
+   * Apply runs the criterion through Sel18.applyQSelect and closes.
+   */
+  function openQSelectDialog(): void {
+    const counts = new Map<string, number>();
+    for (const e of ents) counts.set(e.type, (counts.get(e.type) ?? 0) + 1);
+    const types = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
+    const panel = openOverlay(`
+      <b style="font-size:15px;color:#38bdf8">Quick Select (QSELECT)</b>
+      <div style="font-size:11px;color:#9aa4b2;margin:4px 0 12px">Pick objects by type and one property. Include starts a new selection set from the matches, Exclude removes the matches from the whole drawing, Append adds them to the current selection.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">Object Type:</label>
+          <select data-r="qs-type" style="width:100%;background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px">
+            <option value="ALL">All</option>
+            ${types.map((t) => `<option value="${t}">${t}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">Property:</label>
+          <select data-r="qs-prop" style="width:100%;background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px"></select>
+        </div>
+        <div>
+          <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">Operator:</label>
+          <select data-r="qs-op" style="width:100%;background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px"></select>
+        </div>
+        <div>
+          <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">Value:</label>
+          <input data-r="qs-value" style="width:100%;background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px">
+        </div>
+      </div>
+      <div style="margin-top:14px;font-size:11px;color:#94a3b8">How to apply:</div>
+      <div style="display:flex;gap:16px;margin-top:4px;font-size:12px">
+        <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="qs-mode" value="include" checked>Include in new selection set</label>
+        <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="qs-mode" value="exclude">Exclude from new selection set</label>
+        <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="qs-mode" value="append">Append to current selection set</label>
+      </div>
+      <div data-r="qs-error" style="font-size:11px;color:#f87171;min-height:14px;margin-top:8px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+        <button data-r="qs-cancel" style="padding:6px 10px">Cancel</button>
+        <button data-r="qs-apply" style="padding:6px 12px;background:#0284c7;color:white;border:0;border-radius:4px">Apply</button>
+      </div>
+    `);
+    const typeSel = panel.querySelector<HTMLSelectElement>("[data-r=qs-type]");
+    const propSel = panel.querySelector<HTMLSelectElement>("[data-r=qs-prop]");
+    const opSel = panel.querySelector<HTMLSelectElement>("[data-r=qs-op]");
+    const valInput = panel.querySelector<HTMLInputElement>("[data-r=qs-value]");
+    const refreshProps = (): void => {
+      if (!typeSel || !propSel) return;
+      const props = Sel18.propertiesForType(typeSel.value);
+      propSel.innerHTML = props.map((p) => `<option value="${p.id}">${p.label}</option>`).join("");
+      refreshOps();
+    };
+    const refreshOps = (): void => {
+      if (!propSel || !opSel) return;
+      const def = Sel18.propertyDef(propSel.value);
+      opSel.innerHTML = Sel18.operatorsForKind(def?.kind ?? "string")
+        .map((o) => `<option value="${o}">${o === "contains" ? "contains" : o === "not-contains" ? "does not contain" : o}</option>`).join("");
+      if (valInput) valInput.placeholder = def?.placeholder ?? "value";
+    };
+    typeSel?.addEventListener("change", refreshProps);
+    propSel?.addEventListener("change", refreshOps);
+    refreshProps();
+    panel.querySelector("[data-r=qs-cancel]")?.addEventListener("click", closeOverlay);
+    panel.querySelector("[data-r=qs-apply]")?.addEventListener("click", () => {
+      const err = panel.querySelector("[data-r=qs-error]");
+      const criterion = Sel18.sanitizeCriterion({ property: propSel?.value, operator: opSel?.value, value: valInput?.value ?? "" });
+      if (!criterion) {
+        if (err) err.textContent = "That value does not work for this property — check the operator and the value (numbers need digits; colours need an ACI number, #RRGGBB or BYLAYER).";
+        return;
+      }
+      const mode = (panel.querySelector<HTMLInputElement>("input[name=qs-mode]:checked")?.value ?? "include") as Sel18.QSelectApplyMode;
+      let candidates = ents.map((_, i) => i).filter((i) => visible(ents[i]));
+      // The Object Type scopes the match, not just the property list
+      // (AutoCAD: QSELECT with a type only ever returns that type).
+      const type = typeSel?.value ?? "ALL";
+      if (type !== "ALL") candidates = candidates.filter((i) => ents[i].type === type);
+      const ids = Sel18.applyQSelect(ents, candidates, criterion, mode, sel);
+      setSel(ids);
+      logCmd(`QSELECT ${type === "ALL" ? "" : type + " "}${criterion.property} ${criterion.operator} ${criterion.value} (${mode}): ${ids.length} object(s) selected.`);
+      closeOverlay();
+    });
+  }
+
   function openTypeFilterDialog(): void {
     const counts = new Map<string, number>();
     for (const e of ents) counts.set(e.type, (counts.get(e.type) ?? 0) + 1);
     const types = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    // A18: the dialog edits a working copy; Apply commits it.
+    const criteria: Sel18.QSelectCriterion[] = [...propFilter];
+    const propOptions = Sel18.ALL_FILTER_PROPERTIES.map((p) => `<option value="${p.id}">${p.label}</option>`).join("");
+    const opOptions = (kind: Sel18.PropertyKind): string =>
+      Sel18.operatorsForKind(kind).map((o) => `<option value="${o}">${o === "contains" ? "contains" : o === "not-contains" ? "does not contain" : o}</option>`).join("");
     const panel = openOverlay(`
       <b style="font-size:15px;color:#38bdf8">Selection Filter (FILTER)</b>
-      <div style="font-size:11px;color:#9aa4b2;margin:4px 0 12px">Only the checked types are selectable — clicking and window/crossing selection both honour the filter. Clear it to select everything again.</div>
+      <div style="font-size:11px;color:#9aa4b2;margin:4px 0 12px">Only the checked types are selectable — clicking and window/crossing selection both honour the filter. Property criteria narrow it further (every criterion must match). Clear it to select everything again.</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 18px">
         ${types.map(([t, n]) => `<label style="display:flex;gap:8px;align-items:center;padding:7px;border:1px solid #293548;border-radius:6px"><input type="checkbox" data-filter-type="${t}" ${typeFilter.has(t) ? "checked" : ""}><span>${t} <small style="color:#94a3b8">(${n})</small></span></label>`).join("") || "<div style='color:#94a3b8;font-size:12px'>The drawing is empty — place objects first.</div>"}
       </div>
+      <div style="margin-top:16px;font-size:12px;font-weight:600;color:#e8eaf0">Property criteria (all must match)</div>
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+        <select data-r="filter-prop" style="background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px">${propOptions}</select>
+        <select data-r="filter-op" style="background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px"></select>
+        <input data-r="filter-value" placeholder="value" style="flex:1;min-width:120px;background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px">
+        <button data-r="filter-add-criterion" style="padding:5px 10px">Add</button>
+      </div>
+      <div data-r="filter-criterion-error" style="font-size:11px;color:#f87171;min-height:14px;margin-top:2px"></div>
+      <div data-r="filter-criteria" style="margin-top:4px"></div>
+      <div style="margin-top:16px;font-size:12px;font-weight:600;color:#e8eaf0">Named filters</div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <input data-r="filter-name" placeholder="Filter name" style="flex:1;background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px">
+        <button data-r="filter-save" style="padding:5px 10px">Save Filter</button>
+      </div>
+      <div data-r="filter-named" style="margin-top:6px"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
         <button data-r="filter-clear" style="padding:6px 10px">Clear Filter</button>
         <button data-r="filter-apply" style="padding:6px 12px;background:#0284c7;color:white;border:0;border-radius:4px">Apply</button>
@@ -13648,25 +14756,101 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       });
       return next;
     };
+    const renderCriteria = (): void => {
+      const box = panel.querySelector("[data-r=filter-criteria]");
+      if (!box) return;
+      box.innerHTML = criteria.length
+        ? criteria.map((c, i) => {
+            const def = Sel18.propertyDef(c.property);
+            return `<div style="display:flex;gap:8px;align-items:center;padding:5px 8px;border:1px solid #293548;border-radius:6px;margin-top:4px"><span style="flex:1">${def?.label ?? c.property} ${c.operator} ${escapeHtml(c.value)}</span><button data-filter-criterion-remove="${i}" style="padding:2px 8px">✕</button></div>`;
+          }).join("")
+        : `<div style="color:#94a3b8;font-size:11px;margin-top:4px">No property criteria — the type checkboxes alone decide what is selectable.</div>`;
+      box.querySelectorAll("[data-filter-criterion-remove]").forEach((b) => {
+        b.addEventListener("click", () => {
+          const i = Number((b as HTMLElement).dataset.filterCriterionRemove);
+          if (Number.isInteger(i)) criteria.splice(i, 1);
+          renderCriteria();
+        });
+      });
+    };
+    const renderNamed = (): void => {
+      const box = panel.querySelector("[data-r=filter-named]");
+      if (!box) return;
+      const names = [...namedFilters.keys()].sort();
+      box.innerHTML = names.length
+        ? names.map((n) => {
+            const f = namedFilters.get(n)!;
+            return `<div style="display:flex;gap:8px;align-items:center;padding:5px 8px;border:1px solid #293548;border-radius:6px;margin-top:4px"><span style="flex:1">${escapeHtml(n)} <small style="color:#94a3b8">(${f.types.length ? f.types.join(", ") : "all types"}${f.criteria.length ? ` + ${f.criteria.length} criteri${f.criteria.length === 1 ? "on" : "a"}` : ""})</small></span><button data-filter-apply-name="${escapeHtml(n)}" style="padding:2px 8px">Apply</button><button data-filter-delete-name="${escapeHtml(n)}" style="padding:2px 8px">Delete</button></div>`;
+          }).join("")
+        : `<div style="color:#94a3b8;font-size:11px;margin-top:4px">No saved filters yet.</div>`;
+      box.querySelectorAll("[data-filter-apply-name]").forEach((b) => {
+        b.addEventListener("click", () => {
+          const f = namedFilters.get((b as HTMLElement).dataset.filterApplyName ?? "");
+          if (!f) return;
+          applyFilterState(new Set(f.types), f.criteria);
+          logCmd(`FILTER: applied named filter "${f.name}" (${f.types.length ? f.types.join(", ") : "all types"}${f.criteria.length ? ` + ${f.criteria.length} criteri${f.criteria.length === 1 ? "on" : "a"}` : ""}).`);
+          closeOverlay();
+        });
+      });
+      box.querySelectorAll("[data-filter-delete-name]").forEach((b) => {
+        b.addEventListener("click", () => {
+          const n = (b as HTMLElement).dataset.filterDeleteName ?? "";
+          if (namedFilters.delete(n)) {
+            scheduleSessionSave();
+            logCmd(`FILTER: deleted named filter "${n}".`);
+            renderNamed();
+          }
+        });
+      });
+    };
+    const propSel = panel.querySelector<HTMLSelectElement>("[data-r=filter-prop]");
+    const opSel = panel.querySelector<HTMLSelectElement>("[data-r=filter-op]");
+    const valInput = panel.querySelector<HTMLInputElement>("[data-r=filter-value]");
+    const refreshOps = (): void => {
+      if (!propSel || !opSel) return;
+      const def = Sel18.propertyDef(propSel.value);
+      opSel.innerHTML = opOptions(def?.kind ?? "string");
+      if (valInput) valInput.placeholder = def?.placeholder ?? "value";
+    };
+    propSel?.addEventListener("change", refreshOps);
+    refreshOps();
+    renderCriteria();
+    renderNamed();
+    panel.querySelector("[data-r=filter-add-criterion]")?.addEventListener("click", () => {
+      const err = panel.querySelector("[data-r=filter-criterion-error]");
+      const c = Sel18.sanitizeCriterion({ property: propSel?.value, operator: opSel?.value, value: valInput?.value ?? "" });
+      if (!c) {
+        if (err) err.textContent = "That value does not work for this property — check the operator and the value (numbers need digits; colours need an ACI number, #RRGGBB or BYLAYER).";
+        return;
+      }
+      if (err) err.textContent = "";
+      criteria.push(c);
+      if (valInput) valInput.value = "";
+      renderCriteria();
+    });
+    panel.querySelector("[data-r=filter-save]")?.addEventListener("click", () => {
+      const nameInput = panel.querySelector<HTMLInputElement>("[data-r=filter-name]");
+      if (saveNamedFilter(nameInput?.value ?? "", readChecked(), criteria)) {
+        if (nameInput) nameInput.value = "";
+        renderNamed();
+      }
+    });
     panel.querySelector("[data-r=filter-clear]")?.addEventListener("click", () => {
       typeFilter = new Set();
+      propFilter = [];
+      criteria.length = 0;
       panel.querySelectorAll<HTMLInputElement>("[data-filter-type]").forEach((i) => { i.checked = false; });
+      renderCriteria();
       logCmd("FILTER: selection filter cleared.");
       updateStatus();
       draw();
     });
     panel.querySelector("[data-r=filter-apply]")?.addEventListener("click", () => {
-      typeFilter = readChecked();
-      // Deselect anything the filter now excludes.
-      for (const i of [...sel]) {
-        if (!ents[i] || !visible(ents[i])) sel.delete(i);
-      }
-      logCmd(typeFilter.size
-        ? `FILTER: selection filter active — only ${[...typeFilter].join(", ")} selectable.`
+      applyFilterState(readChecked(), criteria);
+      logCmd(typeFilter.size || propFilter.length
+        ? `FILTER: selection filter active — only ${typeFilter.size ? [...typeFilter].join(", ") : "all types"}${propFilter.length ? ` with ${propFilter.length} propert${propFilter.length === 1 ? "y" : "ies"}` : ""} selectable.`
         : "FILTER: no types checked — every object type is selectable.");
       closeOverlay();
-      updateStatus();
-      draw();
     });
   }
 
@@ -13945,17 +15129,285 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   /* ── Plot / PDF Exporter ── */
+  // ── A8: viewports + page setups + plot ──
+  /** Scale options for the MVIEW / VPORT / plot dialogs (Fit + named scales). */
+  function scaleOptions(current: number | "fit"): string {
+    const opts = Vp8.PLOT_SCALES.map(
+      (s) => `<option value="${s.value}"${(s.value === current || (typeof s.value === "number" && typeof current === "number" && Math.abs(s.value - current) < 1e-12)) ? " selected" : ""}>${s.label}</option>`,
+    ).join("");
+    if (current !== "fit" && !Vp8.PLOT_SCALES.some((s) => typeof s.value === "number" && Math.abs(s.value - current) < 1e-12)) {
+      return `<option value="${current}" selected>${Vp8.plotScaleLabel(current)} (current)</option>` + opts;
+    }
+    return opts;
+  }
+
+  /** MVIEW creation dialog: the two picked corners are the viewport's sheet rect; the scale and lock are set here. */
+  function openMviewDialog(rect: Vp8.BBox): void {
+    if (!doc || layoutI < 0 || !doc.layouts?.[layoutI]) {
+      logCmd("MVIEW: switch to a paper layout first (LAYOUT NEW / layout tab).");
+      setTool("select");
+      return;
+    }
+    const panel = openOverlay(`
+      <b style="font-size:15px;color:#38bdf8">Create viewport (MVIEW)</b>
+      <div style="font-size:12px;color:#9aa4b2;margin-top:4px">Sheet rect ${fmt(rect.maxX - rect.minX)} × ${fmt(rect.maxY - rect.minY)} on "${escapeHtml(doc.layouts[layoutI].name)}" — the model shows through it at the scale below.</div>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin-top:12px;align-items:center;font-size:12px">
+        <label>Viewport scale:</label>
+        <select data-r="mv-scale">${scaleOptions("fit")}</select>
+        <label>Locked:</label>
+        <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-r="mv-lock"> Lock viewport (zoom / pan inside it is ignored)</label>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+        <button data-r="mv-cancel" style="padding:6px 12px">Cancel</button>
+        <button data-r="mv-create" style="background:#0284c7;color:white;border:none;padding:6px 16px;border-radius:4px;font-weight:600">Create viewport</button>
+      </div>
+    `);
+    const g = (k: string) => panel.querySelector<HTMLInputElement & HTMLSelectElement>(`[data-r=${k}]`)!;
+    g("mv-cancel").onclick = () => { closeOverlay(); setTool("select"); };
+    g("mv-create").onclick = () => {
+      const raw = g("mv-scale").value;
+      const scale: number | "fit" = raw === "fit" ? "fit" : Number(raw);
+      const locked = (panel.querySelector<HTMLInputElement>("[data-r=mv-lock]")!).checked;
+      const L = doc!.layouts![layoutI];
+      const vp = Vp8.createViewport(rect, modelBounds, { scale, locked });
+      L.viewports.push(vp);
+      closeOverlay();
+      setTool("select");
+      markDirty();
+      draw();
+      logCmd(`MVIEW: viewport created on "${L.name}" at ${Vp8.plotScaleLabel(scale)}${locked ? " (locked)" : ""} — double-click it to zoom / pan inside.`);
+    };
+  }
+
+  /** VPORT dialog: edit the current layout's viewports — scale, lock and rectangular clip. Scale and clip are applied before the lock, because a locked viewport refuses both. */
+  function openVportDialog(): void {
+    if (!doc || layoutI < 0 || !doc.layouts?.[layoutI]) {
+      logCmd("VPORT: switch to a paper layout first (LAYOUT NEW / layout tab).");
+      return;
+    }
+    const L = doc.layouts[layoutI];
+    if (!L.viewports.length) {
+      logCmd(`VPORT: no viewports on "${L.name}" — use MVIEW to create one.`);
+      return;
+    }
+    const rows = L.viewports.map((vp, i) => {
+      const c = vp.clip;
+      const num = (v: number | undefined) => (v == null ? "" : String(Math.round(v * 100) / 100));
+      return `<tr>
+        <td style="padding:4px 8px">#${i + 1}</td>
+        <td style="padding:4px 8px"><select data-r="vp-scale-${i}">${scaleOptions(Vp8.viewportScaleOf(vp))}</select></td>
+        <td style="padding:4px 8px;text-align:center"><input type="checkbox" data-r="vp-lock-${i}"${vp.locked ? " checked" : ""}></td>
+        <td style="padding:4px 8px"><span style="display:flex;gap:4px">
+          <input data-r="vp-clip-minx-${i}" value="${num(c?.minX)}" placeholder="minX" style="width:64px">
+          <input data-r="vp-clip-miny-${i}" value="${num(c?.minY)}" placeholder="minY" style="width:64px">
+          <input data-r="vp-clip-maxx-${i}" value="${num(c?.maxX)}" placeholder="maxX" style="width:64px">
+          <input data-r="vp-clip-maxy-${i}" value="${num(c?.maxY)}" placeholder="maxY" style="width:64px">
+        </span></td>
+      </tr>`;
+    }).join("");
+    const panel = openOverlay(`
+      <b style="font-size:15px;color:#38bdf8">Viewports — "${escapeHtml(L.name)}" (VPORT)</b>
+      <div style="font-size:12px;color:#9aa4b2;margin-top:4px">Scale is sheet units per model unit; clip is a rectangle in sheet coordinates (empty = no clip).</div>
+      <table style="margin-top:12px;font-size:12px;border-collapse:collapse">
+        <tr style="color:#9aa4b2"><th style="padding:4px 8px;text-align:start">Viewport</th><th style="padding:4px 8px;text-align:start">Scale</th><th style="padding:4px 8px">Locked</th><th style="padding:4px 8px;text-align:start">Clip (sheet rect)</th></tr>
+        ${rows}
+      </table>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+        <button data-r="vp-cancel" style="padding:6px 12px">Cancel</button>
+        <button data-r="vp-apply" style="background:#0284c7;color:white;border:none;padding:6px 16px;border-radius:4px;font-weight:600">Apply</button>
+      </div>
+    `);
+    const g = (k: string) => panel.querySelector<HTMLInputElement & HTMLSelectElement>(`[data-r=${k}]`)!;
+    g("vp-cancel").onclick = closeOverlay;
+    g("vp-apply").onclick = () => {
+      const vps = L.viewports.map((vp, i) => {
+        let next: DxfViewport = { ...vp, locked: false };
+        const raw = g(`vp-scale-${i}`).value;
+        const scale: number | "fit" = raw === "fit" ? "fit" : Number(raw);
+        next = Vp8.setViewportScale(next, scale, modelBounds);
+        const vals = ["minx", "miny", "maxx", "maxy"].map((k) => (g(`vp-clip-${k}-${i}`) as HTMLInputElement).value.trim());
+        const nums = vals.map((v) => (v === "" ? null : Number(v)));
+        if (nums.every((n) => n === null)) next = Vp8.setViewportClip(next, null);
+        else if (nums.every((n) => n !== null && Number.isFinite(n)) && (nums[2] as number) > (nums[0] as number) && (nums[3] as number) > (nums[1] as number)) {
+          next = Vp8.setViewportClip(next, { minX: nums[0] as number, minY: nums[1] as number, maxX: nums[2] as number, maxY: nums[3] as number });
+        } else {
+          logCmd(`VPORT: viewport #${i + 1} clip ignored — enter all four numbers with max > min, or leave all four empty.`);
+        }
+        next.locked = (panel.querySelector<HTMLInputElement>(`[data-r=vp-lock-${i}]`)!).checked;
+        return next;
+      });
+      L.viewports = vps;
+      closeOverlay();
+      markDirty();
+      draw();
+      logCmd(`VPORT: ${vps.length} viewport(s) updated on "${L.name}".`);
+    };
+  }
+
+  /** PAGESETUP dialog: named per-layout page setups (paper, orientation, plot scale, plot area). A layout references one by name; the plot dialog offers it. */
+  function openPageSetupDialog(): void {
+    if (!doc) { logCmd("PAGESETUP: open a drawing first."); return; }
+    if (!doc.pageSetups) doc.pageSetups = {};
+    const names = () => Object.keys(doc!.pageSetups ?? {});
+    const curLayout = layoutI >= 0 ? doc.layouts?.[layoutI] : undefined;
+    let selected = curLayout?.pageSetup && names().includes(curLayout.pageSetup) ? curLayout.pageSetup : names()[0] ?? "";
+    const panel = openOverlay(`
+      <b style="font-size:15px;color:#38bdf8">Page setups (PAGESETUP)</b>
+      <div style="font-size:12px;color:#9aa4b2;margin-top:4px">A named setup stores paper, orientation, plot scale and plot area. Apply one to the current layout and the plot dialog offers it.</div>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin-top:12px;align-items:center;font-size:12px">
+        <label>Setup:</label>
+        <span style="display:flex;gap:6px">
+          <select data-r="ps-list" style="flex:1"></select>
+          <button data-r="ps-new" style="padding:3px 10px">New…</button>
+          <button data-r="ps-delete" style="padding:3px 10px">Delete</button>
+        </span>
+        <label>Name:</label>
+        <input data-r="ps-name" style="padding:4px 6px">
+        <label>Paper size:</label>
+        <select data-r="ps-paper">${Object.keys(M.PAPER_MM).map((k) => `<option>${k}</option>`).join("")}</select>
+        <label>Orientation:</label>
+        <select data-r="ps-orient"><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select>
+        <label>Plot scale:</label>
+        <select data-r="ps-scale">${Vp8.PLOT_SCALES.map((s) => `<option value="${s.value}">${s.label}</option>`).join("")}</select>
+        <label>Plot area:</label>
+        <select data-r="ps-area">
+          <option value="display">Display</option><option value="extents">Extents</option><option value="window">Window</option><option value="layout">Layout</option>
+        </select>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+        <button data-r="ps-apply-layout" style="padding:6px 12px">Apply to current layout</button>
+        <button data-r="ps-cancel" style="padding:6px 12px">Cancel</button>
+        <button data-r="ps-save" style="background:#0284c7;color:white;border:none;padding:6px 16px;border-radius:4px;font-weight:600">Save setup</button>
+      </div>
+    `);
+    const g = (k: string) => panel.querySelector<HTMLInputElement & HTMLSelectElement>(`[data-r=${k}]`)!;
+    const refreshList = () => {
+      const list = g("ps-list") as HTMLSelectElement;
+      list.innerHTML = names().map((n) => `<option value="${escapeHtml(n)}"${n === selected ? " selected" : ""}>${escapeHtml(n)}</option>`).join("");
+      const s = selected ? doc!.pageSetups![selected] : undefined;
+      const cur = s ?? Vp8.defaultPageSetup(selected || "A3-1:50");
+      (g("ps-name") as HTMLInputElement).value = cur.name;
+      (g("ps-paper") as HTMLSelectElement).value = cur.paper;
+      (g("ps-orient") as HTMLSelectElement).value = cur.orient ?? "landscape";
+      const sc = g("ps-scale") as HTMLSelectElement;
+      const sv = String(cur.scale);
+      if (![...sc.options].some((o) => o.value === sv)) {
+        const opt = document.createElement("option");
+        opt.value = sv; opt.textContent = Vp8.plotScaleLabel(cur.scale); sc.appendChild(opt);
+      }
+      sc.value = sv;
+      (g("ps-area") as HTMLSelectElement).value = cur.area;
+    };
+    refreshList();
+    g("ps-list").onchange = () => { selected = (g("ps-list") as HTMLSelectElement).value; refreshList(); };
+    g("ps-new").onclick = () => {
+      void promptLine("New page setup", "Setup name (e.g. A3-1:50)", "A3-1:50").then((nm) => {
+        const name = (nm ?? "").trim();
+        if (!name) return;
+        const err = Vp8.validatePageSetupName(name);
+        if (err) { logCmd(`PAGESETUP: ${err}`); return; }
+        if (names().includes(name)) { logCmd(`PAGESETUP: "${name}" already exists.`); return; }
+        doc!.pageSetups![name] = Vp8.defaultPageSetup(name);
+        selected = name;
+        refreshList();
+        markDirty();
+      });
+    };
+    g("ps-delete").onclick = () => {
+      if (!selected) return;
+      delete doc!.pageSetups![selected];
+      if (curLayout && curLayout.pageSetup === selected) curLayout.pageSetup = undefined;
+      logCmd(`PAGESETUP: deleted "${selected}".`);
+      selected = names()[0] ?? "";
+      refreshList();
+      markDirty();
+    };
+    const readFields = (): DxfPageSetup | null => {
+      const raw = {
+        name: (g("ps-name") as HTMLInputElement).value.trim(),
+        paper: (g("ps-paper") as HTMLSelectElement).value,
+        orient: (g("ps-orient") as HTMLSelectElement).value,
+        scale: (g("ps-scale") as HTMLSelectElement).value === "fit" ? "fit" : Number((g("ps-scale") as HTMLSelectElement).value),
+        area: (g("ps-area") as HTMLSelectElement).value,
+      };
+      const s = Vp8.sanitizePageSetup(raw);
+      if (!s) logCmd("PAGESETUP: the setup needs a valid name (at most 64 characters, no <>\"/\\|?*).");
+      return s;
+    };
+    g("ps-save").onclick = () => {
+      const s = readFields();
+      if (!s) return;
+      if (selected && selected !== s.name) delete doc!.pageSetups![selected];
+      doc!.pageSetups![s.name] = s;
+      selected = s.name;
+      closeOverlay();
+      markDirty();
+      try { captureDrawingSession(); } catch { /* */ }
+      logCmd(`PAGESETUP: saved "${s.name}" (${s.paper} ${s.orient ?? "landscape"}, ${Vp8.plotScaleLabel(s.scale)}, ${s.area}).`);
+    };
+    g("ps-apply-layout").onclick = () => {
+      const s = readFields();
+      if (!s) return;
+      if (!curLayout) { logCmd("PAGESETUP: switch to a paper layout first — page setups apply to layouts."); return; }
+      if (!doc!.pageSetups![s.name]) doc!.pageSetups![s.name] = s;
+      const idx = doc!.layouts!.indexOf(curLayout);
+      doc!.layouts![idx] = Vp8.applyPageSetupToLayout(curLayout, s);
+      selected = s.name;
+      closeOverlay();
+      markDirty();
+      draw();
+      logCmd(`PAGESETUP: "${s.name}" applied to "${curLayout.name}" (${s.paper}, ${Vp8.plotScaleLabel(s.scale)}, ${s.area}).`);
+    };
+    g("ps-cancel").onclick = closeOverlay;
+  }
+
+  /** The plot dialog's last choices, so a Window pick (which closes the dialog) re-opens it where the user left it. */
+  let lastPlotChoices: { layout: number; setupName: string; paper: string; land: boolean; scale: number | "fit"; area: PlotArea } | null = null;
+
   function openPlot(): void {
+    if (blockEdit) { logCmd("PLOT: not available inside BEDIT — close the session with BCLOSE first."); return; }
     if (!doc) return;
+    const layouts = doc.layouts ?? [];
+    const initLayout = lastPlotChoices?.layout ?? layoutI;
+    const initSetupName = lastPlotChoices?.setupName ?? (initLayout >= 0 ? layouts[initLayout]?.pageSetup ?? "" : "");
+    const initSetup = initSetupName ? doc.pageSetups?.[initSetupName] : undefined;
+    const initPaper = lastPlotChoices?.paper ?? initSetup?.paper ?? (initLayout >= 0 ? layouts[initLayout]?.paper ?? "A3" : "A3");
+    const initLand = lastPlotChoices?.land ?? (initSetup ? initSetup.orient !== "portrait" : true);
+    const initScale: number | "fit" = lastPlotChoices?.scale ?? initSetup?.scale ?? (initLayout >= 0 ? layouts[initLayout]?.plotScale ?? "fit" : "fit");
+    const initArea: PlotArea = lastPlotChoices?.area ?? initSetup?.area ?? (initLayout >= 0 ? layouts[initLayout]?.plotArea ?? "layout" : "display");
+    const layoutOpts =
+      `<option value="-1"${initLayout < 0 ? " selected" : ""}>Model</option>` +
+      layouts.map((l, i) => `<option value="${i}"${i === initLayout ? " selected" : ""}>${escapeHtml(l.name)}</option>`).join("");
+    const setupOpts =
+      `<option value="">(none — dialog settings)</option>` +
+      Object.keys(doc.pageSetups ?? {}).map((n) => `<option value="${escapeHtml(n)}"${n === initSetupName ? " selected" : ""}>${escapeHtml(n)}</option>`).join("");
     const panel = openOverlay(`
       <b style="font-size:15px;color:#38bdf8">drawing workspace Plot — Model / Sheet to PDF</b>
       <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin-top:12px;align-items:center;font-size:12px">
+        <label>Layout:</label>
+        <select data-p="layout">${layoutOpts}</select>
+        <label>Page Setup:</label>
+        <select data-p="setup">${setupOpts}</select>
         <label>Paper Size:</label>
-        <select data-p="paper">${Object.keys(M.PAPER_MM).map((k) => `<option ${k === "A3" ? "selected" : ""}>${k}</option>`).join("")}</select>
+        <select data-p="paper">${Object.keys(M.PAPER_MM).map((k) => `<option${k === initPaper ? " selected" : ""}>${k}</option>`).join("")}</select>
         <label>Orientation:</label>
-        <select data-p="ori"><option value="l">Landscape</option><option value="p">Portrait</option></select>
+        <select data-p="ori"><option value="l"${initLand ? " selected" : ""}>Landscape</option><option value="p"${!initLand ? " selected" : ""}>Portrait</option></select>
+        <label>Plot Scale:</label>
+        <select data-p="scale">${scaleOptions(initScale)}</select>
         <label>Plot Area:</label>
-        <select data-p="area"><option value="display">Display (Screen)</option><option value="extents">Extents</option></select>
+        <select data-p="area">
+          <option value="display"${initArea === "display" ? " selected" : ""}>Display (Screen)</option>
+          <option value="extents"${initArea === "extents" ? " selected" : ""}>Extents</option>
+          <option value="window"${initArea === "window" ? " selected" : ""}>Window</option>
+          <option value="layout"${initArea === "layout" ? " selected" : ""}>Layout</option>
+        </select>
+        <span data-p="winrow" style="display:${initArea === "window" ? "contents" : "none"}">
+          <label>Window:</label>
+          <span style="display:flex;gap:6px;align-items:center">
+            <button data-p="winpick" style="padding:3px 10px">Pick window…</button>
+            <span data-p="winlabel" style="font-size:11px;color:#9aa4b2">${plotWindow ? `${fmt(plotWindow.maxX - plotWindow.minX)} × ${fmt(plotWindow.maxY - plotWindow.minY)} picked` : "not picked yet"}</span>
+          </span>
+        </span>
         <label>Plot Style:</label>
         <select data-p="mono"><option value="1">Monochrome.ctb (Black &amp; White)</option><option value="0">As Drawn (Color)</option></select>
         <label>Pen Table:</label>
@@ -13967,11 +15419,58 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       </div>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
         <button data-p="cancel" style="padding:6px 12px">Cancel</button>
+        <button data-p="vector" title="Vector PDF of the chosen layout, at its own viewport scales (Model plots via the raster button)" style="padding:6px 12px;background:#065f46;color:white;border:none;border-radius:4px;font-weight:600">Vector PDF</button>
         <button data-p="go" style="background:#0284c7;color:white;border:none;padding:6px 16px;border-radius:4px;font-weight:600">Plot / Print PDF</button>
       </div>
     `);
     const gP = (k: string) => panel.querySelector<HTMLInputElement & HTMLSelectElement>(`[data-p=${k}]`)!;
     gP("cancel").onclick = closeOverlay;
+    const applySetupToFields = (setup: DxfPageSetup | undefined) => {
+      if (!setup) return;
+      (gP("paper") as HTMLSelectElement).value = setup.paper;
+      (gP("ori") as HTMLSelectElement).value = setup.orient === "portrait" ? "p" : "l";
+      const sc = gP("scale") as HTMLSelectElement;
+      const sv = String(setup.scale);
+      if (![...sc.options].some((o) => o.value === sv)) {
+        const opt = document.createElement("option");
+        opt.value = sv; opt.textContent = Vp8.plotScaleLabel(setup.scale); sc.appendChild(opt);
+      }
+      sc.value = sv;
+      (gP("area") as HTMLSelectElement).value = setup.area;
+      syncWinRow();
+    };
+    const syncWinRow = () => {
+      const row = panel.querySelector<HTMLElement>("[data-p=winrow]")!;
+      row.style.display = (gP("area") as HTMLSelectElement).value === "window" ? "contents" : "none";
+    };
+    gP("layout").onchange = () => {
+      const li = Number((gP("layout") as HTMLSelectElement).value);
+      const setupName = li >= 0 ? layouts[li]?.pageSetup ?? "" : "";
+      const setup = setupName ? doc!.pageSetups?.[setupName] : undefined;
+      (gP("setup") as HTMLSelectElement).value = setup ? setupName : "";
+      applySetupToFields(setup);
+    };
+    gP("setup").onchange = () => {
+      const setup = doc!.pageSetups?.[(gP("setup") as HTMLSelectElement).value];
+      applySetupToFields(setup);
+    };
+    gP("area").onchange = syncWinRow;
+    const readChoices = () => ({
+      layout: Number((gP("layout") as HTMLSelectElement).value),
+      setupName: (gP("setup") as HTMLSelectElement).value,
+      paper: (gP("paper") as HTMLSelectElement).value,
+      land: (gP("ori") as HTMLSelectElement).value === "l",
+      scale: ((gP("scale") as HTMLSelectElement).value === "fit" ? "fit" : Number((gP("scale") as HTMLSelectElement).value)) as number | "fit",
+      area: (gP("area") as HTMLSelectElement).value as PlotArea,
+    });
+    gP("winpick").onclick = () => {
+      lastPlotChoices = readChoices();
+      closeOverlay();
+      plotWindowPick = true;
+      plotWindowPts = [];
+      setTool("select");
+      logCmd("PLOT window: specify the first corner (Esc cancels).");
+    };
     // Pen table: load a real drawing workspace CTB/STB file and plot through it.
     gP("ctbload").onclick = () => gP("ctbfile").click();
     gP("ctbfile").onchange = async () => {
@@ -13991,40 +15490,129 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       gP("ctbfile").value = "";
     };
     gP("go").onclick = () => {
-      const o = {
-        paper: gP("paper").value,
-        land: gP("ori").value === "l",
-        area: gP("area").value,
-        mono: gP("mono").value === "1",
-      };
+      const o = { ...readChoices(), mono: gP("mono").value === "1" };
+      if (o.area === "window" && !plotWindow) {
+        logCmd("PLOT: pick a window first (Plot Area = Window, then Pick window…).");
+        return;
+      }
+      lastPlotChoices = { layout: o.layout, setupName: o.setupName, paper: o.paper, land: o.land, scale: o.scale, area: o.area };
       closeOverlay();
       doPlot(o);
     };
+    // A20: vector PDF of the chosen layout, through the CAD layout
+    // plotter (the same pipeline as the batch plotter). The layout's
+    // viewports carry their own scales, so the dialog's plot scale and
+    // area do not apply — only its paper and page setup do. Model has
+    // no sheet to plot; it stays on the raster path (follow-up).
+    gP("vector").onclick = () => {
+      const o = readChoices();
+      if (o.layout < 0) {
+        logCmd("PLOT: Vector PDF plots a layout — choose a layout (Model vector plot is a follow-up; use Plot / Print PDF for Model).");
+        return;
+      }
+      const layout = layouts[o.layout];
+      if (!layout) return;
+      const setup = o.setupName ? doc!.pageSetups?.[o.setupName] : undefined;
+      const plotLayout = setup
+        ? Vp8.applyPageSetupToLayout(layout, setup)
+        : o.paper !== (layout.paper ?? "A3")
+          ? { ...layout, paper: o.paper }
+          : layout;
+      lastPlotChoices = { layout: o.layout, setupName: o.setupName, paper: o.paper, land: o.land, scale: o.scale, area: o.area };
+      closeOverlay();
+      const base = (name || "drawing").replace(/\.(dxf|dwg)$/i, "");
+      void downloadCadLayoutPdf(
+        { layout: plotLayout, model: modelEnts, blocks: doc!.blocks, setups: doc!.pageSetups, layers: doc!.layers },
+        `${base}-${layout.name}.pdf`,
+      );
+      logCmd(`PLOT: vector PDF of layout "${layout.name}" (${plotLayout.paper ?? "A3"}) downloading — viewport scales as drawn.`);
+    };
   }
 
-  function doPlot(o: { paper: string; land: boolean; area: string; mono: boolean }): void {
+  /**
+   * Plot the CHOSEN layout (or Model) at the chosen scale and area, reusing
+   * the same render path the canvas uses — the plot is a raster of what the
+   * sheet (or model) shows, printed via the browser. A layout plot renders
+   * the sheet with its viewports at the setup's scale; a model plot renders
+   * the chosen area box. CTB/STB pen tables keep applying.
+   */
+  function doPlot(o: { paper: string; land: boolean; area: string; mono: boolean; layout: number; scale: number | "fit"; setupName?: string }): void {
     if (!doc) return;
     const pg = M.paperMm(o.paper, o.land),
       px = M.plotPixels(pg.w, pg.h, 8, 150);
-    const box = o.area === "extents" ? bounds ?? modelBounds! : visibleBox(view);
-    const pv = M.fitView(box, px.w, px.h, 0.02);
+    const setup: DxfPageSetup = {
+      name: o.setupName ?? "",
+      paper: o.paper,
+      orient: o.land ? "landscape" : "portrait",
+      scale: o.scale,
+      area: o.area as PlotArea,
+    };
+    const targetLayout = o.layout >= 0 && doc.layouts?.[o.layout] ? o.layout : -1;
+    let pv: Vp8.PlotView;
+    if (targetLayout >= 0) {
+      const sheet = Vp8.setupPaperMm(setup);
+      const sheetRect = { minX: 0, minY: 0, maxX: sheet.w, maxY: sheet.h };
+      if (o.area === "layout") {
+        pv = Vp8.plotViewForLayout(setup, sheetRect);
+      } else {
+        // Display / Extents / Window re-frame the view inside the sheet.
+        const box =
+          o.area === "window" && plotWindow ? plotWindow
+          : o.area === "extents" ? (M.layoutBounds(doc.layouts![targetLayout]) ?? sheetRect)
+          : targetLayout === layoutI ? visibleBox(view) : sheetRect;
+        pv = Vp8.plotViewForModel(setup, box);
+      }
+    } else {
+      if (o.area === "window" && !plotWindow) {
+        logCmd("PLOT: pick a window first (Plot Area = Window, then Pick window…).");
+        return;
+      }
+      const box =
+        o.area === "window" ? plotWindow!
+        : o.area === "extents" ? (bounds ?? modelBounds!)
+        : layoutI < 0 ? visibleBox(view) : (bounds ?? modelBounds!);
+      pv = Vp8.plotViewForModel(setup, box);
+    }
     const c = document.createElement("canvas");
     c.width = px.w;
     c.height = px.h;
     const x = c.getContext("2d")!;
-    const keep = { bg, cmode, lw };
+    const keep = { bg, cmode, lw, layoutI, ents, idx, bounds };
     bg = "white";
     // Loaded CTB/STB pen table maps every entity through its plot styles.
     cmode = o.mono ? "bw" : plotStyle ? "style" : "layer";
     lw = Math.max(lw, px.w / 1200);
     plotting = true;
     try {
-      render(x, pv, false);
+      // Render the target space (not necessarily the one on screen).
+      if (targetLayout >= 0) {
+        layoutI = targetLayout;
+        const L = doc.layouts![targetLayout];
+        ents = L.entities;
+        bounds = M.layoutBounds(L) ?? modelBounds;
+        let ix = layoutIdxCache.get(targetLayout);
+        if (!ix) {
+          ix = M.buildIndex(ents, bounds!);
+          layoutIdxCache.set(targetLayout, ix);
+        }
+        idx = ix;
+      } else {
+        layoutI = -1;
+        ents = modelEnts;
+        idx = modelIdx;
+        bounds = modelBounds;
+      }
+      const plotView: M.View = { cx: pv.cx, cy: pv.cy, scale: px.h / pv.viewHeight, w: px.w, h: px.h };
+      render(x, plotView, false);
     } finally {
       plotting = false;
       bg = keep.bg;
       cmode = keep.cmode;
       lw = keep.lw;
+      layoutI = keep.layoutI;
+      ents = keep.ents;
+      idx = keep.idx;
+      bounds = keep.bounds;
     }
     const url = c.toDataURL("image/png");
     const w = window.open("", "_blank");
@@ -14032,13 +15620,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       status("Allow pop-ups to print");
       return;
     }
+    const title = targetLayout >= 0 ? doc.layouts![targetLayout].name : "Model";
     w.document.write(
-      `<!doctype html><title>${escapeHtml(name || "Plot")}</title><style>@page{size:${o.paper} ${
+      `<!doctype html><title>${escapeHtml(name || "Plot")} — ${escapeHtml(title)}</title><style>@page{size:${o.paper} ${
         o.land ? "landscape" : "portrait"
       };margin:8mm}html,body{margin:0}img{width:100%;display:block}</style><img src="${url}">`,
     );
     w.document.close();
     w.onload = () => w.print();
+    logCmd(`PLOT: ${title} at ${Vp8.plotScaleLabel(o.scale)} on ${o.paper} ${o.land ? "landscape" : "portrait"} (${o.area}).`);
   }
 
   function base(): string {
@@ -14106,6 +15696,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   /** Save the edited drawing back to DXF R2010 (QSAVE / SAVE). */
   function saveDxf(): void {
+    // A9: saving inside BEDIT would write the session's working copy as
+    // the drawing's model entities.
+    if (blockEdit) { logCmd("QSAVE: not available inside BEDIT — close the session with BCLOSE first."); return; }
     if (!doc) {
       logCmd("Nothing to save — open a DWG or DXF drawing first.");
       status("Nothing to save");
@@ -14168,6 +15761,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
 /** Export the live edited model as a real binary DWG using the local acadrust WASM writer. */
   async function saveDwg(): Promise<void> {
+    if (blockEdit) { logCmd("DWGSAVE: not available inside BEDIT — close the session with BCLOSE first."); return; }
     if (!doc) {
       logCmd("Nothing to export — open or create a drawing first.");
       status("Nothing to export");
@@ -14205,7 +15799,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const stamped = stampInvisibleForSave(entities);
       const dxf = writeDxf(
         { ...doc, entities: [...stamped, ...dimensionEntitiesForSave(stamped)], dimStyleTable: dimStyleTableForSave() },
-        { version: dwgVersion, allLayouts: true },
+        { version: dwgVersion },
       );
       await validateDxfForDwgExport(dxf, entities.length, doc.layers.map((layer) => layer.name));
       const bytes = await exportDxfToDwg(dxf);
@@ -14415,7 +16009,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     };
 
     // Native block references are written as their resolved geometry (SVG has no block model).
-    const svgEnts = ents.flatMap((x) => (x.type === "INSERT" ? resolvedOf(x) : [x]));
+    const svgEnts = ents.flatMap((x) => (x.type === "INSERT" ? resolvedDynOf(x) : [x]));
     for (let i = 0; i < svgEnts.length; i++) {
       const e = svgEnts[i];
       if (!shown(e)) continue;
@@ -14512,6 +16106,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   /** PURGE: delete layers that carry no entities and are not current. */
   function purgeDrawing(): void {
+    // A9: PURGE during BEDIT would see the edited block as unused (its
+    // references live in the stashed model) and delete its definition.
+    if (blockEdit) { logCmd("PURGE: not available inside BEDIT — close the session with BCLOSE first."); return; }
     if (!doc) return;
     const used = new Set<string>(["0", currentLayer]);
     for (const e of modelEnts) used.add(e.layer);
@@ -14908,6 +16505,129 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd(`INSERT failed: ${(err as Error).message}`);
       return null;
     }
+  }
+
+  /* ── BEDIT: in-place block editor (A9) ── */
+  /**
+   * Open a BEDIT session on a block definition. The definition's entities
+   * (cloned, in block space) replace the live entity list; the model and
+   * layout lists are stashed untouched. Unlike REFEDIT this does NOT
+   * explode into the model and does NOT rebuild the library copy with the
+   * base forced to 0,0 — closing saves the edited entities back into the
+   * native `doc.blocks` definition with its original base point, so every
+   * INSERT reference updates at once (lazy resolution + touchBlocks).
+   */
+  function openBlockEdit(nameArg?: string): void {
+    if (blockEdit) { logCmd(`BEDIT: already editing "${blockEdit.session.name}" — close it with BCLOSE first.`); return; }
+    if (!doc) { logCmd("BEDIT: open a drawing first."); return; }
+    let nm = (nameArg ?? "").trim();
+    if (!nm) {
+      const ins = [...sel].map((i) => ents[i]).find((e): e is DxfInsert => !!e && e.type === "INSERT");
+      if (ins) nm = ins.name;
+    }
+    if (!nm) {
+      const names = [...new Set([...Object.keys(doc.blocks ?? {}).filter((n) => !n.startsWith("*")), ...blockLib.names()])];
+      logCmd(names.length ? `BEDIT: BEDIT <blockname>. Blocks: ${names.slice(0, 20).join(", ")}` : "BEDIT: no blocks defined yet. Create one with BLOCK first.");
+      return;
+    }
+    let def = findBlock(doc.blocks, nm);
+    if (!def) {
+      const lib = blockLib.get(nm);
+      if (!lib) { logCmd(`BEDIT: block "${nm}" not found.`); return; }
+      try { def = BE.createBlock(doc, nm, lib.entities, { base: lib.base }); }
+      catch (e) { logCmd(`BEDIT: ${(e as Error).message}`); return; }
+    }
+    let session: BlockEdit9.BlockEditSession;
+    try { session = BlockEdit9.openBlockEditSession(def); }
+    catch (e) { logCmd(`BEDIT: ${(e as Error).message}`); return; }
+    clearModState();
+    blockEdit = {
+      session,
+      savedEnts: ents,
+      savedModelEnts: modelEnts,
+      savedLayoutI: layoutI,
+      savedBounds: bounds,
+      savedModelBounds: modelBounds,
+      savedUndoDepth: undoStack.length,
+    };
+    ents = session.entities;
+    layoutI = -1;
+    sel.clear();
+    selected = -1;
+    pts = [];
+    drawn = [];
+    activeViewport = null;
+    setTool("select");
+    const b = session.entities.reduce<M.BBox | null>((acc, e) => (acc ? M.unionBBox(acc, M.entityBBox(e)) : M.entityBBox(e)), null);
+    if (b) { bounds = b; view = M.fitView(b, view.w, view.h, 0.06); }
+    rebuildIndex();
+    buildLayers();
+    showProps();
+    beditTextEl.textContent = `Editing block "${session.name}" — base ${session.base.x}, ${session.base.y} — the model is hidden until you close.`;
+    beditEl.style.display = "flex";
+    updateStatus();
+    // A9: the session shows the current visibility state's objects.
+    applyDynVisibilityToSession();
+    draw();
+    logCmd(`BEDIT: editing "${session.name}" — ${session.entities.length} object(s) in block space. BCLOSE saves (all references update), BCLOSE DISCARD abandons.`);
+  }
+
+  /**
+   * Close the BEDIT session. Saving redefines the native `doc.blocks`
+   * definition with the session's edited entities and the original base
+   * point (touchBlocks invalidates every reference's cached resolution);
+   * discarding restores the stashed drawing exactly. Either way the
+   * session's undo acts are dropped, so the outer drawing's undo history
+   * is what it was when the session opened (undo inside a session is a
+   * follow-up). Dimensions authored inside a session become plain
+   * geometry in the block — their live records point at session entities
+   * that no longer exist in the drawing (follow-up).
+   */
+  function closeBlockEdit(discard: boolean): void {
+    if (!blockEdit) { logCmd("BCLOSE: no BEDIT session active."); return; }
+    const be = blockEdit;
+    blockEdit = null;
+    // A9: session visibility hiding must not leak into the restored drawing.
+    for (const e of dynHiddenSession) hiddenEntities.delete(e);
+    dynHiddenSession.clear();
+    if (!discard) {
+      let def: DxfBlockDef;
+      try { def = BlockEdit9.closeBlockEditSession(be.session, ents); }
+      catch (e) { blockEdit = be; applyDynVisibilityToSession(); logCmd(`BCLOSE: ${(e as Error).message}`); return; }
+      if (doc) {
+        const count = BlockEdit9.countBlockInstances(def.name, be.savedModelEnts, ...(doc.layouts ?? []).map((l) => l.entities));
+        const blocks = doc.blocks ?? (doc.blocks = {});
+        blocks[def.name] = def;
+        touchBlocks(blocks);
+        setActiveBlocks(blocks);
+        bindDocumentBlocks(doc);
+        markDirty();
+        logCmd(`BCLOSE: block "${def.name}" redefined (${def.entities.length} object(s), base ${def.base.x}, ${def.base.y}) — ${count} reference(s) updated.`);
+      }
+    } else {
+      logCmd(`BEDIT: discarded changes to "${be.session.name}".`);
+    }
+    ents = be.savedEnts;
+    modelEnts = be.savedModelEnts;
+    layoutI = be.savedLayoutI;
+    bounds = be.savedBounds;
+    modelBounds = be.savedModelBounds;
+    undoStack.length = be.savedUndoDepth;
+    redoStack.length = 0;
+    sel.clear();
+    selected = -1;
+    pts = [];
+    drawn = [];
+    activeViewport = null;
+    clearModState();
+    setTool("select");
+    beditEl.style.display = "none";
+    rebuildIndex();
+    buildTabs();
+    buildLayers();
+    showProps();
+    updateStatus();
+    draw();
   }
 
   async function insertBlockCmd(preselect?: string): Promise<void> {
@@ -15348,10 +17068,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   /* ── INSERT: merge a DWG / DXF file into the current drawing ── */
   async function mergeCadFile(f: File): Promise<void> {
+    // A9: a merge during BEDIT would land in the stashed model with its
+    // undo act truncated on close (un-undoable) and nothing visible.
+    if (blockEdit) { logCmd("IMPORT: not available inside BEDIT — close the session with BCLOSE first."); return; }
     if (!doc) return;
     status(`Importing ${f.name}…`);
     try {
-      const r = await readCadFile(f, { requireComplete: true });
+      // A9: the merge honours NATIVEBLOCKS like the open path does — without
+      // it every merge expanded INSERTs to plain geometry, so BEDIT could
+      // never work on an imported drawing's references.
+      const r = await readCadFile(f, { requireComplete: true, nativeBlocks: nativeBlocksOn() });
       const incoming = r.doc.entities.filter((e) => {
         const b = M.entityBBox(e);
         return Number.isFinite(b.minX + b.maxX + b.minY + b.maxY);
@@ -15365,7 +17091,23 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const have = new Set(doc.layers.map((l) => l.name));
       for (const l of r.doc.layers) if (!have.has(l.name)) doc.layers.push({ ...l });
       for (const l of doc.layers) if (l.off || l.frozen) hidden.add(l.name);
-      addEntities(incoming);
+      // A9: a merge carries the incoming block definitions too — without
+      // them an imported INSERT references a definition the host does not
+      // have, so it resolves to nothing and BEDIT cannot find it.
+      // Existing definitions win, as with layers.
+      if (r.doc.blocks) {
+        const blocks = doc.blocks ?? (doc.blocks = {});
+        for (const d of Object.values(r.doc.blocks)) {
+          if (!findBlock(blocks, d.name)) blocks[d.name] = d;
+        }
+        setActiveBlocks(blocks);
+        bindDocumentBlocks(doc);
+        touchBlocks(blocks);
+      }
+      // A9: incoming entities are MODEL entities — land them in model space
+      // even when a sheet is on screen (addEntities would bake them into
+      // the sheet, the DWG geometry-baking defect).
+      addModelEntities(incoming);
       // Carried-over invisible objects (DXF group 60) stay hidden here too.
       for (const e of incoming) if (e.invisible) hiddenEntities.add(e);
       buildLayers();
@@ -15393,6 +17135,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   /** NEW: discard the current document and start an empty one. */
   function newDrawing(): void {
+    if (blockEdit) { logCmd("NEW: not available inside BEDIT — close the session with BCLOSE first."); return; }
     if (!doc) { startBlank(); return; }
     doc = null;
     name = "";
@@ -15666,6 +17409,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     doc = { units: "mm", layers: [{ name: "0", color: 7 }], entities: [], linetypes: {}, sourceFormat: "cad-engine" };
     name = "";
     modelEnts = doc.entities;
+    publishCadDoc();
     modelBounds = { minX: 0, minY: 0, maxX: 100, maxY: 100 };
     modelIdx = M.buildIndex(modelEnts, modelBounds);
     layoutIdxCache.clear();
@@ -15879,6 +17623,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         logCmd(`Clipboard: ${c.entities.length} object(s)${c.sourceName ? ` from ${c.sourceName}` : ""} — Ctrl+V or Ctrl+Shift+V to paste into this drawing, Ctrl+Alt+V for original coordinates.`);
       }
       try { cv.focus({ preventScroll: true }); } catch { /* */ }
+      // A20: this tab's document is now the current CAD drawing for the
+      // BIM-side panels (batch plotter, sheets panel).
+      publishCadDoc();
     },
     deactivate() {
       closeSelectionCycle();

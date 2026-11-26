@@ -23,6 +23,8 @@ export interface SessionUi {
   showLt?: boolean;
   snapModes?: string[];
   typeFilter?: string[];
+  /** QSELECT / FILTER property criteria (raw JSON; validated semantically by cad-selection-a18 at restore). */
+  propFilter?: Array<{ property: string; operator: string; value: string }>;
   currentLayer?: string;
   lockedLayers?: string[];
 }
@@ -46,6 +48,16 @@ export function sanitizeSessionUi(raw: unknown, bgOptions: readonly string[], sn
   if (typeof r.polarAngle === "number" && Number.isFinite(r.polarAngle) && r.polarAngle > 0 && r.polarAngle <= 180) out.polarAngle = r.polarAngle;
   const sm = strArr(r.snapModes, 40); if (sm) out.snapModes = sm.filter((k) => snapKinds.includes(k));
   const tf = strArr(r.typeFilter, 60); if (tf) out.typeFilter = tf;
+  if (Array.isArray(r.propFilter)) {
+    const pf = r.propFilter.filter((x): x is { property: string; operator: string; value: string } => {
+      if (!x || typeof x !== "object") return false;
+      const o = x as Record<string, unknown>;
+      return typeof o.property === "string" && o.property.length > 0 && o.property.length <= 200 &&
+        typeof o.operator === "string" && o.operator.length > 0 && o.operator.length <= 20 &&
+        typeof o.value === "string" && o.value.length > 0 && o.value.length <= 200;
+    }).slice(0, 10);
+    if (pf.length) out.propFilter = pf.map((x) => ({ property: x.property, operator: x.operator, value: x.value }));
+  }
   if (typeof r.currentLayer === "string" && r.currentLayer.length > 0 && r.currentLayer.length <= 200) out.currentLayer = r.currentLayer;
   const ll = strArr(r.lockedLayers, 5000); if (ll) out.lockedLayers = ll;
   return out;

@@ -9,6 +9,7 @@ const root = path.join(__dirname, "..");
 const wasmPath = path.join(root, "public", "cad-engine", "obim-cad-engine.wasm");
 if (!fs.existsSync(wasmPath)) { console.log("SKIP: public/cad-engine/obim-cad-engine.wasm is missing (build cad-engine-rust first)"); process.exit(0); }
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "cad-dwg-rt-"));
+try { fs.symlinkSync(path.join(root, "node_modules"), path.join(out, "node_modules"), "junction"); } catch { /* zod is a runtime dep of compiled safeLoad (PE-20) */ }
 execSync(`npx tsc src/modules/drawings/acad-engine.ts src/modules/drawings/dxf-writer.ts src/modules/drawings/dxf-reader.ts --outDir ${out} --module commonjs --target es2020 --skipLibCheck --esModuleInterop`, { cwd: root, stdio: "pipe" });
 const find = (d, n) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) { const r = find(p, n); if (r) return r; } else if (f.name === n) return p; } };
 const A = require(find(out, "acad-engine.js")), W = require(find(out, "dxf-writer.js"));
@@ -83,17 +84,33 @@ const doc = () => ({
       { name: "B", entities: [ln(200), ln(210)], viewports: [vp(60), vp(70)] },
       { name: "C", entities: [ln(300)], viewports: [] },
     ];
-    const back3 = (await A.parseWithAcadEngine(await A.exportDxfToDwg(W.writeDxf(d3, { allLayouts: true })), "ml.dwg")).doc;
+    const back3 = (await A.parseWithAcadEngine(await A.exportDxfToDwg(W.writeDxf(d3)), "ml.dwg")).doc;
     assert.strictEqual(back3.layouts.length, 3);
     assert.deepStrictEqual(back3.layouts.map((l) => l.entities.length), [1, 2, 1]);
     assert.deepStrictEqual(back3.layouts.map((l) => l.viewports.length), [1, 2, 0]);
+    // A19 follow-up (proven, not fixed here): the acadrust converter's layout
+    // model is block-name based and ignores LAYOUT objects, so sheet NAMES do
+    // not survive the DWG step — they come back as the converter's
+    // block-derived names ("Paper Space", "Paper Space1", "Paper Space2"),
+    // not the LAYOUT names. Carrying names through DWG needs a Rust-side
+    // change (extend document_json to emit layout names and rebuild the WASM;
+    // no Rust toolchain on this VM). The DXF step above keeps the names (see
+    // the plain-DXF test); the DWG step keeps the sheets, their entities and
+    // their viewports.
+    assert.deepStrictEqual(back3.layouts.map((l) => l.name), ["Paper Space", "Paper Space1", "Paper Space2"]);
     assert.strictEqual(back3.entities.length, 5, "model space is not polluted by sheet content: " + back3.entities.map((e) => e.type).join());
   });
-  await t("plain DXF still writes only the first sheet (no unverified block structure)", () => {
+  await t("plain DXF now writes every sheet with a real LAYOUT object (A8/A19)", () => {
     const d2 = doc(); d2.layouts.push({ name: "B", entities: [], viewports: [] });
     const text = W.writeDxf(d2);
-    assert.ok(!/\*Paper_Space1/.test(text));
-    assert.strictEqual(W.layoutsNotSaved(d2), 1);
+    assert.ok(/\*Paper_Space1/.test(text), "extra sheet block present");
+    assert.ok(/^0\nLAYOUT$/m.test(text), "LAYOUT objects present");
+    assert.strictEqual(W.layoutsNotSaved(d2), 0, "no layout is lost on a plain DXF save");
+    // The TS reader recovers both sheet names from the plain DXF — the old
+    // behaviour (first sheet only, names lost) is gone.
+    const R = require(find(out, "dxf-reader.js"));
+    const back2 = R.parseDxf(text);
+    assert.deepStrictEqual((back2.layouts || []).map((l) => l.name), ["Sheet", "B"]);
   });
 
   // Every DWG version the editor offers, through the real writer and reader.

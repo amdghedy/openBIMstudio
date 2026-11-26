@@ -20,6 +20,8 @@ import {
 } from "../modules/sheets/sheets";
 import { exportSheetSvg } from "../modules/sheets/sheet-composer";
 import { exportAllSheetsToPdf, downloadSingleSheetPdf } from "../modules/export/sheet-pdf";
+import { getCurrentCadDoc } from "../modules/cad-viewer/cad-current-doc";
+import { cadLayoutPaperLabel } from "../modules/export/cad-layout-plot";
 import { createView, listViewsByKind } from "../modules/views/store";
 import type { SheetDef } from "../modules/projects/types";
 import { pushSheetChange } from "../modules/sheets/sheet-undo";
@@ -41,6 +43,14 @@ function render() {
   const sheets = listSheets();
   const active = sheets.find((s) => s.id === activeId) ?? sheets[0] ?? null;
   if (active) activeId = active.id;
+  // A20: CAD layouts of the current drawing, read live when the panel
+  // renders. Read-only bridge — the rows display each layout as a sheet
+  // (number/name from the layout name, paper from its page setup) and
+  // nothing here edits, renames or deletes a CAD layout; no data moves
+  // between the two sheet stores. Clicking through to the viewer on
+  // that layout is a follow-up (needs a tab-restore path).
+  const cadDoc = getCurrentCadDoc();
+  const cadLayouts = cadDoc?.doc.layouts ?? [];
 
   panel.innerHTML = `
     <div class="obs-panel-header">
@@ -67,6 +77,19 @@ function render() {
               <span class="obs-sheets__name">${esc(s.name)}</span>
               <span class="obs-sheets__meta">${s.size} · ${s.viewports.length} vp</span>
               <button type="button" data-act="del" data-id="${esc(s.id)}" title="Delete">×</button>
+            </div>`).join("")}
+      </div>
+      <div class="obs-sheets__cad">
+        <div class="obs-sheets__cad-head">CAD layouts${cadDoc ? ` · ${esc(cadDoc.name || "untitled drawing")}` : ""} — read-only</div>
+        ${!cadDoc
+          ? `<div class="obs-sheets__empty">No CAD drawing open — open a drawing in the Drawing Editor.</div>`
+          : cadLayouts.length === 0
+            ? `<div class="obs-sheets__empty">The current drawing has no layouts yet.</div>`
+            : cadLayouts.map((l) => `
+            <div class="obs-sheets__row obs-sheets__row--cad" title="CAD layout — read-only; edit it in the Drawing Editor">
+              <span class="obs-sheets__name">${esc(l.name)}</span>
+              <span class="obs-sheets__meta">${esc(cadLayoutPaperLabel(l, cadDoc.doc.pageSetups))} · ${l.viewports?.length ?? 0} vp</span>
+              <span class="obs-sheets__meta" style="color:#fbbf24">CAD</span>
             </div>`).join("")}
       </div>
       ${active ? renderActive(active) : ""}
@@ -239,6 +262,16 @@ function ensurePanel() {
     .obs-sheets__name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .obs-sheets__meta { font-size:11px; color:#64748b; }
     .obs-sheets__empty { color:#64748b; text-align:center; padding:16px 0; font-size:12px; }
+    .obs-sheets__cad { margin-top:12px; }
+    .obs-sheets__cad-head { font-size:11px; color:#94a3b8; text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; }
+    /* A20: CAD rows are display-only (read-only bridge) — no pointer, no
+       active state. Clicking through to the viewer on that layout is a
+       follow-up: it needs a tab-restore path (mount the registry doc in
+       a new tab), because the viewer shell covers this panel and closing
+       the viewer destroys the tab. */
+    .obs-sheets__row--cad { cursor:default; }
+    .obs-sheets__row--cad:hover { background:transparent; }
+    .obs-sheets__row--cad .obs-sheets__name { color:#fde68a; }
     .obs-sheets__detail {
       margin-top:12px; padding:12px; background:#0f172a; border-radius:8px; border:1px solid #334155;
     }

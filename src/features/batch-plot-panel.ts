@@ -7,6 +7,8 @@
 
 import { listSheets } from "../modules/sheets/sheets";
 import { downloadBatchPlotPdf, type BatchPlotOptions, type WatermarkStatus } from "../modules/export/batch-plotter";
+import { getCurrentCadDoc } from "../modules/cad-viewer/cad-current-doc";
+import { cadLayoutPaperLabel } from "../modules/export/cad-layout-plot";
 import { registerCommand } from "./command-palette";
 import { uiAlert } from "../core/notify";
 
@@ -15,6 +17,11 @@ export function openBatchPlotPanel(): void {
   if (existing) existing.remove();
 
   const sheets = listSheets();
+  // A20: CAD layouts of the current drawing, read live when the panel opens.
+  const cadDoc = getCurrentCadDoc();
+  const cadLayouts = cadDoc?.doc.layouts ?? [];
+  const esc = (s: string) => s.replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" } as Record<string, string>)[c]);
 
   const overlay = document.createElement("div");
   overlay.id = "obs-batch-plot-modal";
@@ -118,6 +125,30 @@ export function openBatchPlotPanel(): void {
           `).join("")}
         </div>
       </div>
+
+      <!-- CAD Layouts (A20) — the current drawing's sheets, as vector pages -->
+      <div style="background: #0f172a; border-radius: 8px; border: 1px solid #334155; overflow: hidden;">
+        <div style="padding: 10px 14px; background: #1e293b; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 13px; font-weight: 600; color: #cbd5e1;">CAD Layouts — current drawing${cadDoc ? ` (${esc(cadDoc.name || "untitled")})` : ""}</span>
+          <select id="obs-bp-cad-mode" style="background: #1e293b; border: 1px solid #475569; color: #f8fafc; padding: 4px 8px; border-radius: 6px; font-size: 12px;">
+            <option value="alongside" selected>Alongside BIM sheets</option>
+            <option value="only">Instead of BIM sheets</option>
+          </select>
+        </div>
+        <div style="max-height: 200px; overflow-y: auto; padding: 8px 14px;">
+          ${!cadDoc ? '<div style="padding: 12px; color: #94a3b8; font-size: 13px; text-align: center;">No CAD drawing open — open a drawing in the Drawing Editor to publish its layouts.</div>'
+            : cadLayouts.length === 0 ? '<div style="padding: 12px; color: #94a3b8; font-size: 13px; text-align: center;">The current drawing has no layouts yet — create one from the Model tab (+).</div>'
+            : cadLayouts.map((l) => `
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #1e293b;">
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #f1f5f9; cursor: pointer;">
+                <input type="checkbox" class="obs-bp-cad-cb" data-name="${esc(l.name)}" checked style="cursor: pointer;" />
+                <strong>${esc(l.name)}</strong>
+              </label>
+              <span style="font-size: 12px; color: #94a3b8;">${esc(cadLayoutPaperLabel(l, cadDoc.doc.pageSetups))} &middot; ${l.viewports?.length ?? 0} viewport${(l.viewports?.length ?? 0) === 1 ? "" : "s"}</span>
+            </div>
+          `).join("")}
+        </div>
+      </div>
     </div>
 
     <!-- Footer Controls -->
@@ -149,9 +180,13 @@ export function openBatchPlotPanel(): void {
   document.getElementById("obs-bp-plot-btn")?.addEventListener("click", async () => {
     const selectedCbs = overlay.querySelectorAll<HTMLInputElement>(".obs-bp-sheet-cb:checked");
     const selectedIds = Array.from(selectedCbs).map((cb) => cb.getAttribute("data-id") || "").filter(Boolean);
+    // A20: checked CAD layouts of the current drawing.
+    const cadCbs = overlay.querySelectorAll<HTMLInputElement>(".obs-bp-cad-cb:checked");
+    const cadNames = Array.from(cadCbs).map((cb) => cb.getAttribute("data-name") || "").filter(Boolean);
+    const cadOnly = (document.getElementById("obs-bp-cad-mode") as HTMLSelectElement)?.value === "only";
 
-    if (selectedIds.length === 0 && sheets.length > 0) {
-      uiAlert("Please select at least one sheet to plot.");
+    if (selectedIds.length === 0 && cadNames.length === 0 && (sheets.length > 0 || cadLayouts.length > 0)) {
+      uiAlert("Please select at least one sheet or CAD layout to plot.");
       return;
     }
 
@@ -173,6 +208,21 @@ export function openBatchPlotPanel(): void {
         clientName: (document.getElementById("obs-bp-client-name") as HTMLInputElement)?.value,
         discipline: (document.getElementById("obs-bp-discipline") as HTMLInputElement)?.value,
         drawnBy: (document.getElementById("obs-bp-drawn-by") as HTMLInputElement)?.value,
+        // A20: the checked CAD layouts, read live from the current
+        // drawing (the model list is read at plot time, so edits made
+        // after the panel opened are included). "Instead of BIM sheets"
+        // only takes effect when CAD layouts are actually selected.
+        cadLayouts: cadNames.length > 0 && cadDoc ? cadNames.map((n) => {
+          const layout = cadDoc.doc.layouts?.find((l) => l.name === n)!;
+          return {
+            layout,
+            model: cadDoc.getModel(),
+            blocks: cadDoc.doc.blocks,
+            setups: cadDoc.doc.pageSetups,
+            layers: cadDoc.doc.layers,
+          };
+        }) : undefined,
+        cadLayoutsOnly: cadOnly && cadNames.length > 0,
       };
 
       await downloadBatchPlotPdf(options);

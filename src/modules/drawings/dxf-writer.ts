@@ -3,9 +3,9 @@
  * Pure TypeScript - no native deps.
  */
 
-import type { DxfDimStyle, DxfDocument, DxfEntity, DxfLayer, DxfPoint, DxfViewport } from "./dxf-types";
+import type { DxfDimStyle, DxfDocument, DxfEntity, DxfLayer, DxfLayout, DxfPoint, DxfViewport } from "./dxf-types";
 import { ensureLinetypes, fontDxfFile, isTrueTypeFont, lineweightToDxf, linetypesInUse } from "./cad-styles";
-import { TEXT_LINE_PITCH } from "../cad-viewer/viewer-math";
+import { PAPER_MM, TEXT_LINE_PITCH } from "../cad-viewer/viewer-math";
 import { polylineBBox } from "./dxf-geometry";
 import { nativeIfValid, splineDxfBody, ellipseDxfBody } from "./native-curves";
 import type { DxfAttDef, DxfBlockDef, DxfInsert } from "./dxf-types";
@@ -62,9 +62,18 @@ function writeBlockDef(b: DxfBlockDef, styleName: (t: Extract<DxfEntity, { type:
   return s;
 }
 
-function blockRecordTable(blocks: DxfBlockDef[]): string {
-  let s = pair(0, "TABLE") + pair(2, "BLOCK_RECORD") + pair(5, nextHandle()) + pair(100, "AcDbSymbolTable") + pair(70, blocks.length);
+function blockRecordTable(
+  blocks: DxfBlockDef[],
+  paperRecords: Array<{ name: string; layoutHandle: string; recordHandle: string }> = [],
+): string {
+  const total = blocks.length + paperRecords.length;
+  let s = pair(0, "TABLE") + pair(2, "BLOCK_RECORD") + pair(5, nextHandle()) + pair(100, "AcDbSymbolTable") + pair(70, total);
   for (const b of blocks) s += pair(0, "BLOCK_RECORD") + pair(5, nextHandle()) + pair(100, "AcDbSymbolTableRecord") + pair(100, "AcDbBlockTableRecord") + pair(2, b.name);
+  // Paper-space block records carry group 340 -> their LAYOUT object, so a
+  // reader can resolve the layout name for the block (A8/A19). Their handles
+  // are pre-assigned by the caller: the LAYOUT objects point back at them
+  // (group 330), so both sides must agree before either is written.
+  for (const p of paperRecords) s += pair(0, "BLOCK_RECORD") + pair(5, p.recordHandle) + pair(100, "AcDbSymbolTableRecord") + pair(100, "AcDbBlockTableRecord") + pair(2, p.name) + pair(340, p.layoutHandle);
   return s + pair(0, "ENDTAB");
 }
 
@@ -221,11 +230,10 @@ function common(e: DxfEntity): string {
  */
 
 /**
- * Extra paper-space sheets written into the BLOCKS section (DWG conversion
- * only, `allLayouts`) keep the legacy marker-less entity form: the pinned
- * acadrust converter maps *Paper_SpaceN blocks back to sheets with exactly
- * that structure, and conformant prologues inside those blocks drop the last
- * sheet and leak its content into model space (bisected against
+ * Extra paper-space sheets written into the BLOCKS section keep the legacy
+ * marker-less entity form: the pinned acadrust converter maps *Paper_SpaceN blocks back
+ * to sheets with exactly that structure, and conformant prologues inside those blocks
+ * drop the last sheet and leak its content into model space (bisected against
  * tests/cad-dwg-roundtrip). Everything in the ENTITIES section is conformant.
  */
 let legacyPrologue = false;
@@ -298,12 +306,22 @@ function inPaperSpace(rec: string): string {
   return rec.replace(/^(0\n[^\n]+\n5\n[0-9A-F]+\n100\nAcDbEntity\n)/, "$167\n1\n");
 }
 
-function writeViewport(vp: DxfViewport, id: number): string {
+/** VIEWPORT entity; returns the written text plus its handle (null in the legacy form, which has none). A8: a locked viewport carries group 90 bit 16384; a clipped viewport carries group 340 pointing at its clip-boundary entity. */
+function writeViewport(vp: DxfViewport, id: number, clipHandle?: string | null): { text: string; handle: string | null } {
+  let handle: string | null = null;
   let s = pair(0, "VIEWPORT");
   if (legacyPrologue) {
-    s += pair(8, "0") + pair(67, 1) + pair(100, "AcDbViewport");
+    // A8/A19: the AcDbEntity marker is REQUIRED here even in the legacy
+    // form — without it a strict reader (ezdxf) cannot split the
+    // AcDbViewport subclass and the viewport's geometry reads back as
+    // defaults (proven by patching one record). The handle stays omitted:
+    // a full conformant prologue in these blocks breaks the DWG converter
+    // (see the legacyPrologue note above); the marker alone does not
+    // (verified by the DWG round-trip suite).
+    s += pair(8, "0") + pair(67, 1) + pair(100, "AcDbEntity") + pair(100, "AcDbViewport");
   } else {
-    s += pair(5, nextHandle()) + pair(100, "AcDbEntity") + pair(67, 1) + pair(8, "0") + pair(100, "AcDbViewport");
+    handle = nextHandle();
+    s += pair(5, handle) + pair(100, "AcDbEntity") + pair(67, 1) + pair(8, "0") + pair(100, "AcDbViewport");
   }
   s += pair(10, vp.center.x) + pair(20, vp.center.y) + pair(30, 0);
   s += pair(40, vp.width) + pair(41, vp.height);
@@ -311,16 +329,134 @@ function writeViewport(vp: DxfViewport, id: number): string {
   s += pair(12, vp.viewCenter.x) + pair(22, vp.viewCenter.y);
   s += pair(45, vp.viewHeight);
   if (vp.twist) s += pair(51, vp.twist);
-  return s;
+  // A8: the rectangular clip boundary is the LWPOLYLINE whose handle group
+  // 340 names (DXF reference, VIEWPORT group 340). The boundary is written
+  // by the caller (writeClipBoundary) before the viewport.
+  if (clipHandle) s += pair(340, clipHandle);
+  // A8: viewport zoom lock — DXF reference, VIEWPORT group 90 bit 16384.
+  if (vp.locked) s += pair(90, 16384);
+  return { text: s, handle };
 }
 
 /**
- * Layouts that a DXF save cannot keep: only the first sheet is written (as the
- * active paper space). Extra layouts need BLOCK_RECORD and LAYOUT objects that are
- * not written yet, so callers should tell the user how many were left out.
+ * A viewport's rectangular clip boundary: a closed 4-point LWPOLYLINE in
+ * sheet coordinates, paper space (group 67 = 1). Written with the conformant
+ * prologue (handle + AcDbEntity + AcDbPolyline) even inside the legacy
+ * extra-sheet blocks — without a handle the viewport's group 340 cannot
+ * reference it, and the converter tolerates the marker/handle here (the
+ * DWG round-trip suite covers a clipped viewport in an extra sheet).
+ * The caller writes the boundary before the viewport and passes the handle.
  */
-export function layoutsNotSaved(doc: Pick<DxfDocument, "layouts">): number {
-  return Math.max(0, (doc.layouts?.length ?? 0) - 1);
+function writeClipBoundary(clip: { minX: number; minY: number; maxX: number; maxY: number }): { text: string; handle: string } {
+  const handle = nextHandle();
+  const { minX, minY, maxX, maxY } = clip;
+  let s = pair(0, "LWPOLYLINE") + pair(5, handle) + pair(100, "AcDbEntity") + pair(67, 1) + pair(8, "0") + pair(100, "AcDbPolyline");
+  s += pair(90, 4) + pair(70, 1);
+  for (const [x, y] of [[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]] as const) s += pair(10, x) + pair(20, y);
+  return { text: s, handle };
+}
+
+/**
+ * Layouts that a DXF save cannot keep: none since A8/A19 — every layout is
+ * written with a real LAYOUT object (plus its *Paper_SpaceN block), so a
+ * plain DXF round-trips all sheets with their names. Kept as the callers'
+ * hook: it now always returns 0.
+ */
+export function layoutsNotSaved(_doc: Pick<DxfDocument, "layouts">): number {
+  return 0;
+}
+
+/** Resolved plot settings for one layout: its named setup wins, else its own stamped values. */
+function layoutPlotSettings(
+  doc: DxfDocument,
+  layout: DxfLayout,
+): { setupName: string; paper: string; orient: "landscape" | "portrait"; scale: number | "fit"; area: "display" | "extents" | "window" | "layout" } {
+  const setup = layout.pageSetup ? doc.pageSetups?.[layout.pageSetup] : undefined;
+  return {
+    setupName: setup?.name ?? layout.pageSetup ?? "",
+    paper: setup?.paper ?? layout.paper ?? "A3",
+    // Viewer sheets are portrait A3 by default (addLayout); a named setup
+    // brings its own orientation.
+    orient: setup?.orient ?? "portrait",
+    scale: setup?.scale ?? layout.plotScale ?? "fit",
+    area: setup?.area ?? layout.plotArea ?? "layout",
+  };
+}
+
+/** Paper dimensions in mm for a paper name + orientation (A3 when unknown). */
+function layoutPaperMm(paper: string, orient: "landscape" | "portrait"): { w: number; h: number } {
+  const [s, l] = PAPER_MM[paper] ?? PAPER_MM.A3;
+  return orient === "landscape" ? { w: l, h: s } : { w: s, h: l };
+}
+
+/** Plot scale as a reduced numerator/denominator pair (DXF groups 142/143). "fit" writes 1/1 — the fit choice itself lives in the setup, not the file. */
+function scaleNumDen(scale: number | "fit"): [number, number] {
+  if (scale === "fit") return [1, 1];
+  const den = 1 / scale;
+  const n = Math.round(den);
+  if (Number.isFinite(den) && den > 0 && Math.abs(den - n) < 1e-9) return [1, n];
+  const num = Math.round(scale * 10000), d = 10000;
+  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+  const g = gcd(Math.abs(num), d) || 1;
+  return [num / g, d / g];
+}
+
+/**
+ * One LAYOUT object (DXF reference, verified against ezdxf 1.4.5 output):
+ * AcDbPlotSettings carries the page-setup name (group 1), paper name (4),
+ * paper size in mm (44/45), custom plot scale (142/143), paper units (72=mm)
+ * and plot area type (74: 0 display, 1 extents, 4 window, 5 layout);
+ * AcDbLayout carries the layout name (1), tab order (71) and paper extents
+ * (10/20 min, 11/21 max). The FIRST group 330 is the owning ACAD_LAYOUT
+ * dictionary; the LAST group 330 is the paper-space BLOCK_RECORD (extra
+ * sheets only — the first sheet and Model have no such record); 331 lists
+ * the viewport handles (only the first sheet's, which are conformant).
+ */
+function writeLayoutObject(o: {
+  handle: string;
+  name: string;
+  tabOrder: number;
+  paper: string;
+  orient: "landscape" | "portrait";
+  setupName: string;
+  scale: number | "fit";
+  area: "display" | "extents" | "window" | "layout";
+  dictHandle: string;
+  recordHandle?: string;
+  viewportHandles?: string[];
+}): string {
+  const { w, h } = layoutPaperMm(o.paper, o.orient);
+  const [num, den] = scaleNumDen(o.scale);
+  const area74 = o.area === "display" ? 0 : o.area === "extents" ? 1 : o.area === "window" ? 4 : 5;
+  let s = pair(0, "LAYOUT") + pair(5, o.handle) + pair(330, o.dictHandle);
+  s += pair(100, "AcDbPlotSettings");
+  s += pair(1, o.setupName);
+  s += pair(4, o.paper);
+  s += pair(6, "");
+  s += pair(40, 0) + pair(41, 0) + pair(42, 0) + pair(43, 0);
+  s += pair(44, w) + pair(45, h);
+  s += pair(46, 0) + pair(47, 0);
+  s += pair(48, 0) + pair(49, 0);
+  s += pair(140, 0) + pair(141, 0) + pair(142, num) + pair(143, den);
+  s += pair(70, 0) + pair(72, 1) + pair(73, 0) + pair(74, area74);
+  s += pair(7, "");
+  s += pair(75, 16) + pair(76, 0) + pair(77, 2) + pair(78, 300);
+  s += pair(147, 1) + pair(148, 0) + pair(149, 0);
+  s += pair(100, "AcDbLayout");
+  s += pair(1, o.name);
+  s += pair(70, 1) + pair(71, o.tabOrder);
+  s += pair(10, 0) + pair(20, 0) + pair(11, w) + pair(21, h);
+  s += pair(12, 0) + pair(22, 0) + pair(32, 0);
+  s += pair(14, 1e20) + pair(24, 1e20) + pair(34, 1e20);
+  s += pair(15, -1e20) + pair(25, -1e20) + pair(35, -1e20);
+  s += pair(146, 0);
+  s += pair(13, 0) + pair(23, 0) + pair(33, 0);
+  s += pair(16, 1) + pair(26, 0) + pair(36, 0);
+  s += pair(17, 0) + pair(27, 1) + pair(37, 0);
+  s += pair(76, 1);
+  if (o.recordHandle) s += pair(330, o.recordHandle);
+  for (const vh of o.viewportHandles ?? []) s += pair(331, vh);
+  return s;
 }
 
 /**
@@ -394,6 +530,13 @@ function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TE
     s += n.kind === "SPLINE" ? splineDxfBody(n, pair) : ellipseDxfBody(n, pair);
   } else if (e.type === "LWPOLYLINE") {
     s += entityHead(e, "LWPOLYLINE");
+    // A8/A19: the AcDbPolyline subclass marker is REQUIRED by strict DXF
+    // readers (ezdxf raises DXFStructureError without it) — the writer's
+    // own header states loaders key off subclass markers. LINE/CIRCLE/ARC
+    // tolerate a missing marker, LWPOLYLINE does not. The marker is part of
+    // the entity body, not the prologue, so the legacy extra-sheet form
+    // keeps working (verified by the DWG round-trip suite).
+    s += pair(100, "AcDbPolyline");
     s += pair(90, e.points.length);
     s += pair(70, e.closed ? 1 : 0);
     // A7: the constant width (43) and, per vertex, the bulge (42) and the
@@ -595,13 +738,9 @@ export interface WriteDxfOptions {
   hatches?: "hatch" | "outline";
   /** File version written to $ACADVER (and so the DWG version after conversion). Default DWG 2010. */
   version?: DwgVersionCode;
-  /**
-   * Also write every layout after the first as a *Paper_Space block. Used only for the
-   * DWG converter, which reads them back as separate sheets (tests/cad-dwg-roundtrip).
-   * Plain DXF keeps the first sheet only: the extra block records and LAYOUT objects DWG
-   * expects are not written, and an unchecked structure could stop the file opening.
-   */
-  allLayouts?: boolean;
+  // Every layout is written with a real LAYOUT object (A8/A19): there is no
+  // longer an allLayouts option — plain DXF and the DWG conversion path write
+  // the same complete structure.
 }
 
 interface CollectedDimension {
@@ -688,6 +827,30 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
   const allEntities = userBlocks.length ? [...doc.entities, ...userBlocks.flatMap((b) => b.entities)] : doc.entities;
   const extents = doc.extents ?? computeExtents(doc.entities);
   handleSeq = 0x100;
+  // A8/A19: every layout gets a real LAYOUT object in the OBJECTS section.
+  // Their handles (and the extra sheets' BLOCK_RECORD handles, which the
+  // LAYOUT objects point back at via group 330) are pre-assigned here so
+  // both sides agree before either section is written. The first layout has
+  // no *Paper_Space block of its own — its entities live in ENTITIES (67=1),
+  // as before — so its LAYOUT object carries no 330 owner.
+  const layouts = doc.layouts ?? [];
+  const modelLayoutHandle = nextHandle();
+  const layoutHandles = layouts.map(() => nextHandle());
+  const extraRecordHandles = layouts.slice(1).map(() => nextHandle());
+  // The named-objects dictionary and the ACAD_LAYOUT dictionary the LAYOUT
+  // objects belong to (their first group 330). Only ACAD_LAYOUT is written:
+  // this file claims no other named dictionaries.
+  const rootDictHandle = nextHandle();
+  const layoutDictHandle = nextHandle();
+  const paperRecords = layouts.slice(1).map((_, k) => ({
+    name: `*Paper_Space${k + 1}`,
+    layoutHandle: layoutHandles[k + 1],
+    recordHandle: extraRecordHandles[k],
+  }));
+  // Handles of the first layout's viewports (conformant form), for the
+  // LAYOUT object's group 331. Extra sheets' viewports are legacy (no
+  // handle) and are left out — 331 is optional.
+  const firstLayoutViewportHandles: string[] = [];
   // Linetype definitions: those in the file plus any library linetype the drawing uses.
   const lt = { linetypes: { ...(doc.linetypes ?? {}) }, units: doc.units };
   ensureLinetypes(lt, linetypesInUse({ layers, entities: allEntities }));
@@ -730,11 +893,13 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
   // the file actually carries dimensions, so dimension-free saves are
   // byte-identical to before.
   if (dims.length && doc.dimStyleTable && Object.keys(doc.dimStyleTable).length) s += dimstyleTable(doc.dimStyleTable);
-  if (userBlocks.length || dimBlocks.length) s += blockRecordTable([...userBlocks, ...dimBlocks]);
+  if (userBlocks.length || dimBlocks.length || paperRecords.length) s += blockRecordTable([...userBlocks, ...dimBlocks], paperRecords);
   s += pair(0, "ENDSEC");
 
-  // BLOCKS: native block definitions, then extra sheets (DWG conversion only)
-  const extraSheets = opts.allLayouts ? (doc.layouts ?? []).slice(1) : [];
+  // BLOCKS: native block definitions, then every extra sheet (all layouts are
+  // written now, A8/A19 — plain DXF and the DWG conversion path share one
+  // complete structure; the first sheet still lives in ENTITIES, as before).
+  const extraSheets = layouts.slice(1);
   const xrefDecls = (doc.xrefs ?? []).filter((x) => !userBlocks.some((b) => b.name === x.name));
   if (extraSheets.length || userBlocks.length || xrefDecls.length || dimBlocks.length) {
     s += pair(0, "SECTION");
@@ -747,10 +912,6 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
       s += pair(0, "ENDBLK") + pair(5, nextHandle()) + pair(100, "AcDbEntity") + pair(8, "0") + pair(100, "AcDbBlockEnd");
     }
     for (const b of userBlocks) s += writeBlockDef(b, styles.nameFor, (opts.hatches ?? "hatch") === "hatch");
-    // Anonymous dimension blocks: the drawn geometry of each DIMENSION.
-    // Written with the conformant prologue like user blocks (the legacy form
-    // below is only for the DWG converter's extra paper-space sheets).
-    for (const b of dimBlocks) s += writeBlockDef(b, styles.nameFor, (opts.hatches ?? "hatch") === "hatch");
     legacyPrologue = true; // DWG-converter block contents use the legacy entity form (see above)
     extraSheets.forEach((sheet, i) => {
       const name = `*Paper_Space${i + 1}`;
@@ -758,10 +919,22 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
       s += pair(100, "AcDbBlockBegin") + pair(2, name) + pair(70, 0);
       s += pair(10, 0) + pair(20, 0) + pair(30, 0) + pair(3, name) + pair(1, "");
       for (const e of sheet.entities) s += inPaperSpace(writeEntity(e, styles.nameFor, (opts.hatches ?? "hatch") === "hatch"));
-      sheet.viewports.forEach((vp, k) => { s += writeViewport(vp, k + 2); });
+      sheet.viewports.forEach((vp, k) => {
+        // A8: the clip boundary is written before the viewport that points at it.
+        const clip = vp.clip ? writeClipBoundary(vp.clip) : null;
+        if (clip) s += clip.text;
+        s += writeViewport(vp, k + 2, clip?.handle).text;
+      });
       s += pair(0, "ENDBLK") + pair(5, nextHandle()) + pair(100, "AcDbEntity") + pair(67, 1) + pair(8, "0") + pair(100, "AcDbBlockEnd");
     });
     legacyPrologue = false;
+    // Anonymous dimension blocks: the drawn geometry of each DIMENSION.
+    // Written AFTER the extra sheets, with the conformant prologue like user
+    // blocks. A8/A19: a conformant *D block BEFORE the legacy paper blocks
+    // makes the converter drop the extra sheets' viewports (proven by the
+    // 4-case probe in the A19 suite notes) — the paper blocks come first so
+    // the converter maps them while still in legacy-block mode.
+    for (const b of dimBlocks) s += writeBlockDef(b, styles.nameFor, (opts.hatches ?? "hatch") === "hatch");
     s += pair(0, "ENDSEC");
   }
 
@@ -783,8 +956,59 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
   const sheet = doc.layouts?.[0];
   if (sheet) {
     for (const e of sheet.entities) s += inPaperSpace(writeEntity(e, styles.nameFor, (opts.hatches ?? "hatch") === "hatch"));
-    sheet.viewports.forEach((vp, i) => { s += writeViewport(vp, i + 2); });
+    sheet.viewports.forEach((vp, i) => {
+      // A8: the clip boundary is written before the viewport that points at it.
+      const clip = vp.clip ? writeClipBoundary(vp.clip) : null;
+      if (clip) s += clip.text;
+      const w = writeViewport(vp, i + 2, clip?.handle);
+      s += w.text;
+      if (w.handle) firstLayoutViewportHandles.push(w.handle);
+    });
   }
+  s += pair(0, "ENDSEC");
+
+  // OBJECTS: one real LAYOUT object per layout (A8/A19) — Model first, then
+  // the paper layouts in tab order — carrying each layout's plot settings
+  // (AcDbPlotSettings: setup name, paper, scale, plot area) and its name
+  // (AcDbLayout). A reader that understands LAYOUT objects recovers the
+  // sheet names and plot settings; the DWG converter ignores them and keeps
+  // its block-based sheets (see the A19 follow-up in the test suite).
+  s += pair(0, "SECTION");
+  s += pair(2, "OBJECTS");
+  // Named-objects dictionary (root) + the ACAD_LAYOUT dictionary listing
+  // every layout by name -> handle, exactly as ezdxf writes them.
+  s += pair(0, "DICTIONARY") + pair(5, rootDictHandle) + pair(330, "0") + pair(100, "AcDbDictionary") + pair(281, 1);
+  s += pair(3, "ACAD_LAYOUT") + pair(350, layoutDictHandle);
+  s += pair(0, "DICTIONARY") + pair(5, layoutDictHandle) + pair(330, rootDictHandle) + pair(100, "AcDbDictionary") + pair(281, 1);
+  s += pair(3, "Model") + pair(350, modelLayoutHandle);
+  layouts.forEach((l, i) => { s += pair(3, l.name) + pair(350, layoutHandles[i]); });
+  s += writeLayoutObject({
+    handle: modelLayoutHandle,
+    name: "Model",
+    tabOrder: 0,
+    paper: "A3",
+    orient: "landscape",
+    setupName: "",
+    scale: "fit",
+    area: "layout",
+    dictHandle: layoutDictHandle,
+  });
+  layouts.forEach((l, i) => {
+    const ps = layoutPlotSettings(doc, l);
+    s += writeLayoutObject({
+      handle: layoutHandles[i],
+      name: l.name,
+      tabOrder: i + 1,
+      paper: ps.paper,
+      orient: ps.orient,
+      setupName: ps.setupName,
+      scale: ps.scale,
+      area: ps.area,
+      dictHandle: layoutDictHandle,
+      recordHandle: i === 0 ? undefined : extraRecordHandles[i - 1],
+      viewportHandles: i === 0 ? firstLayoutViewportHandles : undefined,
+    });
+  });
   s += pair(0, "ENDSEC");
 
   s += pair(0, "EOF");

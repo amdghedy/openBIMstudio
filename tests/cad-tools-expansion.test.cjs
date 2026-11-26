@@ -15,6 +15,7 @@ const viewer = read("features", "cad-viewer.ts");
 const cal = read("modules", "cad-viewer", "cad-cal.ts");
 const mm = read("modules", "cad-viewer", "modify-math.ts");
 const vm = read("modules", "cad-viewer", "viewer-math.ts");
+const sel11 = read("modules", "cad-viewer", "cad-selection-a11.ts");
 
 let pass = 0, fail = 0;
 const t = (n, f) => { try { f(); pass++; console.log("  PASS " + n); } catch (e) { fail++; console.log("  FAIL " + n + ": " + e.message); } };
@@ -23,7 +24,7 @@ const t = (n, f) => { try { f(); pass++; console.log("  PASS " + n); } catch (e)
 const TMP = fs.mkdtempSync(path.join(require("os").tmpdir(), ".cad-tools-"));
 process.on("exit", () => { try { fs.rmSync(TMP, { recursive: true, force: true }); } catch { /* */ } });
 execSync(
-  `npx tsc "${path.join(__dirname, "..", "src", "modules", "cad-viewer", "cad-cal.ts")}" "${path.join(__dirname, "..", "src", "modules", "cad-viewer", "modify-math.ts")}" "${path.join(__dirname, "..", "src", "modules", "cad-viewer", "viewer-math.ts")}" --outDir "${TMP}" --rootDir "${path.join(__dirname, "..", "src")}" --target es2020 --module commonjs --skipLibCheck`,
+  `npx tsc "${path.join(__dirname, "..", "src", "modules", "cad-viewer", "cad-cal.ts")}" "${path.join(__dirname, "..", "src", "modules", "cad-viewer", "modify-math.ts")}" "${path.join(__dirname, "..", "src", "modules", "cad-viewer", "viewer-math.ts")}" "${path.join(__dirname, "..", "src", "modules", "cad-viewer", "cad-selection-a11.ts")}" --outDir "${TMP}" --rootDir "${path.join(__dirname, "..", "src")}" --target es2020 --module commonjs --skipLibCheck`,
   { cwd: path.join(__dirname, ".."), stdio: "pipe" },
 );
 function loadModule(rel) {
@@ -85,7 +86,14 @@ t("grip editing layer", () => {
   assert.ok(vm.includes("export function entityGrips"), "entityGrips missing from viewer-math");
   assert.ok(vm.includes("export function applyGripDrag"), "applyGripDrag missing from viewer-math");
   assert.ok(viewer.includes("M.entityGrips(e)"), "viewer must consult entityGrips");
-  assert.ok(viewer.includes("M.applyGripDrag(e, gripDrag.gi, to)"), "viewer must apply grip drags");
+  // A11: the viewer dispatches grip drags through the grip-mode helper
+  // (Sel11.applyGripMode) instead of calling applyGripDrag directly.
+  // The default mode is stretch, and stretch still applies the drag via
+  // applyGripDrag — the numeric equivalence is proved in §10, not just
+  // by these markers.
+  assert.ok(viewer.includes("Sel11.applyGripMode("), "viewer must apply grip drags through the grip-mode dispatcher");
+  assert.ok(viewer.includes('mode: "stretch"'), "new grip drags must default to stretch mode");
+  assert.ok(sel11.includes("M.applyGripDrag(e, gi, to)"), "stretch grip mode must still apply the grip drag");
   assert.ok(viewer.includes("let gripDrag: GripDrag"), "grip drag state missing");
   assert.ok(viewer.includes('type: "modify", before: ext.before, after: ext.after'), "grip release must push a modify undo action (with associative dimension pairs)");
   assert.ok(viewer.includes("ents[gripDrag.i] = gripDrag.orig;"), "Esc must revert an in-flight grip drag");
@@ -174,6 +182,27 @@ t("grip math", () => {
   const vp = V.applyGripDrag(poly, 1, { x: 10, y: 10 });
   assert.ok(approx(vp.points[1].x, 10) && approx(vp.points[1].y, 10));
   void pg;
+});
+
+// ── 10. Logic: stretch grip mode is the old direct grip drag ──
+// A11 moved the viewer's grip-drag call into Sel11.applyGripMode (so a
+// grip drag can be stretch / move / rotate / scale / mirror). The default
+// mode is stretch, and stretch must be numerically identical to the
+// pre-A11 direct call M.applyGripDrag(e, gripDrag.gi, to) — otherwise a
+// plain grip drag would silently change shape.
+t("grip stretch mode equals the direct grip drag", () => {
+  const V = loadModule(["modules", "cad-viewer", "viewer-math.ts"]);
+  const S = loadModule(["modules", "cad-viewer", "cad-selection-a11.ts"]);
+  const line = { type: "LINE", layer: "0", start: { x: 0, y: 0 }, end: { x: 100, y: 0 } };
+  const direct = V.applyGripDrag(line, 2, { x: 100, y: 40 });
+  const viaMode = S.applyGripMode(line, "stretch", { x: 100, y: 0 }, null, { x: 100, y: 40 }, 2);
+  assert.ok(viaMode, "stretch mode must apply to an end grip");
+  assert.deepStrictEqual(viaMode.entity, direct);
+  // Midpoint grip still translates the whole line, via the dispatcher.
+  const movedAll = S.applyGripMode(line, "stretch", { x: 50, y: 0 }, null, { x: 150, y: 0 }, 1);
+  assert.ok(movedAll, "stretch mode must apply to the midpoint grip");
+  assert.ok(approx(movedAll.entity.start.x, 100) && approx(movedAll.entity.end.x, 200));
+  assert.ok(approx(movedAll.entity.start.y, 0) && approx(movedAll.entity.end.y, 0));
 });
 
 console.log(`\ncad-tools-expansion: ${pass} passed, ${fail} failed`);

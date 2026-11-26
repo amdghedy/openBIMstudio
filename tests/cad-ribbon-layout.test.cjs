@@ -83,7 +83,7 @@ t("every ribbon group is tagged with exactly one of the nine tabs", () => {
     // Parametric
     Geometric: "parametric", Dimensional: "parametric", Manage: "parametric",
     // View
-    Navigate: "view", "Saved Views": "view", "Visual Styles": "view", Modes: "view", UCS: "view", Show: "view", Palettes: "view",
+    Navigate: "view", "Saved Views": "view", Viewports: "view", "Visual Styles": "view", Modes: "view", UCS: "view", Show: "view", Palettes: "view",
     // Manage
     Units: "manage", Drawing: "manage", "Layer States": "manage", "DWG Inspect": "manage", Customization: "manage", "CAD Standards": "manage",
     // Output

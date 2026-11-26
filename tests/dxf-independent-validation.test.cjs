@@ -302,15 +302,26 @@ console.log("PART A - import fidelity: ezdxf-authored corpus vs the platform rea
 /* ── A7. Paper space: sheet name, entities and viewport ─────────────────── */
 {
   const x = ext("paper_space.dxf"), o = ours("paper_space.dxf");
-  t("paper_space: sheet named from the LAYOUT record, entities + viewport attached", () => {
+  t("paper_space: sheets named from the LAYOUT records, entities + viewport attached", () => {
     assert.strictEqual(x.psp.LINE + x.psp.TEXT + x.psp.VIEWPORT, 3, "ezdxf sees 3 paper-space entities");
-    assert.strictEqual(o.layouts.length, 1, "one sheet");
-    assert.strictEqual(o.layouts[0].name, "A4", "sheet name read from the file's LAYOUT record");
-    assert.strictEqual(o.layouts[0].entities.length, 2, "LINE + TEXT on the sheet");
-    assert.strictEqual(o.layouts[0].viewports.length, 1, "viewport kept");
-    const xv = x.viewports[0], ov = o.layouts[0].viewports[0];
+    // A8/A19: the file genuinely holds TWO paper layouts (ezdxf: Model,
+    // Layout1, A4) — Layout1 is ezdxf's default empty layout (generate.py
+    // only creates A4) and the reader now keeps empty layouts instead of
+    // dropping them, so the old "one sheet" pin is stale. The content
+    // assertions below are unchanged: A4 still carries the LINE + TEXT +
+    // viewport, and Layout1 is present and empty.
+    assert.strictEqual(o.layouts.length, 2, "two sheets: empty default Layout1 plus A4");
+    const a4 = o.layouts.find((l) => l.name === "A4");
+    assert.ok(a4, "sheet A4 present");
+    assert.strictEqual(a4.entities.length, 2, "LINE + TEXT on the sheet");
+    assert.strictEqual(a4.viewports.length, 1, "viewport kept");
+    const xv = x.viewports[0], ov = a4.viewports[0];
     near2(ov.center, xv.center); near(ov.width, xv.width); near(ov.height, xv.height);
     near2(ov.viewCenter, xv.viewCenter); near(ov.viewHeight, xv.viewHeight);
+    const l1 = o.layouts.find((l) => l.name === "Layout1");
+    assert.ok(l1, "empty default Layout1 kept, not dropped");
+    assert.strictEqual(l1.entities.length, 0, "Layout1 has no entities");
+    assert.strictEqual(l1.viewports.length, 0, "Layout1 has no viewports");
   });
   t("paper_space: model space entities stay in model space", () => {
     assert.strictEqual(o.entities.length, x.msp.LINE + x.msp.CIRCLE);

@@ -32,9 +32,9 @@ t("paper-space records carry group 67", () => {
 t("a drawing without layouts writes no paper space", () => {
   assert.ok(!/\n67\n1\n/.test(W.writeDxf(doc(undefined))));
 });
-t("extra layouts are counted as not saved", () => {
+t("all layouts are saved (A8/A19: every layout is written, none left unsaved)", () => {
   assert.strictEqual(W.layoutsNotSaved({layouts:undefined}),0);
   assert.strictEqual(W.layoutsNotSaved({layouts:[{name:"a",entities:[],viewports:[]}]}),0);
-  assert.strictEqual(W.layoutsNotSaved({layouts:[1,2,3].map((n)=>({name:"L"+n,entities:[],viewports:[]}))}),2);
+  assert.strictEqual(W.layoutsNotSaved({layouts:[1,2,3].map((n)=>({name:"L"+n,entities:[],viewports:[]}))}),0);
 });
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`); process.exit(fail?1:0);
