@@ -8379,6 +8379,8 @@ export function setupAuthoring() {
     },
   };
   (api as any).getGroup = () => group;
+  // The family browser's Place action creates a native-geometry element through this method.
+  (api as any).addNativeGeometryElement = addNativeGeometryElement;
   (api as any).getReferenceTracking = getReferenceTracking;
   (api as any).setReferenceTracking = setReferenceTracking;
   (api as any).getRefSnap = () => (refSnapActive ? [refSnapActive.x, refSnapActive.z] : null);
