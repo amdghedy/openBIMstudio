@@ -1487,8 +1487,9 @@ export function resolveDash(name: string | undefined, defs: Record<string, numbe
 /* ───────────────────────── paper-space layouts ───────────────────────── */
 
 export const viewportRect = (vp: DxfViewport): BBox => ({ minX: vp.center.x - vp.width / 2, maxX: vp.center.x + vp.width / 2, minY: vp.center.y - vp.height / 2, maxY: vp.center.y + vp.height / 2 });
-/** Sheet units per model unit through this viewport. */
-export const viewportScale = (vp: DxfViewport): number => vp.height / vp.viewHeight;
+/** Sheet units per model unit through this viewport. A8: an explicitly set scale wins; otherwise the derived ratio. */
+export const viewportScale = (vp: DxfViewport): number =>
+  vp.scale != null && Number.isFinite(vp.scale) && vp.scale > 0 ? vp.scale : vp.height / vp.viewHeight;
 
 /** Model point -> sheet point through a viewport (view twist rotates the model by -twist). */
 export function modelToSheet(vp: DxfViewport, p: Pt): Pt {
@@ -1555,6 +1556,15 @@ export const PAPER_MM: Record<string, [number, number]> = { A4: [210, 297], A3: 
 export function paperMm(name: string, landscape: boolean): { w: number; h: number } {
   const [s, l] = PAPER_MM[name] ?? PAPER_MM.A4;
   return landscape ? { w: l, h: s } : { w: s, h: l };
+}
+
+/** Paper size name for a width/height pair in mm (either orientation), or null when no standard size matches. */
+export function paperNameForMm(w: number, h: number): string | null {
+  const tol = 0.6;
+  for (const [name, [a, b]] of Object.entries(PAPER_MM)) {
+    if ((Math.abs(w - a) < tol && Math.abs(h - b) < tol) || (Math.abs(w - b) < tol && Math.abs(h - a) < tol)) return name;
+  }
+  return null;
 }
 
 /** Pixel size of the printable area for a raster plot (longest side capped). */

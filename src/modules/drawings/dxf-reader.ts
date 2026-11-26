@@ -24,6 +24,7 @@ import {
 } from "./dxf-geometry";
 import { attachNative } from "./native-curves";
 import { bindDocumentBlocks, resolveInsert } from "./block-refs";
+import { paperNameForMm } from "../cad-viewer/viewer-math";
 
 /** IMAGEDEF handle -> file path, filled per parse (parsing is synchronous). */
 let imageDefs = new Map<string, string>();
@@ -484,6 +485,8 @@ export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocume
   const layoutHandleByBlock = new Map<string, string>();
   /** OBJECTS LAYOUT records: LAYOUT object handle (group 5) -> layout name (group 1). */
   const layoutNameByHandle = new Map<string, string>();
+  /** OBJECTS LAYOUT records: layout name -> plot settings (AcDbPlotSettings). */
+  const layoutPlotByName = new Map<string, { setupName?: string; paper?: string; scale?: number; area?: "display" | "extents" | "window" | "layout" }>();
   let units: DxfUnits | undefined;
   let ltscale: number | undefined;
   let section = "";
@@ -600,10 +603,28 @@ export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocume
         // The record carries two group-1 names: AcDbPlotSettings' page setup
         // first, the layout name last (in the AcDbLayout subclass) — so the
         // name is the last group-1 pair, not the first.
-        const nm = d.all(1).map((v) => v.trim()).filter(Boolean).pop();
+        const ones = d.all(1).map((v) => v.trim()).filter(Boolean);
+        const nm = ones.pop();
         const h = d.s(5)?.trim().toUpperCase();
         if (nm && h) layoutNameByHandle.set(h, nm);
         if (nm && nm.toLowerCase() !== "model") layoutNames.push({ name: nm, order: d.n(71) });
+        // A8/A19: plot settings travel on the same record — the setup name
+        // is the FIRST group-1, the paper name group 4, the paper size
+        // groups 44/45, the custom scale 142/143 (standard scale 48/49),
+        // the plot area group 74 (0 display, 1 extents, 4 window, 5 layout).
+        if (nm) {
+          const setupName = ones[0] || undefined;
+          const paperName = d.s(4)?.trim() || undefined;
+          const pw = d.n(44), ph = d.n(45);
+          const paper = paperName || (pw > 0 && ph > 0 ? paperNameForMm(pw, ph) ?? undefined : undefined);
+          let scale: number | undefined;
+          const cn = d.n(142), cd = d.n(143);
+          if (cn > 0 && cd > 0) scale = cn / cd;
+          else { const sn = d.n(48), sd = d.n(49); if (sn > 0 && sd > 0) scale = sn / sd; }
+          const area74 = d.n(74);
+          const area = area74 === 0 ? "display" : area74 === 1 ? "extents" : area74 === 4 ? "window" : "layout";
+          layoutPlotByName.set(nm, { ...(setupName ? { setupName } : {}), ...(paper ? { paper } : {}), ...(scale ? { scale } : {}), area });
+        }
       }
       continue;
     }
@@ -620,10 +641,16 @@ export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocume
   const entities = expandRecs(modelRecs, blocks, 0, skip, null, false, native);
 
   // 3b. Paper-space layouts: the active layout lives in ENTITIES (flag 67), the others in *Paper_Space blocks.
+  // A8/A19: an EMPTY layout is still a layout — the file asserts it via the
+  // BLOCK_RECORD 340 link to its LAYOUT object, so a sheet with no entities
+  // and no viewports survives the round-trip instead of vanishing. A block
+  // with no recs AND no LAYOUT link is still skipped (an R12 placeholder
+  // must not become a phantom layout).
   const sheets: Array<{ recs: Rec[]; blockName?: string }> = [];
-  if (paperRecs.length) sheets.push({ recs: paperRecs, blockName: "*Paper_Space" });
+  const hasActivePaper = paperRecs.length > 0 || layoutHandleByBlock.has("*PAPER_SPACE");
+  if (hasActivePaper) sheets.push({ recs: paperRecs, blockName: "*Paper_Space" });
   const paperBlocks = [...blocks.entries()].filter(([n]) => /^\*paper_space\d*$/i.test(n)).sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
-  for (const [n, b] of paperBlocks) { if (!b.recs.length) continue; if (n.toLowerCase() === "*paper_space" && paperRecs.length) continue; sheets.push({ recs: b.recs, blockName: n }); }
+  for (const [n, b] of paperBlocks) { if (!b.recs.length && !layoutHandleByBlock.has(n.toUpperCase())) continue; if (n.toLowerCase() === "*paper_space" && (paperRecs.length > 0 || !b.recs.length)) continue; sheets.push({ recs: b.recs, blockName: n }); }
   const orderedNames = layoutNames.sort((a, b) => a.order - b.order).map((l) => l.name);
   // Layout names follow their owning BLOCK_RECORD (*Paper_Space is the active
   // sheet written to ENTITIES; *Paper_SpaceN are the further sheets), falling
@@ -634,21 +661,90 @@ export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocume
   };
   const layouts: DxfLayout[] = [];
   for (const sh of sheets) {
+    // A8: a viewport's rectangular clip boundary is the LWPOLYLINE its group
+    // 340 names. Resolve the handle against this sheet's own records, and
+    // keep the boundary out of the sheet's drawn entities — it is not model
+    // content, it is the viewport's clip.
+    const byHandle = new Map<string, Rec>();
+    for (const r of sh.recs) {
+      const h = new Data(r.pairs).s(5)?.trim().toUpperCase();
+      if (h) byHandle.set(h, r);
+    }
+    const clipHandles = new Set<string>();
+    for (const r of sh.recs) {
+      if (r.type !== "VIEWPORT") continue;
+      const h = new Data(r.pairs).s(340)?.trim().toUpperCase();
+      if (h) clipHandles.add(h);
+    }
+    const clipFor = (r: Rec): { minX: number; minY: number; maxX: number; maxY: number } | undefined => {
+      const h = new Data(r.pairs).s(340)?.trim().toUpperCase();
+      if (!h) return undefined;
+      const b = byHandle.get(h);
+      if (!b || b.type !== "LWPOLYLINE") return undefined;
+      const bd = new Data(b.pairs);
+      const xs = bd.all(10).map((v) => num(v)), ys = bd.all(20).map((v) => num(v));
+      if (xs.length < 2 || ys.length < 2 || xs.some((v) => !Number.isFinite(v)) || ys.some((v) => !Number.isFinite(v))) return undefined;
+      return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
+    };
+    const handleOf = (r: Rec): string | undefined => new Data(r.pairs).s(5)?.trim().toUpperCase();
     const vps: DxfViewport[] = [];
     const rest = sh.recs.filter((r) => {
-      if (r.type !== "VIEWPORT") return true;
-      const vd = new Data(r.pairs);
-      if (vd.n(69, 2) !== 1 && vd.n(68, 1) !== 0 && vd.n(40) > 0 && vd.n(41) > 0 && vd.n(45) > 0) {
-        vps.push({ center: vd.pt(10, 20, 30), width: vd.n(40), height: vd.n(41), viewCenter: vd.pt(12, 22, 0), viewHeight: vd.n(45), twist: vd.n(51) || undefined });
+      if (r.type === "VIEWPORT") {
+        const vd = new Data(r.pairs);
+        if (vd.n(69, 2) !== 1 && vd.n(68, 1) !== 0 && vd.n(40) > 0 && vd.n(41) > 0 && vd.n(45) > 0) {
+          // A8: the set scale is explicit (height / viewHeight), group 90
+          // bit 16384 is the viewport zoom lock, and group 340 is the
+          // rectangular clip boundary.
+          const clip = clipFor(r);
+          vps.push({
+            center: vd.pt(10, 20, 30), width: vd.n(40), height: vd.n(41),
+            viewCenter: vd.pt(12, 22, 0), viewHeight: vd.n(45), twist: vd.n(51) || undefined,
+            scale: vd.n(41) / vd.n(45),
+            ...((vd.n(90, 0) & 16384) !== 0 ? { locked: true } : {}),
+            ...(clip ? { clip } : {}),
+          });
+        }
+        return false;
       }
-      return false;
+      // A clip boundary is not a drawn entity on the sheet.
+      const h = handleOf(r);
+      return !(h && clipHandles.has(h));
     });
     const ents = expandRecs(rest, blocks, 0, skip, null, true, native);
-    if (ents.length || vps.length) {
+    // A8/A19: a sheet the file asserts via a BLOCK_RECORD -> LAYOUT link is a
+    // layout even when it holds nothing (empty sheets must round-trip).
+    if (ents.length || vps.length || (sh.blockName && layoutHandleByBlock.has(sh.blockName.toUpperCase()))) {
       const name = (sh.blockName ? layoutNameForBlock(sh.blockName) : undefined) ?? orderedNames[layouts.length] ?? `Layout ${layouts.length + 1}`;
-      layouts.push({ name, entities: ents, viewports: vps });
+      const plot = layoutPlotByName.get(name);
+      layouts.push({
+        name, entities: ents, viewports: vps,
+        ...(plot?.setupName ? { pageSetup: plot.setupName } : {}),
+        ...(plot?.paper ? { paper: plot.paper } : {}),
+        ...(plot?.scale ? { plotScale: plot.scale } : {}),
+        ...(plot ? { plotArea: plot.area } : {}),
+      });
     }
   }
+  // A8/A19: a LAYOUT object with no sheet behind it is still a layout. The
+  // first sheet's content lives in ENTITIES, so an empty first sheet leaves
+  // no paper records at all — synthesize the missing layouts (empty) rather
+  // than dropping them, then restore tab order.
+  const plotFor = (name: string): Partial<DxfLayout> => {
+    const plot = layoutPlotByName.get(name);
+    return {
+      ...(plot?.setupName ? { pageSetup: plot.setupName } : {}),
+      ...(plot?.paper ? { paper: plot.paper } : {}),
+      ...(plot?.scale ? { plotScale: plot.scale } : {}),
+      ...(plot ? { plotArea: plot.area } : {}),
+    };
+  };
+  const usedNames = new Set(layouts.map((l) => l.name));
+  for (const n of orderedNames) {
+    if (usedNames.has(n)) continue;
+    layouts.push({ name: n, entities: [], viewports: [], ...plotFor(n) });
+  }
+  const tabOrder = new Map(orderedNames.map((n, i) => [n, i]));
+  layouts.sort((a, b) => (tabOrder.get(a.name) ?? 1e9) - (tabOrder.get(b.name) ?? 1e9));
 
   if (!layers.some((l) => l.name === "0")) layers.unshift({ name: "0", color: 7 });
   // Layers used by entities but missing from the table still need an entry.

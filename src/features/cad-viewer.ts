@@ -41,7 +41,7 @@ import {
   parseClip,
   type CadClip,
 } from "../modules/cad-viewer/clipboard";
-import type { DxfAttDef, DxfBlockDef, DxfDimStyle, DxfDocument, DxfEntity, DxfPoint } from "../modules/drawings/dxf-types";
+import type { DxfAttDef, DxfBlockDef, DxfDimStyle, DxfDocument, DxfEntity, DxfPageSetup, DxfPoint, DxfViewport, PlotArea } from "../modules/drawings/dxf-types";
 import { escapeHtml } from "../core/html-escape";
 import { safeLoad, MarkupsFileSchema } from "../core/safeLoad";
 import { setCadHotkeyOwner } from "../core/cad-hotkey-ownership";
@@ -160,6 +160,7 @@ import * as LayerMgr from "../modules/cad-viewer/cad-layer-manager";
 import * as Poly from "../modules/cad-viewer/cad-polyline";
 import * as Sel11 from "../modules/cad-viewer/cad-selection-a11";
 import * as Sel18 from "../modules/cad-viewer/cad-selection-a18";
+import * as Vp8 from "../modules/cad-viewer/cad-viewport-a8";
 import { fmtTime } from "../core/region";
 import { strokeFontFor, strokeLinePolylines, strokeLineWidth, CAP_UNITS, type StrokeFont } from "../modules/drawings/stroke-font";
 
@@ -256,7 +257,8 @@ type Tool =
   | "textmask"
   | "breakline"
   | "laymrg"
-  | "laydel";
+  | "laydel"
+  | "mview";
 
 type ColorMode = "layer" | "bw" | "invert" | "style";
 interface Markup {
@@ -327,6 +329,9 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "UNDO", aliases: ["U"], description: "Undo the last drafting or modify operation" },
   { name: "REDO", aliases: ["REDO"], description: "Redo the previously undone operation" },
   { name: "PLOT", aliases: ["PRINT"], description: "Plot drawing to PDF or physical paper" },
+  { name: "MVIEW", aliases: ["MV"], description: "Create a viewport on the current paper layout — pick two corners, then a scale" },
+  { name: "VPORT", aliases: ["VP"], description: "Edit the current layout's viewports — scale, lock and clip" },
+  { name: "PAGESETUP", aliases: ["PAGE"], description: "Named page setups (paper, orientation, plot scale, plot area) for layouts" },
   { name: "QSAVE", aliases: ["SAVE"], description: "Save the edited drawing as a DXF file" },
   { name: "SAVEAS", aliases: ["SA"], description: "Choose DXF or DWG for export" },
   { name: "DWGSAVE", aliases: ["EXPORTDWG"], description: "Export the edited drawing as a native DWG file (in the version set by DWGVERSION)" },
@@ -1658,6 +1663,17 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let view: M.View = { cx: 0, cy: 0, scale: 1, w: 800, h: 600 };
   const history: M.View[] = [];
   let tool: Tool = "select";
+  // A8: the viewport the user double-clicked into on the current paper
+  // layout (index into that layout's viewports), or null. Wheel and drag
+  // inside it zoom/pan the viewport's model view instead of the sheet; a
+  // locked viewport refuses both. Esc, a layout switch and a double-click
+  // outside every viewport clear it.
+  let activeViewport: number | null = null;
+  // A8: a Window plot area picked on the canvas (two corners, sheet or model
+  // units of the space being plotted) and the in-progress pick state.
+  let plotWindow: Vp8.BBox | null = null;
+  let plotWindowPick = false;
+  let plotWindowPts: Array<{ x: number; y: number }> = [];
   // Pending primitive dimensions stay inside this engine instance; avoid cross-feature window globals.
   let box3dDimensions = { w: 1000, d: 1000, h: 1000 };
   let cylinder3dDimensions = { r: 500, h: 1000 };
@@ -1853,7 +1869,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let markups: Markup[] = [];
   let hits: M.TextHit[] = [],
     hitI = -1;
-  let dragging: { x: number; y: number } | null = null,
+  let dragging: { x: number; y: number; inViewport?: boolean } | null = null,
     winStart: { x: number; y: number } | null = null,
     winNow: { x: number; y: number } | null = null;
   let raf = 0;
@@ -2078,6 +2094,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     hiddenEnts?: SessionHiddenEntities;
     /** Named layer states (full property snapshots), persisted per drawing (A16). */
     layerStates?: Record<string, LayerMgr.LayerStateSnapshot>;
+    /** Named page setups, persisted per drawing (A8). */
+    pageSetups?: Record<string, DxfPageSetup>;
     /** Named selection filters (types + property criteria), persisted per drawing (A18). */
     namedFilters?: Record<string, Sel18.NamedFilter>;
     at: number;
@@ -2142,6 +2160,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       hiddenEnts: hiddenEntityIndexes(doc.entities, hiddenEntities),
       layerStates: layerStates.size ? LayerMgr.serializeLayerStates(layerStates) : undefined,
       namedFilters: namedFilters.size ? Sel18.serializeNamedFilters(namedFilters) : undefined,
+      pageSetups: doc.pageSetups && Object.keys(doc.pageSetups).length ? Vp8.serializePageSetups(doc.pageSetups) : undefined,
       at: Date.now(),
     };
     const map = loadSessionMap();
@@ -2184,6 +2203,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (sess.namedFilters) {
       namedFilters.clear();
       for (const [k, v] of Object.entries(Sel18.sanitizeNamedFilters(sess.namedFilters))) namedFilters.set(k, v);
+    }
+
+    // Named page setups (validated; a malformed setup is dropped, never applied)
+    if (sess.pageSetups) {
+      doc.pageSetups = Vp8.sanitizePageSetups(sess.pageSetups);
     }
 
     // Working settings (validated; anything unknown or malformed is ignored)
@@ -6906,6 +6930,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (!doc) return;
     clearModState();
     layoutI = i;
+    // A8: a layout switch leaves the active viewport behind.
+    activeViewport = null;
     // Remember the last paper layout so MODEL/PAPER can return to it.
     if (i >= 0) lastPaperLayoutI = i;
     sel.clear();
@@ -7729,6 +7755,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     ["poly", "Pline", "PL"],
     ["circle", "Circle", "C"],
     ["rect", "Rectang", "REC"],
+    ["mview", "MVIEW", "MV"],
     ["arc", "Arc", "A"],
     ["dist", "Distance", "D"],
     ["area", "Area", "AA"],
@@ -8126,6 +8153,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         "view",
       ) +
       rg(
+        "Viewports",
+        tb("mview", "bounds", "MVIEW") +
+          rb("viewcube", "Viewports…", `data-a="vport"`, "Edit the current layout's viewports — scale, lock and clip (VPORT)") +
+          rb("settings", "Page Setup…", `data-a="pagesetup"`, "Named page setups for layouts (PAGESETUP)"),
+        "",
+        "",
+        "view",
+      ) +
+      rg(
         "Visual Styles",
         `<label class="cadrb-field"><span>Background</span><select data-a="bg">${bgOpts}</select></label>` +
           rb("plan", "Layer color", `data-a="cmlayer"`, "Color mode: by layer (default)") +
@@ -8428,6 +8464,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       "array-polar": () => executeDrawingCommand("ARRAYPOLAR"),
       erase: eraseSelected,
       plot: openPlot,
+      mview: () => executeDrawingCommand("MVIEW"),
+      vport: openVportDialog,
+      pagesetup: openPageSetupDialog,
       "save-dxf": saveDxf,
       "save-dwg": () => void saveDwg(),
       // Clipboard (Home › Clipboard)
@@ -8793,6 +8832,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         return n === 0 ? "Specify first corner of text column:" : "Specify opposite corner of text column:";
       case "rect":
         return n === 0 ? "Specify first corner point:" : "Specify other corner point:";
+      case "mview":
+        return n === 0 ? "Specify first corner of viewport:" : "Specify opposite corner of viewport:";
       case "poly":
         // A7: the arc option waits for its second point, then its end
         // point; the other options are intercepted by handlePolyOption.
@@ -9176,6 +9217,24 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     lastPointerScreen = sp;
     ptrs.set(ev.pointerId, sp);
 
+    // A8: a pending PLOT Window pick consumes the click (any tool): two
+    // corners set the plot window and the plot dialog re-opens with it.
+    if (plotWindowPick) {
+      if (ev.button !== 0) return;
+      plotWindowPts.push({ x: wp.x, y: wp.y });
+      if (plotWindowPts.length >= 2) {
+        const [a, b] = plotWindowPts;
+        plotWindow = { minX: Math.min(a.x, b.x), minY: Math.min(a.y, b.y), maxX: Math.max(a.x, b.x), maxY: Math.max(a.y, b.y) };
+        plotWindowPts = [];
+        plotWindowPick = false;
+        logCmd(`PLOT window: ${fmt(plotWindow.maxX - plotWindow.minX)} × ${fmt(plotWindow.maxY - plotWindow.minY)}.`);
+        openPlot();
+      } else {
+        logCmd("PLOT window: specify the opposite corner.");
+      }
+      return;
+    }
+
     if (ptrs.size === 2) {
       const [a, b] = [...ptrs.values()];
       pinch = Math.hypot(a.x - b.x, a.y - b.y);
@@ -9194,7 +9253,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
     if (ev.button === 1 || (ev.button === 2 && tool === "pan")) {
       ev.preventDefault();
-      dragging = { x: sp.x, y: sp.y };
+      dragging = { x: sp.x, y: sp.y, inViewport: pointInActiveViewport(sp.x, sp.y) };
       capture(ev.pointerId);
       cv.style.cursor = "grabbing";
       pushView();
@@ -9484,6 +9543,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           });
           logCmd(`Rectangle added: ${fmt(Math.abs(p2.x - p1.x))} × ${fmt(Math.abs(p2.y - p1.y))}`);
           pts = [];
+        }
+        break;
+      }
+      case "mview": {
+        pts.push(p);
+        if (pts.length === 2) {
+          const rect = {
+            minX: Math.min(pts[0].x, pts[1].x),
+            minY: Math.min(pts[0].y, pts[1].y),
+            maxX: Math.max(pts[0].x, pts[1].x),
+            maxY: Math.max(pts[0].y, pts[1].y),
+          };
+          pts = [];
+          openMviewDialog(rect);
         }
         break;
       }
@@ -10183,11 +10256,27 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         press.moved = true;
         pushView();
         cv.style.cursor = "grabbing";
-        dragging = { x: press.x, y: press.y };
+        dragging = { x: press.x, y: press.y, inViewport: pointInActiveViewport(press.x, press.y) };
       }
     }
 
     if (dragging) {
+      // A8: a drag that started inside the active viewport pans the
+      // viewport's model view instead of the sheet; a locked viewport refuses.
+      if (dragging.inViewport && activeViewport !== null && layoutI >= 0 && doc?.layouts?.[layoutI]) {
+        const vp = doc.layouts[layoutI].viewports[activeViewport];
+        if (vp) {
+          const next = Vp8.panViewportBy(vp, view.scale, sp.x - dragging.x, sp.y - dragging.y);
+          if (next !== vp) {
+            doc.layouts[layoutI].viewports[activeViewport] = next;
+            markDirty();
+          }
+          dragging = { x: sp.x, y: sp.y, inViewport: true };
+          draw();
+          updateStatus(wp);
+          return;
+        }
+      }
       view = M.panBy(view, sp.x - dragging.x, sp.y - dragging.y);
       dragging = { x: sp.x, y: sp.y };
       draw();
@@ -10387,7 +10476,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   cv.addEventListener("pointerup", endDrag);
   cv.addEventListener("pointercancel", endDrag);
 
-  cv.addEventListener("dblclick", () => {
+  cv.addEventListener("dblclick", (ev) => {
     if (tool === "fence") {
       pts.pop(); // the double-click's second point duplicates the last fence point
       finishFence();
@@ -10396,13 +10485,63 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (tool === "poly" || tool === "area" || tool === "chain" || tool === "cloud" || tool === "spline" || tool === "wipeout") {
       pts.pop();
       finishMeasure();
+      return;
+    }
+    // A8: double-click a viewport to work inside it (wheel / drag zoom and
+    // pan the viewport's model view); double-click outside every viewport
+    // to leave it. A locked viewport activates but refuses zoom / pan.
+    if (tool === "select" && layoutI >= 0 && doc?.layouts?.[layoutI]) {
+      const { wp } = rawPoint(ev);
+      const vps = doc.layouts[layoutI].viewports;
+      const i = Vp8.viewportAtSheetPoint(vps, { x: wp.x, y: wp.y });
+      if (i >= 0) {
+        activeViewport = i;
+        const vp = vps[i];
+        logCmd(
+          vp.locked
+            ? `Viewport #${i + 1} active (locked — zoom / pan inside it is ignored).`
+            : `Viewport #${i + 1} active — wheel and drag zoom / pan inside it. Double-click outside to leave.`,
+        );
+      } else if (activeViewport !== null) {
+        activeViewport = null;
+        logCmd("Left the viewport — back to the sheet.");
+      }
+      draw();
+      updateStatus();
     }
   });
+
+  /** Is a screen point inside the active viewport's (clipped) sheet rect? */
+  function pointInActiveViewport(sx: number, sy: number): boolean {
+    if (activeViewport === null || layoutI < 0 || !doc?.layouts?.[layoutI]) return false;
+    const vp = doc.layouts[layoutI].viewports[activeViewport];
+    if (!vp) return false;
+    const wp = M.screenToWorld(view, sx, sy);
+    const r = Vp8.clipViewportRect(vp);
+    return wp.x >= r.minX && wp.x <= r.maxX && wp.y >= r.minY && wp.y <= r.maxY;
+  }
 
   cv.addEventListener("wheel", (ev) => {
     if (!doc) return;
     ev.preventDefault();
     const { sp } = rawPoint(ev);
+    // A8: the wheel inside the active viewport zooms the viewport's model
+    // view (its centre stays under the cursor); a locked viewport refuses.
+    if (activeViewport !== null && layoutI >= 0 && doc.layouts?.[layoutI] && pointInActiveViewport(sp.x, sp.y)) {
+      const vp = doc.layouts[layoutI].viewports[activeViewport];
+      if (vp) {
+        const factor = Math.exp(-Math.max(-300, Math.min(300, ev.deltaY * (ev.deltaMode === 1 ? 16 : 1))) * 0.0018);
+        const ctr = M.worldToScreen(view, vp.center.x, vp.center.y);
+        const next = Vp8.zoomViewportAt(vp, view.scale, { x: ctr.x, y: ctr.y }, sp, factor);
+        if (next !== vp) {
+          doc.layouts[layoutI].viewports[activeViewport] = next;
+          markDirty();
+        }
+        draw();
+        updateStatus();
+        return;
+      }
+    }
     view = M.zoomAt(
       view,
       sp.x,
@@ -10449,6 +10588,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     offsetEntity = -1;
     offDist = null;
     pts = [];
+    // A8: Esc also leaves the active viewport and cancels a PLOT Window pick.
+    activeViewport = null;
+    plotWindowPick = false;
+    plotWindowPts = [];
     winStart = winNow = null;
     rband = null;
     press = null;
@@ -10989,6 +11132,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       <span data-s="quick-readout" style="display:${quick ? "inline-flex" : "none"};max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#a7f3d0;font-size:10px">${escapeHtml(quickMeasureText(c))}</span>
       <span class="sep"></span>
       <span>${escapeHtml(unit)} · ${zoomPct}%</span>
+      ${activeViewport !== null && layoutI >= 0 ? `<span class="sep"></span><span data-s="viewport" style="color:#38bdf8;font-weight:600" title="Double-click outside a viewport to leave it">Viewport #${activeViewport + 1} active</span>` : ""}
       <span style="flex:1"></span>
       <span>${sel.size ? sel.size + " selected" : ""}</span>
     `;
@@ -11737,13 +11881,34 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       })();
       return;
     }
+    if (cmd === "MVIEW" || cmd === "MV") {
+      if (!doc) { logCmd("MVIEW: open a drawing first."); return; }
+      if (layoutI < 0 || !doc.layouts?.[layoutI]) {
+        logCmd("MVIEW: switch to a paper layout first (LAYOUT NEW / layout tab).");
+        return;
+      }
+      setTool("mview");
+      logCmd("MVIEW: specify the first corner of the viewport.");
+      return;
+    }
+    if (cmd === "VPORT" || cmd === "VP") {
+      openVportDialog();
+      return;
+    }
     if (cmd === "PAGESETUP" || cmd === "PAGE") {
-      const size = (parts[1] || "A3").toUpperCase();
-      const orient = (parts[2] || "LANDSCAPE").toUpperCase();
-      logCmd(`PAGESETUP: paper=${size} orientation=${orient} (used on PLOT / PDF).`);
-      try {
-        localStorage.setItem("obs.cad.pageSetup", JSON.stringify({ size, orient }));
-      } catch { /* */ }
+      const nm = parts.slice(1).join(" ").trim();
+      if (nm) {
+        // PAGESETUP <name>: apply that named setup to the current layout.
+        const s = doc?.pageSetups?.[nm];
+        if (!s) { logCmd(`PAGESETUP: no setup named "${nm}" — use PAGESETUP to create one.`); return; }
+        if (!doc || layoutI < 0 || !doc.layouts?.[layoutI]) { logCmd("PAGESETUP: switch to a paper layout first."); return; }
+        doc.layouts[layoutI] = Vp8.applyPageSetupToLayout(doc.layouts[layoutI], s);
+        markDirty();
+        draw();
+        logCmd(`PAGESETUP: "${nm}" applied to "${doc.layouts[layoutI].name}" (${s.paper}, ${Vp8.plotScaleLabel(s.scale)}, ${s.area}).`);
+        return;
+      }
+      openPageSetupDialog();
       return;
     }
     if (cmd === "HATCHBOUNDARY" || cmd === "HB") {
@@ -14225,17 +14390,284 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   /* ── Plot / PDF Exporter ── */
+  // ── A8: viewports + page setups + plot ──
+  /** Scale options for the MVIEW / VPORT / plot dialogs (Fit + named scales). */
+  function scaleOptions(current: number | "fit"): string {
+    const opts = Vp8.PLOT_SCALES.map(
+      (s) => `<option value="${s.value}"${(s.value === current || (typeof s.value === "number" && typeof current === "number" && Math.abs(s.value - current) < 1e-12)) ? " selected" : ""}>${s.label}</option>`,
+    ).join("");
+    if (current !== "fit" && !Vp8.PLOT_SCALES.some((s) => typeof s.value === "number" && Math.abs(s.value - current) < 1e-12)) {
+      return `<option value="${current}" selected>${Vp8.plotScaleLabel(current)} (current)</option>` + opts;
+    }
+    return opts;
+  }
+
+  /** MVIEW creation dialog: the two picked corners are the viewport's sheet rect; the scale and lock are set here. */
+  function openMviewDialog(rect: Vp8.BBox): void {
+    if (!doc || layoutI < 0 || !doc.layouts?.[layoutI]) {
+      logCmd("MVIEW: switch to a paper layout first (LAYOUT NEW / layout tab).");
+      setTool("select");
+      return;
+    }
+    const panel = openOverlay(`
+      <b style="font-size:15px;color:#38bdf8">Create viewport (MVIEW)</b>
+      <div style="font-size:12px;color:#9aa4b2;margin-top:4px">Sheet rect ${fmt(rect.maxX - rect.minX)} × ${fmt(rect.maxY - rect.minY)} on "${escapeHtml(doc.layouts[layoutI].name)}" — the model shows through it at the scale below.</div>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin-top:12px;align-items:center;font-size:12px">
+        <label>Viewport scale:</label>
+        <select data-r="mv-scale">${scaleOptions("fit")}</select>
+        <label>Locked:</label>
+        <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-r="mv-lock"> Lock viewport (zoom / pan inside it is ignored)</label>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+        <button data-r="mv-cancel" style="padding:6px 12px">Cancel</button>
+        <button data-r="mv-create" style="background:#0284c7;color:white;border:none;padding:6px 16px;border-radius:4px;font-weight:600">Create viewport</button>
+      </div>
+    `);
+    const g = (k: string) => panel.querySelector<HTMLInputElement & HTMLSelectElement>(`[data-r=${k}]`)!;
+    g("mv-cancel").onclick = () => { closeOverlay(); setTool("select"); };
+    g("mv-create").onclick = () => {
+      const raw = g("mv-scale").value;
+      const scale: number | "fit" = raw === "fit" ? "fit" : Number(raw);
+      const locked = (panel.querySelector<HTMLInputElement>("[data-r=mv-lock]")!).checked;
+      const L = doc!.layouts![layoutI];
+      const vp = Vp8.createViewport(rect, modelBounds, { scale, locked });
+      L.viewports.push(vp);
+      closeOverlay();
+      setTool("select");
+      markDirty();
+      draw();
+      logCmd(`MVIEW: viewport created on "${L.name}" at ${Vp8.plotScaleLabel(scale)}${locked ? " (locked)" : ""} — double-click it to zoom / pan inside.`);
+    };
+  }
+
+  /** VPORT dialog: edit the current layout's viewports — scale, lock and rectangular clip. Scale and clip are applied before the lock, because a locked viewport refuses both. */
+  function openVportDialog(): void {
+    if (!doc || layoutI < 0 || !doc.layouts?.[layoutI]) {
+      logCmd("VPORT: switch to a paper layout first (LAYOUT NEW / layout tab).");
+      return;
+    }
+    const L = doc.layouts[layoutI];
+    if (!L.viewports.length) {
+      logCmd(`VPORT: no viewports on "${L.name}" — use MVIEW to create one.`);
+      return;
+    }
+    const rows = L.viewports.map((vp, i) => {
+      const c = vp.clip;
+      const num = (v: number | undefined) => (v == null ? "" : String(Math.round(v * 100) / 100));
+      return `<tr>
+        <td style="padding:4px 8px">#${i + 1}</td>
+        <td style="padding:4px 8px"><select data-r="vp-scale-${i}">${scaleOptions(Vp8.viewportScaleOf(vp))}</select></td>
+        <td style="padding:4px 8px;text-align:center"><input type="checkbox" data-r="vp-lock-${i}"${vp.locked ? " checked" : ""}></td>
+        <td style="padding:4px 8px"><span style="display:flex;gap:4px">
+          <input data-r="vp-clip-minx-${i}" value="${num(c?.minX)}" placeholder="minX" style="width:64px">
+          <input data-r="vp-clip-miny-${i}" value="${num(c?.minY)}" placeholder="minY" style="width:64px">
+          <input data-r="vp-clip-maxx-${i}" value="${num(c?.maxX)}" placeholder="maxX" style="width:64px">
+          <input data-r="vp-clip-maxy-${i}" value="${num(c?.maxY)}" placeholder="maxY" style="width:64px">
+        </span></td>
+      </tr>`;
+    }).join("");
+    const panel = openOverlay(`
+      <b style="font-size:15px;color:#38bdf8">Viewports — "${escapeHtml(L.name)}" (VPORT)</b>
+      <div style="font-size:12px;color:#9aa4b2;margin-top:4px">Scale is sheet units per model unit; clip is a rectangle in sheet coordinates (empty = no clip).</div>
+      <table style="margin-top:12px;font-size:12px;border-collapse:collapse">
+        <tr style="color:#9aa4b2"><th style="padding:4px 8px;text-align:start">Viewport</th><th style="padding:4px 8px;text-align:start">Scale</th><th style="padding:4px 8px">Locked</th><th style="padding:4px 8px;text-align:start">Clip (sheet rect)</th></tr>
+        ${rows}
+      </table>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+        <button data-r="vp-cancel" style="padding:6px 12px">Cancel</button>
+        <button data-r="vp-apply" style="background:#0284c7;color:white;border:none;padding:6px 16px;border-radius:4px;font-weight:600">Apply</button>
+      </div>
+    `);
+    const g = (k: string) => panel.querySelector<HTMLInputElement & HTMLSelectElement>(`[data-r=${k}]`)!;
+    g("vp-cancel").onclick = closeOverlay;
+    g("vp-apply").onclick = () => {
+      const vps = L.viewports.map((vp, i) => {
+        let next: DxfViewport = { ...vp, locked: false };
+        const raw = g(`vp-scale-${i}`).value;
+        const scale: number | "fit" = raw === "fit" ? "fit" : Number(raw);
+        next = Vp8.setViewportScale(next, scale, modelBounds);
+        const vals = ["minx", "miny", "maxx", "maxy"].map((k) => (g(`vp-clip-${k}-${i}`) as HTMLInputElement).value.trim());
+        const nums = vals.map((v) => (v === "" ? null : Number(v)));
+        if (nums.every((n) => n === null)) next = Vp8.setViewportClip(next, null);
+        else if (nums.every((n) => n !== null && Number.isFinite(n)) && (nums[2] as number) > (nums[0] as number) && (nums[3] as number) > (nums[1] as number)) {
+          next = Vp8.setViewportClip(next, { minX: nums[0] as number, minY: nums[1] as number, maxX: nums[2] as number, maxY: nums[3] as number });
+        } else {
+          logCmd(`VPORT: viewport #${i + 1} clip ignored — enter all four numbers with max > min, or leave all four empty.`);
+        }
+        next.locked = (panel.querySelector<HTMLInputElement>(`[data-r=vp-lock-${i}]`)!).checked;
+        return next;
+      });
+      L.viewports = vps;
+      closeOverlay();
+      markDirty();
+      draw();
+      logCmd(`VPORT: ${vps.length} viewport(s) updated on "${L.name}".`);
+    };
+  }
+
+  /** PAGESETUP dialog: named per-layout page setups (paper, orientation, plot scale, plot area). A layout references one by name; the plot dialog offers it. */
+  function openPageSetupDialog(): void {
+    if (!doc) { logCmd("PAGESETUP: open a drawing first."); return; }
+    if (!doc.pageSetups) doc.pageSetups = {};
+    const names = () => Object.keys(doc!.pageSetups ?? {});
+    const curLayout = layoutI >= 0 ? doc.layouts?.[layoutI] : undefined;
+    let selected = curLayout?.pageSetup && names().includes(curLayout.pageSetup) ? curLayout.pageSetup : names()[0] ?? "";
+    const panel = openOverlay(`
+      <b style="font-size:15px;color:#38bdf8">Page setups (PAGESETUP)</b>
+      <div style="font-size:12px;color:#9aa4b2;margin-top:4px">A named setup stores paper, orientation, plot scale and plot area. Apply one to the current layout and the plot dialog offers it.</div>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin-top:12px;align-items:center;font-size:12px">
+        <label>Setup:</label>
+        <span style="display:flex;gap:6px">
+          <select data-r="ps-list" style="flex:1"></select>
+          <button data-r="ps-new" style="padding:3px 10px">New…</button>
+          <button data-r="ps-delete" style="padding:3px 10px">Delete</button>
+        </span>
+        <label>Name:</label>
+        <input data-r="ps-name" style="padding:4px 6px">
+        <label>Paper size:</label>
+        <select data-r="ps-paper">${Object.keys(M.PAPER_MM).map((k) => `<option>${k}</option>`).join("")}</select>
+        <label>Orientation:</label>
+        <select data-r="ps-orient"><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select>
+        <label>Plot scale:</label>
+        <select data-r="ps-scale">${Vp8.PLOT_SCALES.map((s) => `<option value="${s.value}">${s.label}</option>`).join("")}</select>
+        <label>Plot area:</label>
+        <select data-r="ps-area">
+          <option value="display">Display</option><option value="extents">Extents</option><option value="window">Window</option><option value="layout">Layout</option>
+        </select>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+        <button data-r="ps-apply-layout" style="padding:6px 12px">Apply to current layout</button>
+        <button data-r="ps-cancel" style="padding:6px 12px">Cancel</button>
+        <button data-r="ps-save" style="background:#0284c7;color:white;border:none;padding:6px 16px;border-radius:4px;font-weight:600">Save setup</button>
+      </div>
+    `);
+    const g = (k: string) => panel.querySelector<HTMLInputElement & HTMLSelectElement>(`[data-r=${k}]`)!;
+    const refreshList = () => {
+      const list = g("ps-list") as HTMLSelectElement;
+      list.innerHTML = names().map((n) => `<option value="${escapeHtml(n)}"${n === selected ? " selected" : ""}>${escapeHtml(n)}</option>`).join("");
+      const s = selected ? doc!.pageSetups![selected] : undefined;
+      const cur = s ?? Vp8.defaultPageSetup(selected || "A3-1:50");
+      (g("ps-name") as HTMLInputElement).value = cur.name;
+      (g("ps-paper") as HTMLSelectElement).value = cur.paper;
+      (g("ps-orient") as HTMLSelectElement).value = cur.orient ?? "landscape";
+      const sc = g("ps-scale") as HTMLSelectElement;
+      const sv = String(cur.scale);
+      if (![...sc.options].some((o) => o.value === sv)) {
+        const opt = document.createElement("option");
+        opt.value = sv; opt.textContent = Vp8.plotScaleLabel(cur.scale); sc.appendChild(opt);
+      }
+      sc.value = sv;
+      (g("ps-area") as HTMLSelectElement).value = cur.area;
+    };
+    refreshList();
+    g("ps-list").onchange = () => { selected = (g("ps-list") as HTMLSelectElement).value; refreshList(); };
+    g("ps-new").onclick = () => {
+      void promptLine("New page setup", "Setup name (e.g. A3-1:50)", "A3-1:50").then((nm) => {
+        const name = (nm ?? "").trim();
+        if (!name) return;
+        const err = Vp8.validatePageSetupName(name);
+        if (err) { logCmd(`PAGESETUP: ${err}`); return; }
+        if (names().includes(name)) { logCmd(`PAGESETUP: "${name}" already exists.`); return; }
+        doc!.pageSetups![name] = Vp8.defaultPageSetup(name);
+        selected = name;
+        refreshList();
+        markDirty();
+      });
+    };
+    g("ps-delete").onclick = () => {
+      if (!selected) return;
+      delete doc!.pageSetups![selected];
+      if (curLayout && curLayout.pageSetup === selected) curLayout.pageSetup = undefined;
+      logCmd(`PAGESETUP: deleted "${selected}".`);
+      selected = names()[0] ?? "";
+      refreshList();
+      markDirty();
+    };
+    const readFields = (): DxfPageSetup | null => {
+      const raw = {
+        name: (g("ps-name") as HTMLInputElement).value.trim(),
+        paper: (g("ps-paper") as HTMLSelectElement).value,
+        orient: (g("ps-orient") as HTMLSelectElement).value,
+        scale: (g("ps-scale") as HTMLSelectElement).value === "fit" ? "fit" : Number((g("ps-scale") as HTMLSelectElement).value),
+        area: (g("ps-area") as HTMLSelectElement).value,
+      };
+      const s = Vp8.sanitizePageSetup(raw);
+      if (!s) logCmd("PAGESETUP: the setup needs a valid name (at most 64 characters, no <>\"/\\|?*).");
+      return s;
+    };
+    g("ps-save").onclick = () => {
+      const s = readFields();
+      if (!s) return;
+      if (selected && selected !== s.name) delete doc!.pageSetups![selected];
+      doc!.pageSetups![s.name] = s;
+      selected = s.name;
+      closeOverlay();
+      markDirty();
+      try { captureDrawingSession(); } catch { /* */ }
+      logCmd(`PAGESETUP: saved "${s.name}" (${s.paper} ${s.orient ?? "landscape"}, ${Vp8.plotScaleLabel(s.scale)}, ${s.area}).`);
+    };
+    g("ps-apply-layout").onclick = () => {
+      const s = readFields();
+      if (!s) return;
+      if (!curLayout) { logCmd("PAGESETUP: switch to a paper layout first — page setups apply to layouts."); return; }
+      if (!doc!.pageSetups![s.name]) doc!.pageSetups![s.name] = s;
+      const idx = doc!.layouts!.indexOf(curLayout);
+      doc!.layouts![idx] = Vp8.applyPageSetupToLayout(curLayout, s);
+      selected = s.name;
+      closeOverlay();
+      markDirty();
+      draw();
+      logCmd(`PAGESETUP: "${s.name}" applied to "${curLayout.name}" (${s.paper}, ${Vp8.plotScaleLabel(s.scale)}, ${s.area}).`);
+    };
+    g("ps-cancel").onclick = closeOverlay;
+  }
+
+  /** The plot dialog's last choices, so a Window pick (which closes the dialog) re-opens it where the user left it. */
+  let lastPlotChoices: { layout: number; setupName: string; paper: string; land: boolean; scale: number | "fit"; area: PlotArea } | null = null;
+
   function openPlot(): void {
     if (!doc) return;
+    const layouts = doc.layouts ?? [];
+    const initLayout = lastPlotChoices?.layout ?? layoutI;
+    const initSetupName = lastPlotChoices?.setupName ?? (initLayout >= 0 ? layouts[initLayout]?.pageSetup ?? "" : "");
+    const initSetup = initSetupName ? doc.pageSetups?.[initSetupName] : undefined;
+    const initPaper = lastPlotChoices?.paper ?? initSetup?.paper ?? (initLayout >= 0 ? layouts[initLayout]?.paper ?? "A3" : "A3");
+    const initLand = lastPlotChoices?.land ?? (initSetup ? initSetup.orient !== "portrait" : true);
+    const initScale: number | "fit" = lastPlotChoices?.scale ?? initSetup?.scale ?? (initLayout >= 0 ? layouts[initLayout]?.plotScale ?? "fit" : "fit");
+    const initArea: PlotArea = lastPlotChoices?.area ?? initSetup?.area ?? (initLayout >= 0 ? layouts[initLayout]?.plotArea ?? "layout" : "display");
+    const layoutOpts =
+      `<option value="-1"${initLayout < 0 ? " selected" : ""}>Model</option>` +
+      layouts.map((l, i) => `<option value="${i}"${i === initLayout ? " selected" : ""}>${escapeHtml(l.name)}</option>`).join("");
+    const setupOpts =
+      `<option value="">(none — dialog settings)</option>` +
+      Object.keys(doc.pageSetups ?? {}).map((n) => `<option value="${escapeHtml(n)}"${n === initSetupName ? " selected" : ""}>${escapeHtml(n)}</option>`).join("");
     const panel = openOverlay(`
       <b style="font-size:15px;color:#38bdf8">drawing workspace Plot — Model / Sheet to PDF</b>
       <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin-top:12px;align-items:center;font-size:12px">
+        <label>Layout:</label>
+        <select data-p="layout">${layoutOpts}</select>
+        <label>Page Setup:</label>
+        <select data-p="setup">${setupOpts}</select>
         <label>Paper Size:</label>
-        <select data-p="paper">${Object.keys(M.PAPER_MM).map((k) => `<option ${k === "A3" ? "selected" : ""}>${k}</option>`).join("")}</select>
+        <select data-p="paper">${Object.keys(M.PAPER_MM).map((k) => `<option${k === initPaper ? " selected" : ""}>${k}</option>`).join("")}</select>
         <label>Orientation:</label>
-        <select data-p="ori"><option value="l">Landscape</option><option value="p">Portrait</option></select>
+        <select data-p="ori"><option value="l"${initLand ? " selected" : ""}>Landscape</option><option value="p"${!initLand ? " selected" : ""}>Portrait</option></select>
+        <label>Plot Scale:</label>
+        <select data-p="scale">${scaleOptions(initScale)}</select>
         <label>Plot Area:</label>
-        <select data-p="area"><option value="display">Display (Screen)</option><option value="extents">Extents</option></select>
+        <select data-p="area">
+          <option value="display"${initArea === "display" ? " selected" : ""}>Display (Screen)</option>
+          <option value="extents"${initArea === "extents" ? " selected" : ""}>Extents</option>
+          <option value="window"${initArea === "window" ? " selected" : ""}>Window</option>
+          <option value="layout"${initArea === "layout" ? " selected" : ""}>Layout</option>
+        </select>
+        <span data-p="winrow" style="display:${initArea === "window" ? "contents" : "none"}">
+          <label>Window:</label>
+          <span style="display:flex;gap:6px;align-items:center">
+            <button data-p="winpick" style="padding:3px 10px">Pick window…</button>
+            <span data-p="winlabel" style="font-size:11px;color:#9aa4b2">${plotWindow ? `${fmt(plotWindow.maxX - plotWindow.minX)} × ${fmt(plotWindow.maxY - plotWindow.minY)} picked` : "not picked yet"}</span>
+          </span>
+        </span>
         <label>Plot Style:</label>
         <select data-p="mono"><option value="1">Monochrome.ctb (Black &amp; White)</option><option value="0">As Drawn (Color)</option></select>
         <label>Pen Table:</label>
@@ -14252,6 +14684,52 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     `);
     const gP = (k: string) => panel.querySelector<HTMLInputElement & HTMLSelectElement>(`[data-p=${k}]`)!;
     gP("cancel").onclick = closeOverlay;
+    const applySetupToFields = (setup: DxfPageSetup | undefined) => {
+      if (!setup) return;
+      (gP("paper") as HTMLSelectElement).value = setup.paper;
+      (gP("ori") as HTMLSelectElement).value = setup.orient === "portrait" ? "p" : "l";
+      const sc = gP("scale") as HTMLSelectElement;
+      const sv = String(setup.scale);
+      if (![...sc.options].some((o) => o.value === sv)) {
+        const opt = document.createElement("option");
+        opt.value = sv; opt.textContent = Vp8.plotScaleLabel(setup.scale); sc.appendChild(opt);
+      }
+      sc.value = sv;
+      (gP("area") as HTMLSelectElement).value = setup.area;
+      syncWinRow();
+    };
+    const syncWinRow = () => {
+      const row = panel.querySelector<HTMLElement>("[data-p=winrow]")!;
+      row.style.display = (gP("area") as HTMLSelectElement).value === "window" ? "contents" : "none";
+    };
+    gP("layout").onchange = () => {
+      const li = Number((gP("layout") as HTMLSelectElement).value);
+      const setupName = li >= 0 ? layouts[li]?.pageSetup ?? "" : "";
+      const setup = setupName ? doc!.pageSetups?.[setupName] : undefined;
+      (gP("setup") as HTMLSelectElement).value = setup ? setupName : "";
+      applySetupToFields(setup);
+    };
+    gP("setup").onchange = () => {
+      const setup = doc!.pageSetups?.[(gP("setup") as HTMLSelectElement).value];
+      applySetupToFields(setup);
+    };
+    gP("area").onchange = syncWinRow;
+    const readChoices = () => ({
+      layout: Number((gP("layout") as HTMLSelectElement).value),
+      setupName: (gP("setup") as HTMLSelectElement).value,
+      paper: (gP("paper") as HTMLSelectElement).value,
+      land: (gP("ori") as HTMLSelectElement).value === "l",
+      scale: ((gP("scale") as HTMLSelectElement).value === "fit" ? "fit" : Number((gP("scale") as HTMLSelectElement).value)) as number | "fit",
+      area: (gP("area") as HTMLSelectElement).value as PlotArea,
+    });
+    gP("winpick").onclick = () => {
+      lastPlotChoices = readChoices();
+      closeOverlay();
+      plotWindowPick = true;
+      plotWindowPts = [];
+      setTool("select");
+      logCmd("PLOT window: specify the first corner (Esc cancels).");
+    };
     // Pen table: load a real drawing workspace CTB/STB file and plot through it.
     gP("ctbload").onclick = () => gP("ctbfile").click();
     gP("ctbfile").onchange = async () => {
@@ -14271,40 +14749,101 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       gP("ctbfile").value = "";
     };
     gP("go").onclick = () => {
-      const o = {
-        paper: gP("paper").value,
-        land: gP("ori").value === "l",
-        area: gP("area").value,
-        mono: gP("mono").value === "1",
-      };
+      const o = { ...readChoices(), mono: gP("mono").value === "1" };
+      if (o.area === "window" && !plotWindow) {
+        logCmd("PLOT: pick a window first (Plot Area = Window, then Pick window…).");
+        return;
+      }
+      lastPlotChoices = { layout: o.layout, setupName: o.setupName, paper: o.paper, land: o.land, scale: o.scale, area: o.area };
       closeOverlay();
       doPlot(o);
     };
   }
 
-  function doPlot(o: { paper: string; land: boolean; area: string; mono: boolean }): void {
+  /**
+   * Plot the CHOSEN layout (or Model) at the chosen scale and area, reusing
+   * the same render path the canvas uses — the plot is a raster of what the
+   * sheet (or model) shows, printed via the browser. A layout plot renders
+   * the sheet with its viewports at the setup's scale; a model plot renders
+   * the chosen area box. CTB/STB pen tables keep applying.
+   */
+  function doPlot(o: { paper: string; land: boolean; area: string; mono: boolean; layout: number; scale: number | "fit"; setupName?: string }): void {
     if (!doc) return;
     const pg = M.paperMm(o.paper, o.land),
       px = M.plotPixels(pg.w, pg.h, 8, 150);
-    const box = o.area === "extents" ? bounds ?? modelBounds! : visibleBox(view);
-    const pv = M.fitView(box, px.w, px.h, 0.02);
+    const setup: DxfPageSetup = {
+      name: o.setupName ?? "",
+      paper: o.paper,
+      orient: o.land ? "landscape" : "portrait",
+      scale: o.scale,
+      area: o.area as PlotArea,
+    };
+    const targetLayout = o.layout >= 0 && doc.layouts?.[o.layout] ? o.layout : -1;
+    let pv: Vp8.PlotView;
+    if (targetLayout >= 0) {
+      const sheet = Vp8.setupPaperMm(setup);
+      const sheetRect = { minX: 0, minY: 0, maxX: sheet.w, maxY: sheet.h };
+      if (o.area === "layout") {
+        pv = Vp8.plotViewForLayout(setup, sheetRect);
+      } else {
+        // Display / Extents / Window re-frame the view inside the sheet.
+        const box =
+          o.area === "window" && plotWindow ? plotWindow
+          : o.area === "extents" ? (M.layoutBounds(doc.layouts![targetLayout]) ?? sheetRect)
+          : targetLayout === layoutI ? visibleBox(view) : sheetRect;
+        pv = Vp8.plotViewForModel(setup, box);
+      }
+    } else {
+      if (o.area === "window" && !plotWindow) {
+        logCmd("PLOT: pick a window first (Plot Area = Window, then Pick window…).");
+        return;
+      }
+      const box =
+        o.area === "window" ? plotWindow!
+        : o.area === "extents" ? (bounds ?? modelBounds!)
+        : layoutI < 0 ? visibleBox(view) : (bounds ?? modelBounds!);
+      pv = Vp8.plotViewForModel(setup, box);
+    }
     const c = document.createElement("canvas");
     c.width = px.w;
     c.height = px.h;
     const x = c.getContext("2d")!;
-    const keep = { bg, cmode, lw };
+    const keep = { bg, cmode, lw, layoutI, ents, idx, bounds };
     bg = "white";
     // Loaded CTB/STB pen table maps every entity through its plot styles.
     cmode = o.mono ? "bw" : plotStyle ? "style" : "layer";
     lw = Math.max(lw, px.w / 1200);
     plotting = true;
     try {
-      render(x, pv, false);
+      // Render the target space (not necessarily the one on screen).
+      if (targetLayout >= 0) {
+        layoutI = targetLayout;
+        const L = doc.layouts![targetLayout];
+        ents = L.entities;
+        bounds = M.layoutBounds(L) ?? modelBounds;
+        let ix = layoutIdxCache.get(targetLayout);
+        if (!ix) {
+          ix = M.buildIndex(ents, bounds!);
+          layoutIdxCache.set(targetLayout, ix);
+        }
+        idx = ix;
+      } else {
+        layoutI = -1;
+        ents = modelEnts;
+        idx = modelIdx;
+        bounds = modelBounds;
+      }
+      const plotView: M.View = { cx: pv.cx, cy: pv.cy, scale: px.h / pv.viewHeight, w: px.w, h: px.h };
+      render(x, plotView, false);
     } finally {
       plotting = false;
       bg = keep.bg;
       cmode = keep.cmode;
       lw = keep.lw;
+      layoutI = keep.layoutI;
+      ents = keep.ents;
+      idx = keep.idx;
+      bounds = keep.bounds;
     }
     const url = c.toDataURL("image/png");
     const w = window.open("", "_blank");
@@ -14312,13 +14851,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       status("Allow pop-ups to print");
       return;
     }
+    const title = targetLayout >= 0 ? doc.layouts![targetLayout].name : "Model";
     w.document.write(
-      `<!doctype html><title>${escapeHtml(name || "Plot")}</title><style>@page{size:${o.paper} ${
+      `<!doctype html><title>${escapeHtml(name || "Plot")} — ${escapeHtml(title)}</title><style>@page{size:${o.paper} ${
         o.land ? "landscape" : "portrait"
       };margin:8mm}html,body{margin:0}img{width:100%;display:block}</style><img src="${url}">`,
     );
     w.document.close();
     w.onload = () => w.print();
+    logCmd(`PLOT: ${title} at ${Vp8.plotScaleLabel(o.scale)} on ${o.paper} ${o.land ? "landscape" : "portrait"} (${o.area}).`);
   }
 
   function base(): string {
@@ -14485,7 +15026,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const stamped = stampInvisibleForSave(entities);
       const dxf = writeDxf(
         { ...doc, entities: [...stamped, ...dimensionEntitiesForSave(stamped)], dimStyleTable: dimStyleTableForSave() },
-        { version: dwgVersion, allLayouts: true },
+        { version: dwgVersion },
       );
       await validateDxfForDwgExport(dxf, entities.length, doc.layers.map((layer) => layer.name));
       const bytes = await exportDxfToDwg(dxf);
