@@ -31,6 +31,7 @@ const nearPt = (a, b, e = 1e-6) => { near(a.x, b.x, e); near(a.y, b.y, e); };
 try {
   execSync(
     "npx tsc src/modules/cad-viewer/cad-annotation.ts src/modules/cad-viewer/dimension-system.ts src/modules/cad-viewer/dimension-tools.ts " +
+      "src/modules/cad-viewer/cad-space-add.ts " +
       "src/modules/drawings/dxf-writer.ts src/modules/drawings/dxf-reader.ts src/modules/drawings/dxf-geometry.ts --outDir " + out +
       " --module commonjs --target es2020 --skipLibCheck --esModuleInterop",
     { cwd: root, stdio: "pipe" },
@@ -48,6 +49,7 @@ try {
   const { writeDxf } = require(locate(out, "dxf-writer.js"));
   const { parseDxf } = require(locate(out, "dxf-reader.js"));
   const geom = require(locate(out, "dxf-geometry.js"));
+  const spaceAdd = require(locate(out, "cad-space-add.js"));
 
   // Point on the arc at a given fraction of its CCW sweep (0..1).
   const arcPt = (def, f) => {
@@ -412,11 +414,63 @@ try {
     // In model space ents IS modelEnts (same array), so the old unguarded
     // `if (layoutI < 0) modelEnts.push(e)` pushed every drafted entity
     // twice — CENSUS counted the ARC and the MTEXT twice and the save
-    // wrote them twice. Both push sites now carry the modelEnts !== ents
-    // guard that addEntities already had.
-    const hits = viewer.match(/if \(layoutI < 0 && modelEnts !== ents\) modelEnts\.push\(e\);/g) ?? [];
-    assert.strictEqual(hits.length, 2, "expected the guard at both push sites, got " + hits.length);
+    // wrote them twice. A9 moved the guard rather than removing it:
+    // addDraftEntity keeps the inline guard (strengthened with !blockEdit,
+    // so a BEDIT session's working copy never mirrors into the model),
+    // pasteInstance keeps the original literal, and addEntities now routes
+    // through the pure helper SpaceAdd.addTargets, whose guard is
+    // `space < 0 && model !== current` — the same mirror rule, plus the
+    // paper-space exclusion the old batched form lacked (that was the A9
+    // DWG baking bug: the old form pushed paper-space adds into the model
+    // list too). All three sites are pinned below, and the helper's
+    // semantics are proved behaviourally, not just by literal.
+    assert.ok(
+      viewer.includes("if (layoutI < 0 && modelEnts !== ents && !blockEdit) modelEnts.push(e);"),
+      "addDraftEntity lost its mirror guard",
+    );
+    assert.ok(
+      viewer.includes("if (layoutI < 0 && modelEnts !== ents) modelEnts.push(e);"),
+      "pasteInstance lost its mirror guard",
+    );
+    assert.ok(
+      viewer.includes("const targets = blockEdit ? [ents] : SpaceAdd.addTargets(layoutI, modelEnts, ents);"),
+      "addEntities no longer routes through the space-aware targets",
+    );
+    assert.ok(viewer.includes("SpaceAdd.pushToTargets(targets, list);"), "addEntities no longer pushes via the helper");
+    const spaceAddSrc = fs.readFileSync(path.join(root, "src/modules/cad-viewer/cad-space-add.ts"), "utf8");
+    assert.ok(
+      spaceAddSrc.includes("if (space < 0 && model !== current) targets.push(model);"),
+      "addTargets lost the model-mirror guard",
+    );
     assert.ok(!viewer.includes("if (layoutI < 0) modelEnts.push(e);"), "unguarded push remains");
+    assert.ok(
+      !viewer.includes("if (modelEnts !== ents) for (const e of list) modelEnts.push(e);"),
+      "old batched form without the space guard remains",
+    );
+    // Behaviour: the helper behind the guard. Model space, rebound list ->
+    // both lists get the entity (the mirror the guard exists for). Model
+    // space, same array -> exactly one target, so the draft lands once.
+    // Paper space -> the model list never gets the push (the baking fix).
+    const e = { type: "LINE" };
+    const model = [];
+    const current = [];
+    assert.deepStrictEqual(spaceAdd.addTargets(-1, model, current), [current, model], "rebound model-space add must target both lists");
+    assert.deepStrictEqual(spaceAdd.addTargets(-1, model, model), [model], "same-array model-space add must target one list");
+    assert.deepStrictEqual(spaceAdd.addTargets(0, model, current), [current], "paper-space add must never target the model list");
+    assert.deepStrictEqual(spaceAdd.mergeTargets(model), [model], "merge must land in the model list only");
+    const same = [];
+    spaceAdd.pushToTargets(spaceAdd.addTargets(-1, same, same), [e]);
+    assert.strictEqual(same.length, 1, "model-space draft pushed twice into the same array");
+    const reboundModel = [];
+    const reboundCurrent = [];
+    spaceAdd.pushToTargets(spaceAdd.addTargets(-1, reboundModel, reboundCurrent), [e]);
+    assert.strictEqual(reboundCurrent.length, 1, "rebound current list missed the draft");
+    assert.strictEqual(reboundModel.length, 1, "rebound model list missed the draft");
+    const paperModel = [];
+    const paperCurrent = [];
+    spaceAdd.pushToTargets(spaceAdd.addTargets(0, paperModel, paperCurrent), [e]);
+    assert.strictEqual(paperCurrent.length, 1, "paper-space add missed the sheet list");
+    assert.strictEqual(paperModel.length, 0, "paper-space add baked into the model list");
   });
 } catch (e) {
   fail++;
