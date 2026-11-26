@@ -353,7 +353,7 @@ function taskStateHtml(r: CreatorResult): string {
 function partsHtml(parts: ReturnType<typeof resolveParts>): string {
   if (!partsSwitchable()) { hiddenParts.clear(); exportShownOnly = false; return `<div class="obs-fc-sec" data-fc="parts"><div class="obs-fc-h">${esc(t("familyCreator.parts.title"))}</div><div class="obs-fc-detail" data-fc="parts-unavailable" style="color:#f59e0b">${esc(t("familyCreator.parts.unavailable"))}</div></div>`; }
   const nHidden = parts.filter((q) => hiddenParts.has(q.name)).length;
-  const boxes = parts.map((q) => `<label class="obs-fc-part" style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" data-part="${esc(q.name)}"${hiddenParts.has(q.name) ? "" : " checked"}> <bdi>${esc(q.name)}</bdi></label>`).join("");
+  const boxes = parts.map((q) => `<label class="obs-fc-part" style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" data-part="${esc(q.name)}"${hiddenParts.has(q.name) ? "" : " checked"}> <bdi>${esc(q.name)}</bdi>${q.basis ? ` <span class="obs-fc-detail" data-basis="${q.basis}">(${esc(t(q.basis === "catalogue" ? "familyCreator.parts.basisCatalogue" : "familyCreator.parts.basisInferred"))})</span>` : ""}</label>`).join("");
   const scope = nHidden === 0 ? t("familyCreator.parts.scopeAll", { n: parts.length })
     : exportShownOnly ? t("familyCreator.parts.scopeShown", { shown: parts.length - nHidden, n: parts.length })
       : t("familyCreator.parts.scopePreviewOnly", { n: parts.length });

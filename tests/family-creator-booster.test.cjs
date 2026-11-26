@@ -192,6 +192,28 @@ t("parts carry their basis: sheet-or-catalogue values versus proportions chosen 
   const inf = parts.filter((p) => p.basis === "inferred").length, cat = parts.filter((p) => p.basis === "catalogue").length;
   assert.ok(inf > 0 && cat > 0); console.log(`    ${cat} catalogue parts, ${inf} inferred parts`);
 });
+t("placement follows sheet rows D, E, I and G and stays inside the overall box (both depth rows)", () => {
+  const IN = 0.0254;
+  for (const depthRow of ["J", "H"]) {
+    const { spec, provenance } = K.boosterSpecFromSheet(sheet, { variantId: "half-3~460", depthRow });
+    for (const k of ["SuctionAxisH", "DischargeRise", "PumpSetLength", "ManifoldSpacing"]) assert.ok(provenance.some((p) => p.param === k), `${k} has a provenance entry`);
+    const f = P.runCreator({ name: spec.name, spec }, deps).family;
+    const parts = L.resolveParts(B.templateFor(spec), deps.buildInEngine(f, f.types[0]).params);
+    const by = (id) => parts.find((p) => p.id === id);
+    const sm = by("manifold-suction"), dm = by("manifold-discharge");
+    near(dm.cy - sm.cy, 19.4 * IN, 1e-6, "E: discharge axis above suction axis");
+    near(sm.cy, 9.4 * IN, 1e-6, "D: suction axis height");
+    near(dm.cz - sm.cz, 10 * IN, 1e-6, "I: manifold spacing in depth");
+    const half = spec.depthM / 2;
+    for (const p of parts.filter((q) => /^(motor|head)/.test(q.id))) {
+      const len = p.h; // cylinders along z: h is the length
+      assert.ok(p.cz + len / 2 <= half + 1e-9 && p.cz - len / 2 >= -half - 1e-9, `${p.id} inside depth (${depthRow})`);
+      assert.ok(p.cz - len / 2 >= sm.cz + sm.r - 1e-9, `${p.id} starts past the suction manifold wall (${depthRow})`);
+    }
+    const mo = by("motor-1"), hd = by("head-1");
+    near(hd.cz + hd.h / 2, mo.cz - mo.h / 2, 1e-9, "head and motor touch");
+  }
+});
 if (process.env.BOOSTER_DUMP) {
   const { spec } = K.boosterSpecFromSheet(sheet, { variantId: "half-3~460", depthRow: "J" });
   const f = P.runCreator({ name: spec.name, spec }, deps).family; const parts = L.resolveParts(B.templateFor(spec), deps.buildInEngine(f, f.types[0]).params);

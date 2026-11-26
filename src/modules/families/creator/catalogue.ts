@@ -121,6 +121,9 @@ export function boosterSpecFromSheet(sheet: BoosterSheet, choice: BoosterChoice)
   const depthM = take("Depth", need(choice.depthRow), `sheet row ${choice.depthRow}, ${v.id} (chosen by the user)`);
   const params: Record<string, number> = {};
   if (sheet.pumps) { params.Pumps = sheet.pumps; prov.push({ param: "Pumps", valueM: sheet.pumps, source: "number before the first slash in the model name (a reading of the name)" }); }
+  for (const [row, param] of [["D", "SuctionAxisH"], ["E", "DischargeRise"], ["G", "PumpSetLength"], ["I", "ManifoldSpacing"]] as const) {
+    if (v.dimsIn[row] !== undefined) params[param] = take(param, v.dimsIn[row], `sheet row ${row}, ${v.id}`);
+  }
   if (v.dimsIn.B !== undefined) params.FrameLength = take("FrameLength", v.dimsIn.B, `sheet row B, ${v.id}`);
   if (v.connectionIn !== null) params.InletDia = take("InletDia", v.connectionIn, `sheet System Connection (150#), ${v.id}`);
   if (v.panelIn) {

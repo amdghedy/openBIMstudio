@@ -273,6 +273,8 @@
     "glbFailed": "Could not write the GLB: {message}",
     "glbNoGeometry": "There is no geometry to export yet.",
     "parts": {
+      "basisCatalogue": "sheet value",
+      "basisInferred": "inferred here",
       "title": "Parts",
       "showAll": "Show all parts",
       "exportTitle": "What the IFC and GLB downloads contain",
