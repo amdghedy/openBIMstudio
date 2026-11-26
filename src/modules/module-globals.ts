@@ -7,6 +7,7 @@
  */
 
 import * as THREE from "three";
+import { notify as coreNotify } from "../core/notify";
 import { ctx } from "../core/context";
 
 import {
@@ -102,10 +103,9 @@ import {
 const w = window as any;
 
 function toast(msg: string, kind: "info" | "warn" | "success" = "info") {
-  try {
-    w.__obsNotify?.(msg, kind);
-    if (!w.__obsNotify) console.log(`[obs] ${msg}`);
-  } catch { /* */ }
+  // The legacy notify window-globals never had a producer (and this called
+  // them with the arguments swapped anyway), so toasts went to console.log only.
+  coreNotify(kind, msg);
 }
 
 function addObject(obj: THREE.Object3D, kind: string) {

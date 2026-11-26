@@ -11,6 +11,7 @@ import {
   type ViewTemplate,
   createDefaultVg,
 } from "./types";
+import { notify as coreNotify } from "../../core/notify";
 import { viewTemplatesStore } from "./view-templates-store";
 import { isCadHotkeyOwnerActive } from "../../core/cad-hotkey-ownership";
 import { promptLine, confirmDialog } from "../../features/form-modal";
@@ -171,14 +172,9 @@ function ensureRoot(): HTMLDivElement {
 }
 
 function notify(kind: "info" | "success" | "warning" | "error", message: string): void {
-  try {
-    const n = (window as Any).__obsNotify ?? (window as Any).notify;
-    if (typeof n === "function") {
-      n(kind, message, { timeout: 3200 });
-      return;
-    }
-  } catch { /* */ }
-  console.log(`[vg-dialog] ${kind}: ${message}`);
+  // The legacy notify window-globals never had a producer, so the old
+  // lookup always fell through to console.log and no toast showed.
+  coreNotify(kind === "warning" ? "warn" : kind, message, { timeout: 3200 });
 }
 
 function getCategoryOverride(cat: string): CategoryGraphicOverride {

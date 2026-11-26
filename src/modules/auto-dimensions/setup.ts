@@ -3,6 +3,7 @@
  */
 
 import { autoDimensionsEngine, exposeAutoDimensionsGlobal } from "./auto-dimensions-engine";
+import { notify as coreNotify } from "../../core/notify";
 import { setupAutoDimensionsUI, openAutoDimsPanel } from "./auto-dimensions-ui";
 
 // legacy module-local state (formerly on window)
@@ -21,12 +22,7 @@ function registerPaletteCommands(): void {
         keywords: ["dimension", "auto dim", "aligned"],
         run: () => {
           const created = autoDimensionsEngine.autoDimensionPlan({ axis: "both" });
-          try {
-            const n = (window as Any).__obsNotify ?? (window as Any).notify;
-            if (typeof n === "function") {
-              n("success", `Created ${created.length} dimension string(s)`, { timeout: 3000 });
-            }
-          } catch { /* */ }
+          coreNotify("success", `Created ${created.length} dimension string(s)`, { timeout: 3000 });
         },
       },
       {
@@ -42,12 +38,7 @@ function registerPaletteCommands(): void {
         category: "Annotate",
         run: () => {
           const n = autoDimensionsEngine.promoteTemporary();
-          try {
-            const notify = (window as Any).__obsNotify ?? (window as Any).notify;
-            if (typeof notify === "function") {
-              notify("info", n ? `Promoted ${n}` : "No temporary dimensions", { timeout: 2500 });
-            }
-          } catch { /* */ }
+          coreNotify("info", n ? `Promoted ${n}` : "No temporary dimensions", { timeout: 2500 });
         },
       },
       {
