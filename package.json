@@ -267,6 +267,7 @@
     "test:boundary-edit": "node tests/boundary-edit.test.cjs",
     "test:props": "node tests/property-schema.test.cjs",
     "test:elbow": "node tests/elbow-geometry.test.cjs",
+    "test:element-store": "node tests/element-store.test.mjs",
     "test:walk": "node tests/walk-physics.test.cjs",
     "test:cad-link": "node tests/cad-link.test.cjs",
     "test:welcome-screen": "node tests/welcome-screen.test.cjs",

@@ -34,6 +34,7 @@ import { applyResolvedParams } from "../modules/families/placement";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { register, type AuthoringService } from "../core/services";
+import { registerKind } from "../core/element-store";
 import { getSelectionPrefs } from "../core/selection-prefs";
 import { selection } from "./selection";
 import { PreviousSelectionStore } from "./selection-semantics";
@@ -8388,6 +8389,15 @@ export function setupAuthoring() {
   ctx.features.authoring = api;
   register("authoring", api);
   try { (window as any).__obsAuthoring = api; } catch { /* */ }
+  // Canonical element store (Phase 1 single source of truth, step 1):
+  // authoring is the first kind adapter. No behavior change — the adapter
+  // delegates to the existing element state and validated edit path above.
+  registerKind({
+    kind: "authored",
+    listIds: () => elements.map((e) => e.id),
+    owns: (id) => elements.some((e) => e.id === id),
+    applyParamChange: (id, param, value) => applyElementParamChange(id, param, value),
+  });
 }
 /* ═══════════════════════════════════════════════════════════════════════
    BIM authoring software-style editable temporary dimensions + dimensional constraints.
