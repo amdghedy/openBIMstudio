@@ -88,3 +88,7 @@ EXPRESS validation returned 0 messages, and the geometry bbox was
 - Counts: a template can repeat a part for an integer parameter. Open shelving has "Middle shelves" (0 to 12, default 1): each count writes that many equally spaced shelves into the engine geometry and the IFC, and changing it re-runs the whole pipeline.
 - Still to come: URL intake, a local vision model (licence must be read first),
   more shapes, per-part visibility, other OCR languages.
+
+## Generic size tables (profile driven)
+
+`creator/catalogue-table.ts` reads any catalogue table that has one header line naming the size columns and one line per dimension row (key, then one number per column). A `TableProfile` (header text, column count, row keys, unit scale) describes the layout, and a `TableMapping` says which rows are width, depth, height and which template parameters they set. It returns every column and never picks one; the person chooses. The unit is the profile's stated assumption. Tests: `tests/family-creator-table.test.cjs` (the cabinet sheet in it is a SYNTHETIC fixture, not a manufacturer catalogue; a regression check shows the generic reader gives the same numbers as the booster reader). The booster reader is unchanged and not yet switched over to the generic one.
