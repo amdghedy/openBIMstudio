@@ -533,6 +533,35 @@ class SelectionManager {
     this.persistSets(this.listSets().filter((s) => s.id !== id));
     this.emit();
   }
+  /** Rename a selection set (G11 Project Browser menu). */
+  renameSet(id: string, name: string): boolean {
+    const list = this.listSets();
+    const set = list.find((s) => s.id === id);
+    if (!set) return false;
+    set.name = name.trim() || set.name;
+    set.updatedAt = Date.now();
+    this.persistSets(list);
+    this.emit();
+    return true;
+  }
+  /** Duplicate a selection set (G11 Project Browser menu): same snapshot, fresh id. */
+  duplicateSet(id: string): SelectionSet | null {
+    const src = this.listSets().find((s) => s.id === id);
+    if (!src) return null;
+    const copy: SelectionSet = {
+      ...src,
+      snapshot: JSON.parse(JSON.stringify(src.snapshot)),
+      id: (crypto as any).randomUUID?.() ?? `ss-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      name: `${src.name} (copy)`,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    const list = this.listSets();
+    list.unshift(copy);
+    this.persistSets(list);
+    this.emit();
+    return copy;
+  }
 
   async focus(): Promise<void> {
     if (this.isEmpty()) return;

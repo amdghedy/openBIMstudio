@@ -127,6 +127,37 @@ export function deleteSheet(id: string) {
   notify();
 }
 
+/**
+ * Duplicate a sheet (G11 Project Browser menu): the copy keeps the
+ * viewports and annotations with fresh ids, a new id of its own, and the
+ * next free sheet number — the source number is never reused, so the
+ * sorted sheet list stays unambiguous.
+ */
+export function duplicateSheet(id: string): SheetDef | null {
+  const src = sheets.find((s) => s.id === id);
+  if (!src) return null;
+  const copy = cloneSheet(src);
+  copy.id = uid();
+  copy.name = `${src.name} (copy)`;
+  copy.number = nextSheetNumber();
+  copy.viewports = copy.viewports.map((v) => ({ ...v, id: uid() }));
+  copy.annotations = (copy.annotations ?? []).map((a) => ({ ...a, id: uid() }));
+  copy.createdAt = Date.now();
+  copy.updatedAt = Date.now();
+  sheets.push(copy);
+  notify();
+  return copy;
+}
+
+function nextSheetNumber(): string {
+  let max = 0;
+  for (const s of sheets) {
+    const m = /(\d+)$/.exec(s.number);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return `A-${String(max + 1).padStart(3, "0")}`;
+}
+
 export function addViewport(sheetId: string, vp: Omit<SheetViewport, "id">): SheetViewport | null {
   const s = sheets.find((x) => x.id === sheetId);
   if (!s) return null;
