@@ -29,8 +29,11 @@ class FakeResponse {
     this.status = opts.status ?? 200;
     this.type = opts.type ?? "basic";
     this.url = opts.url ?? "";
+    const h = opts.headers ?? {};
+    this.headers = { get: (k) => h[String(k).toLowerCase()] ?? null };
+    this._h = h;
   }
-  clone() { return new FakeResponse(this.body, { ok: this.ok, status: this.status, type: this.type, url: this.url }); }
+  clone() { return new FakeResponse(this.body, { ok: this.ok, status: this.status, type: this.type, url: this.url, headers: this._h }); }
 }
 class FakeRequest {
   constructor(url, opts = {}) {
@@ -70,7 +73,7 @@ class FakeCacheStorage {
 }
 
 /** Build one sandboxed worker instance. `online` controls the fake fetch. */
-function makeWorker({ build = "testbuild1", webIfcVersion = "0.0.77", precache = [], online = true } = {}) {
+function makeWorker({ build = "testbuild1", webIfcVersion = "0.0.77", precache = [], online = true, respond = null } = {}) {
   const listeners = {};
   const caches = new FakeCacheStorage();
   let claimed = false;
@@ -85,6 +88,7 @@ function makeWorker({ build = "testbuild1", webIfcVersion = "0.0.77", precache =
       const url = typeof req === "string" ? req : req.url;
       fetchCalls.push(url);
       if (!online) throw new Error("network offline");
+      if (respond) { const r = respond(url); if (r) return r; }
       return new FakeResponse("bytes:" + url, { url });
     },
   };
@@ -283,6 +287,35 @@ function makeWorker({ build = "testbuild1", webIfcVersion = "0.0.77", precache =
     const pinned = JSON.parse(fs.readFileSync(path.join(root, "node_modules", "web-ifc", "package.json"), "utf8")).version;
     assert.ok(built.includes(`const WEB_IFC_VERSION = "${pinned}"`),
       "built sw.js does not stamp the pinned web-ifc version " + pinned);
+  });
+
+  await t("a missing hashed script answered with the HTML fallback is neither served nor remembered; a cached copy of it is dropped", async () => {
+    const html = (url) => new FakeResponse("<!doctype html>", { url, headers: { "content-type": "text/html" } });
+    const js = (url) => new FakeResponse("export{}", { url, headers: { "content-type": "text/javascript" } });
+    let missing = true;
+    const w = makeWorker({ respond: (url) => (url.endsWith("/assets/gone-AAAA.js") ? (missing ? html(url) : js(url)) : null) });
+    await w.dispatchInstall();
+    const u = ORIGIN + "/assets/gone-AAAA.js";
+    const r1 = await w.dispatchFetch(new FakeRequest(u));
+    assert.strictEqual(r1.ok, false, "HTML fallback was served as the script");
+    const cache = await w.caches.open("obs-testbuild1");
+    assert.strictEqual(await cache.match(u), undefined, "HTML fallback was cached under the script URL");
+    // A copy cached by an older worker is dropped, then the real file is fetched once it exists.
+    await cache.put(u, html(u));
+    missing = false;
+    const r2 = await w.dispatchFetch(new FakeRequest(u));
+    assert.strictEqual(r2.ok, true);
+    assert.strictEqual(r2.headers.get("content-type"), "text/javascript");
+    // A real script is still cached and served cache-first.
+    const before = w.fetchCalls.length;
+    await w.dispatchFetch(new FakeRequest(u));
+    assert.strictEqual(w.fetchCalls.length, before, "a good script is no longer cache-first");
+  });
+
+  await t("pwa.ts refreshes once on vite:preloadError and then reports instead of looping", async () => {
+    const src = fs.readFileSync(path.join(root, "src/core/pwa.ts"), "utf8");
+    assert.ok(src.includes('"vite:preloadError"'), "no vite:preloadError handler");
+    assert.ok(src.includes("sessionStorage.getItem(k)") && src.includes("return false"), "no once-per-session guard");
   });
 
   console.log(`=== Result: ${pass} passed, ${fail} failed ===`);
