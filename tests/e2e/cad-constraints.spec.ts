@@ -102,11 +102,13 @@ test('2D editor: constraints survive save and reopen', async ({ page }) => {
   expect(saved.toString('utf8')).toContain('OBS_CONSTRAINT');
   await expect.poll(hist, { timeout: 10000 }).toContain('Saved 1 constraint(s) with the drawing.');
 
-  // Reopen the saved bytes: the relation comes back, attached to the same line.
-  await run('GCCLEAR');
-  await page.locator('[data-r=importfile]').first().setInputFiles({ name: 'saved.dxf', mimeType: 'text/plain', buffer: saved });
-  await expect.poll(hist, { timeout: 15000 }).toContain('Restored 1 constraint(s) saved with this drawing');
-  await run('GCLIST');
-  await expect.poll(hist, { timeout: 10000 }).toMatch(/#1 horizontal — ok/);
+  // Reopen the saved bytes through the shell's open-file picker (a real open, not a merge): a new drawing tab
+  // loads them and the relation comes back, attached to the same line.
+  await page.locator('input[type=file][accept*=".bak"]').first().setInputFiles({ name: 'saved.dxf', mimeType: 'text/plain', buffer: saved });
+  const vcmd = page.locator('[data-r=cmd]:visible').first();
+  const vhist = async () => page.locator('[data-r=cmdhist]:visible').first().innerText();
+  await expect.poll(vhist, { timeout: 20000 }).toContain('Restored 1 constraint(s) saved with this drawing');
+  await vcmd.fill('GCLIST'); await vcmd.press('Enter');
+  await expect.poll(vhist, { timeout: 10000 }).toMatch(/#1 horizontal — ok/);
   expect(errors, errors.join('\n')).toEqual([]);
 });
