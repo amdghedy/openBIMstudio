@@ -24,6 +24,11 @@ export interface IfcCreatorInput {
   countParams?: Record<string, number>;
   /** ISO timestamp for the header. Defaults to now. */
   timestamp?: string;
+  /**
+   * A flat outline (metres, x right, y up, outer counter-clockwise, holes clockwise) extruded by
+   * `thicknessM`: the shape read from a picture. Written as one solid with an arbitrary profile.
+   */
+  outline?: { outer: Array<[number, number]>; holes: Array<Array<[number, number]>>; thicknessM: number };
 }
 
 const B64 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
@@ -124,6 +129,23 @@ export function writeIfc2x3(input: IfcCreatorInput): IfcWriteResult {
       ? add(`IFCCIRCLEPROFILEDEF(.AREA.,${stepString(p.name)},${ref(pos2)},${f(p.r)})`)
       : add(`IFCRECTANGLEPROFILEDEF(.AREA.,${stepString(p.name)},${ref(pos2)},${f(p.w)},${f(p.d)})`);
     solids.push(add(`IFCEXTRUDEDAREASOLID(${ref(profile)},${ref(pos)},${ref(dz)},${f(p.h)})`));
+  }
+  if (input.outline) {
+    const o = input.outline;
+    // Profile x = IFC X, profile y = IFC Z (up); extrusion runs along IFC -Y, centred on the origin.
+    const base = add(`IFCCARTESIANPOINT((0.,${f(o.thicknessM / 2)},0.))`);
+    const axis = add("IFCDIRECTION((0.,-1.,0.))");
+    const pos = add(`IFCAXIS2PLACEMENT3D(${ref(base)},${ref(axis)},${ref(dx)})`);
+    const curve = (pts: Array<[number, number]>): number => {
+      const ids = pts.map((q) => add(`IFCCARTESIANPOINT((${f(q[0])},${f(q[1])}))`));
+      return add(`IFCPOLYLINE((${[...ids, ids[0]].map(ref).join(",")}))`);
+    };
+    const outer = curve(o.outer);
+    const holes = o.holes.map(curve);
+    const profile = holes.length
+      ? add(`IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,${stepString(input.name)},${ref(outer)},(${holes.map(ref).join(",")}))`)
+      : add(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,${stepString(input.name)},${ref(outer)})`);
+    solids.push(add(`IFCEXTRUDEDAREASOLID(${ref(profile)},${ref(pos)},${ref(dz)},${f(o.thicknessM)})`));
   }
   const rep = add(`IFCSHAPEREPRESENTATION(${ref(ctx)},'Body','SweptSolid',(${solids.map(ref).join(",")}))`);
   const pds = add(`IFCPRODUCTDEFINITIONSHAPE($,$,(${ref(rep)}))`);

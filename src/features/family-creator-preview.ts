@@ -135,7 +135,7 @@ export function createPreview3D(width = 340, height = 250): Preview3D | null {
         copy.traverse((o) => {
           const m = o as THREE.Mesh;
           if (!m.isMesh) return;
-          m.material = new THREE.MeshStandardMaterial({ color: PART_COLORS[i % PART_COLORS.length], roughness: 0.7, metalness: 0.05 });
+          m.material = new THREE.MeshStandardMaterial({ color: (m.userData.fcColor as number | undefined) ?? PART_COLORS[i % PART_COLORS.length], roughness: 0.7, metalness: 0.05 });
           i++;
           edges.push(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 25), new THREE.LineBasicMaterial({ color: 0x0b1220 })));
           edges[edges.length - 1].matrixAutoUpdate = false;

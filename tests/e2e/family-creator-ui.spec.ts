@@ -85,6 +85,7 @@ test("family creator: real status, editable parameters, library, IFC2X3 download
   await shot(page, "02-width-1500.png");
 
   // Library and IFC download.
+  await panel.getByRole("button", { name: "I reviewed this result" }).click();
   await panel.getByRole("button", { name: "Add to family library" }).click();
   await expect(panel.locator('[data-fc="notice"]')).toContainText("Added");
   const [download] = await Promise.all([
@@ -410,6 +411,7 @@ test("family creator: typing a width and pressing Add this size in one go saves 
   await panel.locator('[data-f="dMm"]').fill("500");
   await panel.locator('[data-f="hMm"]').fill("700");
   await panel.getByRole("button", { name: "Create family" }).click();
+  await panel.getByRole("button", { name: "I reviewed this result" }).click();
   await panel.getByRole("button", { name: "Add to family library" }).click();
   await panel.locator('[data-fc="size-name"]').fill("1500 wide");
   // Type the new width and click Add this size straight away: the blur redraws the panel under the click.
@@ -485,6 +487,7 @@ test("family creator: named sizes are saved with the family and reopen with thei
   await panel.locator('[data-f="text"]').fill("Overall size: 1600 x 500 x 900 mm\nDoors: 3\nDrawers: 2\nDrawer height: 150 mm");
   await panel.getByRole("button", { name: "Create family" }).click();
   await expect(panel.locator('[data-param="Doors"]')).toHaveValue("3");
+  await panel.getByRole("button", { name: "I reviewed this result" }).click();
   await panel.getByRole("button", { name: "Add to family library" }).click();
   // A second size from the same family: change only the width, name it, add it.
   await panel.locator('[data-param="Width"]').fill("1200");
