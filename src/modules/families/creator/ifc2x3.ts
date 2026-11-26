@@ -124,23 +124,36 @@ export function writeIfc2x3(input: IfcCreatorInput): IfcWriteResult {
   for (const p of input.parts) {
     // Cylinders may lie along X or Z (engine). Engine X -> IFC X, engine Z -> IFC -Y, engine Y -> IFC Z.
     if (p.shape === "bend") {
-      // Revolved disc: profile circle centred BEND_RATIO x r from the revolution axis, swept h degrees (IFC2x3 IFCREVOLVEDAREASOLID).
-      // Local frame (engine): profile x -> engine local +Z, profile y -> local +Y; revolve about local Y (right-hand), so +Z turns toward +X.
+      // Written as a closed faceted solid (IFCFACETEDBREP) of the elbow: the same torus sector the engine revolves, sampled
+      // every 5 degrees along the sweep and 24 points round the pipe. A revolved-solid entity was tried first and
+      // web-ifc (the viewer this app imports with) misplaces its axis and reads its angle in degrees whatever the unit says.
+      const steps = Math.max(2, Math.ceil(p.h / 5)), around = 24;
+      const rings: number[][] = [];
       const fr = bendFrame(p.axis ?? "y");
-      const toIfc = (v: [number, number, number]): [number, number, number] => [v[0], -v[2], v[1]];
-      const zl = toIfc(fr.lz), yl = toIfc(fr.ly), xl = toIfc(fr.lx);
-      const origin = add(`IFCCARTESIANPOINT((${f(p.cx)},${f(-p.cz)},${f(p.cy)}))`);
-      const posAxis = add(`IFCDIRECTION((${f(-xl[0])},${f(-xl[1])},${f(-xl[2])}))`);
-      const posRef = add(`IFCDIRECTION((${f(zl[0])},${f(zl[1])},${f(zl[2])}))`);
-      const bpos = add(`IFCAXIS2PLACEMENT3D(${ref(origin)},${ref(posAxis)},${ref(posRef)})`);
-      const cpt = add(`IFCCARTESIANPOINT((${f(BEND_RATIO * p.r)},0.))`);
-      const cpos = add(`IFCAXIS2PLACEMENT2D(${ref(cpt)},$)`);
-      const circ = add(`IFCCIRCLEPROFILEDEF(.AREA.,${stepString(p.name)},${ref(cpos)},${f(p.r)})`);
-      const axLoc = add("IFCCARTESIANPOINT((0.,0.,0.))");
-      const axDir = add("IFCDIRECTION((0.,1.,0.))");
-      const ax1 = add(`IFCAXIS1PLACEMENT(${ref(axLoc)},${ref(axDir)})`);
-      void yl;
-      solids.push(add(`IFCREVOLVEDAREASOLID(${ref(circ)},${ref(bpos)},${ref(ax1)},${f((p.h * Math.PI) / 180)})`));
+      for (let i = 0; i <= steps; i++) {
+        const phi = ((p.h * Math.PI) / 180) * (i / steps), ring: number[] = [];
+        for (let k = 0; k < around; k++) {
+          const t = (k / around) * Math.PI * 2, rad = BEND_RATIO * p.r + p.r * Math.cos(t), y = p.r * Math.sin(t);
+          const lx = rad * Math.sin(phi), ly = y, lz = rad * Math.cos(phi);
+          const ex = p.cx + lx * fr.lx[0] + ly * fr.ly[0] + lz * fr.lz[0], ey = p.cy + lx * fr.lx[1] + ly * fr.ly[1] + lz * fr.lz[1], ez = p.cz + lx * fr.lx[2] + ly * fr.ly[2] + lz * fr.lz[2];
+          ring.push(add(`IFCCARTESIANPOINT((${f(ex)},${f(-ez)},${f(ey)}))`));
+        }
+        rings.push(ring);
+      }
+      const faces: number[] = [];
+      const face = (ids: number[]) => {
+        const loop = add(`IFCPOLYLOOP((${ids.map(ref).join(",")}))`);
+        const bound = add(`IFCFACEOUTERBOUND(${ref(loop)},.T.)`);
+        faces.push(add(`IFCFACE((${ref(bound)}))`));
+      };
+      for (let i = 0; i < steps; i++) for (let k = 0; k < around; k++) {
+        const k2 = (k + 1) % around;
+        face([rings[i][k], rings[i][k2], rings[i + 1][k2], rings[i + 1][k]]);
+      }
+      face([...rings[0]].reverse());
+      face([...rings[steps]]);
+      const shell = add(`IFCCLOSEDSHELL((${faces.map(ref).join(",")}))`);
+      solids.push(add(`IFCFACETEDBREP(${ref(shell)})`));
       continue;
     }
     if (p.shape === "prism") {

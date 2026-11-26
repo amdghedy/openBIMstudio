@@ -166,6 +166,7 @@ for (const [id, depthRow] of [["half-3~460", "J"], ["full-3~460", "J"], ["half-3
     const [x0, y0, z0, x1, y1, z1] = eng.bbox;
     near(x1 - x0, wantW, 1e-4, "engine width"); near(y1 - y0, wantH, 1e-4, "engine height"); near(z1 - z0, wantD, 1e-4, "engine depth");
     near(y0, 0, 1e-6, "sits on the floor");
+    if (process.env.BEND_IFC_DIR && !fs.existsSync(path.join(process.env.BEND_IFC_DIR, "booster.ifc"))) { fs.mkdirSync(process.env.BEND_IFC_DIR, { recursive: true }); fs.writeFileSync(path.join(process.env.BEND_IFC_DIR, "booster.ifc"), r.ifcText); }
     const ifc = ifcExtents(r.ifcText);
     near(ifc.mx[0] - ifc.mn[0], wantW, 1e-4, "ifc width"); near(ifc.mx[2] - ifc.mn[2], wantH, 1e-4, "ifc height"); near(ifc.mx[1] - ifc.mn[1], wantD, 1e-4, "ifc depth");
     assert.ok(/IFCDIRECTION\(\(1\.,0\.,0\.\)\)/.test(r.ifcText) && /IFCDIRECTION\(\(0\.,-1\.,0\.\)\)/.test(r.ifcText), "horizontal cylinders written with axes");
@@ -247,7 +248,7 @@ t("valve actuators: gear housing, stem and handwheel per pump, on the suction si
   assert.ok(Math.abs(w.cx - iso.cx) < 1e-6 && Math.abs(w.cy - iso.cy) < 1e-6, "wheel on the valve axis");
   assert.ok(w.cz + w.h / 2 < man.cz - man.r || w.cy + w.r < man.cy - man.r, "wheel clear of the discharge manifold");
 });
-t("pipe bend: engine mesh bounds, preview bounds and the IFC revolved solid agree for every turn axis and angle", () => {
+t("pipe bend: engine mesh bounds, preview bounds and the IFC faceted solid agree for every turn axis and angle", () => {
   const BR = T.BEND_RATIO;
   for (const axis of ["x", "y", "z"]) for (const ang of [90, 135]) {
     const tp = { id: "bend", name: "Bend", shape: "bend", axis, r: "0.05", h: String(ang), x: "0.3", y: "0.4", z: "0.5", basis: "inferred" };
@@ -264,35 +265,14 @@ t("pipe bend: engine mesh bounds, preview bounds and the IFC revolved solid agre
     const pts = L.bendSamplePoints(part, 96);
     const lo = [0, 1, 2].map((i) => Math.min(...pts.map((q) => q[i]))), hi = [0, 1, 2].map((i) => Math.max(...pts.map((q) => q[i])));
     for (let i = 0; i < 3; i++) { near(lo[i], eng.bbox[i], 0.003, "layout min axis " + axis + " " + ang + " i" + i); near(hi[i], eng.bbox[3 + i], 0.003, "layout max axis " + axis + " " + ang + " i" + i); }
-    // Independent IFC read.
+    if (process.env.BEND_IFC_DIR) { fs.mkdirSync(process.env.BEND_IFC_DIR, { recursive: true }); fs.writeFileSync(path.join(process.env.BEND_IFC_DIR, `bend-${axis}-${ang}.ifc`), I.writeIfc2x3({ name: "bend", entity: "IfcBuildingElementProxy", parts: [L.resolveParts({ parts: [tp] }, {})[0]], lengthParams: {}, timestamp: "2026-01-01T00:00:00" }).text); }
+    // Independent IFC read: the faceted solid's own points.
     const text = I.writeIfc2x3({ name: "bend", entity: "IfcBuildingElementProxy", parts: [part], lengthParams: {}, timestamp: "2026-01-01T00:00:00" }).text;
-    const num = (s) => s.split(",").map(Number), pt = {}, dr = {};
-    let rv = null, p3 = {}, c2 = {}, a1 = {}, circ = {};
-    for (const line of text.split("\n")) {
-      let m;
-      if ((m = /^#(\d+)=IFCCARTESIANPOINT\(\(([^)]*)\)\);/.exec(line))) pt[m[1]] = num(m[2]);
-      else if ((m = /^#(\d+)=IFCDIRECTION\(\(([^)]*)\)\);/.exec(line))) dr[m[1]] = num(m[2]);
-      else if ((m = /^#(\d+)=IFCAXIS2PLACEMENT3D\(#(\d+),#(\d+),#(\d+)\);/.exec(line))) p3[m[1]] = { o: pt[m[2]], z: dr[m[3]], x: dr[m[4]] };
-      else if ((m = /^#(\d+)=IFCAXIS2PLACEMENT2D\(#(\d+),\$\);/.exec(line))) c2[m[1]] = pt[m[2]];
-      else if ((m = /^#(\d+)=IFCCIRCLEPROFILEDEF\(.*,#(\d+),([\d.eE+-]+)\);/.exec(line))) circ[m[1]] = { c: c2[m[2]], r: +m[3] };
-      else if ((m = /^#(\d+)=IFCAXIS1PLACEMENT\(#(\d+),#(\d+)\);/.exec(line))) a1[m[1]] = { o: pt[m[2]], d: dr[m[3]] };
-      else if ((m = /^#(\d+)=IFCREVOLVEDAREASOLID\(#(\d+),#(\d+),#(\d+),([\d.eE+-]+)\);/.exec(line))) rv = { prof: circ[m[2]], pos: p3[m[3]], ax: a1[m[4]], ang: +m[5] };
-    }
-    assert.ok(rv, "IFC has a revolved solid");
-    near(rv.ang, ang * Math.PI / 180, 1e-9, "IFC angle");
-    near(rv.prof.r, 0.05, 1e-9); near(rv.prof.c[0], BR * 0.05, 1e-9);
-    const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-    const ux = rv.pos.x, uz = rv.pos.z, uy = cross(uz, ux);
-    const toW = (v) => [0, 1, 2].map((i) => ux[i] * v[0] + uy[i] * v[1] + uz[i] * v[2]);
-    const axisW = toW(rv.ax.d), k = axisW;
-    const rod = (v, a) => { const cs = Math.cos(a), sn = Math.sin(a), kv = cross(k, v), kd = k[0] * v[0] + k[1] * v[1] + k[2] * v[2]; return [0, 1, 2].map((i) => v[i] * cs + kv[i] * sn + k[i] * kd * (1 - cs)); };
+    assert.ok(/IFCFACETEDBREP\(/.test(text) && !/IFCREVOLVEDAREASOLID/.test(text), "bend written as a closed faceted solid");
+    const used = new Set(); for (const m of text.matchAll(/IFCPOLYLOOP\(\(([^)]*)\)\)/g)) for (const id of m[1].split(",")) used.add(id.slice(1));
+    const ipts = new Map(); for (const m of text.matchAll(/^#(\d+)=IFCCARTESIANPOINT\(\(([^)]*)\)\);/gm)) ipts.set(m[1], m[2].split(",").map(Number));
     const mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
-    for (let i = 0; i <= 96; i++) for (let j = 0; j < 36; j++) {
-      const tt = j / 36 * Math.PI * 2, loc = toW([rv.prof.c[0] + rv.prof.r * Math.cos(tt), rv.prof.r * Math.sin(tt), 0]);
-      const q = rod(loc, rv.ang * i / 96), w = [rv.pos.o[0] + q[0], rv.pos.o[1] + q[1], rv.pos.o[2] + q[2]];
-      const e = [w[0], w[2], -w[1]];
-      for (let a = 0; a < 3; a++) { mn[a] = Math.min(mn[a], e[a]); mx[a] = Math.max(mx[a], e[a]); }
-    }
+    for (const id of used) { const w = ipts.get(id), e = [w[0], w[2], -w[1]]; for (let a = 0; a < 3; a++) { mn[a] = Math.min(mn[a], e[a]); mx[a] = Math.max(mx[a], e[a]); } }
     for (let i = 0; i < 3; i++) { near(mn[i], eng.bbox[i], 0.003, "IFC min axis " + axis + " " + ang + " i" + i); near(mx[i], eng.bbox[3 + i], 0.003, "IFC max axis " + axis + " " + ang + " i" + i); }
   }
 });
