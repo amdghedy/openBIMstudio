@@ -93,6 +93,10 @@ const ex = (expr: string) => ({ expr });
 
 function partSpec(p: TemplatePart): FamilyGeometrySpec {
   const transform = { translate: [ex(p.x), ex(p.y), ex(p.z)] as [any, any, any] };
+  if (p.shape === "prism") {
+    // Outline in unit size, scaled by r (formula) and extruded h along Z (engine extrusion is centred on Z).
+    return { kind: "extrusion", profile: { kind: "polygon", points: p.points ?? [] }, depth: ex(p.h as string), transform: { ...transform, scale: [ex(p.r as string), ex(p.r as string), { const: 1 }] as [any, any, any] } };
+  }
   if (p.shape === "cylinder") {
     const rotate = p.axis === "x" ? [{ const: 0 }, { const: 0 }, { const: Math.PI / 2 }] : p.axis === "z" ? [{ const: Math.PI / 2 }, { const: 0 }, { const: 0 }] : undefined;
     return { kind: "cylinder", r: ex(p.r as string), h: ex(p.h as string), segments: 32, transform: rotate ? { ...transform, rotate: rotate as [any, any, any] } : transform };

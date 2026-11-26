@@ -26,8 +26,10 @@ export interface TemplateParam {
 export interface TemplatePart {
   id: string;
   name: string;
-  shape: "box" | "cylinder";
+  shape: "box" | "cylinder" | "prism";
   // box: w (X), d (Z), h (Y). cylinder: r, h (axis Y).
+  // prism: a closed outline (points, profile units, x right, y up) scaled by r and extruded h along Z.
+  points?: Array<[number, number]>;
   w?: string; d?: string; h?: string; r?: string;
   x: string; y: string; z: string;
   /**
@@ -194,7 +196,7 @@ export const BOOSTER_TEMPLATE: PartTemplate = {
     { id: "motor", name: "Motor", shape: "cylinder", axis: "z", r: "MotorRadius", h: "MotorLength", x: "0 - ManifoldLength / 2 + (K - 0.5) * ManifoldLength / Pumps", y: "PumpAxisY", z: "MotorZ", repeat: { count: "Pumps" }, basis: "inferred" },
     { id: "head", name: "Pump head", shape: "cylinder", axis: "z", r: "MotorRadius * 0.9", h: "HeadLength", x: "0 - ManifoldLength / 2 + (K - 0.5) * ManifoldLength / Pumps", y: "PumpAxisY", z: "HeadZ", repeat: { count: "Pumps" }, basis: "inferred" },
     { id: "base-plate", name: "Base plate", shape: "box", w: "FrameLength", d: "Depth - 2 * RailSize", h: "0.012", x: "0", y: "RailHeight + 0.006", z: "0", basis: "inferred" },
-    { id: "volute", name: "Pump volute", shape: "cylinder", axis: "z", r: "MotorRadius * 1.3", h: "HeadLength * 0.35", x: "0 - ManifoldLength / 2 + (K - 0.5) * ManifoldLength / Pumps", y: "PumpAxisY", z: "PumpStartZ + HeadLength * 0.2", repeat: { count: "Pumps" }, basis: "inferred" },
+    { id: "volute", name: "Pump volute scroll", shape: "prism", points: [[0.0, 0.78], [-0.175, 0.768], [-0.345, 0.717], [-0.501, 0.628], [-0.634, 0.506], [-0.738, 0.355], [-0.806, 0.184], [-0.835, 0.0], [-0.822, -0.188], [-0.766, -0.369], [-0.671, -0.535], [-0.54, -0.677], [-0.379, -0.788], [-0.196, -0.86], [-0.0, -0.89], [0.2, -0.875], [0.393, -0.816], [0.57, -0.714], [0.72, -0.575], [0.837, -0.403], [0.914, -0.209], [0.945, -0.0], [0.929, 0.212], [0.866, 0.417], [0.757, 0.604], [0.609, 0.763], [0.427, 0.887], [0.221, 0.967], [0.0, 1.0]], r: "MotorRadius * 1.35", h: "HeadLength * 0.45", x: "0 - ManifoldLength / 2 + (K - 0.5) * ManifoldLength / Pumps", y: "PumpAxisY", z: "PumpStartZ + HeadLength * 0.2", repeat: { count: "Pumps" }, basis: "inferred" },
     { id: "motor-fins", name: "Motor cooling-fin ring", shape: "cylinder", axis: "z", r: "MotorRadius * 1.12", h: "MotorLength * 0.7", x: "0 - ManifoldLength / 2 + (K - 0.5) * ManifoldLength / Pumps", y: "PumpAxisY", z: "MotorZ + MotorLength * 0.05", repeat: { count: "Pumps" }, basis: "inferred" },
     { id: "motor-box", name: "Motor terminal box", shape: "box", w: "MotorRadius * 0.9", d: "MotorLength * 0.25", h: "MotorRadius * 0.7", x: "0 - ManifoldLength / 2 + (K - 0.5) * ManifoldLength / Pumps", y: "PumpAxisY + MotorRadius * 1.12 + MotorRadius * 0.3", z: "MotorZ", repeat: { count: "Pumps" }, basis: "inferred" },
     { id: "suction-branch", name: "Suction branch", shape: "cylinder", axis: "z", r: "ManifoldR * 0.7", h: "HeadLength * 0.5", x: "0 - ManifoldLength / 2 + (K - 0.5) * ManifoldLength / Pumps", y: "PumpAxisY", z: "SuctionZ + HeadLength * 0.25", repeat: { count: "Pumps" }, basis: "inferred" },

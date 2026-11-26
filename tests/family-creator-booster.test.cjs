@@ -93,7 +93,7 @@ const PAGES = process.env.BOOSTER_PAGES ? JSON.parse(fs.readFileSync(process.env
 const IN = 0.0254;
 // Independent IFC extents from the written text (IFC axes: X width, Y = -depth, Z up). Handles axis directions.
 function ifcExtents(text) {
-  const pt = new Map(), dir = new Map(), place = new Map(), circ = new Map(), rect = new Map(), solids = [];
+  const pt = new Map(), dir = new Map(), place = new Map(), circ = new Map(), rect = new Map(), poly = new Map(), arb = new Map(), solids = [];
   for (const line of text.split("\n")) {
     let m;
     if ((m = /^#(\d+)=IFCCARTESIANPOINT\(\(([^)]*)\)\);/.exec(line))) pt.set(+m[1], m[2].split(",").map(Number));
@@ -101,12 +101,19 @@ function ifcExtents(text) {
     else if ((m = /^#(\d+)=IFCAXIS2PLACEMENT3D\(#(\d+),(\$|#\d+),(\$|#\d+)\);/.exec(line))) place.set(+m[1], { p: pt.get(+m[2]), a: m[3] === "$" ? [0, 0, 1] : dir.get(+m[3].slice(1)) });
     else if ((m = /^#(\d+)=IFCCIRCLEPROFILEDEF\(.*,(-?[\d.eE+-]+)\);/.exec(line))) circ.set(+m[1], +m[2]);
     else if ((m = /^#(\d+)=IFCRECTANGLEPROFILEDEF\(.*,(-?[\d.eE+-]+),(-?[\d.eE+-]+)\);/.exec(line))) rect.set(+m[1], [+m[2], +m[3]]);
+    else if ((m = /^#(\d+)=IFCPOLYLINE\(\(([^)]*)\)\);/.exec(line))) poly.set(+m[1], m[2].split(",").map((x) => +x.slice(1)));
+    else if ((m = /^#(\d+)=IFCARBITRARYCLOSEDPROFILEDEF\(.*,#(\d+)\);/.exec(line))) arb.set(+m[1], +m[2]);
     else if ((m = /^#(\d+)=IFCEXTRUDEDAREASOLID\(#(\d+),#(\d+),#\d+,([\d.eE+-]+)\);/.exec(line))) solids.push({ prof: +m[2], pl: +m[3], len: +m[4] });
   }
   const mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
   for (const s of solids) {
     const { p, a } = place.get(s.pl);
     const end = [p[0] + a[0] * s.len, p[1] + a[1] * s.len, p[2] + a[2] * s.len];
+    if (arb.has(s.prof)) {
+      // Outline: local x = IFC X, local y = IFC Z (axis along IFC -Y, reference direction IFC X).
+      for (const id of poly.get(arb.get(s.prof))) { const [u, v] = pt.get(id); for (const base of [p, end]) { const q = [base[0] + u, base[1], base[2] + v]; for (let i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], q[i]); mx[i] = Math.max(mx[i], q[i]); } } }
+      continue;
+    }
     let ext;
     if (circ.has(s.prof)) { const r = circ.get(s.prof); ext = a.map((c) => (Math.abs(c) > 0.5 ? 0 : r)); }
     else { const [w, d] = rect.get(s.prof); ext = [w / 2, d / 2, 0]; }
@@ -197,6 +204,20 @@ t("motor cooling ribs exist, sit on each motor, and stand proud of the motor bod
     for (const r of mine) { assert.ok(r.r > m.r, "rib radius above motor"); assert.ok(r.cz - r.h / 2 >= m.cz - m.h / 2 - 1e-6 && r.cz + r.h / 2 <= m.cz + m.h / 2 + 1e-6, "rib inside motor length"); }
     assert.strictEqual(new Set(mine.map((r) => r.cz.toFixed(4))).size, 6, "distinct positions");
   }
+});
+t("volute scroll is a real polygon solid in the engine parts and in the IFC, and scales with the motor radius", () => {
+  const base = K.boosterSpecFromSheet(sheet, { variantId: "half-3~460", depthRow: "J" }).spec;
+  const run = (mr) => { const sp = { ...base, params: { ...base.params, MotorRadius: mr } }; const r = P.runCreator({ name: "v", spec: sp }, deps); const eng = deps.buildInEngine(r.family, r.family.types[0]); const parts = L.resolveParts(B.templateFor(sp), eng.params); return { r, parts, eng }; };
+  const a = run(0.11), b = run(0.14);
+  const va = a.parts.filter((p) => p.shape === "prism"), vb = b.parts.filter((p) => p.shape === "prism");
+  assert.strictEqual(va.length, 3); assert.ok(va[0].points.length >= 20);
+  near(vb[0].r / va[0].r, 0.14 / 0.11, 1e-6, "prism scale follows MotorRadius");
+  const profs = (a.r.ifcText.match(/IFCARBITRARYCLOSEDPROFILEDEF/g) || []).length;
+  assert.strictEqual(profs, 3, "IFC arbitrary profiles: " + profs);
+  // the engine object has a mesh whose bounding box matches the outline scaled by r and the depth h
+  const obj = a.eng.object; obj.updateMatrixWorld(true);
+  let found = 0; obj.traverse((o) => { if (o.isMesh) { const bb = new THREE.Box3().setFromObject(o); const sz = bb.getSize(new THREE.Vector3()); if (Math.abs(sz.z - va[0].h) < 1e-6 && Math.abs(sz.x - va[0].r * (0.945 + 0.835)) < 1e-3) found++; } });
+  assert.strictEqual(found, 3, "engine volute meshes found: " + found);
 });
 t("parts carry their basis: sheet-or-catalogue values versus proportions chosen here", () => {
   const spec = K.boosterSpecFromSheet(sheet, { variantId: "half-3~460", depthRow: "J" }).spec;

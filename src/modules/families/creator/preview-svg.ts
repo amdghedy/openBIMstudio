@@ -10,6 +10,10 @@ import type { ResolvedPart } from "./layout";
 interface Box { x0: number; x1: number; y0: number; y1: number }
 
 function partBoxes(p: ResolvedPart): { x: [number, number]; y: [number, number]; z: [number, number] } {
+  if (p.shape === "prism" && p.points?.length) {
+    const us = p.points.map((q) => q[0] * p.r), vs = p.points.map((q) => q[1] * p.r);
+    return { x: [p.cx + Math.min(...us), p.cx + Math.max(...us)], y: [p.cy + Math.min(...vs), p.cy + Math.max(...vs)], z: [p.cz - p.h / 2, p.cz + p.h / 2] };
+  }
   const hx = p.shape === "cylinder" ? p.r : p.w / 2;
   const hz = p.shape === "cylinder" ? p.r : p.d / 2;
   return { x: [p.cx - hx, p.cx + hx], y: [p.cy - p.h / 2, p.cy + p.h / 2], z: [p.cz - hz, p.cz + hz] };

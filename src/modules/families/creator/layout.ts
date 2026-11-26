@@ -8,7 +8,9 @@ import type { PartTemplate, TemplatePart } from "./templates";
 export interface ResolvedPart {
   id: string;
   name: string;
-  shape: "box" | "cylinder";
+  shape: "box" | "cylinder" | "prism";
+  /** Prism outline in profile units (scaled by r, extruded h along Z). */
+  points?: Array<[number, number]>;
   /** Cylinder axis (engine axes). Boxes: "y". */
   axis?: "x" | "y" | "z";
   basis?: "catalogue" | "inferred";
@@ -27,7 +29,7 @@ function num(expr: string | undefined, values: Record<string, any>, what: string
 
 export function resolveParts(tpl: PartTemplate, values: Record<string, any>): ResolvedPart[] {
   return tpl.parts.map((p: TemplatePart) => ({
-    id: p.id, name: p.name, shape: p.shape, axis: p.shape === "cylinder" ? (p.axis ?? "y") : "y", basis: p.basis,
+    id: p.id, name: p.name, shape: p.shape, points: p.shape === "prism" ? p.points : undefined, axis: p.shape === "cylinder" ? (p.axis ?? "y") : "y", basis: p.basis,
     cx: num(p.x, values, `${p.id}.x`), cy: num(p.y, values, `${p.id}.y`), cz: num(p.z, values, `${p.id}.z`),
     w: num(p.w, values, `${p.id}.w`), d: num(p.d, values, `${p.id}.d`),
     h: num(p.h, values, `${p.id}.h`), r: num(p.r, values, `${p.id}.r`),

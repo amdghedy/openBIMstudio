@@ -121,6 +121,18 @@ export function writeIfc2x3(input: IfcCreatorInput): IfcWriteResult {
   const solids: number[] = [];
   for (const p of input.parts) {
     // Cylinders may lie along X or Z (engine). Engine X -> IFC X, engine Z -> IFC -Y, engine Y -> IFC Z.
+    if (p.shape === "prism") {
+      // Outline x = engine X = IFC X, outline y = engine Y = IFC Z; extruded along engine Z = IFC -Y, centred on cz.
+      const pts = (p.points ?? []).map((q) => [q[0] * p.r, q[1] * p.r] as [number, number]);
+      const pb = add(`IFCCARTESIANPOINT((${f(p.cx)},${f(-p.cz + p.h / 2)},${f(p.cy)}))`);
+      const pa = add("IFCDIRECTION((0.,-1.,0.))");
+      const ppos = add(`IFCAXIS2PLACEMENT3D(${ref(pb)},${ref(pa)},${ref(dx)})`);
+      const ids = pts.map((q) => add(`IFCCARTESIANPOINT((${f(q[0])},${f(q[1])}))`));
+      const poly = add(`IFCPOLYLINE((${[...ids, ids[0]].map(ref).join(",")}))`);
+      const prof = add(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,${stepString(p.name)},${ref(poly)})`);
+      solids.push(add(`IFCEXTRUDEDAREASOLID(${ref(prof)},${ref(ppos)},${ref(dz)},${f(p.h)})`));
+      continue;
+    }
     const ax = p.axis ?? "y";
     const horizontal = p.shape === "cylinder" && ax !== "y";
     const dir: [number, number, number] = ax === "x" ? [1, 0, 0] : ax === "z" ? [0, -1, 0] : [0, 0, 1];
