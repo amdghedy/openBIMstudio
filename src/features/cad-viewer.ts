@@ -1,3 +1,4 @@
+import { exportConstraints, verifyConstraints } from "../modules/cad-viewer/constraint-store";
 import { registerDirtyCheck } from "../core/dirty-registry"; registerDirtyCheck(() => tabs.some((t) => t.engine.isDirty()));
 /**
  * Drawing Editor — Standalone 2D DWG/DXF Environment.
@@ -7115,6 +7116,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       cadGroups.clear();
       xrefs.length = 0;
       modelEnts = doc.entities;
+      // Phase 4c: verify stored constraints against the objects as read (before any straighten rewrites them).
+      const restoredCons = verifyConstraints(doc.constraints, modelEnts);
       // Skip auto-straighten when we have a saved session for this file (preserve last scene).
       const hasSession = !!loadSessionMap()[sessionKeyFor(file.name)] || !!doc.savedView;
       // Physical straighten: rotate world geometry so schedules/sheets are axis-aligned
@@ -7164,6 +7167,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       layoutIdxCache.clear();
       hidden.clear();
       fixedEnts.clear();
+      relations.length = 0;
+      for (const c of restoredCons.ok) {
+        const objs = c.refs.map((i) => modelEnts[i]);
+        if (objs.some((o) => !o)) continue;
+        relations.push({ kind: c.kind, ids: objs.map(uidOf), ...(c.value !== undefined ? { value: c.value } : {}) });
+      }
+      if (relations.length) logCmd(`Restored ${relations.length} constraint(s) saved with this drawing — GCLIST shows them, GCSOLVE re-applies them.`);
+      if (restoredCons.dropped) logCmd(`Dropped ${restoredCons.dropped} stored constraint(s): the objects they named no longer match the file.`);
       for (const l of doc.layers) if (l.off || l.frozen) hidden.add(l.name);
       // Restore object-level visibility persisted by QSAVE (DXF group 60 Invisible).
       hiddenEntities.clear();
@@ -15713,11 +15724,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // so the state survives the save/open round trip without mutating the
     // live entity objects (visibility stays owned by hiddenEntities).
     const stamped = stampInvisibleForSave(entities);
+    // Phase 4c: recorded constraints are written with the drawing (positions + fingerprints, verified on open).
+    const savedCons = exportConstraints(relations, entities, (e) => entUid.get(e));
     const text = writeDxf({
       ...doc,
       entities: [...stamped, ...dimensionEntitiesForSave(stamped)],
       dimStyleTable: dimStyleTableForSave(),
+      constraints: savedCons.stored,
     });
+    if (savedCons.stored.length) logCmd(`Saved ${savedCons.stored.length} constraint(s) with the drawing.`);
+    if (savedCons.dropped) logCmd(`SAVE WARNING: ${savedCons.dropped} constraint(s) reference erased objects and were not saved.`);
     const blob = new Blob([text], { type: "application/dxf" });
     download(blob, fn);
     // Refresh the welcome-screen drawing history with the freshly saved bytes.
@@ -17407,6 +17423,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   function startBlank(): void {
     if (doc) return;
     doc = { units: "mm", layers: [{ name: "0", color: 7 }], entities: [], linetypes: {}, sourceFormat: "cad-engine" };
+    relations.length = 0;
     name = "";
     modelEnts = doc.entities;
     publishCadDoc();
