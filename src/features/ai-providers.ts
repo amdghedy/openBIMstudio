@@ -17,6 +17,9 @@ import {
 } from "./anthropic-messages";
 
 
+import type { ChatAttachment } from "./ai-attachments";
+import { isToolsUnsupportedError, stripThinking } from "./ai-local-models";
+
 export type ProviderKind = "ollama" | "openai" | "anthropic";
 
 export interface ProviderConfig {
@@ -164,6 +167,8 @@ export interface ChatMessage {
   toolCalls?: ToolCall[];
   toolCallId?: string;
   name?: string;
+  /** PDF attachments on a user message. The chat adds their text to the prompt before sending. */
+  attachments?: ChatAttachment[];
 }
 
 export interface ChatResult {
@@ -175,6 +180,8 @@ export interface ChatRequest {
   messages: ChatMessage[];
   tools: ToolDef[];
   signal?: AbortSignal;
+  /** Ollama only: context window to request. Set when the prompt carries document text. */
+  numCtx?: number;
 }
 
 export type TokenCallback = (delta: string) => void;
@@ -408,23 +415,39 @@ function networkErrorHint(err: unknown, cfg: ProviderConfig): string {
   return msg;
 }
 
+
+/**
+ * POST to Ollama /api/chat. Some local models (for example deepseek-r1 and gemma3 builds)
+ * answer 400 "does not support tools". Then the same request is sent once without tools,
+ * so the model still answers in plain text. numCtx asks for a bigger context window.
+ */
+async function ollamaChatFetch(cfg: ProviderConfig, req: ChatRequest, stream: boolean): Promise<Response> {
+  const url = joinUrl(resolveEndpoint(cfg), "/api/chat");
+  const build = (withTools: boolean) => {
+    const body: any = { model: cfg.model, messages: req.messages.map(toOllamaMessage), stream };
+    if (withTools && req.tools.length) body.tools = req.tools.map((t) => ({ type: "function", function: t }));
+    if (req.numCtx) body.options = { num_ctx: req.numCtx };
+    return JSON.stringify(body);
+  };
+  const post = async (withTools: boolean): Promise<Response> => {
+    try { return await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: build(withTools), signal: req.signal }); }
+    catch (err) { throw new Error(networkErrorHint(err, cfg)); }
+  };
+  let res = await post(true);
+  if (!res.ok && req.tools.length) {
+    const txt = await res.clone().text().catch(() => "");
+    if (isToolsUnsupportedError(res.status, txt)) res = await post(false);
+  }
+  return res;
+}
+
 /* Non-streaming Ollama */
 async function callOllama(cfg: ProviderConfig, req: ChatRequest): Promise<ChatResult> {
-  const url = joinUrl(resolveEndpoint(cfg), "/api/chat");
-  const body = {
-    model: cfg.model,
-    messages: req.messages.map(toOllamaMessage),
-    tools: req.tools.map((t) => ({ type: "function", function: t })),
-    stream: false,
-  };
-  let res: Response;
-  try {
-    res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: req.signal });
-  } catch (err) { throw new Error(networkErrorHint(err, cfg)); }
+  const res = await ollamaChatFetch(cfg, req, false);
   if (!res.ok) { const txt = await res.text().catch(() => ""); throw new Error(classifyHttpError(res.status, res.statusText, txt)); }
   const json: any = await res.json();
   const msg = json?.message ?? {};
-  const content = String(msg.content ?? "");
+  const content = stripThinking(String(msg.content ?? ""));
   const rawCalls: any[] = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
   const toolCalls: ToolCall[] = rawCalls.map((c, i) => {
     const fn = c?.function ?? c;
@@ -443,11 +466,7 @@ async function callOllama(cfg: ProviderConfig, req: ChatRequest): Promise<ChatRe
 
 /* Streaming Ollama — same as before */
 async function callOllamaStream(cfg: ProviderConfig, req: ChatRequest, onToken: TokenCallback): Promise<ChatResult> {
-  const url = joinUrl(resolveEndpoint(cfg), "/api/chat");
-  const body = { model: cfg.model, messages: req.messages.map(toOllamaMessage), tools: req.tools.map((t) => ({ type: "function", function: t })), stream: true };
-  let res: Response;
-  try { res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: req.signal }); }
-  catch (err) { throw new Error(networkErrorHint(err, cfg)); }
+  const res = await ollamaChatFetch(cfg, req, true);
   if (!res.ok) { const txt = await res.text().catch(() => ""); throw new Error(classifyHttpError(res.status, res.statusText, txt)); }
   if (!res.body) throw new Error("Ollama returned no response body");
   const reader = res.body.getReader();
@@ -481,6 +500,7 @@ async function callOllamaStream(cfg: ProviderConfig, req: ChatRequest, onToken: 
       }
     }
   } finally { try { reader.releaseLock(); } catch { /* */ } }
+  fullContent = stripThinking(fullContent);
   return {
     message: { role: "assistant", content: fullContent, ...(toolCalls.length ? { toolCalls } : {}) },
     toolCalls,

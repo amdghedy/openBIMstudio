@@ -229,6 +229,8 @@
     "test:rvt": "node tests/rvt-model-viewer.test.cjs",
     "test:rfa-import": "node tests/rfa-import.test.cjs",
     "test:ai-presets": "node tests/ai-presets.test.cjs",
+    "test:ai-local-models": "node tests/ai-local-models.test.cjs",
+    "test:ai-ollama-request": "node tests/ai-ollama-request.test.cjs",
     "test:cad-insert": "node tests/cad-insert.test.cjs",
     "test:block-library-store": "node tests/block-library-store.test.cjs",
     "test:ui-reachability": "node tests/ui-reachability.test.cjs",
