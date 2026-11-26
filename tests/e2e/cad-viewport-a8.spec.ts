@@ -31,17 +31,19 @@ import { openPaletteWith } from './palette';
  *     (the popup's title names Layout1).
  *  7. DWG round-trip: DWGSAVE writes both sheets (history notes that
  *     sheet names are not kept in DWG — the converter's block-name
- *     model); re-importing the .dwg shows both layout tabs, the
- *     bulged polyline and the dimension text; QSAVE of the
- *     re-imported drawing still carries both LAYOUT objects with
- *     their names, the bulge 1.0, and a real DIMENSION record — the
- *     UI import reads the converter's DXF intermediate (not its
- *     document_json model), so names and the DIMENSION survive the
- *     UI loop even though the raw converter model drops them (the
- *     node A19 suite proves the raw-model loss; the UI loop proves
- *     the intermediate path). The import bakes the model geometry
- *     into every paper layout, so the QSAVE triples the model
- *     entities — recorded as a follow-up.
+ *     model); re-importing the .dwg shows both layout tabs; the
+ *     merged model lands in Model space (LINE=16, LWPOLYLINE=2,
+ *     TEXT=2 — live plus re-imported) while Layout1 stays empty
+ *     (A9: the import no longer bakes the model into the paper
+ *     layout on screen); QSAVE of the re-imported drawing still
+ *     carries both LAYOUT objects with their names, the bulge 1.0,
+ *     and a real DIMENSION record — the UI import reads the
+ *     converter's DXF intermediate (not its document_json model),
+ *     so names and the DIMENSION survive the UI loop even though the
+ *     raw converter model drops them (the node A19 suite proves the
+ *     raw-model loss; the UI loop proves the intermediate path) —
+ *     and the saved DXF now carries the merged model once (16
+ *     LINEs, 2 TEXTs), not tripled as the pre-A9 code wrote it.
  *
  * Calibration runs with OSNAP off (A16 lesson) and the screen->world
  * map is re-solved from the live canvas before each absolute pick
@@ -340,7 +342,9 @@ test('A8 viewports + plot, A19 DWG round-trip', async ({ page }, testInfo) => {
   await popup.close();
 
   // 10. DWG round-trip: DWGSAVE writes both sheets; re-import shows
-  //     both layout tabs, the bulged polyline and the dimension text.
+  //     both layout tabs, and the merged model lands in Model space
+  //     (A9: the re-import no longer bakes the model into the paper
+  //     layout that is on screen — Layout1 stays empty).
   {
     const dl = page.waitForEvent('download', { timeout: 120000 });
     await run('DWGSAVE');
@@ -354,22 +358,33 @@ test('A8 viewports + plot, A19 DWG round-trip', async ({ page }, testInfo) => {
     await page.locator('[data-r=importfile]').first().setInputFiles({ name: 'roundtrip-a8.dwg', mimeType: 'application/octet-stream', buffer: dwgBytes });
     await expect(tabs.locator('button[data-li="0"]')).toBeVisible({ timeout: 30000 });
     await expect(tabs.locator('button[data-li="1"]')).toBeVisible({ timeout: 30000 });
-    // The dimension's arrowheads are LWPOLYLINEs too, so the count is
-    // not exactly 1 after the dimension exists — assert presence.
-    await expectCensus(/LWPOLYLINE=[1-9]/);
-    await expectCensus(/TEXT=1/);
+    // Layout1 is empty after the re-import: the model is no longer
+    // baked into the paper layout (A9 baking fix — on the pre-A9
+    // code this census read LINE=8, LWPOLYLINE=1, TEXT=1).
+    await expect.poll(async () => {
+      const c = await lastCensus();
+      return !/LINE=|LWPOLYLINE=|TEXT=/.test(c) ? c : '';
+    }, { timeout: 15000 }).toContain('CENSUS: (empty)');
+    // The merged model is in Model space: the live entities plus the
+    // re-imported copies (LINE 8+8, the bulged polyline twice, the
+    // dimension text twice).
+    await tabs.locator('button[data-li="-1"]').click();
+    await expect(spaceBtn).toHaveText('MODEL');
+    await expectCensus(/LINE=16/);
+    await expectCensus(/LWPOLYLINE=2/);
+    await expectCensus(/TEXT=2/);
   }
 
   // 11. QSAVE after the DWG loop: the layouts, the bulge and the
   //     DIMENSION all survive the UI loop — the UI import reads the
   //     converter's DXF intermediate (not its document_json model),
   //     so the LAYOUT names and the DIMENSION entity come back
-  //     intact. Two observations, both recorded as follow-ups, not
-  //     blockers: (a) the model geometry is baked into every paper
-  //     layout by the import (the bulged polyline and the dimension
-  //     text appear once per sheet), so a QSAVE after a DWG import
-  //     triples the model entities; (b) the DIMENSION's defpoints
-  //     come back to 7 decimals, not bit-exact.
+  //     intact. Since A9 the model geometry is no longer baked into
+  //     the paper layouts by the import, so the saved DXF carries the
+  //     merged model once per record type (16 LINEs, 2 TEXTs,
+  //     1 DIMENSION — not the 24 / 3 the pre-A9 code wrote). One
+  //     observation remains a follow-up, not a blocker: the
+  //     DIMENSION's defpoints come back to 7 decimals, not bit-exact.
   {
     const dl = page.waitForEvent('download', { timeout: 60000 });
     await run('QSAVE');
@@ -395,6 +410,12 @@ test('A8 viewports + plot, A19 DWG round-trip', async ({ page }, testInfo) => {
     expect(dims.length, `expected the DIMENSION record to survive the DWG loop, got ${dims.length}`).toBe(1);
     expect(recStr(dims[0], 1)).toBe('100.00 mm');
     expect(recNum(dims[0], 70)).toBe(32);
+    // The merged model is written once, not tripled (A9 baking fix):
+    // 16 LINE records and 2 TEXT records in the whole file.
+    const lineCount = recs.filter((r) => r.type === 'LINE').length;
+    expect(lineCount, `expected 16 LINE records after the DWG loop, got ${lineCount}`).toBe(16);
+    const textCount = recs.filter((r) => r.type === 'TEXT').length;
+    expect(textCount, `expected 2 TEXT records after the DWG loop, got ${textCount}`).toBe(2);
   }
 
   expect(errors, `page errors: ${errors.join('\n')}`).toEqual([]);
