@@ -214,6 +214,27 @@ t("placement follows sheet rows D, E, I and G and stays inside the overall box (
     near(hd.cz + hd.h / 2, mo.cz - mo.h / 2, 1e-9, "head and motor touch");
   }
 });
+if (process.env.BOOSTER_PAGES) {
+  t("every model page (A 7.5 HP, B 5, C 3, D 2) generates: bbox equals the sheet, pumps stay inside the depth, rows D/E/I are honoured", () => {
+    const IN = 0.0254;
+    const pages = JSON.parse(fs.readFileSync(process.env.BOOSTER_PAGES, "utf8"));
+    const sheets = K.readBoosterSheets(pages);
+    assert.strictEqual(sheets.length, 4);
+    for (const sh of sheets) for (const v of sh.variants) for (const depthRow of ["J", "H"]) {
+      if (v.dimsIn[depthRow] === undefined || v.dimsIn.D === undefined) continue;
+      const { spec } = K.boosterSpecFromSheet(sh, { variantId: v.id, depthRow });
+      const f = P.runCreator({ name: spec.name, spec }, deps).family;
+      const parts = L.resolveParts(B.templateFor(spec), deps.buildInEngine(f, f.types[0]).params);
+      const sm = parts.find((p) => p.id === "manifold-suction"), dm = parts.find((p) => p.id === "manifold-discharge");
+      const tag = `${sh.model} ${v.id} ${depthRow}`;
+      near(dm.cy - sm.cy, v.dimsIn.E * IN, 1e-6, tag + " E");
+      near(dm.cz - sm.cz, v.dimsIn.I * IN, 1e-6, tag + " I");
+      for (const p of parts.filter((q) => /^(motor|head)/.test(q.id))) {
+        assert.ok(p.cz + p.h / 2 <= spec.depthM / 2 + 1e-9 && p.cz - p.h / 2 >= sm.cz + sm.r - 1e-9, `${tag} ${p.id} placement`);
+      }
+    }
+  });
+}
 if (process.env.BOOSTER_DUMP) {
   const { spec } = K.boosterSpecFromSheet(sheet, { variantId: "half-3~460", depthRow: "J" });
   const f = P.runCreator({ name: spec.name, spec }, deps).family; const parts = L.resolveParts(B.templateFor(spec), deps.buildInEngine(f, f.types[0]).params);
