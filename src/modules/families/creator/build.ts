@@ -75,6 +75,7 @@ export function templateFor(spec: ProductSpec): PartTemplate {
     // Ribs are repeated per pump and per rib: the total is written out here, because a count must be a whole number.
     const g = (n: string) => Number(counts[n] ?? base.params.find((q) => q.name === n)?.default ?? 0);
     counts.RibCount = Math.round(g("Pumps")) * Math.round(g("FinCount"));
+    counts.SaddleCount = Math.max(0, Math.round(g("Pumps")) - 1);
   }
   return expandTemplate(base, counts);
 }

@@ -228,6 +228,26 @@ t("sheet row F sets the top of the discharge gauge fitting above the discharge a
     near(dial.cy + 0.035 - man.cy, sp.params.GaugeRise, 1e-6, id + " gauge top = discharge axis + row F");
   }
 });
+t("control panel: three rack posts under it, two door seams and a display window on its front face", () => {
+  const sp = K.boosterSpecFromSheet(sheet, { variantId: "half-3~460", depthRow: "J" }).spec;
+  const r = P.runCreator({ name: "pn", spec: sp }, deps); const parts = L.resolveParts(B.templateFor(sp), deps.buildInEngine(r.family, r.family.types[0]).params);
+  const panel = parts.find((p) => p.id === "panel"), posts = parts.filter((p) => /^post-/.test(p.id)), seams = parts.filter((p) => /^door-seam/.test(p.id)), win = parts.find((p) => p.id === "hmi-window");
+  assert.strictEqual(posts.length, 3); assert.strictEqual(seams.length, 2); assert.ok(win);
+  const front = panel.cz + panel.d / 2;
+  for (const p of posts) { assert.ok(Math.abs(p.cx) <= panel.w / 2, "post under panel width"); near(p.cy + p.h / 2, panel.cy - panel.h / 2, 1e-6, "post top meets panel bottom"); }
+  for (const s of seams) { assert.ok(Math.abs(s.cx) < panel.w / 2); assert.ok(s.cz > front - 1e-9 && s.cz - s.d / 2 <= front + 1e-9, "seam on front face"); }
+  assert.ok(Math.abs(win.cx) < panel.w / 2 && win.cz - win.d / 2 <= front + 1e-9 && win.cy + win.h / 2 < panel.cy + panel.h / 2 && win.cy - win.h / 2 > panel.cy - panel.h / 2, "window inside the face");
+});
+t("suction manifold saddles: one between each pair of pumps, standing on the base plate and touching the manifold", () => {
+  const sp = K.boosterSpecFromSheet(sheet, { variantId: "half-3~460", depthRow: "J" }).spec;
+  for (const n of [1, 3, 4]) {
+    const s2 = { ...sp, params: { ...sp.params, Pumps: n } };
+    const r = P.runCreator({ name: "sd", spec: s2 }, deps); const parts = L.resolveParts(B.templateFor(s2), deps.buildInEngine(r.family, r.family.types[0]).params);
+    const sad = parts.filter((p) => /^saddle-/.test(p.id)), man = parts.find((p) => p.id === "manifold-suction"), plate = parts.find((p) => p.id === "base-plate");
+    assert.strictEqual(sad.length, n - 1, "saddles for " + n + " pumps");
+    for (const p of sad) { near(p.cy - p.h / 2, plate.cy + plate.h / 2, 1e-6, "saddle stands on plate"); near(p.cy + p.h / 2, man.cy, 1e-6, "saddle reaches the manifold axis"); assert.ok(Math.abs(p.cx) < man.h / 2, "saddle inside manifold length"); }
+  }
+});
 t("parts carry their basis: sheet-or-catalogue values versus proportions chosen here", () => {
   const spec = K.boosterSpecFromSheet(sheet, { variantId: "half-3~460", depthRow: "J" }).spec;
   const f = P.runCreator({ name: "b", spec }, deps).family; const parts = L.resolveParts(B.templateFor(spec), deps.buildInEngine(f, f.types[0]).params);
