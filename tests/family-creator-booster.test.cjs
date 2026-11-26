@@ -219,6 +219,15 @@ t("volute scroll is a real polygon solid in the engine parts and in the IFC, and
   let found = 0; obj.traverse((o) => { if (o.isMesh) { const bb = new THREE.Box3().setFromObject(o); const sz = bb.getSize(new THREE.Vector3()); if (Math.abs(sz.z - va[0].h) < 1e-6 && Math.abs(sz.x - va[0].r * (0.945 + 0.835)) < 1e-3) found++; } });
   assert.strictEqual(found, 3, "engine volute meshes found: " + found);
 });
+t("sheet row F sets the top of the discharge gauge fitting above the discharge axis", () => {
+  for (const id of ["half-3~460", "full-3~460", "full-1-3~230"]) {
+    const sp = K.boosterSpecFromSheet(sheet, { variantId: id, depthRow: "J" }).spec;
+    const r = P.runCreator({ name: "g", spec: sp }, deps); const eng = deps.buildInEngine(r.family, r.family.types[0]);
+    const parts = L.resolveParts(B.templateFor(sp), eng.params);
+    const dial = parts.find((p) => p.id.startsWith("gauge-dial")), man = parts.find((p) => p.id.startsWith("manifold-discharge"));
+    near(dial.cy + 0.035 - man.cy, sp.params.GaugeRise, 1e-6, id + " gauge top = discharge axis + row F");
+  }
+});
 t("parts carry their basis: sheet-or-catalogue values versus proportions chosen here", () => {
   const spec = K.boosterSpecFromSheet(sheet, { variantId: "half-3~460", depthRow: "J" }).spec;
   const f = P.runCreator({ name: "b", spec }, deps).family; const parts = L.resolveParts(B.templateFor(spec), deps.buildInEngine(f, f.types[0]).params);
