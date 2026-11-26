@@ -11,6 +11,14 @@
 // If the table is not found in the expected shape, `ok` is false with the reason.
 
 import type { ProductSpec } from "./build";
+import { readDimensionTable, type TableProfile } from "./catalogue-table";
+
+/** The booster sheet layout as a generic table profile: header "Dimensions" with 8 voltage columns, lettered rows. */
+export const BOOSTER_TABLE_PROFILE: TableProfile = {
+  headerPrefix: "Dimensions", columnCount: 8,
+  rowKeys: ["A", "A1", "B", "C", "D", "E", "F", "G", "H", "I", "J", "J1"], requiredRows: ["A", "C", "J"],
+  metresPerUnit: 0.0254, unitBasis: "inches",
+};
 
 const IN = 0.0254;
 
@@ -45,8 +53,7 @@ function readOne(pages: string[], pageOffset: number): BoosterSheet {
   const fail = (reason: string): BoosterSheet => ({ ok: false, reason, unitBasis: "", variants: [], lines: {} });
   const lines: Record<string, { page: number; line: number }> = {};
   let model: string | undefined, hp: number | undefined;
-  let voltages: string[] | null = null, hdrAt: { page: number; line: number } | null = null;
-  const rows: Record<string, Array<string>> = {};
+  let voltages: string[] = [];
   let panel: string[] | null = null, panelW: string[] | null = null, sysW: string[] | null = null, connection: string[] | null = null;
   for (let p = 0; p < pages.length; p++) {
     const ls = pages[p].split("\n");
@@ -57,29 +64,21 @@ function readOne(pages: string[], pageOffset: number): BoosterSheet {
       if (m && !model) { model = `WiBooster ${m[1]}/${m[2]}/${m[3]}`; lines.model = where; }
       const h = line.match(/^Horsepower\/Pump\s+(\d+(\.\d+)?)/);
       if (h && hp === undefined) hp = Number(h[1]);
-      if (/^Dimensions\s/.test(line) && !voltages) {
-        const toks = line.replace(/^Dimensions\s+/, "").split(/\s+/);
-        if (toks.length >= 8) { voltages = toks.slice(0, 8); hdrAt = where; lines.header = where; }
-      }
       const toks = line.split(/\s+/);
-      const row = toks[0];
-      if (/^(A|A1|B|C|D|E|F|G|H|I|J|J1)$/.test(row) && toks.length >= 9 && !rows[row]) {
-        const vals = toks.slice(1, 9);
-        if (vals.every((v) => num(v) !== null || v === "x")) { rows[row] = vals; lines[row] = where; }
-      }
       if (/^System Connection \(150#\)\s/.test(line)) connection = toks.slice(-8);
       if (/^Panel Dimensions \(HxWxD\)\s/.test(line)) { panel = toks.slice(-8); lines.panel = where; }
       if (/^Panel Weight \(lbs\)\s/.test(line)) panelW = toks.slice(-8);
       if (/^System Weight \(lbs\)\s/.test(line)) sysW = toks.slice(-8);
     }
   }
-  if (!voltages || !hdrAt) return fail("The dimensions table header (flow type and voltage columns) was not found.");
-  for (const k of ["A", "C", "J"]) if (!rows[k]) return fail(`Dimension row ${k} was not found in the table.`);
+  const table = readDimensionTable(pages, BOOSTER_TABLE_PROFILE);
+  if (!table.ok) return fail(/header/.test(table.reason ?? "") ? "The dimensions table header (flow type and voltage columns) was not found." : (table.reason ?? "").replace(/^Row (\w+) was not found in the table\./, "Dimension row $1 was not found in the table."));
+  voltages = table.columns.map((c) => c.label);
+  for (const [k, w] of Object.entries(table.lines)) lines[k] = { page: w.page + pageOffset, line: w.line };
   const variants: BoosterVariant[] = [];
   for (let c = 0; c < 8; c++) {
     const flow: "full" | "half" = c < 4 ? "full" : "half";
-    const dimsIn: Record<string, number> = {};
-    for (const [k, vals] of Object.entries(rows)) { const v = num(vals[c]); if (v !== null) dimsIn[k] = v; }
+    const dimsIn = { ...table.columns[c].rows };
     const pm = panel?.[c]?.match(/^(\d+)[xX](\d+)[xX](\d+)$/);
     variants.push({
       id: `${flow}-${voltages[c]}`, flow, voltage: voltages[c],
