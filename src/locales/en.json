@@ -1,5 +1,12 @@
 {
-  "standards": { "title": "Standards" }, "meta": { "name": "English", "nativeName": "English", "dir": "ltr" },
+  "standards": {
+    "title": "Standards"
+  },
+  "meta": {
+    "name": "English",
+    "nativeName": "English",
+    "dir": "ltr"
+  },
   "app": {
     "name": "Open BIM Studio",
     "loading": "Loading…",
@@ -24,7 +31,10 @@
     "status": {
       "selectModels": "Select models in A and B, then Run Test.",
       "running": "Running {test} … {method}…",
-      "found": { "one": "1 clash found.", "other": "{count} clashes found." },
+      "found": {
+        "one": "1 clash found.",
+        "other": "{count} clashes found."
+      },
       "none": "No clashes found.",
       "cancelled": "Test cancelled.",
       "failed": "Failed: {message}",
@@ -100,6 +110,109 @@
     "currency": "Currency"
   },
   "familyCreator": {
+    "drawing": {
+      "title": "Drawing to parts (early prototype)",
+      "intro": "Choose a picture of a drawing that shows a side view and an end view, and enter one real length. The parts are read from the lines of the picture. The numbers printed in the picture are not read: you enter them, and width and height are only used to check the scale.",
+      "choose": "Choose a drawing picture",
+      "lengthLabel": "Overall length of the side view (mm), entered",
+      "widthLabel": "Overall width (mm), only checked",
+      "heightLabel": "Overall height of the end view (mm), only checked",
+      "pipeLabel": "Pipe diameter (mm), entered, optional",
+      "sideFace": "Side-view panels are placed on",
+      "endFace": "End-view grilles are placed on",
+      "faceOpt": {
+        "plus": "the + width face",
+        "minus": "the - width face",
+        "both": "both faces (a mirrored guess)"
+      },
+      "endOpt": {
+        "start": "the start end of the side view",
+        "end": "the far end of the side view"
+      },
+      "read": "Read the drawing",
+      "reading": "Reading the drawing...",
+      "stale": "The settings changed. Press Read the drawing to update the parts.",
+      "errNoFile": "Choose a drawing picture first.",
+      "errNoLength": "Enter the overall length of the side view in mm. It sets the scale.",
+      "errFailed": "Could not read the drawing: {message}",
+      "errExport": "The IFC did not pass its structure check: {message}",
+      "saved": "Saved {file} with {n} confirmed parts.",
+      "dimsTitle": "Dimensions",
+      "dimsNote": "Entered values set the scale. Checked values are compared with the picture and never change the parts.",
+      "dim": {
+        "length": "Length",
+        "width": "Width",
+        "height": "Height",
+        "pipe": "Pipe diameter"
+      },
+      "entered": "entered",
+      "assumed": "assumed",
+      "notEntered": "not entered",
+      "checked": "checked: about {measured} mm estimated from the picture's pixels (not a verified dimension)",
+      "overlayTitle": "What was found in the picture",
+      "overlayHelp": "Click a box to leave that part out. Blue are panels, orange are grilles, light blue are body blocks, grey is the pipe.",
+      "partsTitle": "Parts ({kept} of {n} confirmed)",
+      "tagSize": "size",
+      "tagThickness": "thickness",
+      "tagPlacement": "placed on",
+      "tagDepth": "depth",
+      "fromPicture": "estimated from the picture's pixels",
+      "face": {
+        "plus": "the + width face",
+        "minus": "the - width face",
+        "start": "the start end",
+        "end": "the far end"
+      },
+      "viewLength": "Length side",
+      "viewEnd": "End",
+      "viewTop": "Top",
+      "unknownTitle": "Not shown in the drawing",
+      "export": "Download IFC of the confirmed parts",
+      "exportNote": "Panels and grilles are flat plates of an assumed thickness, placed inside the overall size. Not added to the family library. Opening in Revit has not been tested.",
+      "partsSelected": "Parts ({kept} of {n} selected, not confirmed yet)",
+      "partsConfirmed": "Parts ({kept} of {n} confirmed)",
+      "selectedNote": "The main parts found in the picture start selected. Possible handles, hinges, fittings and lifting eyes are guesses and start off; tick any you want. Nothing is confirmed until you press Confirm selected parts. Changing the selection removes the confirmation.",
+      "confirmedNote": "You confirmed this selection. Each part keeps its tags: size estimated from the picture's pixels, entered, or assumed.",
+      "confirmBtn": "Confirm selected parts",
+      "confirmedBtn": "Selection confirmed",
+      "onlyDoors": "Leave out panels that do not look like doors",
+      "selectAll": "Select all",
+      "doorLike": "looks like a door (a guess from its handle and lock lines)",
+      "built": "parts built: about {mm} mm (from the same estimate)",
+      "dimsWhy": "The picture is measured at its widest and tallest row, which includes hinges, handles and lifting eyes. The parts use the body block, so the built size can be a few mm to a few cm smaller. Neither value is the entered one.",
+      "preview3d": "3D preview of the selected parts",
+      "preview3dHelp": "Drag to turn it. Blue is the body, darker blue panels, orange grilles, grey the pipe. Hidden and far-side geometry is not in the picture, so it is not shown.",
+      "viewsFound": "{n} views found in the picture.",
+      "viewAuto": "Automatic (view {n})",
+      "viewOpt": "View {n} ({w} px wide)",
+      "sideViewLabel": "Side view (the length is entered for this one)",
+      "endViewLabel": "End view",
+      "viewsSelected": "Views of the selected parts (not confirmed yet)",
+      "viewsConfirmed": "Views of the confirmed parts",
+      "qualityTitle": "This result does not match what you entered",
+      "qualityHelp": "Treat these parts as a failed reading, not a model of the drawing. Dimension lines, text or a cluttered sheet are the usual cause.",
+      "cropHelp": "Use only part of the picture (percent to cut from each side). Cut away notes, lifting diagrams and title blocks so each view stays clean. Changing it clears the result.",
+      "cropDrag": "Or drag a rectangle on the picture above to choose the part to use.",
+      "cropReset": "Use whole picture",
+      "cropL": "Left %",
+      "cropR": "Right %",
+      "cropT": "Top %",
+      "cropB": "Bottom %",
+      "calEnd": "Scale of the end view",
+      "calOpt": {
+        "side": "Same as the side view (default)",
+        "height": "Use the entered height of the end view"
+      },
+      "candidate": "guess from shape, not confirmed, off until you tick it",
+      "dragMode": "Dragging on the picture sets",
+      "modeCrop": "The part of the picture to use (crop)",
+      "modeSide": "The side view box",
+      "modeEnd": "The end view box",
+      "vbNone": "Views are found automatically. To set them yourself, draw both the side view box and the end view box.",
+      "vbOne": "One view box drawn. Draw the other too; until both exist the views are found automatically.",
+      "vbBoth": "Both view boxes drawn: they replace the automatic views.",
+      "vbReset": "Clear view boxes"
+    },
     "title": "Family Creator",
     "intro": "Choose a PDF, picture or text file, paste text, or type the overall size. Free. Files you choose, pasted text and typed sizes are read on this device and are not uploaded; pictures and scanned PDFs are read here too (OCR, English), so check the numbers it finds. A pasted link is the exception: it goes through this site's server, only if you agree each time and only where the site has switched that on. The parts come from a ready-made shape for your product, not from tracing the drawing.",
     "name": "Product name",
@@ -214,7 +327,12 @@
       "conflict": "{label} appears with different values (page {page}, line {line} and {other}), so none was used and the default is kept. Check the sheet and enter the value yourself.",
       "ambiguous": "{label} (page {page}, line {line}: {text}) could include or exclude the top and bottom shelves, so it was not used. Set Middle shelves yourself."
     },
-    "tag": { "sheet": "from sheet", "default": "default", "edited": "edited by you", "typed": "typed by you" },
+    "tag": {
+      "sheet": "from sheet",
+      "default": "default",
+      "edited": "edited by you",
+      "typed": "typed by you"
+    },
     "url": {
       "unavailable": "Link import is not available on this site. Download the file and choose it above instead.",
       "placeholder": "Or paste a link to the sheet (https)",
@@ -240,7 +358,15 @@
     "preview3d": "3D preview",
     "fit": "Fit",
     "preview3dHelp": "Drag to rotate, scroll to zoom, right-drag to pan.",
-    "preview3dUnavailable": "3D preview needs WebGL, which this browser does not provide. The views below still work."
+    "preview3dUnavailable": "3D preview needs WebGL, which this browser does not provide. The views below still work.",
+    "review": {
+      "needed": "Look over the parts, sizes and warnings above. Adding to the library needs your review of this result.",
+      "done": "You reviewed this result. Any change or new run takes the review back.",
+      "btn": "I reviewed this result"
+    },
+    "taskState": {
+      "title": "Task state (read only)"
+    }
   },
   "counts": {
     "elements": "{n, plural, one{# element} other{# elements}}",

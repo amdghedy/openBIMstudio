@@ -53,7 +53,27 @@ async function openLaunchedFiles(handles: any[]): Promise<void> {
   }
 }
 
+/** One reload per tab session when a page asks for a script that the server no longer has (an old page after a new deploy). */
+function reloadOnceForStaleBuild(): boolean {
+  try {
+    const k = "obs-stale-build-reload";
+    if (sessionStorage.getItem(k)) return false;
+    sessionStorage.setItem(k, String(Date.now()));
+  } catch { return false; }
+  const go = () => window.location.reload();
+  try {
+    navigator.serviceWorker?.getRegistration().then((r) => (r ? r.update() : undefined)).catch(() => { /* offline */ }).finally(go);
+  } catch { go(); }
+  return true;
+}
+
 export function setupPwa(): void {
+  // A lazy script that fails to load because the build changed under an open tab: refresh once
+  // to get the new page. If that already happened this session, say so instead of looping.
+  window.addEventListener("vite:preloadError", (e) => {
+    e.preventDefault();
+    if (!reloadOnceForStaleBuild()) notify("error", "A part of the app could not be loaded. Reload the page; if it keeps failing, the app was updated while this page was open.");
+  });
   window.addEventListener("beforeinstallprompt", (e) => {
     e.preventDefault();
     installEvent = e;

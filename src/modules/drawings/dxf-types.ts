@@ -482,4 +482,6 @@ export interface DxfDocument {
    * which case block references are INSERT entities in `entities`/layouts instead of expanded copies.
    */
   blocks?: Record<string, DxfBlockDef>;
+  /** Recorded geometric constraints (Phase 4c): model-space entity positions + geometry fingerprints. */
+  constraints?: Array<{ kind: string; refs: number[]; fp: string[]; value?: number }>;
 }

@@ -485,6 +485,7 @@ export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocume
   const layoutHandleByBlock = new Map<string, string>();
   /** OBJECTS LAYOUT records: LAYOUT object handle (group 5) -> layout name (group 1). */
   const layoutNameByHandle = new Map<string, string>();
+  const storedConstraints: NonNullable<DxfDocument["constraints"]> = [];
   /** OBJECTS LAYOUT records: layout name -> plot settings (AcDbPlotSettings). */
   const layoutPlotByName = new Map<string, { setupName?: string; paper?: string; scale?: number; area?: "display" | "extents" | "window" | "layout" }>();
   let units: DxfUnits | undefined;
@@ -593,6 +594,17 @@ export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocume
     }
 
     if (section === "OBJECTS") {
+      if (r.type === "XRECORD" && storedConstraints.length < 100_000) {
+        // Phase 4c: constraint XRECORD — group 1: marker, kind, then one fingerprint per group-90 position.
+        const d = new Data(r.pairs), ones = d.all(1);
+        if (ones[0] === "OBS_CONSTRAINT" && ones[1]) {
+          const refs = d.all(90).map((v) => Number(v));
+          const fp = ones.slice(2);
+          if (refs.length >= 1 && refs.length <= 2 && refs.length === fp.length && refs.every((n) => Number.isInteger(n) && n >= 0)) {
+            storedConstraints.push({ kind: ones[1], refs, fp, ...(d.has(40) ? { value: d.n(40) } : {}) });
+          }
+        }
+      }
       if (r.type === "IMAGEDEF") {
         const d = new Data(r.pairs);
         const h = d.s(5)?.trim().toUpperCase(), p = d.s(1);
@@ -782,6 +794,7 @@ export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocume
     ...(blockTable ? { blocks: blockTable } : {}),
     ...(xrefDecls.length ? { xrefs: xrefDecls } : {}),
     ...(savedView ? { savedView } : {}),
+    ...(storedConstraints.length ? { constraints: storedConstraints } : {}),
     units: units ?? "unitless",
     sourceFormat: "dxf",
     layouts: layouts.length ? layouts : undefined,
