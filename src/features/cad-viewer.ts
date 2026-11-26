@@ -51,6 +51,7 @@ import { sanitizeSessionUi, sessionUiSignature, hiddenEntityIndexes, sanitizeHid
 import * as M from "../modules/cad-viewer/viewer-math";
 import * as LayerLock from "../modules/cad-viewer/layer-lock";
 import * as GridSnap from "../modules/cad-viewer/grid-snap";
+import * as Aids from "../modules/cad-viewer/cad-drafting-aids";
 import {
   createCadSnapOverride,
   resolveOverrideKeys as resolveCadOverrideKeys,
@@ -1821,6 +1822,18 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       : savedTwist ? `UCS display: OFF — raw world coordinates shown; the ${savedTwist.toFixed(1)}° saved rotation is not applied` : "UCS display: OFF — raw world coordinates");
   } // Lineweight display
   let showGrid = true;
+  // 2D-2: the drafting aids are shared state (cad-drafting-aids.ts) — the
+  // main-shell status bar toggles the same flags. A fresh engine starts
+  // from the shared state (persisted shell toggles included); a saved
+  // drawing session restored below still wins for this tab.
+  snapOn = Aids.getDraftingAid("osnap");
+  gridSnapOn = Aids.getDraftingAid("snap");
+  orthoOn = Aids.getDraftingAid("ortho");
+  polarOn = Aids.getDraftingAid("polar");
+  otrackOn = Aids.getDraftingAid("otrack");
+  dynOn = Aids.getDraftingAid("dyn");
+  lwtOn = Aids.getDraftingAid("lwt");
+  showGrid = Aids.getDraftingAid("grid");
   let cleanScreen = false;
 
   let currentLayer = "0";
@@ -8852,6 +8865,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       lwt: () => {
         lwtOn = !lwtOn;
         tools.querySelector("[data-a=lwt]")!.classList.toggle("on", lwtOn);
+        updateStatus();
         draw();
       },
       undo,
@@ -11683,6 +11697,22 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       lwtOn = !lwtOn;
       updateStatus();
       draw();
+    });
+
+    // 2D-2: publish the live aid state to the shared module so the
+    // main-shell status bar (and any other reader) sees the same flags
+    // the viewer toggles switch. applyDraftingAids diffs and only
+    // notifies on a real change, so publishing here can never echo-loop
+    // with the subscriber below.
+    Aids.applyDraftingAids({
+      grid: showGrid,
+      snap: gridSnapOn,
+      osnap: snapOn,
+      ortho: orthoOn,
+      polar: polarOn,
+      otrack: otrackOn,
+      dyn: dynOn,
+      lwt: lwtOn,
     });
   }
 
@@ -17604,6 +17634,38 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   stageEl?.addEventListener("keydown", onCadEscCapture, true);
   cv.addEventListener("keydown", onCadEscCapture, true);
 
+  // 2D-2: apply drafting-aid changes made outside this engine (the
+  // main-shell status bar toggles the shared module). Only the active
+  // tab applies live — an inactive tab syncs from the module when it is
+  // activated (see activate()), so a stale tab can never publish its
+  // old flags back through updateStatus. The subscription is never
+  // removed (same as the window keydown listeners above); the handler
+  // is guarded so a closed engine can never throw into other
+  // subscribers.
+  function syncDraftingAidsFromShared(): boolean {
+    const next = Aids.getDraftingAids();
+    let changed = false;
+    if (snapOn !== next.osnap) { snapOn = next.osnap; changed = true; }
+    if (gridSnapOn !== next.snap) { gridSnapOn = next.snap; changed = true; }
+    if (orthoOn !== next.ortho) { orthoOn = next.ortho; changed = true; }
+    if (polarOn !== next.polar) { polarOn = next.polar; changed = true; }
+    if (otrackOn !== next.otrack) { otrackOn = next.otrack; changed = true; }
+    if (dynOn !== next.dyn) { dynOn = next.dyn; changed = true; }
+    if (lwtOn !== next.lwt) { lwtOn = next.lwt; changed = true; }
+    if (showGrid !== next.grid) { showGrid = next.grid; changed = true; }
+    return changed;
+  }
+  Aids.subscribeDraftingAids(() => {
+    try {
+      if (!screenTypeActive || root.style.display === "none") return;
+      if (!syncDraftingAidsFromShared()) return;
+      updateStatus();
+      if (shell && shell.style.display !== "none") draw();
+    } catch {
+      /* a dead engine must never break other subscribers */
+    }
+  });
+
   const api: CadEngineApi = {
     load,
     close() {
@@ -17631,6 +17693,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         /* */
       }
       showRibbonEngine(ribbonWrap, api);
+      // 2D-2: an inactive tab may have missed shared-state changes (e.g.
+      // toggles made in the main-shell status bar while another drawing
+      // was active) — re-read the shared aids before drawing, so this
+      // tab can never publish stale flags back through updateStatus.
+      syncDraftingAidsFromShared();
+      updateStatus();
       resize();
       draw();
       // Super Copy awareness: switching drawing tabs tells you what is waiting
