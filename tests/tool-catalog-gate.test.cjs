@@ -79,14 +79,14 @@ t("REAL repository catalog is consistent", () => { const r = spawnSync(process.e
 t("REAL repository counts are pinned (gate sees every registration)", () => {
   const r = spawnSync(process.execPath, [script], { encoding: "utf8" });
   assert.strictEqual(r.status, 0, r.stderr);
-  // 615 registered commands: 476 with a literal id at the call site (incl.
+  // 616 registered commands: 477 with a literal id at the call site (incl.
   // table rows resolved from literal tables) + 139 resolved through
   // indirection (bridge tables, BimCommand catalog, modify map,
-  // fallback-chain tables). 618 catalog entries incl. 3 pattern entries
+  // fallback-chain tables). 619 catalog entries incl. 3 pattern entries
   // for the data-driven templates (clash.scenario.*, level.activate.*,
   // schedule.saved.*). 0 unresolved dynamic sites.
-  assert.match(r.stdout, /615 registered commands \(476 literal \+ 139 dynamic\)/);
-  assert.match(r.stdout, /618 catalog entries \(3 pattern\)/);
+  assert.match(r.stdout, /616 registered commands \(477 literal \+ 139 dynamic\)/);
+  assert.match(r.stdout, /619 catalog entries \(3 pattern\)/);
   assert.match(r.stdout, /0 unresolved dynamic site\(s\)/);
 });
 console.log(`=== tool catalog gate: ${n} passed ===`);
