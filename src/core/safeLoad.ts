@@ -548,6 +548,12 @@ export const DxfDocumentSchema = z.object({
     path: z.string().max(4096),
     kind: z.enum(["attach", "overlay"]),
   })).max(10_000).optional(),
+  constraints: z.array(z.object({
+    kind: z.string().max(32),
+    refs: z.array(z.number().int().nonnegative()).max(2),
+    fp: z.array(z.string().max(256)).max(2),
+    value: finiteNumber.optional(),
+  })).max(100_000).optional(),
   linetypes: z.record(z.string(), z.array(finiteNumber).max(10_000)).optional(),
   ltscale: finiteNumber.optional(),
   textStyles: z.record(z.string(), z.object({

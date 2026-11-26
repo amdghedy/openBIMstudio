@@ -842,6 +842,10 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
   // this file claims no other named dictionaries.
   const rootDictHandle = nextHandle();
   const layoutDictHandle = nextHandle();
+  // Phase 4c: recorded constraints ride along as XRECORDs in a named dictionary (absent when there are none).
+  const stored = (doc.constraints ?? []).filter((c) => Array.isArray(c.refs) && c.refs.length > 0);
+  const consDictHandle = stored.length ? nextHandle() : "";
+  const consHandles = stored.map(() => nextHandle());
   const paperRecords = layouts.slice(1).map((_, k) => ({
     name: `*Paper_Space${k + 1}`,
     layoutHandle: layoutHandles[k + 1],
@@ -979,6 +983,7 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
   // every layout by name -> handle, exactly as ezdxf writes them.
   s += pair(0, "DICTIONARY") + pair(5, rootDictHandle) + pair(330, "0") + pair(100, "AcDbDictionary") + pair(281, 1);
   s += pair(3, "ACAD_LAYOUT") + pair(350, layoutDictHandle);
+  if (stored.length) s += pair(3, "OPENBIMSTUDIO_CONSTRAINTS") + pair(350, consDictHandle);
   s += pair(0, "DICTIONARY") + pair(5, layoutDictHandle) + pair(330, rootDictHandle) + pair(100, "AcDbDictionary") + pair(281, 1);
   s += pair(3, "Model") + pair(350, modelLayoutHandle);
   layouts.forEach((l, i) => { s += pair(3, l.name) + pair(350, layoutHandles[i]); });
@@ -1009,6 +1014,16 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
       viewportHandles: i === 0 ? firstLayoutViewportHandles : undefined,
     });
   });
+  if (stored.length) {
+    s += pair(0, "DICTIONARY") + pair(5, consDictHandle) + pair(330, rootDictHandle) + pair(100, "AcDbDictionary") + pair(281, 1);
+    stored.forEach((_, i) => { s += pair(3, `C${i + 1}`) + pair(350, consHandles[i]); });
+    stored.forEach((c, i) => {
+      s += pair(0, "XRECORD") + pair(5, consHandles[i]) + pair(330, consDictHandle) + pair(100, "AcDbXrecord") + pair(280, 1);
+      s += pair(1, "OBS_CONSTRAINT") + pair(1, c.kind);
+      if (c.value !== undefined && Number.isFinite(c.value)) s += pair(40, c.value);
+      c.refs.forEach((r, k) => { s += pair(90, r) + pair(1, c.fp[k] ?? ""); });
+    });
+  }
   s += pair(0, "ENDSEC");
 
   s += pair(0, "EOF");
