@@ -107,6 +107,20 @@ test('2D editor: nearest-in-aperture snap, apparent intersection, G14 overrides,
   const cmd = page.locator('[data-r=cmd]').first();
   const run = async (c: string) => { await cmd.fill(c); await cmd.press('Enter'); };
   const hist = async () => page.locator('[data-r=cmdhist]').first().innerText();
+  // OSNAP is a bare toggle (no ON/OFF argument), so drive it to a wanted
+  // state and prove the toggle landed by watching for the fresh log line:
+  // the history only appends, so a marker appearing after the snapshot
+  // proves this toggle produced it. Calibrations must run with OSNAP OFF:
+  // the coords readout shows the *snapped* cursor while it is on, which
+  // contaminates the screen→world map (2D-5; the A16 lesson).
+  const setOsnap = async (want: "ON" | "OFF") => {
+    const before = await hist();
+    await run("OSNAP");
+    await expect.poll(async () => {
+      const added = (await hist()).slice(before.length);
+      return added.includes(`OSNAP: <${want}>`);
+    }, { timeout: 10000 }).toBe(true);
+  };
   // F-keys and bare letters are swallowed while a text field has focus,
   // so focus the canvas (tabindex=0, so .focus() works with no click
   // and no side effect) before typing override keys.
@@ -121,7 +135,11 @@ test('2D editor: nearest-in-aperture snap, apparent intersection, G14 overrides,
   const box = (await page.locator('[data-r=cv]').first().boundingBox())!;
   // `map` is re-solved before step 3 (see there): the canvas can resize
   // between this calibration and the raw pick, which shifts the map in Y.
+  // Calibrate with OSNAP OFF (2D-5): the coords readout shows the snapped
+  // cursor while it is on, which contaminates the map.
+  await setOsnap("OFF");
   let map = await calibrate(page, box);
+  await setOsnap("ON");
   const toScreen = (wx: number, wy: number) => ({ x: (wx - map.ox) / map.sx, y: (wy - map.oy) / map.sy });
   // The aperture is 14 px; the click geometry below was designed for
   // 11–45 world units. Outside that range the test cannot tell the old
@@ -181,7 +199,12 @@ test('2D editor: nearest-in-aperture snap, apparent intersection, G14 overrides,
   // world units, aperture ~40), so the armed SE override cannot snap
   // them, and hovering never consumes the one-shot override.
   const box3 = (await page.locator('[data-r=cv]').first().boundingBox())!;
+  // Same OSNAP-off rule as the first calibration — safe mid-tool: the
+  // OSNAP command only flips the master switch (no tool change), so the
+  // LINE tool stays active and the armed SE override survives it.
+  await setOsnap("OFF");
   map = await calibrate(page, box3);
+  await setOsnap("ON");
   await page.mouse.move(toScreen(500, 3).x, toScreen(500, 3).y);
   await page.waitForTimeout(200);
   const raw = await readCoords(page);
