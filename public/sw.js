@@ -114,10 +114,18 @@ self.addEventListener("fetch", (event) => {
     const cacheName = isVersionedWebIfc(p) && WEBIFC_KNOWN ? WEBIFC_CACHE : CACHE;
     event.respondWith((async () => {
       const cache = await caches.open(cacheName);
+      // A hashed script or stylesheet that no longer exists on the server is answered
+      // with the app's HTML page (single-page fallback) and status 200. That must never
+      // be served or remembered as the file: the page that asked for it would fail to
+      // load the module, and a cached copy would keep failing until the next build.
+      const isCode = /\.(?:m?js|css)$/.test(p);
+      const isHtml = (r) => /text\/html/i.test((r && r.headers && r.headers.get && r.headers.get("content-type")) || "");
       const cached = await cache.match(req, { ignoreVary: true });
-      if (cached) return cached;
+      if (cached && !(isCode && isHtml(cached))) return cached;
+      if (cached) await cache.delete(req);
       try {
         const res = await fetch(req);
+        if (isCode && isHtml(res)) return Response.error();
         if (res.ok && res.type === "basic") cache.put(req, res.clone());
         return res;
       } catch {
