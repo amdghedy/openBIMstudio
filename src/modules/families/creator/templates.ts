@@ -168,7 +168,7 @@ export const BOOSTER_TEMPLATE: PartTemplate = {
     { name: "PumpSetLength", label: "Pump and motor length (sheet row G)", default: 0.6198, min: 0.2, max: 2 },
     { name: "ManifoldSpacing", label: "Manifold spacing in depth (sheet row I)", default: 0.254, min: 0.1, max: 1 },
     { name: "FlangeBolts", label: "Bolts per flange (inferred, not on the sheet)", default: 8, min: 4, max: 16, integer: true },
-    { name: "GaugeRise", label: "Top of discharge fitting above the discharge axis (sheet row F, read from the drawing as the height of the gauge fitting)", default: 0.2, min: 0.1, max: 0.6 },
+    { name: "GaugeRise", label: "Gauge fitting top above the discharge axis (value: sheet table row F; that row F means this height is my reading of the drawing)", default: 0.2, min: 0.1, max: 0.6 },
     { name: "FinCount", label: "Motor cooling ribs per motor (inferred, not on the sheet)", default: 6, min: 2, max: 12, integer: true },
     { name: "RailHeight", label: "Frame rail height", default: 0.1, min: 0.04, max: 0.3 },
     { name: "RailSize", label: "Frame rail width", default: 0.08, min: 0.03, max: 0.2 },
