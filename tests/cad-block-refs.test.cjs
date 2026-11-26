@@ -176,4 +176,19 @@ t("hostile/malformed references never throw", () => {
     writeDxf(d);
   }
 });
+t("BYBLOCK colour: children with ACI 0 take the reference's colour (native and legacy agree); explicit/ByLayer children are untouched", () => {
+  const CL = (x2, col) => D(0, "LINE", 8, "0", ...(col == null ? [] : [62, col]), 10, 0, 20, 0, 11, x2, 21, 0);
+  const blk = BLOCK("BB", 0, 0, CL(1, 0) + CL(2, 1) + CL(3));
+  const insCol = (c) => D(0, "INSERT", 8, "L", ...(c == null ? [] : [62, c]), 2, "BB", 10, 0, 20, 0);
+  for (const c of [3, undefined]) {
+    const txt = file(blk, insCol(c));
+    const nat = B.flattenInserts(parseDxf(txt, NATIVE)).entities, leg = parseDxf(txt);
+    const cols = (d) => d.map((e) => e.color).sort((a, b) => (a ?? -1) - (b ?? -1));
+    assert.deepEqual(cols(nat), cols(leg.entities), "native and legacy colours agree");
+    // children: BYBLOCK -> insert colour (3, or 0/undefined-> layer), explicit red stays 1, ByLayer stays undefined
+    const byLen = (d, len) => d.find((e) => Math.abs(e.end.x - len) < 1e-9);
+    assert.equal(byLen(nat, 2).color, 1); assert.equal(byLen(nat, 3).color, undefined);
+    if (c === 3) assert.equal(byLen(nat, 1).color, 3); else assert.ok(!byLen(nat, 1).color, "ByLayer insert leaves BYBLOCK child to resolve via layer");
+  }
+});
 console.log(`${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

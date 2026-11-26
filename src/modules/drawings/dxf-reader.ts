@@ -138,7 +138,7 @@ function common(d: Data): Common {
   let color: number | undefined;
   if (d.has(62)) {
     const c = Math.abs(d.n(62));
-    if (c >= 1 && c <= 255) color = c; // 0 = BYBLOCK, 256 = BYLAYER
+    if (c >= 0 && c <= 255) color = c; // 0 = BYBLOCK (kept: block references pass their colour down), 256 = BYLAYER
   }
   const rgb = d.has(420) ? d.n(420) & 0xffffff : undefined;
   const lt = d.s(6)?.trim();
@@ -807,6 +807,7 @@ function expandRecs(
   insertLayer: string | null,
   allowPaper = false,
   native = false,
+  insertStyle: { color?: number; rgb?: number } | null = null,
 ): DxfEntity[] {
   const out: DxfEntity[] = [];
   const push = (e: DxfEntity) => {
@@ -821,6 +822,10 @@ function expandRecs(
     if (hasNonFiniteGeometry(r.pairs)) { skip(r.type); continue; }
     const c = common(d);
     if (insertLayer && c.layer === "0") c.layer = insertLayer; // layer 0 inside a block inherits
+    if (insertStyle && c.color === 0) { // BYBLOCK colour takes the reference's colour
+      c.color = insertStyle.color;
+      if (insertStyle.rgb != null) c.rgb = insertStyle.rgb;
+    }
     const outStart = out.length;
     const ocsFlip = OCS_TYPES.has(r.type) && !(native && r.type === "INSERT") && isMirroredOcs(d.n(210), d.n(220), d.n(230, 1));
 
@@ -1100,7 +1105,7 @@ function expandRecs(
           break;
         }
         if (!blk || depth >= MAX_DEPTH) { skip(blk ? "INSERT (too deeply nested)" : "INSERT (missing block)"); break; }
-        const inner = expandRecs(blk.recs, blocks, depth + 1, skip, c.layer);
+        const inner = expandRecs(blk.recs, blocks, depth + 1, skip, c.layer, false, false, { color: c.color, rgb: c.rgb });
         const cols = Math.max(1, Math.min(500, Math.round(d.n(70, 1))));
         const rows = Math.max(1, Math.min(500, Math.round(d.n(71, 1))));
         const dc = d.n(44), dr = d.n(45);
@@ -1128,7 +1133,7 @@ function expandRecs(
         // The drawn dimension (lines, arrows, text) lives in an anonymous block.
         const blk = blocks.get(d.s(2) ?? "");
         if (blk && depth < MAX_DEPTH) {
-          for (const e of expandRecs(blk.recs, blocks, depth + 1, skip, c.layer)) push(e);
+          for (const e of expandRecs(blk.recs, blocks, depth + 1, skip, c.layer, false, false, { color: c.color, rgb: c.rgb })) push(e);
           break;
         }
         // No anonymous block (written by third-party tools): compute the
