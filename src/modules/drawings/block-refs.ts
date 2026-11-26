@@ -55,20 +55,27 @@ function attribToText(a: DxfAttrib, host: DxfInsert): DxfEntity {
  * takes the reference's layer (AutoCAD rule); `invisible` propagates. Nested INSERTs are resolved
  * recursively. The result is a fresh array of fresh objects: callers may keep or mutate it.
  */
-export function resolveInsert(blocks: BlockTable | undefined, ins: DxfInsert, report?: ResolveReport): DxfEntity[] {
+export function resolveInsert(blocks: BlockTable | undefined, ins: DxfInsert, report?: ResolveReport, topEntities?: DxfEntity[]): DxfEntity[] {
   const out: DxfEntity[] = [];
   const budget = { left: MAX_RESOLVED_ENTITIES };
   const rep = report ?? { problems: [], truncated: false };
-  walk(blocks, ins, [], out, budget, rep);
+  // A9: `topEntities` replaces the top-level definition's entities only
+  // (dynamic-block evaluation runs on the definition first, then the
+  // reference transform applies); nested references still resolve from
+  // the table.
+  walk(blocks, ins, [], out, budget, rep, topEntities);
   return out;
 }
 
-function walk(blocks: BlockTable | undefined, ins: DxfInsert, stack: string[], out: DxfEntity[], budget: { left: number }, rep: ResolveReport): void {
+function walk(blocks: BlockTable | undefined, ins: DxfInsert, stack: string[], out: DxfEntity[], budget: { left: number }, rep: ResolveReport, topEntities?: DxfEntity[]): void {
   const blk = findBlock(blocks, ins.name);
   if (!blk) { rep.problems.push({ block: ins.name, reason: "missing" }); return; }
   const key = blk.name.toUpperCase();
   if (stack.includes(key)) { rep.problems.push({ block: ins.name, reason: "cycle" }); return; }
   if (stack.length >= MAX_BLOCK_DEPTH) { rep.problems.push({ block: ins.name, reason: "depth" }); return; }
+  // A9: the caller's evaluated entities replace the top-level
+  // definition's entities (stack is empty only at the top level).
+  const entities = stack.length === 0 && topEntities ? topEntities : blk.entities;
   const cols = Math.max(1, Math.min(MAX_ARRAY_AXIS, Math.floor(ins.columns ?? 1) || 1));
   const rows = Math.max(1, Math.min(MAX_ARRAY_AXIS, Math.floor(ins.rows ?? 1) || 1));
   stack.push(key);
@@ -76,7 +83,7 @@ function walk(blocks: BlockTable | undefined, ins: DxfInsert, stack: string[], o
     for (let c = 0; c < cols; c++) {
       if (budget.left <= 0) { rep.truncated = true; rep.problems.push({ block: ins.name, reason: "budget" }); stack.pop(); return; }
       const xf = xformOf(ins, blk, c, r);
-      for (const child of blk.entities) {
+      for (const child of entities) {
         if (budget.left <= 0) { rep.truncated = true; break; }
         let base: DxfEntity = child.layer === "0" ? ({ ...child, layer: ins.layer } as DxfEntity) : child;
         // BYBLOCK colour (ACI 0): the child takes the reference's own colour. A BYLAYER reference leaves it
@@ -217,7 +224,7 @@ export function touchBlocks(blocks: BlockTable): void {
 }
 
 const insertSig = (i: DxfInsert): string =>
-  `${i.name}|${i.position.x},${i.position.y},${i.position.z ?? 0}|${i.scale?.x ?? 1},${i.scale?.y ?? 1},${i.scale?.z ?? 1}|${i.rotation ?? 0}|${i.columns ?? 1},${i.rows ?? 1},${i.columnSpacing ?? 0},${i.rowSpacing ?? 0}|${i.layer}|${i.invisible ? 1 : 0}|${(i.attributes ?? []).map((a) => `${a.tag}=${a.value}@${a.position.x},${a.position.y}`).join(";")}`;
+  `${i.name}|${i.position.x},${i.position.y},${i.position.z ?? 0}|${i.scale?.x ?? 1},${i.scale?.y ?? 1},${i.scale?.z ?? 1}|${i.rotation ?? 0}|${i.columns ?? 1},${i.rows ?? 1},${i.columnSpacing ?? 0},${i.rowSpacing ?? 0}|${i.layer}|${i.invisible ? 1 : 0}|${(i.attributes ?? []).map((a) => `${a.tag}=${a.value}@${a.position.x},${a.position.y}`).join(";")}|dyn:${JSON.stringify(i.dynValues ?? {})}`;
 
 /**
  * Resolved geometry of a bound reference, cached until the reference or its block table changes.

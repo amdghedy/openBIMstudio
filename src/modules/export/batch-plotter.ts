@@ -18,6 +18,12 @@ import { generateElevationScene } from "../views/generators/elevation";
 import { buildAnnotationLayer } from "../views/annotation-layer";
 import { emptyScene, type Scene2D } from "../views/scene";
 import { createPdfDocument, drawScene2DToPdf, MM_TO_PT } from "./pdf";
+import {
+  collectCadLayoutGeometry,
+  drawCadLayoutOnPage,
+  cadLayoutPaperLabel,
+  type CadLayoutPlotInput,
+} from "./cad-layout-plot";
 
 export type WatermarkStatus =
   | "FOR CONSTRUCTION"
@@ -41,6 +47,16 @@ export interface BatchPlotOptions {
   checkedBy?: string;
   approvedBy?: string;
   outputFilename?: string;
+  /**
+   * A20: CAD layouts of the current drawing to publish as vector pages
+   * (each layout's own paper size, viewports and paper entities, drawn
+   * by the CAD layout plotter). Listed in the cover index alongside the
+   * BIM sheets. A CAD page carries no enterprise titleblock — the
+   * layout's own paper-space entities ARE its titleblock.
+   */
+  cadLayouts?: CadLayoutPlotInput[];
+  /** A20: when true, publish only the CAD layouts (no BIM sheets). */
+  cadLayoutsOnly?: boolean;
 }
 
 export interface SheetIndexEntry {
@@ -432,13 +448,36 @@ export async function generateBatchPlotPdf(options: BatchPlotOptions = {}): Prom
   } else {
     sheets = listSheets();
   }
+  // A20: CAD layouts of the current drawing publish as vector pages.
+  const cadLayouts = options.cadLayouts ?? [];
+  if (options.cadLayoutsOnly) sheets = [];
+  // The cover index lists the BIM sheets and the CAD layouts together;
+  // a CAD layout is a synthetic entry (the cover only reads number +
+  // name). Its size is the layout's paper when it is a BIM sheet size,
+  // else A3 — the cover never displays it.
+  const cadCoverEntries: SheetDef[] = cadLayouts.map((input) => {
+    const label = cadLayoutPaperLabel(input.layout, input.setups);
+    const paper = label.split(" ")[0];
+    const size = (["A0", "A1", "A2", "A3", "A4"].includes(paper) ? paper : "A3") as SheetDef["size"];
+    return {
+      id: `cad:${input.layout.name}`,
+      number: input.layout.name,
+      name: `${input.layout.name} · CAD layout (${label})`,
+      size,
+      orientation: label.endsWith("landscape") ? "landscape" : "portrait",
+      viewports: [],
+      createdAt: 0,
+      updatedAt: 0,
+    };
+  });
+  const coverSheets = [...sheets, ...cadCoverEntries];
 
   // Cover sheet & Table of contents
-  if (options.includeCoverSheet !== false && sheets.length > 0) {
-    drawCoverSheetAndIndex(doc, sheets, regular, bold, options);
+  if (options.includeCoverSheet !== false && coverSheets.length > 0) {
+    drawCoverSheetAndIndex(doc, coverSheets, regular, bold, options);
   }
 
-  const totalSheets = sheets.length;
+  const totalSheets = sheets.length + cadLayouts.length;
 
   // Render each sheet
   let pageIndex = 1;
@@ -493,6 +532,30 @@ export async function generateBatchPlotPdf(options: BatchPlotOptions = {}): Prom
       );
     }
 
+    pageIndex++;
+  }
+
+  // A20: one vector page per CAD layout, at the layout's own paper size.
+  // No enterprise titleblock and no plotter border: the layout's own
+  // paper-space entities ARE its titleblock and frame — drawing the
+  // plotter's would collide with them. The watermark still applies: it
+  // is a transmittal stamp, not sheet content.
+  for (const input of cadLayouts) {
+    const geom = collectCadLayoutGeometry(input);
+    const page = doc.addPage([geom.pageW, geom.pageH]);
+    page.drawRectangle({ x: 0, y: 0, width: geom.pageW, height: geom.pageH, color: rgb(1, 1, 1) });
+    drawCadLayoutOnPage(page, geom, regular, bold);
+    if (options.watermarkText) {
+      drawWatermark(
+        page,
+        options.watermarkText,
+        geom.pageW,
+        geom.pageH,
+        bold,
+        options.watermarkColor || "red",
+        options.watermarkOpacity ?? 0.12
+      );
+    }
     pageIndex++;
   }
 

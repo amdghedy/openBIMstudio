@@ -300,6 +300,13 @@ export type DxfInsert = DxfEntityBase & {
   columnSpacing?: number;
   rowSpacing?: number;
   attributes?: DxfAttrib[];
+  /**
+   * Dynamic-block parameter values on this reference (A9): per-instance
+   * overrides of the definition's default parameter values, by parameter
+   * id. Absent = the definition's defaults. Not written to DXF/DWG yet
+   * (follow-up: persist in XDATA) — in-session only.
+   */
+  dynValues?: Record<string, number | string | boolean>;
 };
 
 /** A paper-space viewport showing a window of model space. */
