@@ -57,7 +57,7 @@ t("resolved native geometry equals the legacy expanded copies (rotation, non-uni
     INS("SQ", 4, 4, { sx: 1, sy: -1, rot: 20 }), INS("OUTER", 3, 3, { rot: 25 }), INS("OUTER", 3, 3, { sx: 1.5, sy: -1.5, rot: 25 }), INS("SQ", 0, 0, { cols: 3, rows: 2, dc: 10, dr: 7, rot: 20 })];
   for (const c of cases) {
     const txt = file(SQ + NEST, c);
-    const nat = B.flattenInserts(parseDxf(txt, NATIVE)).entities, leg = parseDxf(txt);
+    const nat = B.flattenInserts(parseDxf(txt, NATIVE)), leg = parseDxf(txt);
     assert.deepEqual(prim(nat.entities), prim(leg.entities), c.replace(/\n/g, " ").slice(0, 80));
   }
 });
