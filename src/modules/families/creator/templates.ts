@@ -231,7 +231,6 @@ export const BOOSTER_TEMPLATE: PartTemplate = {
     { id: "door-seam", name: "Panel door seam", shape: "box", w: "0.004", d: "0.004", h: "PanelH", x: "(K - 1.5) * PanelW * 0.34", y: "Height - PanelH / 2", z: "PanelFrontZ + 0.002", repeat: { count: "SeamCount" }, basis: "inferred" },
     { id: "hmi-window", name: "Panel display window", shape: "box", w: "PanelW * 0.13", d: "0.006", h: "PanelH * 0.19", x: "PanelW * 0.055", y: "Height - PanelH * 0.28", z: "PanelFrontZ + 0.003", basis: "inferred" },
     { id: "panel", name: "Control panel", shape: "box", w: "PanelW", d: "PanelD", h: "PanelH", x: "0", y: "Height - PanelH / 2", z: "0 - Depth / 2 + PanelD / 2", basis: "catalogue" },
-    { id: "touchscreen", name: "Touchscreen", shape: "box", w: "0.17", d: "0.02", h: "0.11", x: "0", y: "Height - PanelH * 0.35", z: "0 - Depth / 2 + PanelD + 0.01", basis: "inferred" },
   ],
 };
 

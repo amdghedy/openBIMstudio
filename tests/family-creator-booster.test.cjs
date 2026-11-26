@@ -231,7 +231,7 @@ t("sheet row F sets the top of the discharge gauge fitting above the discharge a
 t("control panel: three rack posts under it, two door seams and a display window on its front face", () => {
   const sp = K.boosterSpecFromSheet(sheet, { variantId: "half-3~460", depthRow: "J" }).spec;
   const r = P.runCreator({ name: "pn", spec: sp }, deps); const parts = L.resolveParts(B.templateFor(sp), deps.buildInEngine(r.family, r.family.types[0]).params);
-  const panel = parts.find((p) => p.id === "panel"), posts = parts.filter((p) => /^post-/.test(p.id)), seams = parts.filter((p) => /^door-seam/.test(p.id)), win = parts.find((p) => p.id === "hmi-window");
+  const noOldScreen = !parts.some((p) => p.id === "touchscreen"); if (!noOldScreen) throw new Error("old touchscreen duplicate present"); const panel = parts.find((p) => p.id === "panel"), posts = parts.filter((p) => /^post-/.test(p.id)), seams = parts.filter((p) => /^door-seam/.test(p.id)), win = parts.find((p) => p.id === "hmi-window");
   assert.strictEqual(posts.length, 3); assert.strictEqual(seams.length, 2); assert.ok(win);
   const front = panel.cz + panel.d / 2;
   for (const p of posts) { assert.ok(Math.abs(p.cx) <= panel.w / 2, "post under panel width"); near(p.cy + p.h / 2, panel.cy - panel.h / 2, 1e-6, "post top meets panel bottom"); }
