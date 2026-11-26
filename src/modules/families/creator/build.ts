@@ -70,7 +70,13 @@ export function validateSpec(spec: ProductSpec): SpecProblem[] {
 
 export function templateFor(spec: ProductSpec): PartTemplate {
   const base = spec.templateId && TEMPLATES[spec.templateId] ? TEMPLATES[spec.templateId] : chooseTemplate(`${spec.name} ${spec.model ?? ""}`);
-  return expandTemplate(base, spec.params);
+  const counts: Record<string, number> = { ...(spec.params as Record<string, number>) };
+  if (base.id === "booster") {
+    // Ribs are repeated per pump and per rib: the total is written out here, because a count must be a whole number.
+    const g = (n: string) => Number(counts[n] ?? base.params.find((q) => q.name === n)?.default ?? 0);
+    counts.RibCount = Math.round(g("Pumps")) * Math.round(g("FinCount"));
+  }
+  return expandTemplate(base, counts);
 }
 
 function slug(s: string): string {

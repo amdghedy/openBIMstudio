@@ -186,6 +186,18 @@ t("parameters really drive geometry: pumps count changes the part count, not the
   const eh = deps.buildInEngine(fam, ty);
   near(eh.bbox[4] - eh.bbox[1], base.heightM + 0.2, 1e-4, "engine height after editing Height");
 });
+t("motor cooling ribs exist, sit on each motor, and stand proud of the motor body", () => {
+  const spec = K.boosterSpecFromSheet(sheet, { variantId: "half-3~460", depthRow: "J" }).spec;
+  const f = P.runCreator({ name: "r", spec }, deps).family; const parts = L.resolveParts(B.templateFor(spec), deps.buildInEngine(f, f.types[0]).params);
+  const motors = parts.filter((p) => /^Motor \d+$/.test(p.name)), ribs = parts.filter((p) => /^Motor cooling rib/.test(p.name));
+  assert.strictEqual(ribs.length, 3 * 6, "ribs: " + ribs.length);
+  for (const m of motors) {
+    const mine = ribs.filter((r) => Math.abs(r.cx - m.cx) < 1e-6);
+    assert.strictEqual(mine.length, 6);
+    for (const r of mine) { assert.ok(r.r > m.r, "rib radius above motor"); assert.ok(r.cz - r.h / 2 >= m.cz - m.h / 2 - 1e-6 && r.cz + r.h / 2 <= m.cz + m.h / 2 + 1e-6, "rib inside motor length"); }
+    assert.strictEqual(new Set(mine.map((r) => r.cz.toFixed(4))).size, 6, "distinct positions");
+  }
+});
 t("parts carry their basis: sheet-or-catalogue values versus proportions chosen here", () => {
   const spec = K.boosterSpecFromSheet(sheet, { variantId: "half-3~460", depthRow: "J" }).spec;
   const f = P.runCreator({ name: "b", spec }, deps).family; const parts = L.resolveParts(B.templateFor(spec), deps.buildInEngine(f, f.types[0]).params);
