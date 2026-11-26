@@ -323,11 +323,11 @@ const modeSel = document.createElement("select");
 modeSel.title = "Local model mode (Ollama)";
 modeSel.style.cssText =
   "padding:4px 6px;background:var(--bg-inset,#0e1017);color:var(--text-primary,#e8eaf0);border:1px solid var(--border-default,#2a2e3a);" +
-  "border-radius:6px;font:11px system-ui;max-width:150px";
+  "border-radius:6px;font:11px system-ui;max-width:170px";
 {
   const manual = document.createElement("option");
   manual.value = "manual";
-  manual.textContent = "Model: as set in settings";
+  manual.textContent = "Model: settings";
   modeSel.appendChild(manual);
   for (const m of MODEL_MODE_ORDER) {
     const o = document.createElement("option");
