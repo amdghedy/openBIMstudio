@@ -255,6 +255,11 @@ t("pipe bend: engine mesh bounds, preview bounds and the IFC revolved solid agre
       geometry: { kind: "composed", parts: [B.partSpec(tp)] }, types: [{ id: "b-t", name: "Default", values: {} }] };
     const eng = deps.buildInEngine(fam, fam.types[0]);
     assert.ok(eng.bbox, "engine built a mesh for axis " + axis);
+    if (process.env.BEND_MESH && ang === 90) {
+      eng.object.updateMatrixWorld(true); const tris = [];
+      eng.object.traverse((o) => { if (o.isMesh) { const g = o.geometry, pos = g.attributes.position, idx = g.index; const v = (i) => new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld).toArray(); const n = idx ? idx.count : pos.count; for (let i = 0; i < n; i += 3) tris.push([0, 1, 2].map((j) => v(idx ? idx.getX(i + j) : i + j))); } });
+      const f = process.env.BEND_MESH; const cur = fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : {}; cur[axis] = tris; fs.writeFileSync(f, JSON.stringify(cur));
+    }
     const part = L.resolveParts({ parts: [tp] }, {})[0];
     const pts = L.bendSamplePoints(part, 96);
     const lo = [0, 1, 2].map((i) => Math.min(...pts.map((q) => q[i]))), hi = [0, 1, 2].map((i) => Math.max(...pts.map((q) => q[i])));
