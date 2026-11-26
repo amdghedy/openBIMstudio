@@ -35,10 +35,14 @@ export interface TemplatePart {
    * the token K stands for the copy number 1..count. Id and name get the number.
    */
   repeat?: { count: string };
+  /** Cylinder axis in engine axes. Default "y" (vertical). Boxes ignore it. */
+  axis?: "x" | "y" | "z";
+  /** How sure the size or position is: "catalogue" (a sheet or catalogue value), "inferred" (proportion chosen here). */
+  basis?: "catalogue" | "inferred";
 }
 
 export interface PartTemplate {
-  id: "box" | "cabinet" | "table" | "shelf";
+  id: "box" | "cabinet" | "table" | "shelf" | "booster";
   label: string;
   category: FamilyCategory;
   ifcEntity: "IfcBuildingElementProxy" | "IfcFurnishingElement";
@@ -136,11 +140,71 @@ export const SHELF_TEMPLATE: PartTemplate = {
   ],
 };
 
+
+// A packaged pressure-boosting set (pumps on a common frame, two manifolds, a
+// control panel on a rack). Written from catalogue data: overall Width, Depth
+// and Height, manifold length, offset, panel size and connection size are the
+// catalogue values. Motor, pump head, valve and frame-member sizes are NOT on a
+// data sheet: they are simple proportions chosen here (basis "inferred") and
+// are marked so in the parts list. Parts are plain boxes and cylinders; there
+// is no impeller, motor fin, weld or bracket detail.
+export const BOOSTER_TEMPLATE: PartTemplate = {
+  id: "booster",
+  label: "Packaged booster set (pumps, manifolds, panel)",
+  category: "equipment",
+  ifcEntity: "IfcBuildingElementProxy",
+  params: [
+    { name: "Pumps", label: "Pumps", default: 3, min: 1, max: 6, integer: true },
+    { name: "FrameLength", label: "Frame length (sheet dimension B)", default: 1.4478, min: 0.3, max: 6 },
+    { name: "ManifoldLength", label: "Manifold length", default: 1.6256, min: 0.3, max: 6 },
+    { name: "InletDia", label: "Connection size (pipe diameter)", default: 0.1524, min: 0.025, max: 0.4 },
+    { name: "PanelH", label: "Panel height", default: 0.762, min: 0.2, max: 1.5 },
+    { name: "PanelW", label: "Panel width", default: 0.9906, min: 0.2, max: 2 },
+    { name: "PanelD", label: "Panel depth", default: 0.3048, min: 0.1, max: 0.8 },
+    { name: "RailHeight", label: "Frame rail height", default: 0.1, min: 0.04, max: 0.3 },
+    { name: "RailSize", label: "Frame rail width", default: 0.08, min: 0.03, max: 0.2 },
+    { name: "MotorRadius", label: "Motor radius", default: 0.11, min: 0.04, max: 0.3 },
+    { name: "FlangeT", label: "End flange thickness (fills the overall width)", default: 0, formula: "= (Width - ManifoldLength) / 2" },
+    { name: "ManifoldR", label: "Manifold radius", default: 0, formula: "= InletDia / 2" },
+    { name: "MotorLength", label: "Motor length", default: 0, formula: "= Depth * 0.38" },
+    { name: "HeadLength", label: "Pump head length", default: 0, formula: "= Depth * 0.24" },
+    { name: "PumpAxisY", label: "Pump axis height", default: 0, formula: "= RailHeight + MotorRadius + 0.05" },
+    { name: "PanelBottomY", label: "Panel bottom height", default: 0, formula: "= Height - PanelH" },
+    { name: "DischargeY", label: "Discharge manifold height", default: 0, formula: "= PanelBottomY - 0.15" },
+    { name: "SuctionZ", label: "Suction manifold depth position", default: 0, formula: "= 0 - Depth / 2 + 0.04 + ManifoldR" },
+    { name: "HeadZ", label: "Pump head depth position", default: 0, formula: "= SuctionZ + ManifoldR + 0.04 + HeadLength / 2" },
+    { name: "MotorZ", label: "Motor depth position", default: 0, formula: "= HeadZ + HeadLength / 2 + MotorLength / 2" },
+    { name: "RiserLength", label: "Discharge riser length", default: 0, formula: "= DischargeY - PumpAxisY" },
+  ],
+  parts: [
+    { id: "rail-front", name: "Frame rail front", shape: "box", w: "FrameLength", d: "RailSize", h: "RailHeight", x: "0", y: "RailHeight / 2", z: "Depth / 2 - RailSize / 2", basis: "inferred" },
+    { id: "rail-back", name: "Frame rail back", shape: "box", w: "FrameLength", d: "RailSize", h: "RailHeight", x: "0", y: "RailHeight / 2", z: "0 - Depth / 2 + RailSize / 2", basis: "inferred" },
+    { id: "cross", name: "Pump cross rail", shape: "box", w: "RailSize", d: "Depth - 2 * RailSize", h: "RailHeight", x: "0 - ManifoldLength / 2 + (K - 0.5) * ManifoldLength / Pumps", y: "RailHeight / 2", z: "0", repeat: { count: "Pumps" }, basis: "inferred" },
+    { id: "motor", name: "Motor", shape: "cylinder", axis: "z", r: "MotorRadius", h: "MotorLength", x: "0 - ManifoldLength / 2 + (K - 0.5) * ManifoldLength / Pumps", y: "PumpAxisY", z: "MotorZ", repeat: { count: "Pumps" }, basis: "inferred" },
+    { id: "head", name: "Pump head", shape: "cylinder", axis: "z", r: "MotorRadius * 0.9", h: "HeadLength", x: "0 - ManifoldLength / 2 + (K - 0.5) * ManifoldLength / Pumps", y: "PumpAxisY", z: "HeadZ", repeat: { count: "Pumps" }, basis: "inferred" },
+    { id: "suction-branch", name: "Suction branch", shape: "cylinder", axis: "z", r: "ManifoldR * 0.7", h: "HeadLength * 0.5", x: "0 - ManifoldLength / 2 + (K - 0.5) * ManifoldLength / Pumps", y: "PumpAxisY", z: "SuctionZ + HeadLength * 0.25", repeat: { count: "Pumps" }, basis: "inferred" },
+    { id: "riser", name: "Discharge riser", shape: "cylinder", axis: "y", r: "ManifoldR * 0.7", h: "RiserLength", x: "0 - ManifoldLength / 2 + (K - 0.5) * ManifoldLength / Pumps", y: "PumpAxisY + RiserLength / 2", z: "HeadZ", repeat: { count: "Pumps" }, basis: "inferred" },
+    { id: "check-valve", name: "Check valve", shape: "cylinder", axis: "y", r: "ManifoldR * 0.95", h: "0.12", x: "0 - ManifoldLength / 2 + (K - 0.5) * ManifoldLength / Pumps", y: "PumpAxisY + RiserLength * 0.45", z: "HeadZ", repeat: { count: "Pumps" }, basis: "inferred" },
+    { id: "isolation-valve", name: "Isolation valve", shape: "cylinder", axis: "y", r: "ManifoldR * 0.95", h: "0.08", x: "0 - ManifoldLength / 2 + (K - 0.5) * ManifoldLength / Pumps", y: "PumpAxisY + RiserLength * 0.75", z: "HeadZ", repeat: { count: "Pumps" }, basis: "inferred" },
+    { id: "manifold-suction", name: "Suction manifold", shape: "cylinder", axis: "x", r: "ManifoldR", h: "ManifoldLength", x: "0", y: "PumpAxisY", z: "SuctionZ", basis: "catalogue" },
+    { id: "manifold-discharge", name: "Discharge manifold", shape: "cylinder", axis: "x", r: "ManifoldR", h: "ManifoldLength", x: "0", y: "DischargeY", z: "HeadZ", basis: "catalogue" },
+    { id: "flange-s-l", name: "Suction flange left", shape: "cylinder", axis: "x", r: "ManifoldR * 1.35", h: "FlangeT", x: "0 - ManifoldLength / 2 - FlangeT / 2", y: "PumpAxisY", z: "SuctionZ", basis: "inferred" },
+    { id: "flange-s-r", name: "Suction flange right", shape: "cylinder", axis: "x", r: "ManifoldR * 1.35", h: "FlangeT", x: "ManifoldLength / 2 + FlangeT / 2", y: "PumpAxisY", z: "SuctionZ", basis: "inferred" },
+    { id: "flange-d-l", name: "Discharge flange left", shape: "cylinder", axis: "x", r: "ManifoldR * 1.35", h: "FlangeT", x: "0 - ManifoldLength / 2 - FlangeT / 2", y: "DischargeY", z: "HeadZ", basis: "inferred" },
+    { id: "flange-d-r", name: "Discharge flange right", shape: "cylinder", axis: "x", r: "ManifoldR * 1.35", h: "FlangeT", x: "ManifoldLength / 2 + FlangeT / 2", y: "DischargeY", z: "HeadZ", basis: "inferred" },
+    { id: "post-l", name: "Panel rack post left", shape: "box", w: "0.05", d: "0.05", h: "PanelBottomY - RailHeight", x: "0 - PanelW / 2 + 0.025", y: "RailHeight + (PanelBottomY - RailHeight) / 2", z: "0 - Depth / 2 + 0.025", basis: "inferred" },
+    { id: "post-r", name: "Panel rack post right", shape: "box", w: "0.05", d: "0.05", h: "PanelBottomY - RailHeight", x: "PanelW / 2 - 0.025", y: "RailHeight + (PanelBottomY - RailHeight) / 2", z: "0 - Depth / 2 + 0.025", basis: "inferred" },
+    { id: "panel", name: "Control panel", shape: "box", w: "PanelW", d: "PanelD", h: "PanelH", x: "0", y: "Height - PanelH / 2", z: "0 - Depth / 2 + PanelD / 2", basis: "catalogue" },
+    { id: "touchscreen", name: "Touchscreen", shape: "box", w: "0.17", d: "0.02", h: "0.11", x: "0", y: "Height - PanelH * 0.35", z: "0 - Depth / 2 + PanelD + 0.01", basis: "inferred" },
+  ],
+};
+
 export const TEMPLATES: Record<string, PartTemplate> = {
   box: BOX_TEMPLATE,
   cabinet: CABINET_TEMPLATE,
   table: TABLE_TEMPLATE,
   shelf: SHELF_TEMPLATE,
+  booster: BOOSTER_TEMPLATE,
 };
 
 const SHELF_WORDS = /\b(shelf|shelves|shelving|bookcase|bookshelf|rack|racking)\b/i;

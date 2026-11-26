@@ -16,7 +16,7 @@ export interface ProductSpec {
   widthM: number;
   depthM: number;
   heightM: number;
-  templateId?: "box" | "cabinet" | "table" | "shelf";
+  templateId?: "box" | "cabinet" | "table" | "shelf" | "booster";
   /** Overrides for the template's own parameters, in metres (e.g. PlinthHeight). */
   params?: Record<string, number>;
   /** Where the size came from, kept for the Sources view. */
@@ -88,7 +88,8 @@ const ex = (expr: string) => ({ expr });
 function partSpec(p: TemplatePart): FamilyGeometrySpec {
   const transform = { translate: [ex(p.x), ex(p.y), ex(p.z)] as [any, any, any] };
   if (p.shape === "cylinder") {
-    return { kind: "cylinder", r: ex(p.r as string), h: ex(p.h as string), segments: 32, transform };
+    const rotate = p.axis === "x" ? [{ const: 0 }, { const: 0 }, { const: Math.PI / 2 }] : p.axis === "z" ? [{ const: Math.PI / 2 }, { const: 0 }, { const: 0 }] : undefined;
+    return { kind: "cylinder", r: ex(p.r as string), h: ex(p.h as string), segments: 32, transform: rotate ? { ...transform, rotate: rotate as [any, any, any] } : transform };
   }
   return { kind: "box", w: ex(p.w as string), d: ex(p.d as string), h: ex(p.h as string), transform };
 }

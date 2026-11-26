@@ -120,9 +120,19 @@ export function writeIfc2x3(input: IfcCreatorInput): IfcWriteResult {
   // Geometry: one extruded solid per part (engine -> IFC axes).
   const solids: number[] = [];
   for (const p of input.parts) {
-    const ix = p.cx, iy = -p.cz, iz = p.cy - p.h / 2;
+    // Cylinders may lie along X or Z (engine). Engine X -> IFC X, engine Z -> IFC -Y, engine Y -> IFC Z.
+    const ax = p.axis ?? "y";
+    const horizontal = p.shape === "cylinder" && ax !== "y";
+    const dir: [number, number, number] = ax === "x" ? [1, 0, 0] : ax === "z" ? [0, -1, 0] : [0, 0, 1];
+    const cx = p.cx, cy = -p.cz, cz = p.cy;
+    const half = p.h / 2;
+    const ix = horizontal ? cx - dir[0] * half : cx, iy = horizontal ? cy - dir[1] * half : cy, iz = horizontal ? cz : cz - p.h / 2;
     const base = add(`IFCCARTESIANPOINT((${f(ix)},${f(iy)},${f(iz)}))`);
-    const pos = add(`IFCAXIS2PLACEMENT3D(${ref(base)},$,$)`);
+    let pos: number;
+    if (horizontal) {
+      const axisDir = add(`IFCDIRECTION((${f(dir[0])},${f(dir[1])},${f(dir[2])}))`);
+      pos = add(`IFCAXIS2PLACEMENT3D(${ref(base)},${ref(axisDir)},${ref(dz)})`);
+    } else pos = add(`IFCAXIS2PLACEMENT3D(${ref(base)},$,$)`);
     const p2 = add("IFCCARTESIANPOINT((0.,0.))");
     const pos2 = add(`IFCAXIS2PLACEMENT2D(${ref(p2)},$)`);
     const profile = p.shape === "cylinder"
