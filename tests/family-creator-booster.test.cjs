@@ -238,6 +238,15 @@ t("control panel: three rack posts under it, two door seams and a display window
   for (const s of seams) { assert.ok(Math.abs(s.cx) < panel.w / 2); assert.ok(s.cz > front - 1e-9 && s.cz - s.d / 2 <= front + 1e-9, "seam on front face"); }
   assert.ok(Math.abs(win.cx) < panel.w / 2 && win.cz - win.d / 2 <= front + 1e-9 && win.cy + win.h / 2 < panel.cy + panel.h / 2 && win.cy - win.h / 2 > panel.cy - panel.h / 2, "window inside the face");
 });
+t("valve actuators: gear housing, stem and handwheel per pump, on the suction side of the valve and clear of the manifold", () => {
+  const sp = K.boosterSpecFromSheet(sheet, { variantId: "half-3~460", depthRow: "J" }).spec;
+  const r = P.runCreator({ name: "va", spec: sp }, deps); const parts = L.resolveParts(B.templateFor(sp), deps.buildInEngine(r.family, r.family.types[0]).params);
+  for (const id of ["valve-gear", "valve-stem", "valve-wheel"]) assert.strictEqual(parts.filter((p) => p.id.startsWith(id + "-")).length, 3, id);
+  const w = parts.find((p) => p.id === "valve-wheel-1"), iso = parts.find((p) => p.id === "isolation-valve-1"), man = parts.find((p) => p.id === "manifold-discharge");
+  assert.ok(w.cz < iso.cz, "wheel on the suction (-Z) side");
+  assert.ok(Math.abs(w.cx - iso.cx) < 1e-6 && Math.abs(w.cy - iso.cy) < 1e-6, "wheel on the valve axis");
+  assert.ok(w.cz + w.h / 2 < man.cz - man.r || w.cy + w.r < man.cy - man.r, "wheel clear of the discharge manifold");
+});
 t("suction manifold saddles: one between each pair of pumps, standing on the base plate and touching the manifold", () => {
   const sp = K.boosterSpecFromSheet(sheet, { variantId: "half-3~460", depthRow: "J" }).spec;
   for (const n of [1, 3, 4]) {
