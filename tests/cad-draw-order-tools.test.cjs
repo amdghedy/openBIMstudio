@@ -208,8 +208,14 @@ function expect(cond, msg) {
     expect(src.includes('function drawOrder(mode: "front" | "back"): void'), "drawOrder fn");
     expect(src.includes('type: "add" | "delete" | "modify" | "replace" | "order"'), "UndoAction order type");
     expect(src.includes("orderBefore?: DxfEntity[]") && src.includes("orderAfter?: DxfEntity[]"), "order fields");
-    expect(/act\.type === "order"[\s\S]{0,200}act\.orderBefore/.test(src), "undo order branch");
-    expect(/act\.type === "order"[\s\S]{0,200}act\.orderAfter/.test(src), "redo order branch");
+    // The undo/redo branches moved out of cad-viewer.ts into the pure
+    // helpers in acad-parity.ts (undoEntityList / redoEntityList); the
+    // viewer routes through them at the undo/redo call sites.
+    const parity = fs.readFileSync(path.join(repo, "src/modules/cad-viewer/acad-parity.ts"), "utf8");
+    expect(/case "order":\s*\n\s*return act\.orderBefore/.test(parity), "undo order branch");
+    expect(/case "order":\s*\n\s*return act\.orderAfter/.test(parity), "redo order branch");
+    expect(src.includes("AcadParity.undoEntityList(list, act)"), "viewer undo route");
+    expect(src.includes("AcadParity.redoEntityList(list, act)"), "viewer redo route");
     expect(src.includes('pushUndoAct({ type: "order", orderBefore, orderAfter: ents.slice() })'), "undo entry pushed");
   });
 
