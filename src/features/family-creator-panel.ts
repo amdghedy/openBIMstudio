@@ -21,6 +21,7 @@ import { fetchSheetFromUrl } from "../modules/families/creator/url-intake";
 import { recognizeImage, tidyOcrText } from "../modules/families/creator/ocr";
 import { drawingHtml, bindDrawing } from "./family-creator-drawing";
 import { createPreview3D, type Preview3D } from "./family-creator-preview";
+import { readBoosterSheets, boosterSpecFromSheet, type BoosterSheet } from "../modules/families/creator/catalogue";
 import { renderThreeViews } from "../modules/families/creator/preview-svg";
 import type { FamilyDefinition } from "../modules/families/types";
 
@@ -35,8 +36,8 @@ let sizeName = "";
 let pendingPress: { act: string; at: number } | null = null;
 let handledPress: { act: string; at: number } | null = null;
 
-interface FormState { name: string; manufacturer: string; model: string; text: string; pages: string[]; fromOcr: boolean; templateId: string; fileName: string; fileNote: string; url: string; urlConsent: boolean; urlNote: string; wMm: string; dMm: string; hMm: string }
-const form: FormState = { name: "", manufacturer: "", model: "", text: "", pages: [], fromOcr: false, templateId: "", fileName: "", fileNote: "", url: "", urlConsent: false, urlNote: "", wMm: "", dMm: "", hMm: "" };
+interface FormState { name: string; manufacturer: string; model: string; text: string; pages: string[]; fromOcr: boolean; templateId: string; fileName: string; fileNote: string; url: string; urlConsent: boolean; urlNote: string; wMm: string; dMm: string; hMm: string; sheetIdx: string; sheetVariant: string; sheetDepth: string }
+const form: FormState = { name: "", manufacturer: "", model: "", text: "", pages: [], fromOcr: false, templateId: "", fileName: "", fileNote: "", url: "", urlConsent: false, urlNote: "", wMm: "", dMm: "", hMm: "", sheetIdx: "0", sheetVariant: "", sheetDepth: "" };
 let result: CreatorResult | null = null;
 let liveStatus: CreatorStatus | null = null;
 let notice = "";
@@ -74,9 +75,49 @@ function mm(v: string): number | null {
   return v.trim() !== "" && Number.isFinite(n) && n > 0 ? n / 1000 : null;
 }
 
-const TPL_IDS = ["box", "cabinet", "table", "shelf"] as const;
+const TPL_IDS = ["box", "cabinet", "table", "shelf", "booster"] as const;
 function tplId(): ProductSpec["templateId"] {
   return (TPL_IDS as readonly string[]).includes(form.templateId) ? (form.templateId as ProductSpec["templateId"]) : undefined;
+}
+
+
+let sheetNote = "";
+let sheetProv: Array<{ param: string; valueM: number; source: string }> = [];
+function sheetsNow(): BoosterSheet[] { try { return form.pages.length ? readBoosterSheets(form.pages) : []; } catch { return []; } }
+function catalogueHtml(): string {
+  const sheets = sheetsNow();
+  if (!sheets.length) return "";
+  const sh = sheets[Math.min(Number(form.sheetIdx) || 0, sheets.length - 1)];
+  const inch = (v: number | undefined) => (v === undefined ? "-" : String(v));
+  const flowLabel = (f: string) => t(f === "full" ? "familyCreator.cat.full" : "familyCreator.cat.half");
+  const vOpts = sh.variants.map((v) => `<option value="${esc(v.id)}"${form.sheetVariant === v.id ? " selected" : ""}>${esc(`${flowLabel(v.flow)}, ${v.voltage} (${t("familyCreator.cat.conn")} ${inch(v.connectionIn ?? undefined)} in, A ${inch(v.dimsIn.A)} in)`)}</option>`).join("");
+  const v0 = sh.variants.find((v) => v.id === form.sheetVariant) ?? sh.variants[0];
+  const dOpts = [["J", t("familyCreator.cat.depthJ")], ["H", t("familyCreator.cat.depthH")]].map(([k, lab]) => `<option value="${k}"${form.sheetDepth === k ? " selected" : ""}>${esc(`${k} = ${inch(v0.dimsIn[k])} in, ${lab}`)}</option>`).join("");
+  return `<div class="obs-fc-sec" data-fc="catalogue"><div class="obs-fc-h">${esc(t("familyCreator.cat.title"))}</div>` +
+    `<div class="obs-fc-detail">${esc(t("familyCreator.cat.found", { n: sheets.length, model: sh.model ?? "" }))}</div>` +
+    `<label class="obs-fc-detail" style="display:block">${esc(t("familyCreator.cat.model"))}<select class="obs-fc-in" data-f="sheetIdx">${sheets.map((x, i) => `<option value="${i}"${Number(form.sheetIdx) === i ? " selected" : ""}>${esc(`${x.model ?? "?"} (${x.hpPerPump ?? "?"} HP)`)}</option>`).join("")}</select></label>` +
+    `<label class="obs-fc-detail" style="display:block">${esc(t("familyCreator.cat.type"))}<select class="obs-fc-in" data-f="sheetVariant"><option value="">${esc(t("familyCreator.cat.choose"))}</option>${vOpts}</select></label>` +
+    `<label class="obs-fc-detail" style="display:block">${esc(t("familyCreator.cat.depth"))}<select class="obs-fc-in" data-f="sheetDepth"><option value="">${esc(t("familyCreator.cat.choose"))}</option>${dOpts}</select></label>` +
+    `<div class="obs-fc-detail">${esc(sh.unitBasis)}</div>` +
+    `<div class="obs-fc-detail">${esc(t("familyCreator.cat.inferred"))}</div>` +
+    `<button type="button" class="obs-fc-btn" data-act="catalogue-create" style="margin-top:6px">${esc(t("familyCreator.cat.create"))}</button>` +
+    (sheetNote ? `<div class="obs-fc-detail" data-fc="catalogue-note" style="color:#f59e0b">${esc(sheetNote)}</div>` : "") +
+    (sheetProv.length ? `<div class="obs-fc-detail" data-fc="catalogue-sources">${sheetProv.map((p) => `<div><bdi dir="ltr">${esc(p.param)} = ${p.param === "Pumps" ? p.valueM : Math.round(p.valueM * 10000) / 10}${p.param === "Pumps" ? "" : " mm"}</bdi> - ${esc(p.source)}</div>`).join("")}</div>` : "") +
+    `</div>`;
+}
+function runCatalogue() {
+  const sheets = sheetsNow();
+  const sh = sheets[Math.min(Number(form.sheetIdx) || 0, sheets.length - 1)];
+  sheetNote = ""; sheetProv = [];
+  if (!sh) { sheetNote = t("familyCreator.cat.none"); return; }
+  if (!form.sheetVariant || (form.sheetDepth !== "J" && form.sheetDepth !== "H")) { sheetNote = t("familyCreator.cat.needChoice"); return; }
+  try {
+    const r = boosterSpecFromSheet(sh, { variantId: form.sheetVariant, depthRow: form.sheetDepth as "J" | "H", name: form.name.trim() || undefined });
+    sheetProv = r.provenance;
+    form.templateId = "booster"; form.name = r.spec.name; form.manufacturer = r.spec.manufacturer ?? form.manufacturer; form.model = r.spec.model ?? form.model;
+    form.wMm = String(Math.round(r.spec.widthM * 10000) / 10); form.dMm = String(Math.round(r.spec.depthM * 10000) / 10); form.hMm = String(Math.round(r.spec.heightM * 10000) / 10);
+    run(r.spec);
+  } catch (e) { sheetNote = (e as Error).message; }
 }
 
 function run(spec?: ProductSpec) {
@@ -363,6 +404,7 @@ function render() {
       <div class="obs-fc-detail">${esc(t("familyCreator.sizeHint"))}</div>
       <div style="display:flex;gap:6px"><input class="obs-fc-in" data-f="wMm" placeholder="${esc(t("familyCreator.w"))}" value="${esc(form.wMm)}"><input class="obs-fc-in" data-f="dMm" placeholder="${esc(t("familyCreator.d"))}" value="${esc(form.dMm)}"><input class="obs-fc-in" data-f="hMm" placeholder="${esc(t("familyCreator.h"))}" value="${esc(form.hMm)}"></div>
       <button type="button" class="obs-fc-btn" data-act="create" style="margin-top:8px">${esc(t("familyCreator.create"))}</button>
+      ${catalogueHtml()}
       ${drawingHtml()}
       ${notice ? `<div class="obs-fc-detail" data-fc="notice" style="color:#22c55e">${esc(notice)}</div>` : ""}
       ${result ? resultHtml(result) : ""}
@@ -574,6 +616,7 @@ function reopenHtml(): string {
 function act(a: string) {
   if (a === "close") setVisible(false);
   else if (a === "create") run();
+  else if (a === "catalogue-create") { runCatalogue(); render(); }
   else if (a === "fetch-url") { if (form.urlConsent && form.url.trim()) void loadFromUrl(); }
   else if (a === "fit") preview?.fit();
   else if (a === "review" && result?.family) { reviewed = true; render(); }
