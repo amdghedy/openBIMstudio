@@ -59,8 +59,11 @@ function registerPaletteCommands(): void {
     ];
 
     void ready("commandPalette").then((palette) => {
-      for (const c of cmds) {
-        try { palette.register(c); } catch { /* */ }
+      const register = palette?.register ?? null;
+      if (typeof register === "function") {
+        for (const c of cmds) {
+          try { register(c); } catch { /* */ }
+        }
       }
     });
 
