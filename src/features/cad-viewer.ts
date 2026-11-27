@@ -50,6 +50,21 @@ import { setCadHotkeyOwner } from "../core/cad-hotkey-ownership";
 import { resolveDblClick } from "../shell/ribbon-collapse";
 import { sanitizeSessionUi, sessionUiSignature, hiddenEntityIndexes, sanitizeHiddenEntities, type SessionUi, type SessionHiddenEntities } from "../modules/cad-viewer/session-state";
 import * as M from "../modules/cad-viewer/viewer-math";
+import {
+  cellAt,
+  cellTextPoint,
+  createTable,
+  deleteTableColumn,
+  deleteTableRow,
+  explodeTable,
+  insertTableColumn,
+  insertTableRow,
+  setCellText,
+  tableCorners,
+  tablePoint,
+  tableTextHeight,
+  tableWidth,
+} from "../modules/drawings/cad-table";
 import * as LayerLock from "../modules/cad-viewer/layer-lock";
 import * as GridSnap from "../modules/cad-viewer/grid-snap";
 import * as Aids from "../modules/cad-viewer/cad-drafting-aids";
@@ -469,6 +484,12 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "DIMSTYLE", aliases: ["D", "DST", "DSTYLE"], description: "Open the Dimension Style Manager: text height, tick size, precision, suffix, measurement factor — apply to all or selected dimensions" },
   { name: "DIMUPDATE", aliases: ["DIMUPD"], description: "Re-render the selected dimensions with their current style (re-measured)" },
   { name: "TABLE", aliases: ["TB"], description: "Insert a drawing table (rows × columns grid)" },
+  { name: "TABLEEDIT", aliases: ["TEDIT"], description: "Edit a cell of the selected table: TABLEEDIT <row> <column> <text>" },
+  { name: "TABLEADDROW", aliases: [], description: "Insert a row in the selected table (after row <n>, or at the end)" },
+  { name: "TABLEDELROW", aliases: [], description: "Delete a row from the selected table (row <n>, or the last row)" },
+  { name: "TABLEADDCOL", aliases: [], description: "Insert a column in the selected table (after column <n>, or at the end)" },
+  { name: "TABLEDELCOL", aliases: [], description: "Delete a column from the selected table (column <n>, or the last column)" },
+  { name: "TABLESTYLE", aliases: [], description: "Set the selected table's text height and header row" },
   { name: "IMPORT", aliases: ["IMP"], description: "Merge a DWG / DXF file into the current drawing" },
   { name: "BLOCK", aliases: ["B", "BMAKE"], description: "Create a native block definition from the selected objects (base point, name); they become one reference" },
   { name: "BEDIT", aliases: ["BE"], description: "Edit a block definition in place — the model is hidden, the definition's objects are edited, BCLOSE saves it back so every reference updates" },
@@ -2937,6 +2958,82 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           }
         }
         c.restore();
+        break;
+      }
+      case "TABLE": {
+        // One editable table: the grid, a shaded + bold header row, and the
+        // cell text in the table's own frame (rotation included). Cell text
+        // is clipped to its cell so a long value cannot spill over the grid.
+        const gpt = (lx: number, ly: number): { x: number; y: number } => {
+          const q = tablePoint(e, lx, ly);
+          return P(q.x, q.y);
+        };
+        const xs = [0];
+        for (const w of e.colWidths) xs.push(xs[xs.length - 1] + w);
+        const ys = [0];
+        for (const h of e.rowHeights) ys.push(ys[ys.length - 1] + h);
+        const W = xs[xs.length - 1], H = ys[ys.length - 1];
+        if (e.headerRow && e.rowHeights.length) {
+          const h0 = e.rowHeights[0];
+          c.save();
+          c.fillStyle = "rgba(148,163,184,0.18)";
+          c.beginPath();
+          [gpt(0, 0), gpt(W, 0), gpt(W, h0), gpt(0, h0)].forEach((s, i) => {
+            i ? c.lineTo(s.x, s.y) : c.moveTo(s.x, s.y);
+          });
+          c.closePath();
+          c.fill();
+          c.restore();
+        }
+        c.beginPath();
+        for (const y of ys) {
+          const a = gpt(0, y), b = gpt(W, y);
+          c.moveTo(a.x, a.y);
+          c.lineTo(b.x, b.y);
+        }
+        for (const x of xs) {
+          const a = gpt(x, 0), b = gpt(x, H);
+          c.moveTo(a.x, a.y);
+          c.lineTo(b.x, b.y);
+        }
+        c.stroke();
+        const th = tableTextHeight(e);
+        const pxH = th * v.scale;
+        if (pxH >= 0.75) {
+          const rot = ((-(e.rotation ?? 0) * Math.PI) / 180 - ((v.rot ?? 0) * Math.PI) / 180);
+          for (let r = 0; r < e.rowHeights.length; r++) {
+            for (let col = 0; col < e.colWidths.length; col++) {
+              const value = e.cells[r]?.[col] ?? "";
+              if (!value) continue;
+              const tp = cellTextPoint(e, r, col);
+              const sp = P(tp.x, tp.y);
+              c.save();
+              c.translate(sp.x, sp.y);
+              c.rotate(rot);
+              const fake = { type: "TEXT", layer: e.layer, position: e.position, height: th, value, bold: e.headerRow && r === 0 } as Extract<DxfEntity, { type: "TEXT" }>;
+              c.font = M.textFontCss(fake, Math.min(pxH, 600));
+              c.textAlign = "left";
+              c.textBaseline = "middle";
+              // Clip to the cell: the corners mapped back into this
+              // translated + rotated frame, so a long value cannot spill
+              // over the grid even on a rotated table.
+              const local = (lx: number, ly: number): { x: number; y: number } => {
+                const s = gpt(lx, ly);
+                const dx = s.x - sp.x, dy = s.y - sp.y;
+                const cos = Math.cos(-rot), sin = Math.sin(-rot);
+                return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+              };
+              c.beginPath();
+              [local(xs[col], ys[r]), local(xs[col + 1], ys[r]), local(xs[col + 1], ys[r + 1]), local(xs[col], ys[r + 1])].forEach((q, i) => {
+                i ? c.lineTo(q.x, q.y) : c.moveTo(q.x, q.y);
+              });
+              c.closePath();
+              c.clip();
+              c.fillText(value, 0, 0);
+              c.restore();
+            }
+          }
+        }
         break;
       }
     }
@@ -6247,6 +6344,58 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     return true;
   }
 
+  // ── 2D-7: editable TABLE cells ──────────────────────────────────────
+  /** The table the row/column/style commands act on: the first selected
+   * TABLE, or the drawing's only TABLE when there is exactly one. */
+  function selectedTable(): { index: number; entity: Extract<DxfEntity, { type: "TABLE" }> } | null {
+    for (const i of [...sel]) {
+      const e = ents[i];
+      if (e?.type === "TABLE") return { index: i, entity: e };
+    }
+    const all = ents.map((e, i) => ({ index: i, entity: e })).filter((x) => x.entity.type === "TABLE");
+    return all.length === 1 ? (all[0] as { index: number; entity: Extract<DxfEntity, { type: "TABLE" }> }) : null;
+  }
+
+  /** Prompt for a cell's new text on the command line (the DDEDIT pattern:
+   * empty Enter keeps the existing text, Esc cancels), then commit it. */
+  function promptTableCellEdit(i: number, row: number, col: number): void {
+    const e = ents[i];
+    if (!e || e.type !== "TABLE") return;
+    const cur = e.cells[row]?.[col] ?? "";
+    if (pick) pick.obj = i;
+    setSel([i]);
+    logCmd(`Table cell ${row + 1},${col + 1}: ${cur || "(empty)"}`);
+    logCmd("Enter new text: (empty Enter keeps the existing text, Esc cancels)");
+    pendingText = (s) => {
+      pendingText = null;
+      // The captured entity, not the live index: the table may have been
+      // edited or deleted while the prompt was open.
+      const ent = ents[i];
+      if (!ent || ent !== e || ent.type !== "TABLE" || !s) {
+        logCmd("TABLEEDIT: cell unchanged.");
+      } else {
+        commitModify([ent], [setCellText(ent, row, col, s)]);
+        logCmd(`TABLEEDIT: cell ${row + 1},${col + 1} updated.`);
+      }
+      clearPickState();
+      setTool("select");
+      draw();
+    };
+  }
+
+  /** Edit the cell under a pick point (DDEDIT / double-click entry point). */
+  function editTableCell(i: number, wp: M.Pt): boolean {
+    const e = ents[i];
+    if (!e || e.type !== "TABLE") return false;
+    const cell = cellAt(e, wp.x, wp.y);
+    if (!cell) {
+      logCmd("TABLEEDIT: pick inside the table.");
+      return true;
+    }
+    promptTableCellEdit(i, cell.row, cell.col);
+    return true;
+  }
+
   function onPickClick(wp: M.Pt): boolean {
     if (!pick) return false;
     // Layer-state tools (LAYISO / LAYOFF / LAYLCK / LAYUNLCK) act on the layer,
@@ -6528,8 +6677,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           return true;
         }
         const e = ents[hit];
+        // 2D-7: DDEDIT on a table edits the picked cell.
+        if (e.type === "TABLE") return editTableCell(hit, wp);
         if (e.type !== "TEXT") {
-          logCmd("DDEDIT: pick a TEXT / MTEXT object.");
+          logCmd("DDEDIT: pick a TEXT / MTEXT object or a table cell.");
           return true;
         }
         pick.obj = hit;
@@ -6987,7 +7138,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const after: DxfEntity[] = [];
     let hatched = 0, blockRefs = 0;
     for (const e of before) {
-      if (e.type === "LWPOLYLINE") {
+      if (e.type === "TABLE") {
+        // 2D-7: a table explodes back to its grid lines + one TEXT per
+        // non-empty cell — the loose form the tool used to emit.
+        for (const part of explodeTable(e)) after.push(part);
+      } else if (e.type === "LWPOLYLINE") {
         if (e.hatch) hatched++;
         const n = e.points.length;
         const m = e.closed ? n : n - 1;
@@ -7005,7 +7160,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       } else after.push(e);
     }
     if (after.length === before.length && !blockRefs) {
-      logCmd("EXPLODE: nothing to explode in the selection — polylines and block references are the composite objects.");
+      logCmd("EXPLODE: nothing to explode in the selection — polylines, block references and tables are the composite objects.");
       return;
     }
     commitReplace(before, after);
@@ -8683,7 +8838,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       rg(
         "Tables",
         tb("table", "table", "Table") +
-          rb("schedule", "Edit Size", `data-a="tablesize"`, "Set the next table's rows × columns"),
+          rb("schedule", "Edit Size", `data-a="tablesize"`, "Set the next table's rows × columns") +
+          rb("text", "Edit Cell", `data-a="table-edit"`, "Edit a cell of the selected table (TABLEEDIT)") +
+          rb("table-add-row", "Insert Row", `data-a="table-addrow"`, "Insert a row in the selected table (TABLEADDROW)") +
+          rb("table-del-row", "Delete Row", `data-a="table-delrow"`, "Delete a row from the selected table (TABLEDELROW)") +
+          rb("table-add-col", "Insert Column", `data-a="table-addcol"`, "Insert a column in the selected table (TABLEADDCOL)") +
+          rb("table-del-col", "Delete Column", `data-a="table-delcol"`, "Delete a column from the selected table (TABLEDELCOL)") +
+          rb("table-style", "Style", `data-a="table-style"`, "Set the selected table's text height and header row (TABLESTYLE)"),
         "",
         "",
         "annotate",
@@ -9133,6 +9294,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           }
         });
       },
+      "table-edit": () => executeDrawingCommand("TABLEEDIT"),
+      "table-addrow": () => executeDrawingCommand("TABLEADDROW"),
+      "table-delrow": () => executeDrawingCommand("TABLEDELROW"),
+      "table-addcol": () => executeDrawingCommand("TABLEADDCOL"),
+      "table-delcol": () => executeDrawingCommand("TABLEDELCOL"),
+      "table-style": () => executeDrawingCommand("TABLESTYLE"),
       // drawing workspace expansion pack: layer isolation + quick edit shortcuts
       layiso: () => executeDrawingCommand("LAYISO"),
       layoff: () => executeDrawingCommand("LAYOFF"),
@@ -10769,27 +10936,22 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         pts.push(p);
         if (pts.length === 2) {
           const [t1, t2] = pts;
-          const cols = tableDims.cols,
-            rows = tableDims.rows;
-          const w = (t2.x - t1.x) / cols,
-            h = (t2.y - t1.y) / rows;
-          const list: DxfEntity[] = [];
-          for (let c = 0; c <= cols; c++)
-            list.push({ type: "LINE", layer: currentLayer, start: { x: t1.x + c * w, y: t1.y }, end: { x: t1.x + c * w, y: t2.y } });
-          for (let r = 0; r <= rows; r++)
-            list.push({ type: "LINE", layer: currentLayer, start: { x: t1.x, y: t1.y + r * h }, end: { x: t2.x, y: t1.y + r * h } });
-          const hh = Math.min(Math.abs(h) * 0.6, Math.max(1e-6, Math.abs(w) * 0.5));
-          for (let r = 0; r < rows; r++)
-            for (let c = 0; c < cols; c++)
-              list.push({
-                type: "TEXT",
-                layer: currentLayer,
-                position: { x: t1.x + (c + 0.08) * w, y: t1.y + (r + 0.5) * h },
-                height: hh,
-                value: `${r + 1},${c + 1}`,
-              });
-          addEntities(list);
-          logCmd(`Table added: ${rows} rows × ${cols} columns (TABLE <rows> <cols> to change).`);
+          try {
+            // 2D-7: one editable TABLE entity (rows/columns/cells), not the
+            // loose LINE + TEXT grid this used to emit — the grid and the
+            // cell labels are the table's own data now.
+            const table = createTable({
+              layer: currentLayer,
+              position: t1,
+              size: { x: t2.x - t1.x, y: t2.y - t1.y },
+              rows: tableDims.rows,
+              cols: tableDims.cols,
+            });
+            addEntities([table]);
+            logCmd(`Table added: ${tableDims.rows} rows × ${tableDims.cols} columns (TABLE <rows> <cols> to change). Double-click a cell to edit it.`);
+          } catch (err) {
+            logCmd(`TABLE: ${err instanceof Error ? err.message : String(err)}`);
+          }
           pts = [];
         }
         break;
@@ -11173,6 +11335,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const { wp } = rawPoint(ev);
       const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, pickable) : -1;
       const e = i >= 0 ? ents[i] : undefined;
+      if (e?.type === "TABLE") { editTableCell(i, wp); draw(); updateStatus(); return; }
       if (e?.type === "INSERT") { openBlockEdit(e.name); draw(); updateStatus(); return; }
     }
     // A8: double-click a viewport to work inside it (wheel / drag zoom and
@@ -13593,6 +13756,113 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         logCmd(`Next table: ${r0} rows × ${c0} columns.`);
       }
       setTool("table");
+      return;
+    }
+
+    /* ── 2D-7: editable TABLE commands ── */
+    if (cmd === "TABLEEDIT" || cmd === "TEDIT") {
+      const sel = selectedTable();
+      if (!sel) {
+        logCmd("TABLEEDIT: select a table first (or draw one — TABLEEDIT needs exactly one table when nothing is selected).");
+        return;
+      }
+      const r = parseInt(parts[1] ?? "", 10), c = parseInt(parts[2] ?? "", 10);
+      if (!Number.isInteger(r) || !Number.isInteger(c) || r < 1 || c < 1 || r > sel.entity.rowHeights.length || c > sel.entity.colWidths.length) {
+        logCmd(`TABLEEDIT: specify a cell, e.g. TABLEEDIT 1 2 New text — this table is ${sel.entity.rowHeights.length} rows × ${sel.entity.colWidths.length} columns.`);
+        return;
+      }
+      const text = parts.slice(3).join(" ");
+      if (text) {
+        commitModify([sel.entity], [setCellText(sel.entity, r - 1, c - 1, text)]);
+        logCmd(`TABLEEDIT: cell ${r},${c} updated.`);
+        draw();
+      } else {
+        promptTableCellEdit(sel.index, r - 1, c - 1);
+      }
+      return;
+    }
+    if (cmd === "TABLEADDROW" || cmd === "TABLEDELROW" || cmd === "TABLEADDCOL" || cmd === "TABLEDELCOL") {
+      const sel = selectedTable();
+      if (!sel) {
+        logCmd(`${cmd}: select a table first (or draw one — this command needs exactly one table when nothing is selected).`);
+        return;
+      }
+      const isRow = cmd.endsWith("ROW");
+      const count = isRow ? sel.entity.rowHeights.length : sel.entity.colWidths.length;
+      const n = parseInt(parts[1] ?? "", 10);
+      try {
+        if (cmd === "TABLEADDROW") {
+          // TABLEADDROW [n] inserts a row AFTER row n (default: at the end).
+          const at = Number.isInteger(n) ? Math.max(0, Math.min(n, count)) : count;
+          commitModify([sel.entity], [insertTableRow(sel.entity, at)]);
+          logCmd(`TABLEADDROW: row inserted at ${at + 1} — ${count + 1} rows now.`);
+        } else if (cmd === "TABLEDELROW") {
+          const at = Number.isInteger(n) ? n - 1 : count - 1;
+          const next = deleteTableRow(sel.entity, at);
+          if (!next) { logCmd("TABLEDELROW: cannot delete the last row."); return; }
+          commitModify([sel.entity], [next]);
+          logCmd(`TABLEDELROW: row ${at + 1} deleted — ${count - 1} rows now.`);
+        } else if (cmd === "TABLEADDCOL") {
+          const at = Number.isInteger(n) ? Math.max(0, Math.min(n, count)) : count;
+          commitModify([sel.entity], [insertTableColumn(sel.entity, at)]);
+          logCmd(`TABLEADDCOL: column inserted at ${at + 1} — ${count + 1} columns now.`);
+        } else {
+          const at = Number.isInteger(n) ? n - 1 : count - 1;
+          const next = deleteTableColumn(sel.entity, at);
+          if (!next) { logCmd("TABLEDELCOL: cannot delete the last column."); return; }
+          commitModify([sel.entity], [next]);
+          logCmd(`TABLEDELCOL: column ${at + 1} deleted — ${count - 1} columns now.`);
+        }
+      } catch (err) {
+        logCmd(`${cmd}: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+      }
+      draw();
+      return;
+    }
+    if (cmd === "TABLESTYLE") {
+      const sel = selectedTable();
+      if (!sel) {
+        logCmd("TABLESTYLE: select a table first (or draw one — this command needs exactly one table when nothing is selected).");
+        return;
+      }
+      const heightArg = parseFloat(parts[1] ?? "");
+      const headerArg = (parts[2] ?? "").toUpperCase();
+      if (Number.isFinite(heightArg) && heightArg > 0) {
+        const next: Extract<DxfEntity, { type: "TABLE" }> = { ...sel.entity, textHeight: heightArg };
+        if (headerArg === "HEADER") next.headerRow = true;
+        else if (headerArg === "NOHEADER") delete next.headerRow;
+        commitModify([sel.entity], [next]);
+        logCmd(`TABLESTYLE: text height ${fmt(heightArg)}${headerArg === "HEADER" ? ", header row on" : headerArg === "NOHEADER" ? ", header row off" : ""}.`);
+        draw();
+        return;
+      }
+      // No height on the command line: prompt for it, then for the header row.
+      void promptLine("Table Style", "Text height", String(tableTextHeight(sel.entity))).then((s) => {
+        const h = parseFloat(s ?? "");
+        if (!Number.isFinite(h) || h <= 0) {
+          logCmd("TABLESTYLE: text height unchanged.");
+          return;
+        }
+        void pickFromList(
+          "Table Style",
+          "Header row",
+          [
+            { value: "yes", label: "First row is a header (bold + shaded)" },
+            { value: "no", label: "No header row" },
+          ],
+          sel.entity.headerRow ? "yes" : "no",
+        ).then((v) => {
+          const ent = ents[sel.index];
+          if (!ent || ent.type !== "TABLE") return;
+          const next: Extract<DxfEntity, { type: "TABLE" }> = { ...ent, textHeight: h };
+          if (v === "yes") next.headerRow = true;
+          else delete next.headerRow;
+          commitModify([ent], [next]);
+          logCmd(`TABLESTYLE: text height ${fmt(h)}${v === "yes" ? ", header row on" : ", header row off"}.`);
+          draw();
+        });
+      });
       return;
     }
 
@@ -16464,6 +16734,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           return `X|${e.layer}|${f(e.start.x)},${f(e.start.y)}|${f(e.direction.x)},${f(e.direction.y)}`;
         case "DIMENSION":
           return `D|${e.layer}|${e.dimType}|${f(e.defPoint.x)},${f(e.defPoint.y)}|${e.extOrigin1 ? `${f(e.extOrigin1.x)},${f(e.extOrigin1.y)}` : ""}|${e.extOrigin2 ? `${f(e.extOrigin2.x)},${f(e.extOrigin2.y)}` : ""}|${e.curvePoint ? `${f(e.curvePoint.x)},${f(e.curvePoint.y)}` : ""}|${e.text ?? ""}`;
+        case "TABLE":
+          return `B|${e.layer}|${f(e.position.x)},${f(e.position.y)}|${f(e.rotation ?? 0)}|${e.colWidths.map(f).join(",")}|${e.rowHeights.map(f).join(",")}|${JSON.stringify(e.cells)}`;
       }
     };
     for (const e of before) {

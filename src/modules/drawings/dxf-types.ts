@@ -208,6 +208,35 @@ export type DxfEntity =
       position: DxfPoint;
     })
   | (DxfEntityBase & {
+      type: "TABLE";
+      /**
+       * Top-left corner (insertion point) in world coordinates. Columns run
+       * rightward from here along the table's rotation, rows run downward
+       * (the table occupies the local rectangle lx in [0, width],
+       * ly in [0, height], ly measured down from the top row).
+       */
+      position: DxfPoint;
+      /** Column widths in drawing units, left to right. */
+      colWidths: number[];
+      /** Row heights in drawing units, top to bottom. */
+      rowHeights: number[];
+      /** Cell text, [row][col]; a missing entry reads as "". */
+      cells: string[][];
+      /**
+       * Cell text height in drawing units; absent = half the smallest row
+       * height. Written to DXF as the table-level group 140.
+       */
+      textHeight?: number;
+      /** Rotation of the table in degrees (counter-clockwise); 0 = axis-aligned. */
+      rotation?: number;
+      /**
+       * First row is a header: drawn bold with a shaded background, and
+       * written to DXF as group 281 = 0 (1 = header suppressed).
+       * Merged cells are not represented.
+       */
+      headerRow?: boolean;
+    })
+  | (DxfEntityBase & {
       type: "DIMENSION";
       /**
        * In-memory link to the dimension's drawn geometry: entities carrying
