@@ -2199,10 +2199,10 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
           const y = Math.sin(x * 0.3) * 0.4 + Math.cos(z * 0.4) * 0.3;
           points.push({ x, y, z });
         }
-        (window as any).__obsToposurface.build({ points });
+        (ctx.features as any).toposurface.build({ points });
       }, "Toposurface"), { title: "Create TIN toposurface from sample points" }),
       b("topo", "Building Pad", safe(() => {
-        (window as any).__obsBuildingPad.build({
+        (ctx.features as any).buildingPad.build({
           outline: [
             { x: 2, z: 2 }, { x: 6, z: 2 }, { x: 6, z: 6 }, { x: 2, z: 6 },
           ],
@@ -2214,7 +2214,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Property"),
       b("property", "Property Line", safe(() => {
-        (window as any).__obsPropertyLine.build({
+        (ctx.features as any).propertyLine.build({
           origin: { x: 0, z: 0 },
           segments: [
             { bearing: 90, distance: 30, label: "E 30 m" },
@@ -2406,7 +2406,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         (window as any).__obsSelectionBox?.resetIsolation?.();
       }, "Reset isolation"), { kbd: "^⇧I", title: "Restore all hidden elements — Ctrl+Shift+I" }),
       b("view", "Dependent", safe(() => {
-        (window as any).__obsDependentViews?.create?.("primary-view-1", { name: "Dependent View 1" });
+        (ctx.features as any).dependentViews?.create?.("primary-view-1", { name: "Dependent View 1" });
         toast("Dependent view created from primary", "success");
       }, "Dependent view"), { title: "Create a dependent view sharing primary geometry" }),
       sep(),
@@ -2438,7 +2438,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast(`Filter "${String(v.name).trim()}" created — apply it from Visibility/Graphics → Filters`, "success", 4000);
       }, "View filter"), { title: "Create a rule-based view graphics filter" }),
       b("system", "Matchline", safe(() => {
-        (window as any).__obsMatchline?.build?.({ points: [{ x: 0, z: 0 }, { x: 10, z: 0 }, { x: 12, z: 2 }] });
+        (ctx.features as any).matchline?.build?.({ points: [{ x: 0, z: 0 }, { x: 10, z: 0 }, { x: 12, z: 2 }] });
         toast("Matchline created — used when splitting a view across sheets", "success");
       }, "Matchline"), { title: "Draw a matchline for sheet-split views" }),
       sep(),

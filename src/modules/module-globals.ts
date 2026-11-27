@@ -28,7 +28,7 @@ import {
   type SiteComponentParams, type SiteComponentType,
 } from "../modules/site-components/site-components";
 import {
-  buildRamp, type RampParams, type RampResult,
+  buildRamp,
 } from "../modules/ramps/ramps";
 import {
   buildTruss, type TrussParams, type TrussResult, type TrussType,
@@ -130,7 +130,7 @@ function filePicker(accept: string): Promise<File | null> {
 }
 
 // ── Toposurface ──────────────────────────────────────────────────────────
-w.__obsToposurface = {
+(ctx.features as any).toposurface = {
   build: (p: ToposurfaceParams) => {
     const r = buildToposurface(p);
     addObject(r.object, `Toposurface (${r.triangleCount} tris, ${r.area.toFixed(1)} m²)`);
@@ -140,7 +140,7 @@ w.__obsToposurface = {
 };
 
 // ── Building Pad ─────────────────────────────────────────────────────────
-w.__obsBuildingPad = {
+(ctx.features as any).buildingPad = {
   build: (p: BuildingPadParams) => {
     const r = buildBuildingPad(p);
     addObject(r.object, `Building Pad (${r.floorArea.toFixed(1)} m², cut ${r.cutVolume.toFixed(1)} m³, fill ${r.fillVolume.toFixed(1)} m³)`);
@@ -149,7 +149,7 @@ w.__obsBuildingPad = {
 };
 
 // ── Property Line ────────────────────────────────────────────────────────
-w.__obsPropertyLine = {
+(ctx.features as any).propertyLine = {
   build: (p: PropertyLineParams) => {
     const r = buildPropertyLine(p);
     addObject(r.object, `Property Line (${r.perimeter.toFixed(1)} m, area ${r.area.toFixed(1)} m², closure error ${r.closureError.toFixed(3)} m)`);
@@ -168,13 +168,23 @@ w.__obsSiteComponent = {
 };
 
 // ── Ramp ─────────────────────────────────────────────────────────────────
-w.__obsRamp = {
-  build: (p: Partial<RampParams>) => {
-    const r = buildRamp(p);
-    addObject(r.object, `Ramp (${r.slopePercent.toFixed(1)}%, ${r.area.toFixed(1)} m²)`);
-    return r;
-  },
-};
+// Ramp had one window-global stash with no consumer anywhere in the repo
+// — an unreachable feature, same as the point cloud. It is now a typed
+// palette command with the same build flow (default parameters).
+void servicesReady("commandPalette").then((palette) => {
+  try {
+    palette.register({
+      id: "model.ramp",
+      label: "Model: Build Ramp\u2026",
+      category: "Model",
+      hint: "ramp, slope, accessibility",
+      run: () => {
+        const r = buildRamp({});
+        addObject(r.object, `Ramp (${r.slopePercent.toFixed(1)}%, ${r.area.toFixed(1)} m²)`);
+      },
+    });
+  } catch { /* */ }
+});
 
 // ── Truss ─────────────────────────────────────────────────────────────────
 w.__obsTruss = {
@@ -235,7 +245,7 @@ w.__obsScopeBoxViz = {
 };
 
 // ── Matchline ─────────────────────────────────────────────────────────────
-w.__obsMatchline = {
+(ctx.features as any).matchline = {
   build: (p: any) => {
     const r = buildMatchline(p);
     addObject(r.object, `Matchline (${r.length.toFixed(1)} m)`);
@@ -244,12 +254,12 @@ w.__obsMatchline = {
 };
 
 // ── Plan Region ───────────────────────────────────────────────────────────
-w.__obsPlanRegion = {
+(ctx.features as any).planRegion = {
   build: buildPlanRegion, pointIn: pointInRegion, resolveCutPlane,
 };
 
 // ── Dependent Views ───────────────────────────────────────────────────────
-w.__obsDependentViews = {
+(ctx.features as any).dependentViews = {
   create: createDependentView, list: listDependents, get: getDependentView,
   updateCrop: updateCropRegion, delete: deleteDependentView,
 };
@@ -418,4 +428,4 @@ w.__obsSelectionBox = {
   },
 };
 
-console.log("[obs] v40 module globals registered: toposurface, building-pad, property-line, site-components, ramps, trusses, structural-connections, fabrication-parts, scope-box, matchline, plan-region, dependent-views, worksets, scope-box-viz, crop-region, section-box, selection-box");
+console.log("[obs] v40 module globals registered: site-components, trusses, structural-connections, fabrication-parts, scope-box, worksets, scope-box-viz, crop-region, section-box, selection-box");
