@@ -109,7 +109,7 @@ export async function setupCriticalGapsUI(): Promise<void> {
   });
 
   const solveBtn = makeButton("obs-adv-solve", "[S] Solve", "Hosted constraint solver", () => {
-    const fn = (window as Any).__obsSolveHostedConstraints;
+    const fn = (ctx.features as Any).constraintSolver?.solveAll;
     if (typeof fn !== "function") { flash(solveBtn, "[!]"); return; }
     try {
       const n = Number(fn() ?? 0);

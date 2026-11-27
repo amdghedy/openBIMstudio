@@ -362,7 +362,7 @@ function buildBody(host: HTMLElement): void {
         window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "copy-monitor" } }));
       }, !!(ctx.features as Any).copyMonitor),
       btn("Solve Hosts", "Openings + offsets", () => {
-        const fn = (window as Any).__obsSolveHostedConstraints;
+        const fn = (ctx.features as Any).constraintSolver?.solveAll;
         if (typeof fn !== "function") {
           toast("Solver not ready", "warn");
           return;
