@@ -51,8 +51,8 @@ export function buildGisObject(layer: LocalLayer): THREE.Group {
 export interface GisOpenResult { object: THREE.Object3D | null; message: string }
 
 /** Parse, project and build. `message` is the honest summary to show the user. */
-export function openGis(buf: ArrayBuffer, name: string, dbf?: ArrayBuffer): GisOpenResult {
-  const layer = toLocal(readGisLayer(buf, name, dbf));
+export function openGis(buf: ArrayBuffer, name: string, dbf?: ArrayBuffer, prj?: string): GisOpenResult {
+  const layer = toLocal(readGisLayer(buf, name, dbf), undefined, prj);
   if (!layer.features.length) return { object: null, message: `"${name}" has no usable geometry. ${layer.warnings.join(" ")}`.trim() };
   const kinds = { point: 0, line: 0, polygon: 0 };
   for (const f of layer.features) kinds[f.kind]++;
