@@ -84,7 +84,10 @@ t("DIMBREAK splits the role-dimline entity at crossings via the shared math", ()
 
 t("DIMOVERRIDE merges per-record overrides into every style resolution", () => {
   assert(/cmd === "DIMOVERRIDE" \|\| cmd === "DOV"\) \{ dimoverrideCmd\(parts\.slice\(1\)\); return; \}/.test(cv), "route missing");
-  assert(/function dimStyleOf\(rec: DIM\.DimRecord\): DIM\.DimStyle \{\s*\n\s*const base = dimStyleList\.find\(\(st\) => st\.name === rec\.styleName\) \?\? currentDimStyle\(\);\s*\n\s*return \{ \.\.\.base, \.\.\.\(dimOverrides\.get\(rec\.id\) \?\? \{\}\) \};/.test(cv), "dimStyleOf merge missing");
+  // 2D-30: dimStyleOf wraps the merged style in annoScaledStyle so the
+  // arrowhead size follows the annotation scale — the merge itself is
+  // unchanged (base + dimOverrides), only the returned shape is scaled.
+  assert(/function dimStyleOf\(rec: DIM\.DimRecord\): DIM\.DimStyle \{\s*\n\s*const base = dimStyleList\.find\(\(st\) => st\.name === rec\.styleName\) \?\? currentDimStyle\(\);\s*\n\s*return annoScaledStyle\(\{ \.\.\.base, \.\.\.\(dimOverrides\.get\(rec\.id\) \?\? \{\}\) \}\);/.test(cv), "dimStyleOf merge missing");
   const commit = cv.match(/function commitDimRecord\(rec: DIM\.DimRecord\): DxfEntity\[\] \{[\s\S]*?\n  \}/);
   assert.ok(commit && commit[0].includes("dimStyleOf(rec)"), "commitDimRecord must use the merged style");
   const assoc = cv.slice(cv.indexOf("function withAssociativeDims"), cv.indexOf("function withAssociativeDims") + 1600);
