@@ -305,6 +305,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "LAYER", aliases: ["LA", "LAYERS"], description: "Open Layer Properties Manager" },
   { name: "LINETYPE", aliases: ["LT", "LTYPE"], description: "Open the Linetype Manager (load linetypes, set current)" },
   { name: "LTSCALE", aliases: ["LTS"], description: "Set the global linetype scale, e.g. LTSCALE 2" },
+  { name: "CANNOSCALE", aliases: ["ANNOSCALE"], description: "Set the annotation scale, e.g. CANNOSCALE 1:50 — text, leaders and dimension arrowheads render at this scale" },
   { name: "STYLE", aliases: ["ST"], description: "Open the Text Style Manager (fonts, heights, presets)" },
   { name: "TEXT", aliases: ["T", "DT", "DTEXT"], description: "Place text with the current text style" },
   { name: "MTEXT", aliases: ["MT"], description: "Place multiline text with a column width (wraps at the width)" },
@@ -1784,6 +1785,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let dynOn = true; // Dynamic Input HUD F12
   let lwtOn = true;
   let ducsOn = true; // Dynamic UCS F6 (shared drafting aid, 2D-29)
+  // 2D-30: annotation scale factor (CANNOSCALE). 1 = no scaling. TEXT /
+  // MTEXT keep their nominal stored height and render at height × this
+  // factor; dimension and leader arrowheads are baked at creation, so
+  // their sizes are multiplied by it when built (dimStyleOf below, the
+  // leader cases). Persisted per drawing through the session UI.
+  let annoScale = 1;
   // UCS display toggle — ON by default so drawings open the way the native
   // CAD app shows them (the file's saved view rotation applied; for
   // DVIEW-twisted drawings that is what makes them upright). OFF shows raw
@@ -1799,10 +1806,35 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   // record shapes stay stable; merged wherever a record's style is resolved.
   const dimOverrides = new Map<string, Partial<DIM.DimStyle>>();
 
+  /**
+   * 2D-30: a dimension style as built under the current annotation scale.
+   * Only the arrowhead size is scaled here: the dimension's TEXT keeps its
+   * nominal height because the paint path scales TEXT by annoScale, and
+   * scaling it here too would double it. An arrowSize of 0 means "derive
+   * from text height" — materialised at the same scaled size so the 0 case
+   * scales too instead of silently staying at 1×.
+   */
+  function annoScaledStyle(style: DIM.DimStyle): DIM.DimStyle {
+    if (annoScale === 1) return style;
+    const arrow = (style.arrowSize > 0 ? style.arrowSize : style.textHeight * 2.5) * annoScale;
+    return { ...style, arrowSize: arrow };
+  }
+
+  /** Set the annotation scale (CANNOSCALE / status-bar button). False when the factor is not usable. */
+  function setAnnoScale(factor: number): boolean {
+    if (!Ann.isValidAnnoScale(factor)) return false;
+    annoScale = factor;
+    updateStatus();
+    draw();
+    markDirty();
+    logCmd(`CANNOSCALE: annotation scale ${Ann.formatAnnoScale(factor)} (factor ${factor}) — text, leaders and dimension arrowheads render at this scale.`);
+    return true;
+  }
+
   /** A record's effective style: its named style merged with DIMOVERRIDE. */
   function dimStyleOf(rec: DIM.DimRecord): DIM.DimStyle {
     const base = dimStyleList.find((st) => st.name === rec.styleName) ?? currentDimStyle();
-    return { ...base, ...(dimOverrides.get(rec.id) ?? {}) };
+    return annoScaledStyle({ ...base, ...(dimOverrides.get(rec.id) ?? {}) });
   }
   let drawingLimits: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
 
@@ -2212,7 +2244,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
   function currentUi(): SessionUi {
     return {
-      bg, cmode, snapOn, gridSnapOn, orthoOn, polarOn, polarAngle, otrackOn, dynOn, lwtOn, showGrid, showText, showHatch, showLt,
+      bg, cmode, snapOn, gridSnapOn, orthoOn, polarOn, polarAngle, otrackOn, dynOn, lwtOn, annoScale, showGrid, showText, showHatch, showLt,
       snapModes: [...snapModes], typeFilter: [...typeFilter], propFilter: propFilter.length ? propFilter.map((c) => ({ ...c })) : undefined, currentLayer,
       lockedLayers: doc ? doc.layers.filter((l) => l.locked).map((l) => l.name) : [],
     };
@@ -2309,6 +2341,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (u.otrackOn !== undefined) otrackOn = u.otrackOn;
       if (u.dynOn !== undefined) dynOn = u.dynOn;
       if (u.lwtOn !== undefined) lwtOn = u.lwtOn;
+      if (u.annoScale !== undefined) annoScale = u.annoScale;
       if (u.showGrid !== undefined) showGrid = u.showGrid;
       if (u.showText !== undefined) showText = u.showText;
       if (u.showHatch !== undefined) showHatch = u.showHatch;
@@ -2821,14 +2854,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         break;
       }
       case "TEXT": {
-        const px = e.height * v.scale;
+        // 2D-30: the annotation scale sizes the rendered glyphs — the
+        // stored height stays nominal (the same text renders at the right
+        // paper size at any scale), so every height-derived screen term
+        // in this case uses ts, never the bare view scale.
+        const ts = v.scale * annoScale;
+        const px = e.height * ts;
         const o = M.textOrigin(e);
         // Native CAD keeps drawing real glyphs at any zoom: only go to a
         // placeholder stroke when the text would be sub-pixel on screen.
         if (px < 0.75) {
           const p = P(e.position.x, e.position.y);
-          const w = M.textBox(e).w * v.scale;
-          const ox = o.dx * v.scale;
+          const w = M.textBox(e).w * ts;
+          const ox = o.dx * ts;
           c.moveTo(p.x + ox, p.y);
           c.lineTo(p.x + ox + w, p.y);
           c.stroke();
@@ -2854,8 +2892,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           // glyphs so the text stays readable over dense linework.
           if (e.mask && bl.length) {
             const wpx = Math.max(1, ...lines.map((ls) => c.measureText(ls.map((r) => r.text).join("")).width));
-            const top = -bl[0] * v.scale - px * 0.85;
-            const bot = -bl[bl.length - 1] * v.scale + px * 0.25;
+            const top = -bl[0] * ts - px * 0.85;
+            const bot = -bl[bl.length - 1] * ts + px * 0.25;
             const xoff = (e.align ?? "left") === "center" ? -wpx / 2 : (e.align ?? "left") === "right" ? -wpx : 0;
             c.save();
             c.fillStyle = BG[bg] ?? "#212830";
@@ -2867,8 +2905,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             const shx = px >= 5 ? strokeFontFor(e.font) : undefined;
             for (let li = 0; li < lines.length; li++) {
               const lineText = lines[li].map((r) => r.text).join("");
-              if (shx && drawStrokeLine(c, shx, lineText, Math.min(px, 600), e.align ?? "left", -bl[li] * v.scale)) continue;
-              c.fillText(lineText, 0, -bl[li] * v.scale);
+              if (shx && drawStrokeLine(c, shx, lineText, Math.min(px, 600), e.align ?? "left", -bl[li] * ts)) continue;
+              c.fillText(lineText, 0, -bl[li] * ts);
             }
           } else {
             // Inline \\C / \\f codes: paint run by run with its own colour and
@@ -2891,7 +2929,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
                 if (r.bold != null || r.italic != null)
                   c.font = M.textFontCss({ ...e, bold: r.bold, italic: r.italic }, pxs);
                 c.fillStyle = r.rgb != null ? rgbToCss(r.rgb & 0xffffff) : r.color != null ? rgbToCss(aciToRgb(r.color, fg())) : base as string;
-                c.fillText(r.text, x, -bl[li] * v.scale);
+                c.fillText(r.text, x, -bl[li] * ts);
                 x += widths[ri];
               });
               c.fillStyle = base;
@@ -6582,7 +6620,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
               const h = span > 0 ? span / 100 : 2;
               // MLEADER carries the same filled-triangle arrowhead as LEADER
               // (2D-9): arrowhead + line + text, committed as real entities.
-              const arrowSize = Math.max(h * 2.5, h);
+              // 2D-30: the arrowhead is baked geometry, so it is sized by the
+              // annotation scale at creation (the TEXT keeps its nominal
+              // height — the paint path scales TEXT by annoScale).
+              const arrowSize = Math.max(h * 2.5, h) * annoScale;
               const arrow = Ann.buildLeaderArrowhead(a, b, arrowSize);
               const parts: DxfEntity[] = [
                 { type: "LINE", layer: currentLayer, ...newObjectProps(), start: { x: a.x, y: a.y }, end: { x: b.x, y: b.y } },
@@ -10319,7 +10360,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             const [tip, landing] = leaderPts;
             const span = bounds ? Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) : 0;
             const h = span > 0 ? span / 100 : 2;
-            const arrowSize = Math.max(h * 2.5, h);
+            // 2D-30: the arrowhead is baked geometry, so it is sized by the
+            // annotation scale at creation (the TEXT keeps its nominal
+            // height — the paint path scales TEXT by annoScale).
+            const arrowSize = Math.max(h * 2.5, h) * annoScale;
             const arrow = Ann.buildLeaderArrowhead(tip, landing, arrowSize);
             const parts: DxfEntity[] = [
               { type: "LINE", layer: currentLayer, ...newObjectProps(), start: { x: tip.x, y: tip.y }, end: { x: landing.x, y: landing.y } },
@@ -10699,7 +10743,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           break;
         }
         const prev = lastBaselineRecord ?? root;
-        const style = currentDimStyle();
+        // 2D-30: the spacing derives from the arrow size, so it uses the
+        // annotation-scaled style — at a larger scale the staggered
+        // baseline rows clear the larger rendered text.
+        const style = annoScaledStyle(currentDimStyle());
         const spacing = Math.max(style.textHeight * 2.2, (style.arrowSize > 0 ? style.arrowSize : style.textHeight * 2.5) * 1.6);
         const rec = DIM.baselineDimRecord(root, prev, `dim-${Date.now().toString(36)}-${++dimSeq}`, p, style.name, currentLayer, spacing);
         const entities = commitDimRecord(rec);
@@ -11792,6 +11839,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       <button class="obs-status-btn ${otrackOn ? "active" : ""}" data-s="otrack" title="Reference line tracking (axis guides while drawing)">OTRACK</button>
       <button class="obs-status-btn ${dynOn ? "active" : ""}" data-s="dyn" title="Dynamic Input (F12)">DYN</button>
       <button class="obs-status-btn ${lwtOn ? "active" : ""}" data-s="lwt" title="Lineweight">LWT</button>
+      <button class="obs-status-btn" data-s="anno" title="Annotation scale (CANNOSCALE) — text, leaders and dimension arrowheads render at this scale; click to cycle 1:1 → 1:2 → 1:5 → 1:10 → 1:20 → 1:50 → 1:100">${Ann.formatAnnoScale(annoScale)}</button>
       <button class="obs-status-btn ${quick ? "active" : ""}" data-s="quick" title="Quick Measure">QUICK</button>
       <span data-s="quick-readout" style="display:${quick ? "inline-flex" : "none"};max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#a7f3d0;font-size:10px">${escapeHtml(quickMeasureText(c))}</span>
       <span class="sep"></span>
@@ -11853,6 +11901,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       lwtOn = !lwtOn;
       updateStatus();
       draw();
+    });
+    // 2D-30: per-button listener (fresh element each re-render, like the
+    // other aid buttons — NOT the delegated statusEl listener, which
+    // re-attaches on every updateStatus and would advance the cycle once
+    // per accumulated listener instead of once per click).
+    statusEl.querySelector("[data-s=anno]")?.addEventListener("click", () => {
+      setAnnoScale(Ann.nextAnnoScale(annoScale));
     });
 
     // 2D-2: publish the live aid state to the shared module so the
@@ -12326,6 +12381,21 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         logCmd(`LTSCALE = ${v}`);
         draw();
       } else logCmd(`LTSCALE = ${doc?.ltscale ?? 1}. Enter a positive number, e.g. LTSCALE 2`);
+      return;
+    }
+    // 2D-30: annotation scale (CANNOSCALE). No argument reports the
+    // current scale; a bare factor ("2") or a ratio ("1:50") sets it.
+    if (cmd === "CANNOSCALE" || cmd === "ANNOSCALE") {
+      if (!arg) {
+        logCmd(`CANNOSCALE: annotation scale ${Ann.formatAnnoScale(annoScale)} (factor ${annoScale}).`);
+        return;
+      }
+      const v = Ann.parseAnnoScale(arg);
+      if (v === null) {
+        logCmd(`CANNOSCALE: enter a positive scale, e.g. CANNOSCALE 2 or CANNOSCALE 1:50 (current ${Ann.formatAnnoScale(annoScale)}).`);
+        return;
+      }
+      setAnnoScale(v);
       return;
     }
     if (cmd === "ST" || cmd === "STYLE") {
