@@ -222,7 +222,7 @@ void servicesReady("commandPalette").then((palette) => {
 };
 
 // ── Scope Box Visualizer (3D handles + drag-to-resize) ───────────────────
-w.__obsScopeBoxViz = {
+(ctx.features as any).scopeBoxViz = {
   enable: () => { enableScopeBoxVisualizer(); toast("Scope Box visualizer ON — drag handles to resize", "success"); },
   disable: () => { disableScopeBoxVisualizer(); toast("Scope Box visualizer OFF", "info"); },
   toggle: () => {
@@ -428,4 +428,4 @@ w.__obsSelectionBox = {
   },
 };
 
-console.log("[obs] v40 module globals registered: scope-box-viz, crop-region, section-box, selection-box");
+console.log("[obs] v40 module globals registered: crop-region, section-box, selection-box");

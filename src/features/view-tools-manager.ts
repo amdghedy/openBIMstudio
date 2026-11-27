@@ -6,6 +6,7 @@
  * Single panel, three tabs, live refresh after every action.
  */
 
+import { ctx } from "../core/context";
 import {
   listScopeBoxes, getScopeBox, deleteScopeBox, updateScopeBox, applyToView, removeFromView,
 } from "../modules/scope-box/scope-box";
@@ -170,7 +171,7 @@ function renderScopeBoxes(host: HTMLElement): void {
         min: { x: r.minX, y: r.minY, z: r.minZ },
         max: { x: r.maxX, y: r.maxY, z: r.maxZ },
       });
-      (window as any).__obsScopeBoxViz?.refresh?.();
+      (ctx.features as any).scopeBoxViz?.refresh?.();
       openViewToolsManager();
     };
     row.appendChild(edit);
@@ -181,7 +182,7 @@ function renderScopeBoxes(host: HTMLElement): void {
     del.onclick = async () => {
       if (await confirmDialog("Delete scope box", `Delete "${sb.name}"? This cannot be undone.`)) {
         deleteScopeBox(sb.id);
-        (window as any).__obsScopeBoxViz?.refresh?.();
+        (ctx.features as any).scopeBoxViz?.refresh?.();
         openViewToolsManager();
       }
     };

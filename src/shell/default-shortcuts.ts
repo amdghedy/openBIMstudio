@@ -350,7 +350,7 @@ export function registerDefaultShortcuts(): void {
   });
   shortcuts.register({
     id: "view.scope-box-viz-toggle", label: "Scope Box Visualizer (toggle)", keys: "ctrl+shift+s", category: "view",
-    handler: () => { (window as any).__obsScopeBoxViz?.toggle?.(); },
+    handler: () => { (ctx.features as any).scopeBoxViz?.toggle?.(); },
   });
   shortcuts.register({
     id: "view.isolate", label: "Isolate Selection", keys: "ctrl+i", category: "view",
