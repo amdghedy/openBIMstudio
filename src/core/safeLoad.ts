@@ -494,6 +494,16 @@ export const DxfEntitySchema = z.discriminatedUnion("type", [
     runs: z.array(dxfTextRunSchema).max(10_000).optional(),
   }),
   dxfEntityBaseSchema.extend({ type: z.literal("POINT"), position: dxfPointSchema }),
+  dxfEntityBaseSchema.extend({
+    type: z.literal("TABLE"),
+    position: dxfPointSchema,
+    colWidths: z.array(finiteNumber.positive()).max(50),
+    rowHeights: z.array(finiteNumber.positive()).max(50),
+    cells: z.array(z.array(z.string().max(1000)).max(50)).max(50),
+    textHeight: finiteNumber.positive().optional(),
+    rotation: finiteNumber.optional(),
+    headerRow: z.boolean().optional(),
+  }),
   // Native block reference (M2a): resolved lazily against `DxfDocument.blocks`.
   dxfEntityBaseSchema.extend({
     type: z.literal("INSERT"),

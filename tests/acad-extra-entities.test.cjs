@@ -18,19 +18,28 @@ t("MLEADER: text-only and empty cases", () => {
   assert.strictEqual(X.convertMleader({ text: "A", textLocation: [1, 1, 0], lines: [] }, c, cx).length, 1);
   assert.strictEqual(X.convertMleader({ text: "", lines: [] }, c, cx).length, 0);
 });
-t("TABLE: grid lines and cell text land in the right cells", () => {
+t("TABLE: one editable TABLE entity keeps the grid, the cells and the frame", () => {
   const r = X.convertTable({ position: [100, 50, 0], dir: [1, 0, 0], colWidths: [20, 30], rowHeights: [10, 10], cells: [["Mark", "Type"], ["D1", ""]], textHeight: 2.5 }, c, cx);
-  const lines = r.filter((e) => e.type === "LINE"), texts = r.filter((e) => e.type === "TEXT");
-  assert.strictEqual(lines.length, 3 + 3, "3 horizontal + 3 vertical");
-  assert.deepStrictEqual(texts.map((e) => e.value), ["Mark", "Type", "D1"]);
-  const type = texts.find((e) => e.value === "Type");
-  assert.ok(type.position.x > 120 && type.position.x < 150, "2nd column x " + type.position.x);
-  assert.ok(Math.abs(type.position.y - 45) < 1e-9, "row 1 centre is 5 below the top: " + type.position.y);
-  const d1 = texts.find((e) => e.value === "D1"); assert.ok(Math.abs(d1.position.y - 35) < 1e-9);
+  assert.strictEqual(r.length, 1, "one entity, not loose geometry");
+  assert.strictEqual(r[0].type, "TABLE");
+  assert.deepStrictEqual(r[0].position, { x: 100, y: 50, z: 0 });
+  assert.deepStrictEqual(r[0].colWidths, [20, 30]);
+  assert.deepStrictEqual(r[0].rowHeights, [10, 10]);
+  assert.deepStrictEqual(r[0].cells, [["Mark", "Type"], ["D1", ""]]);
+  assert.strictEqual(r[0].textHeight, 2.5);
+  assert.strictEqual(r[0].rotation, undefined, "axis-aligned tables carry no rotation");
 });
-t("TABLE: rotated tables rotate their text and grid", () => {
+t("TABLE: a rotated table keeps its rotation on the entity", () => {
   const r = X.convertTable({ position: [0, 0, 0], dir: [0, 1, 0], colWidths: [10], rowHeights: [4], cells: [["X"]] }, c, cx);
-  assert.ok(Math.abs(r.find((e) => e.type === "TEXT").rotation - 90) < 1e-9);
+  assert.strictEqual(r.length, 1);
+  assert.strictEqual(r[0].type, "TABLE");
+  assert.ok(Math.abs((r[0].rotation ?? 0) - 90) < 1e-9, "rotation 90, got " + r[0].rotation);
+  assert.deepStrictEqual(r[0].cells, [["X"]]);
+});
+t("TABLE: an oversized table stays loose grid + text (no data lost to the 50x50 cap)", () => {
+  const big = X.convertTable({ position: [0, 0, 0], dir: [1, 0, 0], colWidths: Array.from({ length: 60 }, () => 10), rowHeights: [10], cells: [Array.from({ length: 60 }, (_, i) => `C${i}`)] }, c, cx);
+  assert.ok(big.length > 1, "loose geometry, got " + big.length);
+  assert.ok(big.some((e) => e.type === "TEXT" && e.value === "C59"));
 });
 t("TABLE without rows is reported, not silently dropped", () => {
   notes.length = 0; assert.strictEqual(X.convertTable({ position: [0, 0, 0], colWidths: [], rowHeights: [] }, c, cx).length, 0); assert.ok(notes.length);

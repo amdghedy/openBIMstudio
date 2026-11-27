@@ -21,6 +21,7 @@ import {
   widthFieldsForSegments,
   type PolylineEntity,
 } from "./cad-polyline";
+import { mirrorTable, rotateTable, scaleTable, tableCorners, translateTable } from "../drawings/cad-table";
 
 export interface Pt {
   x: number;
@@ -109,6 +110,8 @@ function translateEntCore(e: DxfEntity, dx: number, dy: number): DxfEntity {
     case "XLINE":
       // The anchor moves; the direction is relative and unchanged.
       return { ...e, start: translatePt(e.start, dx, dy) };
+    case "TABLE":
+      return translateTable(e, dx, dy);
     case "DIMENSION":
       return mapDimPts(e, (q) => translatePt(q, dx, dy));
   }
@@ -164,6 +167,8 @@ function rotateEntCore(e: DxfEntity, cx: number, cy: number, deg: number): DxfEn
         },
       };
     }
+    case "TABLE":
+      return rotateTable(e, cx, cy, deg);
     case "DIMENSION":
       return mapDimPts(e, (q) => rotatePt(q, { x: cx, y: cy }, rad));
     default:
@@ -231,6 +236,10 @@ function mirrorEntCore(e: DxfEntity, a: Pt, b: Pt): DxfEntity {
       const tip = mirrorPt({ x: e.start.x + e.direction.x, y: e.start.y + e.direction.y }, a, b);
       return { ...e, start: s, direction: { x: tip.x - s.x, y: tip.y - s.y } };
     }
+    case "TABLE":
+      // The frame reflects and the rows reverse so every cell keeps its
+      // world position (see mirrorTable).
+      return mirrorTable(e, a, b);
     case "DIMENSION":
       return mapDimPts(e, (q) => mirrorPt(q, a, b));
   }
@@ -270,6 +279,8 @@ function scaleEntCore(e: DxfEntity, cx: number, cy: number, k: number): DxfEntit
     case "XLINE":
       // Scale the anchor; a uniform scale leaves the direction parallel.
       return { ...e, start: scalePt(e.start, { x: cx, y: cy }, k) };
+    case "TABLE":
+      return scaleTable(e, cx, cy, k);
     case "DIMENSION":
       return mapDimPts(e, (q) => scalePt(q, { x: cx, y: cy }, k));
   }
@@ -300,6 +311,12 @@ export function entityArrayAnchor(e: DxfEntity): Pt {
     case "TEXT":
     case "POINT":
       return { x: e.position.x, y: e.position.y };
+    case "TABLE": {
+      const cs = tableCorners(e);
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of cs) { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); }
+      return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+    }
     case "RAY":
     case "XLINE":
       return { x: e.start.x, y: e.start.y };
@@ -1704,6 +1721,7 @@ export function stretchEnts(ents: DxfEntity[], win: { minX: number; minY: number
         return inside(e.center) ? translateEnt(e, dp.x, dp.y) : e;
       case "TEXT":
       case "POINT":
+      case "TABLE": // a table moves wholesale when its top-left corner is inside
       case "INSERT": // a block reference moves wholesale when its insertion point is inside
         return inside(e.position) ? translateEnt(e, dp.x, dp.y) : e;
       case "RAY":

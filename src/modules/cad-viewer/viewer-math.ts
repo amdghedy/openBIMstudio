@@ -7,6 +7,7 @@ import { resolvedOf } from "../drawings/block-refs";
 import type { DxfEntity, DxfLayout, DxfPoint, DxfUnits, DxfViewport } from "../drawings/dxf-types";
 import { bulgeArc, polylineArea, polylineBBox, polylineLength, tessellatePolyline } from "../drawings/dxf-geometry";
 import { pointInPolygon } from "../drawings/hatch-patterns";
+import { tableCorners, tableFrame, tableHeight, tableWidth, translateTable } from "../drawings/cad-table";
 
 export type Pt = { x: number; y: number };
 export interface BBox { minX: number; minY: number; maxX: number; maxY: number }
@@ -480,6 +481,7 @@ export function entityBBox(e: DxfEntity): BBox {
       return boxOf([{ x: o.dx, y: o.dy }, { x: o.dx + w, y: o.dy }, { x: o.dx + w, y: o.dy + h }, { x: o.dx, y: o.dy + h }].map((p) => ({ x: e.position.x + p.x * c - p.y * s, y: e.position.y + p.x * s + p.y * c })));
     }
     case "POINT": return { minX: e.position.x, minY: e.position.y, maxX: e.position.x, maxY: e.position.y };
+    case "TABLE": return boxOf(tableCorners(e));
     case "DIMENSION": {
       // The drawn geometry lives in the anonymous block; the definition
       // points bound where the dimension measures.
@@ -555,6 +557,15 @@ export function distToEntity(e: DxfEntity, x: number, y: number): number {
       return Math.hypot(dx, dy);
     }
     case "POINT": return Math.hypot(x - e.position.x, y - e.position.y);
+    case "TABLE": {
+      // Distance to the table's rectangle (0 inside it), in the table's own
+      // frame — a click anywhere inside the grid picks the table as one entity.
+      const f = tableFrame(e);
+      const px = x - e.position.x, py = y - e.position.y;
+      const lx = px * f.ux + py * f.uy, ly = px * f.dx + py * f.dy;
+      const dx = Math.max(-lx, 0, lx - tableWidth(e)), dy = Math.max(-ly, 0, ly - tableHeight(e));
+      return Math.hypot(dx, dy);
+    }
     case "RAY":
     case "XLINE": {
       // Perpendicular distance to the infinite line; a RAY clamps behind its start.
@@ -743,6 +754,7 @@ export function entityMetrics(e: DxfEntity): EntityMetrics {
       // segment is π·r long, not the chord. Width does not change the
       // centreline length; area counts the filled region of a closed ring.
       return { length: polylineLength(e.points, e.bulges, !!e.closed), ...(e.closed && e.points.length > 2 ? { area: polylineArea(e.points, e.bulges, true) } : {}) };
+    case "TABLE": return { area: tableWidth(e) * tableHeight(e) };
     default: return {};
   }
 }
@@ -1036,6 +1048,14 @@ function keyPoints(e: DxfEntity): Snap[] {
       return out;
     }
     case "TEXT": return [{ x: e.position.x, y: e.position.y, kind: "endpoint" }, { x: e.position.x, y: e.position.y, kind: "insertion" }];
+    case "TABLE": {
+      const cs = tableCorners(e);
+      return [
+        ...cs.map((p) => ({ ...p, kind: "endpoint" as const })),
+        { x: e.position.x, y: e.position.y, kind: "insertion" as const },
+        { x: (cs[0].x + cs[2].x) / 2, y: (cs[0].y + cs[2].y) / 2, kind: "geometric-center" as const },
+      ];
+    }
     case "POINT": return [{ x: e.position.x, y: e.position.y, kind: "endpoint" }, { x: e.position.x, y: e.position.y, kind: "node" }];
     case "RAY":
     case "XLINE": return [{ x: e.start.x, y: e.start.y, kind: "endpoint" }];
@@ -1520,6 +1540,7 @@ export function entitySignature(e: DxfEntity, tol: number): string {
     case "ARC": return `A${pointSig(e.center, q)}r${sigNum(e.radius, q)}a${Math.round(norm360(e.startAngle) * 100)}-${Math.round(norm360(e.endAngle) * 100)}`;
     case "LWPOLYLINE": { const f = e.points.map((p) => pointSig(p, q)).join(";"), r = [...e.points].reverse().map((p) => pointSig(p, q)).join(";"); return "P" + (e.closed ? "c" : "o") + (f < r ? f : r) + (e.hatch ? "h" : ""); }
     case "TEXT": return `T${pointSig(e.position, q)}${e.value}`;
+    case "TABLE": return `B${pointSig(e.position, q)}|${e.colWidths.map((w) => sigNum(w, q)).join(",")}|${e.rowHeights.map((h) => sigNum(h, q)).join(",")}|${e.cells.flat().join("\u001f")}`;
     case "POINT": return `O${pointSig(e.position, q)}`;
     case "RAY": return `R${pointSig(e.start, q)}${pointSig(e.direction, q)}`;
     case "XLINE": return `X${pointSig(e.start, q)}${pointSig(e.direction, q)}`;
@@ -1634,6 +1655,10 @@ export function entityGrips(e: DxfEntity): Grip[] {
     }
     case "TEXT":
       return [{ x: e.position.x, y: e.position.y, role: "move" }];
+    case "TABLE":
+      // One move grip at the top-left corner, like TEXT's insertion grip —
+      // a table resizes through TABLEADDROW / TABLEADDCOL, not grip drags.
+      return [{ x: e.position.x, y: e.position.y, role: "move" }];
     case "POINT":
       return [{ x: e.position.x, y: e.position.y, role: "move" }];
     case "RAY":
@@ -1692,6 +1717,8 @@ export function applyGripDrag(e: DxfEntity, gi: number, to: Pt): DxfEntity | nul
     case "TEXT":
     case "POINT":
       return { ...e, position: { x: to.x, y: to.y } };
+    case "TABLE":
+      return translateTable(e, to.x - e.position.x, to.y - e.position.y);
     case "RAY":
     case "XLINE":
       return { ...e, start: { x: to.x, y: to.y } };

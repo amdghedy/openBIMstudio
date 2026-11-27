@@ -24,6 +24,7 @@ import {
 } from "./dxf-geometry";
 import { attachNative } from "./native-curves";
 import { bindDocumentBlocks, resolveInsert } from "./block-refs";
+import { normalizeTable } from "./cad-table";
 import { paperNameForMm } from "../cad-viewer/viewer-math";
 
 /** IMAGEDEF handle -> file path, filled per parse (parsing is synchronous). */
@@ -1032,6 +1033,89 @@ function expandRecs(
       case "POINT":
         push({ ...c, type: "POINT", position: d.pt(10, 20, 30) });
         break;
+
+      case "ACAD_TABLE": {
+        // Real ACAD_TABLE (Autodesk DXF reference, AcDbTable): counts (91/92)
+        // and sizes (141 one per row, 142 one per column) come before the
+        // per-cell records, and group 91 is reused per cell (override flag) —
+        // so counts are only read before the first 171, and cell texts come
+        // from group 1 (older files) or 302 (AutoCAD 2007+), one per cell in
+        // row-major order. Group 140 (text height) and 281 (1 = header
+        // suppressed) are table-level and may sit after the cell records —
+        // this writer emits them there — so they are read anywhere in the
+        // record and the last 140 wins. Merged cells are not represented —
+        // each cell reads as its own cell.
+        let rows = 0, cols = 0, seenCell = false;
+        const rowHeights: number[] = [], colWidths: number[] = [];
+        const texts1: string[] = [], texts302: string[] = [];
+        let textHeight: number | undefined;
+        let headerSuppressed: boolean | undefined;
+        // Group 92 is reused: proxy-graphics byte count in AcDbEntity, then
+        // the column count in AcDbTable. Gate the table groups on the
+        // AcDbTable marker when the file carries one (marker-less files
+        // parse ungated, as before).
+        const hasMarker = r.pairs.some((p) => p.code === 100 && p.value.trim() === "AcDbTable");
+        let inTable = !hasMarker;
+        for (const p of r.pairs) {
+          if (p.code === 100 && p.value.trim() === "AcDbTable") { inTable = true; continue; }
+          if (!inTable) continue;
+          switch (p.code) {
+            case 91:
+              if (!seenCell && !rows) rows = Math.max(0, Math.min(50, Math.round(num(p.value))));
+              break;
+            case 92:
+              if (!seenCell && !cols) cols = Math.max(0, Math.min(50, Math.round(num(p.value))));
+              break;
+            case 141:
+              if (!seenCell) rowHeights.push(num(p.value));
+              break;
+            case 142:
+              if (!seenCell) colWidths.push(num(p.value));
+              break;
+            case 171:
+              seenCell = true;
+              break;
+            case 1:
+              if (seenCell) texts1.push(cleanText(p.value));
+              break;
+            case 302:
+              if (seenCell) texts302.push(cleanText(p.value));
+              break;
+            case 140:
+              textHeight = num(p.value);
+              break;
+            case 281:
+              headerSuppressed = num(p.value) === 1;
+              break;
+          }
+        }
+        rows = rows || rowHeights.length;
+        cols = cols || colWidths.length;
+        if (!rows || !cols) { skip("ACAD_TABLE (no rows or columns)"); break; }
+        const texts = texts302.length === rows * cols ? texts302 : texts1.length === rows * cols ? texts1 : texts302.length >= texts1.length ? texts302 : texts1;
+        const cells: string[][] = [];
+        for (let j = 0; j < rows; j++) {
+          const row: string[] = [];
+          for (let i = 0; i < cols; i++) row.push(texts[j * cols + i] ?? "");
+          cells.push(row);
+        }
+        const dir = d.pt(11, 21, 31);
+        const rot = Math.abs(dir.x) < 1e-12 && Math.abs(dir.y) < 1e-12 ? 0 : (Math.atan2(dir.y, dir.x) * 180) / Math.PI;
+        const table = normalizeTable({
+          ...c,
+          type: "TABLE",
+          position: d.pt(10, 20, 30),
+          colWidths: colWidths.slice(0, cols),
+          rowHeights: rowHeights.slice(0, rows),
+          cells,
+          ...(textHeight != null && textHeight > 0 ? { textHeight } : {}),
+          ...(Math.abs(rot) > 1e-9 ? { rotation: rot } : {}),
+          ...(headerSuppressed === false ? { headerRow: true } : {}),
+        });
+        if (!table) { skip("ACAD_TABLE (bad sizes)"); break; }
+        push(table);
+        break;
+      }
 
       // RAY (10/20/30 start, 11/21/31 direction — one-sided infinity) and
       // XLINE (same groups — infinite both ways): construction lines drawn

@@ -297,7 +297,7 @@ export function gripScaleFactor(refDist: number, base: M.Pt, to: M.Pt): number {
 
 /** Entity types the rotate / scale / mirror cores handle (their switch has an explicit case). */
 const TRANSFORMABLE: ReadonlySet<string> = new Set([
-  "INSERT", "LINE", "CIRCLE", "ARC", "LWPOLYLINE", "TEXT", "POINT", "RAY", "XLINE", "DIMENSION",
+  "INSERT", "LINE", "CIRCLE", "ARC", "LWPOLYLINE", "TEXT", "POINT", "RAY", "XLINE", "DIMENSION", "TABLE",
 ]);
 
 export interface GripModeResult {

@@ -4,9 +4,11 @@
  *
  * Pure functions over the engine's JSON (see cad-engine-rust/src/json.rs), unit-tested in Node.
  * Honest limits (reported through `note`): MLINE is drawn as its centre path only, IMAGE as its
- * frame only (no pixels), TABLE as grid + cell text (merged cells are not merged, borders styles ignored).
+ * frame only (no pixels), TABLE as one editable TABLE entity (merged cells are not merged, border
+ * styles ignored; tables past the 50x50 editable cap stay loose grid + cell text).
  */
 import type { DxfEntity, DxfPoint } from "./dxf-types";
+import { MAX_TABLE_COLS, MAX_TABLE_ROWS, normalizeTable } from "./cad-table";
 
 type Any = Record<string, any>;
 export interface ExtraCtx {
@@ -46,6 +48,34 @@ export function convertTable(e: Any, c: Any, x: ExtraCtx): DxfEntity[] {
   const o = x.pt(e.position), d = x.pt(e.dir);
   let ux = d.x, uy = d.y; const dl = Math.hypot(ux, uy);
   if (dl < 1e-9) { ux = 1; uy = 0; } else { ux /= dl; uy /= dl; }
+  // The engine's frame — columns along dir, rows in -v — is exactly the
+  // TABLE entity's frame with rotation = atan2(dir), so any direction
+  // becomes one editable TABLE instead of loose grid + text. Oversized
+  // tables (past the entity's 50x50 cap) keep the old loose conversion:
+  // truncating them would lose data, and the schema gate would reject
+  // the oversized entity at the parse boundary.
+  if (cols.length > MAX_TABLE_COLS || rows.length > MAX_TABLE_ROWS) {
+    x.note(`TABLE (${rows.length}x${cols.length} — over the 50x50 editable cap, kept as grid + text)`);
+    return convertTableLoose(e, c, x, cols, rows, o, ux, uy);
+  }
+  const cells: string[][] = Array.isArray(e.cells) ? e.cells : [];
+  const textHeight = Number(e.textHeight ?? 0);
+  const table = normalizeTable({
+    ...c,
+    type: "TABLE",
+    position: o,
+    colWidths: cols,
+    rowHeights: rows,
+    cells: rows.map((_, j) => cols.map((_, i) => x.clean(String(cells[j]?.[i] ?? "")))),
+    ...(Number.isFinite(textHeight) && textHeight > 0 ? { textHeight } : {}),
+    rotation: Math.atan2(uy, ux) * (180 / Math.PI),
+  } as Extract<DxfEntity, { type: "TABLE" }>);
+  if (!table) { x.note("TABLE (bad sizes)"); return []; }
+  return [table];
+}
+
+/** Loose grid + cell text (the pre-2D-7 conversion), kept for oversized tables. */
+function convertTableLoose(e: Any, c: Any, x: ExtraCtx, cols: number[], rows: number[], o: DxfPoint, ux: number, uy: number): DxfEntity[] {
   const vx = -uy, vy = ux; // table rows run in -v
   const W = cols.reduce((a, b) => a + b, 0), H = rows.reduce((a, b) => a + b, 0);
   const at = (a: number, b: number): DxfPoint => ({ x: o.x + ux * a - vx * b, y: o.y + uy * a - vy * b, z: o.z ?? 0 });
