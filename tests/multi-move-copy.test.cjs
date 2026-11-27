@@ -138,6 +138,7 @@ function makeAuthoring(selected = ["w1"]) {
   const calls = { translate: [], duplicate: [] };
   return {
     elements, calls,
+    getElements() { return elements; },
     getSelectedIds() { return [...selectedIds]; },
     setSelectedIds(ids) { selectedIds = [...ids]; },
     rebuild() {},
@@ -302,6 +303,35 @@ if (esbuild) {
     assert.strictEqual(mm.isMultiMoveActive(), false, "no selection means no tool");
     assert.strictEqual(routerSubs.length, 0, "no subscription without a live tool");
     mm.cancel();
+  });
+
+  t("Escape during a move preview restores the session-start positions (2D-35)", () => {
+    const { mm, canvas, win, authoring } = loadMultiMove();
+    // The real authoring service has no `elements` property — only
+    // getElements(). Drop the stub's property so the test reads the
+    // live list the way the app does; on the unfixed tree
+    // savePositions reads undefined and restores nothing.
+    delete authoring.elements;
+    const live = () => authoring.getElements()[0].params;
+    mm.startMultiMove(false);
+    canvas.pointerdown(pointerEvent(400, 300)); // base: world (0, 0)
+    canvas.pointerdown(pointerEvent(500, 300)); // commit move +2.5
+    assert.deepStrictEqual(live(), { start: [-1.5, 0], end: [6.5, 0] }, "committed move must land first");
+    canvas.pointerdown(pointerEvent(400, 300)); // next base pick, previewing
+    win.keydown(keyEvent("Escape")); // revert the session to its start
+    assert.strictEqual(mm.isMultiMoveActive(), true, "Escape returns to awaiting-base, tool stays active");
+    assert.deepStrictEqual(live(), { start: [-4, 0], end: [4, 0] }, "Escape must restore the saved positions");
+    assert.strictEqual(authoring.calls.translate.length, 1, "restore must not re-run translateSelected");
+    mm.cancel();
+  });
+
+  t("source contract: save/restore read the live list via getElements(), not the .elements property", () => {
+    const s = fs.readFileSync(path.join(root, "src/features/multi-move.ts"), "utf8");
+    assert.ok(/function getLiveElements\(\)/.test(s), "getLiveElements helper missing");
+    assert.ok(/a\?\.getElements/.test(s), "live list must come from authoring.getElements()");
+    assert.ok(!/authoring\?\.elements/.test(s), "save/restore must not read the .elements property");
+    assert.ok(/savePositions\(\)[\s\S]*getLiveElements\(\)/.test(s), "savePositions must use the live list");
+    assert.ok(/restorePositions\(\)[\s\S]*getLiveElements\(\)/.test(s), "restorePositions must use the live list");
   });
 
   t("source contract: multi-move imports duplicateSelected and calls it in the copyMode branch", () => {

@@ -74,9 +74,20 @@ function computeSelectionBox(): THREE.Box3 | null {
   return any ? box : null;
 }
 
+function getLiveElements(): Array<Any> {
+  // 2D-35: the authoring service exposes the live list through
+  // getElements() — there is no `elements` property on the service
+  // object, so reading `authoring.elements` yields undefined and
+  // save/restore silently no-op'd (saved stayed empty, Escape during a
+  // preview restored nothing).
+  const a = (ctx as Any).features?.authoring;
+  if (a?.getElements) return a.getElements() as Array<Any>;
+  return [];
+}
+
 function savePositions(): void {
   saved = [];
-  const els = ((ctx as Any).features?.authoring?.elements ?? []) as Array<Any>;
+  const els = getLiveElements();
   for (const id of getSelectedIds()) {
     const el = els.find((e: Any) => String(e.id) === id);
     if (!el) continue;
@@ -92,7 +103,7 @@ function savePositions(): void {
 }
 
 function restorePositions(): void {
-  const els = ((ctx as Any).features?.authoring?.elements ?? []) as Array<Any>;
+  const els = getLiveElements();
   for (const s of saved) {
     const el = els.find((e: Any) => String(e.id) === s.id);
     if (!el) continue;
