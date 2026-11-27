@@ -410,7 +410,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "LAYUNLCK", aliases: ["LAYUNLOCK"], description: "Unlock the layer of the picked object" },
   { name: "MLEADER", aliases: ["MLD", "LE", "LEADER"], description: "Draw a leader line with annotation text: arrow point → landing end → type the text" },
   { name: "QSELECT", aliases: ["QSI"], description: "Quick select by type and property with operators — QSELECT opens the dialog; QSELECT ALL · TYPE · LAYER · COLOR · LINETYPE · LINEWEIGHT · TEXT on the command line" },
-  { name: "FILTER", aliases: [], description: "Selection filter — restrict clicking and window/crossing selection to chosen entity types and property criteria; save named filters (FILTER <name> applies one, FILTER SAVE <name> saves the current one, FILTER CLEAR resets)" },
+  { name: "FILTER", aliases: [], description: "Selection filter — restrict clicking and window/crossing selection to chosen entity types and property criteria combined with AND/OR groups; save named filters (FILTER <name> applies one, FILTER SAVE <name> saves the current one, FILTER CLEAR resets)" },
   { name: "PREVIOUS", aliases: ["PREV"], description: "Restore the previous selection set (P at a Select objects prompt, SELECT PREVIOUS)" },
   { name: "SELECTSIMILAR", aliases: ["SELSIM"], description: "Select objects matching the selected set by type, layer, colour, linetype or lineweight" },
   { name: "SELECTIONCYCLING", aliases: ["SELCYCLE"], description: "Choose which overlapping object is selected at the cursor (Ctrl+W); Ctrl+click cycles them one at a time" },
@@ -1899,8 +1899,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let origin: M.Pt | null = null;
   let dualUnits = false;
   let typeFilter = new Set<string>();
-  /** A18: FILTER property criteria (AND list on top of the type filter). */
-  let propFilter: Sel18.QSelectCriterion[] = [];
+  /** A18 + 2D-15: FILTER property filter — a condition tree (AND/OR groups of criteria) on top of the type filter; null = no property conditions. */
+  let propFilter: Sel18.FilterNode | null = null;
   /** A18: named FILTERs (whole filter state under a name), persisted per drawing. */
   let namedFilters = new Map<string, Sel18.NamedFilter>();
   /** A18: the most recent non-empty selection set (PREVIOUS / P). */
@@ -2281,7 +2281,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   function currentUi(): SessionUi {
     return {
       bg, cmode, snapOn, gridSnapOn, orthoOn, polarOn, polarAngle, otrackOn, dynOn, lwtOn, annoScale, showGrid, showText, showHatch, showLt,
-      snapModes: [...snapModes], typeFilter: [...typeFilter], propFilter: propFilter.length ? propFilter.map((c) => ({ ...c })) : undefined, currentLayer,
+      snapModes: [...snapModes], typeFilter: [...typeFilter], propFilter: propFilter ? Sel18.cloneFilterNode(propFilter) ?? undefined : undefined, currentLayer,
       lockedLayers: doc ? doc.layers.filter((l) => l.locked).map((l) => l.name) : [],
     };
   }
@@ -2384,7 +2384,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (u.showLt !== undefined) showLt = u.showLt;
       if (u.snapModes && u.snapModes.length) { snapModes.clear(); for (const k of u.snapModes) snapModes.add(k as M.SnapKind); }
       if (u.typeFilter) typeFilter = new Set(u.typeFilter);
-      if (u.propFilter) propFilter = Sel18.sanitizeCriteria(u.propFilter);
+      if (u.propFilter) propFilter = Sel18.sanitizeFilterNode(u.propFilter);
       if (u.currentLayer && doc.layers.some((l) => l.name === u.currentLayer)) currentLayer = u.currentLayer;
       if (u.lockedLayers) { const lk = new Set(u.lockedLayers); for (const l of doc.layers) l.locked = lk.has(l.name); }
       updateStatus();
@@ -2459,7 +2459,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   const inv = () => cmode === "invert";
   const fg = () => (bg === "white" || inv() ? 0x000000 : 0xffffff);
-  const visible = (e: DxfEntity) => !hidden.has(e.layer) && !hiddenEntities.has(e) && (typeFilter.size === 0 || typeFilter.has(e.type)) && Sel18.matchesAllCriteria(e, propFilter);
+  const visible = (e: DxfEntity) => !hidden.has(e.layer) && !hiddenEntities.has(e) && (typeFilter.size === 0 || typeFilter.has(e.type)) && Sel18.matchesFilterTree(e, propFilter);
   /** True only while doPlot renders: non-plotting layers are skipped
    * from the plot output (A16) but stay visible on screen, in picks
    * and in exports — the flag is set around the single synchronous
@@ -14423,7 +14423,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const rest = arg.trim();
       if (/^(clear|none|off|reset)$/i.test(rest)) {
         typeFilter = new Set();
-        propFilter = [];
+        propFilter = null;
         for (const i of [...sel]) {
           if (!ents[i]) sel.delete(i);
         }
@@ -14438,8 +14438,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         // A18: FILTER <name> applies a named filter; anything else opens the dialog.
         const f = namedFilters.get(rest);
         if (f) {
-          applyFilterState(new Set(f.types), f.criteria);
-          logCmd(`FILTER: applied named filter "${f.name}" (${f.types.length ? f.types.join(", ") : "all types"}${f.criteria.length ? ` + ${f.criteria.length} criteri${f.criteria.length === 1 ? "on" : "a"}` : ""}).`);
+          applyFilterState(new Set(f.types), f.tree);
+          const n = Sel18.countFilterCriteria(f.tree);
+          logCmd(`FILTER: applied named filter "${f.name}" (${f.types.length ? f.types.join(", ") : "all types"}${n ? ` + ${n} criteri${n === 1 ? "on" : "a"}` : ""}).`);
         } else {
           logCmd(`FILTER: no named filter "${rest}" — opening the filter dialog.`);
           openTypeFilterDialog();
@@ -15607,15 +15608,18 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
    * ones picking, window and crossing selection can land on (the `visible`
    * predicate honours `typeFilter`). FILTER CLEAR resets.
    *
-   * A18: property criteria (an AND list) sit on top of the type filter,
-   * and the whole filter state can be saved under a name and applied or
-   * deleted later (named filters persist per drawing, like A16 layer
-   * states). The same state is what FILTER <name> / FILTER SAVE <name>
-   * use on the command line.
+   * A18: property criteria sit on top of the type filter, and the whole
+   * filter state can be saved under a name and applied or deleted later
+   * (named filters persist per drawing, like A16 layer states). The same
+   * state is what FILTER <name> / FILTER SAVE <name> use on the command
+   * line.
+   *
+   * 2D-15: the criteria are a condition tree — groups combine criteria
+   * (and nested groups) with AND or OR — instead of a flat AND list.
    */
-  function applyFilterState(types: Set<string>, criteria: Sel18.QSelectCriterion[]): void {
+  function applyFilterState(types: Set<string>, tree: Sel18.FilterNode | null): void {
     typeFilter = new Set(types);
-    propFilter = [...criteria];
+    propFilter = tree ? Sel18.cloneFilterNode(tree) : null;
     // Deselect anything the filter now excludes.
     for (const i of [...sel]) {
       if (!ents[i] || !visible(ents[i])) sel.delete(i);
@@ -15624,15 +15628,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     draw();
   }
 
-  function saveNamedFilter(name: string, types: Set<string>, criteria: Sel18.QSelectCriterion[]): boolean {
+  function saveNamedFilter(name: string, types: Set<string>, tree: Sel18.FilterNode | null): boolean {
     const k = name.trim();
     if (!k || k.length > 100) {
       logCmd("FILTER: give the named filter a name (up to 100 characters).");
       return false;
     }
-    namedFilters.set(k, { name: k, types: [...types], criteria: criteria.map((c) => ({ ...c })) });
+    namedFilters.set(k, { name: k, types: [...types], tree: tree ? Sel18.cloneFilterNode(tree) : null });
     scheduleSessionSave();
-    logCmd(`FILTER: saved named filter "${k}" (${types.size ? [...types].join(", ") : "all types"}${criteria.length ? ` + ${criteria.length} criteri${criteria.length === 1 ? "on" : "a"}` : ""}).`);
+    const n = Sel18.countFilterCriteria(tree);
+    logCmd(`FILTER: saved named filter "${k}" (${types.size ? [...types].join(", ") : "all types"}${n ? ` + ${n} criteri${n === 1 ? "on" : "a"}` : ""}).`);
     return true;
   }
 
@@ -15727,26 +15732,28 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const counts = new Map<string, number>();
     for (const e of ents) counts.set(e.type, (counts.get(e.type) ?? 0) + 1);
     const types = [...counts.entries()].sort((a, b) => b[1] - a[1]);
-    // A18: the dialog edits a working copy; Apply commits it.
-    const criteria: Sel18.QSelectCriterion[] = [...propFilter];
+    // 2D-15: the dialog edits a working copy of the compound filter tree;
+    // Apply commits it. The root is always a group; a lone stored
+    // criterion is wrapped in one, and an empty filter is an empty group.
+    type FilterGroup = Extract<Sel18.FilterNode, { kind: "group" }>;
+    const asGroup = (node: Sel18.FilterNode | null): FilterGroup => {
+      if (node && node.kind === "group") return node;
+      const root: FilterGroup = { kind: "group", operator: "AND", children: [] };
+      if (node) root.children.push(node);
+      return root;
+    };
+    const root = asGroup(propFilter ? Sel18.cloneFilterNode(propFilter) : null);
     const propOptions = Sel18.ALL_FILTER_PROPERTIES.map((p) => `<option value="${p.id}">${p.label}</option>`).join("");
     const opOptions = (kind: Sel18.PropertyKind): string =>
       Sel18.operatorsForKind(kind).map((o) => `<option value="${o}">${o === "contains" ? "contains" : o === "not-contains" ? "does not contain" : o}</option>`).join("");
     const panel = openOverlay(`
       <b style="font-size:15px;color:#38bdf8">Selection Filter (FILTER)</b>
-      <div style="font-size:11px;color:#9aa4b2;margin:4px 0 12px">Only the checked types are selectable — clicking and window/crossing selection both honour the filter. Property criteria narrow it further (every criterion must match). Clear it to select everything again.</div>
+      <div style="font-size:11px;color:#9aa4b2;margin:4px 0 12px">Only the checked types are selectable — clicking and window/crossing selection both honour the filter. Property criteria narrow it further: a group matches when every criterion matches (AND) or any one matches (OR), and groups nest. Clear it to select everything again.</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 18px">
         ${types.map(([t, n]) => `<label style="display:flex;gap:8px;align-items:center;padding:7px;border:1px solid #293548;border-radius:6px"><input type="checkbox" data-filter-type="${t}" ${typeFilter.has(t) ? "checked" : ""}><span>${t} <small style="color:#94a3b8">(${n})</small></span></label>`).join("") || "<div style='color:#94a3b8;font-size:12px'>The drawing is empty — place objects first.</div>"}
       </div>
-      <div style="margin-top:16px;font-size:12px;font-weight:600;color:#e8eaf0">Property criteria (all must match)</div>
-      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
-        <select data-r="filter-prop" style="background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px">${propOptions}</select>
-        <select data-r="filter-op" style="background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px"></select>
-        <input data-r="filter-value" placeholder="value" style="flex:1;min-width:120px;background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px">
-        <button data-r="filter-add-criterion" style="padding:5px 10px">Add</button>
-      </div>
-      <div data-r="filter-criterion-error" style="font-size:11px;color:#f87171;min-height:14px;margin-top:2px"></div>
-      <div data-r="filter-criteria" style="margin-top:4px"></div>
+      <div style="margin-top:16px;font-size:12px;font-weight:600;color:#e8eaf0">Property criteria (AND / OR groups)</div>
+      <div data-r="filter-tree" style="margin-top:4px"></div>
       <div style="margin-top:16px;font-size:12px;font-weight:600;color:#e8eaf0">Named filters</div>
       <div style="display:flex;gap:6px;margin-top:6px">
         <input data-r="filter-name" placeholder="Filter name" style="flex:1;background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px">
@@ -15765,20 +15772,115 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       });
       return next;
     };
-    const renderCriteria = (): void => {
-      const box = panel.querySelector("[data-r=filter-criteria]");
+    // Nodes are addressed by a dotted path of child indices from the root
+    // ("" = the root group itself); re-rendering rebuilds the DOM, so
+    // handlers resolve their node fresh from the path each time.
+    const nodeAt = (path: string): Sel18.FilterNode | null => {
+      let node: Sel18.FilterNode = root;
+      if (!path) return node;
+      for (const part of path.split(".")) {
+        if (node.kind !== "group") return null;
+        const next: Sel18.FilterNode | undefined = node.children[Number(part)];
+        if (!next) return null;
+        node = next;
+      }
+      return node;
+    };
+    const removeAt = (path: string): void => {
+      const parts = path.split(".");
+      const idx = Number(parts.pop());
+      const parent = nodeAt(parts.join("."));
+      if (parent && parent.kind === "group" && Number.isInteger(idx)) parent.children.splice(idx, 1);
+    };
+    const MAX_DIALOG_DEPTH = 2;
+    const groupHtml = (group: FilterGroup, depth: number, path: string): string => {
+      const childHtml = group.children.map((child, i) => {
+        const childPath = path ? `${path}.${i}` : `${i}`;
+        if (child.kind === "criterion") {
+          const def = Sel18.propertyDef(child.criterion.property);
+          return `<div style="display:flex;gap:8px;align-items:center;padding:5px 8px;border:1px solid #293548;border-radius:6px;margin-top:4px"><span style="flex:1">${def?.label ?? child.criterion.property} ${child.criterion.operator} ${escapeHtml(child.criterion.value)}</span><button data-filter-criterion-remove="${childPath}" style="padding:2px 8px">✕</button></div>`;
+        }
+        return groupHtml(child, depth + 1, childPath);
+      }).join("");
+      return `<div data-r="filter-group-box" data-path="${path}" style="border:1px solid #293548;border-radius:6px;padding:8px;margin-top:6px;${depth > 0 ? "margin-left:16px;background:#0d1117;" : ""}">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:11px;color:#94a3b8">${depth === 0 ? "Match" : "Group"}:</span>
+          <select data-r="filter-group-op" data-path="${path}" style="background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px">
+            <option value="AND"${group.operator === "AND" ? " selected" : ""}>all of these (AND)</option>
+            <option value="OR"${group.operator === "OR" ? " selected" : ""}>any of these (OR)</option>
+          </select>
+          ${depth < MAX_DIALOG_DEPTH ? `<button data-r="filter-add-subgroup" data-path="${path}" style="padding:4px 8px">+ Group</button>` : ""}
+          ${depth > 0 ? `<button data-r="filter-remove-group" data-path="${path}" style="padding:4px 8px">✕ group</button>` : ""}
+        </div>
+        ${childHtml || `<div style="color:#94a3b8;font-size:11px;margin-top:4px">No criteria yet — add one below${depth === 0 ? ", or a subgroup to combine combinations" : ""}.</div>`}
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+          <select data-r="filter-picker-prop" data-path="${path}" style="background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px">${propOptions}</select>
+          <select data-r="filter-picker-op" data-path="${path}" style="background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px"></select>
+          <input data-r="filter-picker-value" data-path="${path}" placeholder="value" style="flex:1;min-width:120px;background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px">
+          <button data-r="filter-add-criterion" data-path="${path}" style="padding:5px 10px">Add</button>
+        </div>
+        <div data-r="filter-picker-error" data-path="${path}" style="font-size:11px;color:#f87171;min-height:14px;margin-top:2px"></div>
+      </div>`;
+    };
+    const renderTree = (): void => {
+      const box = panel.querySelector("[data-r=filter-tree]");
       if (!box) return;
-      box.innerHTML = criteria.length
-        ? criteria.map((c, i) => {
-            const def = Sel18.propertyDef(c.property);
-            return `<div style="display:flex;gap:8px;align-items:center;padding:5px 8px;border:1px solid #293548;border-radius:6px;margin-top:4px"><span style="flex:1">${def?.label ?? c.property} ${c.operator} ${escapeHtml(c.value)}</span><button data-filter-criterion-remove="${i}" style="padding:2px 8px">✕</button></div>`;
-          }).join("")
-        : `<div style="color:#94a3b8;font-size:11px;margin-top:4px">No property criteria — the type checkboxes alone decide what is selectable.</div>`;
+      box.innerHTML = groupHtml(root, 0, "");
+      box.querySelectorAll<HTMLSelectElement>("[data-r=filter-group-op]").forEach((sel) => {
+        sel.addEventListener("change", () => {
+          const g = nodeAt(sel.dataset.path ?? "");
+          if (g && g.kind === "group") g.operator = sel.value as Sel18.FilterGroupOperator;
+        });
+      });
+      box.querySelectorAll("[data-r=filter-add-subgroup]").forEach((b) => {
+        b.addEventListener("click", () => {
+          const g = nodeAt((b as HTMLElement).dataset.path ?? "");
+          if (g && g.kind === "group") {
+            g.children.push({ kind: "group", operator: "AND", children: [] });
+            renderTree();
+          }
+        });
+      });
+      box.querySelectorAll("[data-r=filter-remove-group]").forEach((b) => {
+        b.addEventListener("click", () => {
+          removeAt((b as HTMLElement).dataset.path ?? "");
+          renderTree();
+        });
+      });
       box.querySelectorAll("[data-filter-criterion-remove]").forEach((b) => {
         b.addEventListener("click", () => {
-          const i = Number((b as HTMLElement).dataset.filterCriterionRemove);
-          if (Number.isInteger(i)) criteria.splice(i, 1);
-          renderCriteria();
+          removeAt((b as HTMLElement).dataset.filterCriterionRemove ?? "");
+          renderTree();
+        });
+      });
+      // One criterion picker per group; the operator list follows the
+      // property kind, the same as the QSELECT dialog's picker.
+      box.querySelectorAll("[data-r=filter-group-box]").forEach((gb) => {
+        const path = (gb as HTMLElement).dataset.path ?? "";
+        const propSel = gb.querySelector<HTMLSelectElement>("[data-r=filter-picker-prop]");
+        const opSel = gb.querySelector<HTMLSelectElement>("[data-r=filter-picker-op]");
+        const valInput = gb.querySelector<HTMLInputElement>("[data-r=filter-picker-value]");
+        const refreshOps = (): void => {
+          if (!propSel || !opSel) return;
+          const def = Sel18.propertyDef(propSel.value);
+          opSel.innerHTML = opOptions(def?.kind ?? "string");
+          if (valInput) valInput.placeholder = def?.placeholder ?? "value";
+        };
+        propSel?.addEventListener("change", refreshOps);
+        refreshOps();
+        gb.querySelector("[data-r=filter-add-criterion]")?.addEventListener("click", () => {
+          const err = gb.querySelector("[data-r=filter-picker-error]");
+          const c = Sel18.sanitizeCriterion({ property: propSel?.value, operator: opSel?.value, value: valInput?.value ?? "" });
+          if (!c) {
+            if (err) err.textContent = "That value does not work for this property — check the operator and the value (numbers need digits; colours need an ACI number, #RRGGBB or BYLAYER).";
+            return;
+          }
+          const g = nodeAt(path);
+          if (g && g.kind === "group") {
+            g.children.push({ kind: "criterion", criterion: c });
+            if (valInput) valInput.value = "";
+            renderTree();
+          }
         });
       });
     };
@@ -15789,15 +15891,18 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       box.innerHTML = names.length
         ? names.map((n) => {
             const f = namedFilters.get(n)!;
-            return `<div style="display:flex;gap:8px;align-items:center;padding:5px 8px;border:1px solid #293548;border-radius:6px;margin-top:4px"><span style="flex:1">${escapeHtml(n)} <small style="color:#94a3b8">(${f.types.length ? f.types.join(", ") : "all types"}${f.criteria.length ? ` + ${f.criteria.length} criteri${f.criteria.length === 1 ? "on" : "a"}` : ""})</small></span><button data-filter-apply-name="${escapeHtml(n)}" style="padding:2px 8px">Apply</button><button data-filter-delete-name="${escapeHtml(n)}" style="padding:2px 8px">Delete</button></div>`;
+            const c = Sel18.countFilterCriteria(f.tree);
+            const desc = Sel18.describeFilterTree(f.tree);
+            return `<div style="display:flex;gap:8px;align-items:center;padding:5px 8px;border:1px solid #293548;border-radius:6px;margin-top:4px"><span style="flex:1">${escapeHtml(n)} <small style="color:#94a3b8">(${f.types.length ? f.types.join(", ") : "all types"}${c ? ` + ${c} criteri${c === 1 ? "on" : "a"}${desc ? `: ${escapeHtml(desc)}` : ""}` : ""})</small></span><button data-filter-apply-name="${escapeHtml(n)}" style="padding:2px 8px">Apply</button><button data-filter-delete-name="${escapeHtml(n)}" style="padding:2px 8px">Delete</button></div>`;
           }).join("")
         : `<div style="color:#94a3b8;font-size:11px;margin-top:4px">No saved filters yet.</div>`;
       box.querySelectorAll("[data-filter-apply-name]").forEach((b) => {
         b.addEventListener("click", () => {
           const f = namedFilters.get((b as HTMLElement).dataset.filterApplyName ?? "");
           if (!f) return;
-          applyFilterState(new Set(f.types), f.criteria);
-          logCmd(`FILTER: applied named filter "${f.name}" (${f.types.length ? f.types.join(", ") : "all types"}${f.criteria.length ? ` + ${f.criteria.length} criteri${f.criteria.length === 1 ? "on" : "a"}` : ""}).`);
+          applyFilterState(new Set(f.types), f.tree);
+          const n = Sel18.countFilterCriteria(f.tree);
+          logCmd(`FILTER: applied named filter "${f.name}" (${f.types.length ? f.types.join(", ") : "all types"}${n ? ` + ${n} criteri${n === 1 ? "on" : "a"}` : ""}).`);
           closeOverlay();
         });
       });
@@ -15812,52 +15917,32 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         });
       });
     };
-    const propSel = panel.querySelector<HTMLSelectElement>("[data-r=filter-prop]");
-    const opSel = panel.querySelector<HTMLSelectElement>("[data-r=filter-op]");
-    const valInput = panel.querySelector<HTMLInputElement>("[data-r=filter-value]");
-    const refreshOps = (): void => {
-      if (!propSel || !opSel) return;
-      const def = Sel18.propertyDef(propSel.value);
-      opSel.innerHTML = opOptions(def?.kind ?? "string");
-      if (valInput) valInput.placeholder = def?.placeholder ?? "value";
-    };
-    propSel?.addEventListener("change", refreshOps);
-    refreshOps();
-    renderCriteria();
+    renderTree();
     renderNamed();
-    panel.querySelector("[data-r=filter-add-criterion]")?.addEventListener("click", () => {
-      const err = panel.querySelector("[data-r=filter-criterion-error]");
-      const c = Sel18.sanitizeCriterion({ property: propSel?.value, operator: opSel?.value, value: valInput?.value ?? "" });
-      if (!c) {
-        if (err) err.textContent = "That value does not work for this property — check the operator and the value (numbers need digits; colours need an ACI number, #RRGGBB or BYLAYER).";
-        return;
-      }
-      if (err) err.textContent = "";
-      criteria.push(c);
-      if (valInput) valInput.value = "";
-      renderCriteria();
-    });
     panel.querySelector("[data-r=filter-save]")?.addEventListener("click", () => {
       const nameInput = panel.querySelector<HTMLInputElement>("[data-r=filter-name]");
-      if (saveNamedFilter(nameInput?.value ?? "", readChecked(), criteria)) {
+      if (saveNamedFilter(nameInput?.value ?? "", readChecked(), Sel18.sanitizeFilterNode(root))) {
         if (nameInput) nameInput.value = "";
         renderNamed();
       }
     });
     panel.querySelector("[data-r=filter-clear]")?.addEventListener("click", () => {
       typeFilter = new Set();
-      propFilter = [];
-      criteria.length = 0;
+      propFilter = null;
+      root.operator = "AND";
+      root.children.length = 0;
       panel.querySelectorAll<HTMLInputElement>("[data-filter-type]").forEach((i) => { i.checked = false; });
-      renderCriteria();
+      renderTree();
       logCmd("FILTER: selection filter cleared.");
       updateStatus();
       draw();
     });
     panel.querySelector("[data-r=filter-apply]")?.addEventListener("click", () => {
-      applyFilterState(readChecked(), criteria);
-      logCmd(typeFilter.size || propFilter.length
-        ? `FILTER: selection filter active — only ${typeFilter.size ? [...typeFilter].join(", ") : "all types"}${propFilter.length ? ` with ${propFilter.length} propert${propFilter.length === 1 ? "y" : "ies"}` : ""} selectable.`
+      const tree = Sel18.sanitizeFilterNode(root);
+      applyFilterState(readChecked(), tree);
+      const n = Sel18.countFilterCriteria(tree);
+      logCmd(typeFilter.size || n
+        ? `FILTER: selection filter active — only ${typeFilter.size ? [...typeFilter].join(", ") : "all types"}${n ? ` with ${n} propert${n === 1 ? "y" : "ies"}` : ""} selectable.`
         : "FILTER: no types checked — every object type is selectable.");
       closeOverlay();
     });

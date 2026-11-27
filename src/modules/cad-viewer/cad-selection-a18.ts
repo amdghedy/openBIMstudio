@@ -13,10 +13,11 @@
  *   the matches from the whole drawing (exclude), or adds the matches to
  *   the current set (append).
  * - FILTER restricts what picking / window / crossing can land on. The
- *   type checkboxes from the old dialog stay; property criteria are an
- *   AND list on top of them. A named filter captures the whole filter
- *   state (types + criteria) under a name and is persisted per drawing,
- *   following the A16 layer-states pattern.
+ *   type checkboxes from the old dialog stay; property criteria form a
+ *   condition tree (2D-15): groups combine criteria — and other groups —
+ *   with AND or OR. A named filter captures the whole filter state
+ *   (types + tree) under a name and is persisted per drawing, following
+ *   the A16 layer-states pattern.
  * - PREVIOUS restores the most recent non-empty selection set. Clearing
  *   the selection never erases it; restoring it records it again, so
  *   repeating PREVIOUS keeps returning the same set (it does not
@@ -290,6 +291,108 @@ export function matchesAllCriteria(e: DxfEntity, criteria: QSelectCriterion[]): 
   return true;
 }
 
+/* ── condition trees: AND/OR groups (2D-15) ────────────────────────────
+ *
+ * FILTER criteria used to be a flat AND list. A condition tree is a
+ * criterion leaf or a group node (AND / OR) whose children are leaves or
+ * further groups, evaluated recursively — so
+ * (layer = A AND type = LINE) OR (layer = B AND type = CIRCLE) is
+ * expressible, and a lone criterion is just a tree of one node. Stored
+ * JSON (named filters, session state) is validated by
+ * sanitizeFilterNode; a legacy flat criteria array is read as an AND
+ * group, so filters saved before 2D-15 keep working.
+ */
+
+export type FilterGroupOperator = "AND" | "OR";
+
+export type FilterNode =
+  | { kind: "criterion"; criterion: QSelectCriterion }
+  | { kind: "group"; operator: FilterGroupOperator; children: FilterNode[] };
+
+/** A tree may not nest deeper than this (the root group is depth 0). */
+const MAX_TREE_DEPTH = 4;
+/** …or hold more than this many criterion leaves in total. */
+const MAX_TREE_CRITERIA = 20;
+
+/**
+ * Validates a raw condition tree (dialog input or stored JSON). Returns
+ * the normalised tree or null when nothing usable survives — unknown
+ * operators, bad leaves and over-deep / over-full branches are dropped,
+ * and a group left with a single child flattens to that child. A legacy
+ * flat criteria array is accepted as an AND group. Never throws.
+ */
+export function sanitizeFilterNode(raw: unknown, depth = 0, budget: { leaves: number } = { leaves: 0 }): FilterNode | null {
+  if (depth > MAX_TREE_DEPTH) return null;
+  if (Array.isArray(raw)) return filterTreeFromCriteria(sanitizeCriteria(raw));
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (r.kind === "criterion") {
+    if (budget.leaves >= MAX_TREE_CRITERIA) return null;
+    const c = sanitizeCriterion(r.criterion);
+    if (!c) return null;
+    budget.leaves++;
+    return { kind: "criterion", criterion: c };
+  }
+  if (r.kind === "group") {
+    const operator = r.operator === "OR" ? "OR" : r.operator === "AND" ? "AND" : null;
+    if (!operator || !Array.isArray(r.children)) return null;
+    const children: FilterNode[] = [];
+    for (const child of r.children) {
+      const n = sanitizeFilterNode(child, depth + 1, budget);
+      if (n) children.push(n);
+    }
+    if (children.length === 0) return null;
+    if (children.length === 1) return children[0];
+    return { kind: "group", operator, children };
+  }
+  return null;
+}
+
+/** Does one entity satisfy one tree node? Groups evaluate recursively. */
+export function matchesFilterNode(e: DxfEntity, node: FilterNode): boolean {
+  if (node.kind === "criterion") return matchesCriterion(e, node.criterion);
+  return node.operator === "OR"
+    ? node.children.some((c) => matchesFilterNode(e, c))
+    : node.children.every((c) => matchesFilterNode(e, c));
+}
+
+/** Does one entity satisfy the whole filter tree? No tree matches everything. */
+export function matchesFilterTree(e: DxfEntity, root: FilterNode | null | undefined): boolean {
+  return root == null ? true : matchesFilterNode(e, root);
+}
+
+/** A flat criteria list as a tree: none → null, one → the leaf, several → an AND group. */
+export function filterTreeFromCriteria(criteria: QSelectCriterion[]): FilterNode | null {
+  const clean = sanitizeCriteria(criteria);
+  if (clean.length === 0) return null;
+  if (clean.length === 1) return { kind: "criterion", criterion: clean[0] };
+  return { kind: "group", operator: "AND", children: clean.map((c) => ({ kind: "criterion", criterion: c }) as FilterNode) };
+}
+
+/** How many criterion leaves a tree holds (null = none). */
+export function countFilterCriteria(root: FilterNode | null | undefined): number {
+  if (root == null) return 0;
+  if (root.kind === "criterion") return 1;
+  let n = 0;
+  for (const c of root.children) n += countFilterCriteria(c);
+  return n;
+}
+
+/** Deep copy of a tree (null stays null); the dialog and named filters edit copies, never the live one. */
+export function cloneFilterNode(root: FilterNode | null): FilterNode | null {
+  return root == null ? null : (JSON.parse(JSON.stringify(root)) as FilterNode);
+}
+
+/** One-line reading of a tree for log lines, e.g. "(layer = A AND type = LINE) OR (layer = B AND type = CIRCLE)". */
+export function describeFilterTree(root: FilterNode | null | undefined): string {
+  if (root == null) return "";
+  if (root.kind === "criterion") return `${root.criterion.property} ${root.criterion.operator} ${root.criterion.value}`;
+  if (root.children.length === 0) return "";
+  const joiner = ` ${root.operator} `;
+  const inner = root.children.map((c) => (c.kind === "group" && c.children.length > 1 ? `(${describeFilterTree(c)})` : describeFilterTree(c))).join(joiner);
+  return inner;
+}
+
 /**
  * QSELECT apply: `candidates` are the visible entity indices (the
  * command-line form already restricts to those). "include" replaces the
@@ -322,8 +425,8 @@ export interface NamedFilter {
   name: string;
   /** Entity types the filter allows (empty = every type). */
   types: string[];
-  /** Property criteria; all must match (AND). */
-  criteria: QSelectCriterion[];
+  /** Compound property filter (2D-15 condition tree); null = no property conditions. */
+  tree: FilterNode | null;
 }
 
 const MAX_FILTERS = 50;
@@ -340,7 +443,19 @@ export function sanitizeNamedFilter(raw: unknown): NamedFilter | null {
   const types = Array.isArray(r.types)
     ? r.types.filter((x): x is string => typeof x === "string" && x.length > 0 && x.length <= MAX_VALUE_LEN).slice(0, MAX_TYPES)
     : [];
-  return { name, types, criteria: sanitizeCriteria(r.criteria) };
+  // 2D-15: a stored tree wins; a pre-2D-15 flat criteria list migrates to
+  // an AND group (filterTreeFromCriteria); neither means no conditions.
+  // A stored tree that cannot be read at all makes the filter unusable
+  // rather than silently dropping its conditions.
+  let tree: FilterNode | null = null;
+  if (r.tree != null) {
+    const t = sanitizeFilterNode(r.tree);
+    if (!t) return null;
+    tree = t;
+  } else if (Array.isArray(r.criteria)) {
+    tree = filterTreeFromCriteria(sanitizeCriteria(r.criteria));
+  }
+  return { name, types, tree };
 }
 
 /** Validates a stored map of named filters (at most 50); drops the unusable ones. */
@@ -358,7 +473,7 @@ export function sanitizeNamedFilters(raw: unknown): Record<string, NamedFilter> 
 /** Plain-JSON form of the named-filter map for the drawing session store. */
 export function serializeNamedFilters(map: ReadonlyMap<string, NamedFilter>): Record<string, NamedFilter> {
   const out: Record<string, NamedFilter> = {};
-  for (const [k, v] of map) out[k] = { name: v.name, types: [...v.types], criteria: v.criteria.map((c) => ({ ...c })) };
+  for (const [k, v] of map) out[k] = { name: v.name, types: [...v.types], tree: cloneFilterNode(v.tree) };
   return out;
 }
 

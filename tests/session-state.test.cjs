@@ -13,11 +13,23 @@ t("junk, wrong types and unknown values are dropped, never thrown", () => {
   const r = S.sanitizeSessionUi({ bg: "neon", cmode: "weird", snapOn: "yes", polarAngle: -5, snapModes: ["end", "warp"], typeFilter: [1, "LINE", ""], currentLayer: 7, lockedLayers: "x" }, BG, SN);
   assert.deepStrictEqual(r, { snapModes: ["end"], typeFilter: ["LINE"] });
 });
-t("propFilter criteria round-trip structurally; junk is dropped", () => {
-  const ui = { propFilter: [{ property: "length", operator: ">", value: "100" }] };
-  assert.deepEqual(S.sanitizeSessionUi(JSON.parse(JSON.stringify(ui)), BG, SN), ui);
+t("propFilter: a tree round-trips; a legacy flat array becomes a tree; junk is dropped", () => {
+  const tree = { kind: "group", operator: "AND", children: [
+    { kind: "criterion", criterion: { property: "length", operator: ">", value: "100" } },
+    { kind: "group", operator: "OR", children: [
+      { kind: "criterion", criterion: { property: "layer", operator: "=", value: "A" } },
+      { kind: "criterion", criterion: { property: "layer", operator: "=", value: "B" } },
+    ] },
+  ] };
+  assert.deepEqual(S.sanitizeSessionUi(JSON.parse(JSON.stringify({ propFilter: tree })), BG, SN), { propFilter: tree });
+  // Legacy flat array (pre-2D-15) migrates to a tree; junk entries drop.
   const r = S.sanitizeSessionUi({ propFilter: [{ property: "length", operator: ">", value: "100" }, { property: 7 }, "x", { property: "radius", operator: "=", value: "" }] }, BG, SN);
-  assert.deepEqual(r, { propFilter: [{ property: "length", operator: ">", value: "100" }] });
+  assert.deepEqual(r, { propFilter: { kind: "criterion", criterion: { property: "length", operator: ">", value: "100" } } });
+  const r2 = S.sanitizeSessionUi({ propFilter: [{ property: "length", operator: ">", value: "100" }, { property: "layer", operator: "=", value: "A" }] }, BG, SN);
+  assert.deepEqual(r2, { propFilter: { kind: "group", operator: "AND", children: [
+    { kind: "criterion", criterion: { property: "length", operator: ">", value: "100" } },
+    { kind: "criterion", criterion: { property: "layer", operator: "=", value: "A" } },
+  ] } });
 });
 t("non-objects give an empty result", () => { for (const v of [null, undefined, 5, "x", []]) assert.deepStrictEqual(S.sanitizeSessionUi(v, BG, SN), {}); });
 t("lists are capped so a corrupted store cannot balloon", () => {

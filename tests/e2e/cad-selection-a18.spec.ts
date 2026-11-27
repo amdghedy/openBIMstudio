@@ -24,6 +24,9 @@ import { openPaletteWith } from './palette';
  *     applied from the dialog's own list, then again from the command
  *     line (FILTER Big round) — B stays unpickable in both cases; the
  *     filter deletes cleanly afterwards.
+ *  5b. FILTER dialog, OR group (2D-15): root operator OR with
+ *      layer = WALLS and type = CIRCLE → only C and the circle stay
+ *      pickable (B is neither); FILTER CLEAR restores everything.
  *  6. Previous selection: select A, then C, clear, PREVIOUS restores C;
  *     the context-menu "Select Previous" restores it again; the P option
  *     at a MOVE "Select objects:" prompt restores it a third time and
@@ -35,7 +38,7 @@ import { openPaletteWith } from './palette';
  * calibration says they land.
  *
  * Run against this branch's own build on its own port (never :3000):
- *   npx vite build && npx vite preview --port 3119 --host 127.0.0.1
+ *   npm run build && (cd dist && python3 -m http.server 3119 --bind 127.0.0.1)
  *   then run this spec with a Playwright config whose baseURL is
  *   http://127.0.0.1:3119 and which starts no webServer.
  */
@@ -170,12 +173,12 @@ test('2D editor: QSELECT dialog, FILTER criteria and named filters, previous sel
   //    pickable (SELECTSIMILAR reports no source objects after clicking
   //    it) while A still picks; FILTER CLEAR restores B.
   await run('FILTER');
-  await expect(page.locator('[data-r=filter-prop]')).toBeVisible({ timeout: 10000 });
-  await page.locator('[data-r=filter-prop]').selectOption('length');
-  await page.locator('[data-r=filter-op]').selectOption('>');
-  await page.locator('[data-r=filter-value]').fill('150');
+  await expect(page.locator('[data-r=filter-picker-prop]')).toBeVisible({ timeout: 10000 });
+  await page.locator('[data-r=filter-picker-prop]').selectOption('length');
+  await page.locator('[data-r=filter-picker-op]').selectOption('>');
+  await page.locator('[data-r=filter-picker-value]').fill('150');
   await page.locator('[data-r=filter-add-criterion]').click();
-  await expect(page.locator('[data-r=filter-criteria]')).toContainText('Length > 150');
+  await expect(page.locator('[data-r=filter-tree]')).toContainText('Length > 150');
   await page.locator('[data-r=filter-apply]').click();
   await expect.poll(hist, { timeout: 10000 }).toContain('FILTER: selection filter active');
   await recalibrate();
@@ -195,12 +198,12 @@ test('2D editor: QSELECT dialog, FILTER criteria and named filters, previous sel
   //    applied from the dialog's own list, then from the command line;
   //    B stays unpickable in both cases; the filter deletes cleanly.
   await run('FILTER');
-  await expect(page.locator('[data-r=filter-prop]')).toBeVisible({ timeout: 10000 });
-  await page.locator('[data-r=filter-prop]').selectOption('radius');
-  await page.locator('[data-r=filter-op]').selectOption('>');
-  await page.locator('[data-r=filter-value]').fill('40');
+  await expect(page.locator('[data-r=filter-picker-prop]')).toBeVisible({ timeout: 10000 });
+  await page.locator('[data-r=filter-picker-prop]').selectOption('radius');
+  await page.locator('[data-r=filter-picker-op]').selectOption('>');
+  await page.locator('[data-r=filter-picker-value]').fill('40');
   await page.locator('[data-r=filter-add-criterion]').click();
-  await expect(page.locator('[data-r=filter-criteria]')).toContainText('Radius > 40');
+  await expect(page.locator('[data-r=filter-tree]')).toContainText('Radius > 40');
   await page.locator('[data-r=filter-name]').fill('Big round');
   await page.locator('[data-r=filter-save]').click();
   await expect(page.locator('[data-r=filter-named]')).toContainText('Big round');
@@ -223,6 +226,37 @@ test('2D editor: QSELECT dialog, FILTER criteria and named filters, previous sel
   await page.locator('[data-filter-delete-name="Big round"]').click();
   await expect(page.locator('[data-r=filter-named]')).toContainText('No saved filters yet.');
   await page.locator('[data-r=filter-apply]').click();
+
+  // 5b. FILTER dialog, OR group (2D-15): root operator OR with
+  //     layer = WALLS and type = CIRCLE → only C and the circle stay
+  //     pickable (B is neither); FILTER CLEAR restores everything.
+  await run('FILTER');
+  await expect(page.locator('[data-r=filter-picker-prop]')).toBeVisible({ timeout: 10000 });
+  await page.locator('[data-r=filter-group-op]').selectOption('OR');
+  await page.locator('[data-r=filter-picker-prop]').selectOption('layer');
+  await page.locator('[data-r=filter-picker-op]').selectOption('=');
+  await page.locator('[data-r=filter-picker-value]').fill('WALLS');
+  await page.locator('[data-r=filter-add-criterion]').click();
+  await page.locator('[data-r=filter-picker-prop]').selectOption('type');
+  await page.locator('[data-r=filter-picker-op]').selectOption('=');
+  await page.locator('[data-r=filter-picker-value]').fill('CIRCLE');
+  await page.locator('[data-r=filter-add-criterion]').click();
+  await expect(page.locator('[data-r=filter-tree]')).toContainText('Layer = WALLS');
+  await expect(page.locator('[data-r=filter-tree]')).toContainText('Object Type = CIRCLE');
+  await page.locator('[data-r=filter-apply]').click();
+  await expect.poll(hist, { timeout: 10000 }).toContain('FILTER: selection filter active');
+  await recalibrate();
+  await clickWorld(50, 50); // B — neither WALLS nor CIRCLE
+  await run('SELECTSIMILAR');
+  await expect.poll(hist, { timeout: 10000 }).toContain('SELECTSIMILAR: select one or more source objects first.');
+  await recalibrate();
+  await clickWorld(150, 200); // C — WALLS branch
+  await expect.poll(hist, { timeout: 10000 }).toContain('1 object(s) selected');
+  await recalibrate();
+  await clickWorld(350, 0); // circle circumference — CIRCLE branch
+  await expect.poll(hist, { timeout: 10000 }).toContain('1 object(s) selected');
+  await run('FILTER CLEAR');
+  await expect.poll(hist, { timeout: 10000 }).toContain('FILTER: selection filter cleared');
 
   // 6. Previous selection: select A, then C, clear, PREVIOUS restores C;
   //    the context menu restores it again; P at a MOVE prompt restores it

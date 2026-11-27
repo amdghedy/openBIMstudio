@@ -25,10 +25,74 @@ export interface SessionUi {
   showLt?: boolean;
   snapModes?: string[];
   typeFilter?: string[];
-  /** QSELECT / FILTER property criteria (raw JSON; validated semantically by cad-selection-a18 at restore). */
-  propFilter?: Array<{ property: string; operator: string; value: string }>;
+  /**
+   * FILTER property filter (2D-15 condition tree, raw JSON; validated
+   * semantically by cad-selection-a18 at restore). A pre-2D-15 flat
+   * criteria array is converted to an AND group at sanitize time.
+   */
+  propFilter?: SessionFilterNode;
   currentLayer?: string;
   lockedLayers?: string[];
+}
+
+/** One FILTER criterion as stored. */
+export interface SessionFilterCriterion { property: string; operator: string; value: string; }
+
+/** One node of a FILTER condition tree as stored (2D-15). */
+export type SessionFilterNode =
+  | { kind: "criterion"; criterion: SessionFilterCriterion }
+  | { kind: "group"; operator: "AND" | "OR"; children: SessionFilterNode[] };
+
+const MAX_SESSION_FILTER_DEPTH = 4;
+const MAX_SESSION_FILTER_CRITERIA = 20;
+
+const isSessionCriterion = (x: unknown): x is SessionFilterCriterion => {
+  if (!x || typeof x !== "object") return false;
+  const o = x as Record<string, unknown>;
+  return typeof o.property === "string" && o.property.length > 0 && o.property.length <= 200 &&
+    typeof o.operator === "string" && o.operator.length > 0 && o.operator.length <= 20 &&
+    typeof o.value === "string" && o.value.length > 0 && o.value.length <= 200;
+};
+
+/**
+ * Structural clean-up of a stored FILTER tree (raw JSON from an older app
+ * version, hand-edited, or corrupted): keeps only well-shaped nodes,
+ * drops bad leaves, caps depth and leaf count, flattens one-child groups.
+ * A legacy flat criteria array becomes an AND group. Returns undefined
+ * when nothing usable survives. Semantic validation (does the property
+ * exist, does the value parse) happens in cad-selection-a18 at restore.
+ */
+export function sanitizeSessionFilterTree(raw: unknown, depth = 0, budget: { leaves: number } = { leaves: 0 }): SessionFilterNode | undefined {
+  if (depth > MAX_SESSION_FILTER_DEPTH) return undefined;
+  if (Array.isArray(raw)) {
+    const clean = raw.filter(isSessionCriterion).slice(0, MAX_SESSION_FILTER_CRITERIA)
+      .map((x) => ({ property: x.property, operator: x.operator, value: x.value }));
+    if (clean.length === 0) return undefined;
+    if (clean.length === 1) return { kind: "criterion", criterion: clean[0] };
+    return { kind: "group", operator: "AND", children: clean.map((criterion) => ({ kind: "criterion", criterion }) as SessionFilterNode) };
+  }
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  if (r.kind === "criterion") {
+    if (budget.leaves >= MAX_SESSION_FILTER_CRITERIA) return undefined;
+    if (!isSessionCriterion(r.criterion)) return undefined;
+    budget.leaves++;
+    const c = r.criterion as SessionFilterCriterion;
+    return { kind: "criterion", criterion: { property: c.property, operator: c.operator, value: c.value } };
+  }
+  if (r.kind === "group") {
+    if (r.operator !== "AND" && r.operator !== "OR") return undefined;
+    if (!Array.isArray(r.children)) return undefined;
+    const children: SessionFilterNode[] = [];
+    for (const child of r.children) {
+      const n = sanitizeSessionFilterTree(child, depth + 1, budget);
+      if (n) children.push(n);
+    }
+    if (children.length === 0) return undefined;
+    if (children.length === 1) return children[0];
+    return { kind: "group", operator: r.operator, children };
+  }
+  return undefined;
 }
 
 const BOOLS = ["snapOn", "gridSnapOn", "orthoOn", "polarOn", "otrackOn", "dynOn", "lwtOn", "showGrid", "showText", "showHatch", "showLt"] as const;
@@ -51,15 +115,9 @@ export function sanitizeSessionUi(raw: unknown, bgOptions: readonly string[], sn
   if (typeof r.annoScale === "number" && Number.isFinite(r.annoScale) && r.annoScale > 0 && r.annoScale <= 10000) out.annoScale = r.annoScale;
   const sm = strArr(r.snapModes, 40); if (sm) out.snapModes = sm.filter((k) => snapKinds.includes(k));
   const tf = strArr(r.typeFilter, 60); if (tf) out.typeFilter = tf;
-  if (Array.isArray(r.propFilter)) {
-    const pf = r.propFilter.filter((x): x is { property: string; operator: string; value: string } => {
-      if (!x || typeof x !== "object") return false;
-      const o = x as Record<string, unknown>;
-      return typeof o.property === "string" && o.property.length > 0 && o.property.length <= 200 &&
-        typeof o.operator === "string" && o.operator.length > 0 && o.operator.length <= 20 &&
-        typeof o.value === "string" && o.value.length > 0 && o.value.length <= 200;
-    }).slice(0, 10);
-    if (pf.length) out.propFilter = pf.map((x) => ({ property: x.property, operator: x.operator, value: x.value }));
+  if (r.propFilter !== undefined) {
+    const tree = sanitizeSessionFilterTree(r.propFilter);
+    if (tree) out.propFilter = tree;
   }
   if (typeof r.currentLayer === "string" && r.currentLayer.length > 0 && r.currentLayer.length <= 200) out.currentLayer = r.currentLayer;
   const ll = strArr(r.lockedLayers, 5000); if (ll) out.lockedLayers = ll;

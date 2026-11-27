@@ -145,9 +145,9 @@ try {
   });
 
   // ── named filters ──
-  t("sanitizeNamedFilter: valid round-trips; junk is dropped", () => {
+  t("sanitizeNamedFilter: valid round-trips; junk is dropped; legacy criteria migrate to a tree", () => {
     const f = S.sanitizeNamedFilter({ name: " Big circles ", types: ["CIRCLE", 7, ""], criteria: [{ property: "radius", operator: ">", value: "40" }, { property: "nope", operator: "=", value: "1" }] });
-    assert.deepEqual(f, { name: "Big circles", types: ["CIRCLE"], criteria: [{ property: "radius", operator: ">", value: "40" }] });
+    assert.deepEqual(f, { name: "Big circles", types: ["CIRCLE"], tree: { kind: "criterion", criterion: { property: "radius", operator: ">", value: "40" } } });
     assert.strictEqual(S.sanitizeNamedFilter({ name: "  " }), null);
     assert.strictEqual(S.sanitizeNamedFilter({ name: "x".repeat(101) }), null);
     assert.strictEqual(S.sanitizeNamedFilter(null), null);
@@ -177,7 +177,7 @@ try {
   const has = (re, msg) => assert.ok(re.test(viewerSrc), msg);
   t("viewer: Sel18 imported and visible() honours the property criteria", () => {
     has(/import \* as Sel18 from "\.\.\/modules\/cad-viewer\/cad-selection-a18";/, "Sel18 import");
-    has(/Sel18\.matchesAllCriteria\(e, propFilter\)/, "visible() honours propFilter");
+    has(/Sel18\.matchesFilterTree\(e, propFilter\)/, "visible() honours propFilter");
   });
   t("viewer: QSELECT dialog exists and bare QSELECT opens it", () => {
     has(/function openQSelectDialog\(\): void \{/, "openQSelectDialog defined");
@@ -188,9 +188,9 @@ try {
     has(/data-r="qs-apply"/, "dialog has an Apply button");
   });
   t("viewer: FILTER dialog has property criteria and named filters", () => {
-    has(/function applyFilterState\(types: Set<string>, criteria: Sel18\.QSelectCriterion\[\]\): void \{/, "applyFilterState defined");
-    has(/function saveNamedFilter\(name: string, types: Set<string>, criteria: Sel18\.QSelectCriterion\[\]\): boolean \{/, "saveNamedFilter defined");
-    has(/data-r="filter-prop"/, "criteria property picker");
+    has(/function applyFilterState\(types: Set<string>, tree: Sel18\.FilterNode \| null\): void \{/, "applyFilterState defined");
+    has(/function saveNamedFilter\(name: string, types: Set<string>, tree: Sel18\.FilterNode \| null\): boolean \{/, "saveNamedFilter defined");
+    has(/data-r="filter-picker-prop"/, "criteria property picker");
     has(/data-r="filter-add-criterion"/, "add-criterion button");
     has(/data-r="filter-save"/, "save named filter button");
     has(/data-filter-apply-name/, "named filter Apply");
@@ -208,8 +208,8 @@ try {
   t("viewer: named filters and property criteria persist per drawing", () => {
     has(/namedFilters: namedFilters\.size \? Sel18\.serializeNamedFilters\(namedFilters\) : undefined,/, "named filters captured in the session");
     has(/Sel18\.sanitizeNamedFilters\(sess\.namedFilters\)/, "named filters restored through the sanitizer");
-    has(/propFilter = Sel18\.sanitizeCriteria\(u\.propFilter\)/, "active property criteria restored through the sanitizer");
-    assert.ok(/propFilter\?: Array<\{ property: string; operator: string; value: string \}>;/.test(sessionSrc), "SessionUi carries propFilter");
+    has(/propFilter = Sel18\.sanitizeFilterNode\(u\.propFilter\)/, "active property filter restored through the sanitizer");
+    assert.ok(/propFilter\?: SessionFilterNode;/.test(sessionSrc), "SessionUi carries propFilter");
   });
 
   console.log(`\n=== Result: ${pass} passed, ${fail} failed ===`);
