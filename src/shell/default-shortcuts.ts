@@ -365,7 +365,7 @@ export function registerDefaultShortcuts(): void {
     // While a drawing tab is active, Ctrl+Shift+V belongs to the drawing editor
     // (PASTECLIP — Super Copy). The manager stays reachable from the View menu.
     when: () => !isCadHotkeyOwnerActive(),
-    handler: () => { (window as any).__obsOpenViewToolsManager?.(); },
+    handler: () => { (ctx.features as any).openViewToolsManager?.(); },
   });
 
   console.log("[shortcuts] registered", shortcuts.list().length, "commands");

@@ -4,7 +4,7 @@ let modalEl: HTMLDivElement | null = null;
 
 export function setupSchedulesUI() {
   console.log("[schedules-ui] Module loaded.");
-  (window as any).__obsOpenSchedules = openSchedulesModal;
+  return openSchedulesModal;
 }
 
 export function openSchedulesModal() {

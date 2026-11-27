@@ -14,7 +14,7 @@ let offModeListener: (() => void) | null = null;
 
 export function setupSectionModal() {
   console.log("[section-modal] Module loaded.");
-  (window as any).__obsOpenSectionModal = openSectionModal;
+  return openSectionModal;
 }
 
 export function openSectionModal() {

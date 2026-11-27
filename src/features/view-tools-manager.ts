@@ -302,7 +302,7 @@ function escapeHtml(s: string): string {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 }
 
-export function setupViewToolsManager(): void {
-  (window as any).__obsOpenViewToolsManager = openViewToolsManager;
-  console.log("[view-tools-manager] ready — accessible via window.__obsOpenViewToolsManager()");
+export function setupViewToolsManager() {
+  console.log("[view-tools-manager] ready.");
+  return openViewToolsManager;
 }

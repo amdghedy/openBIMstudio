@@ -8,8 +8,8 @@ import { markDirty } from "../modules/projects/projects";
 let modalEl: HTMLDivElement | null = null;
 
 export function setupManageLinks() {
-  console.log("[manage-links] Module loaded. Attaching to window.__obsManageLinks");
-  (window as any).__obsManageLinks = openManageLinks;
+  console.log("[manage-links] Module loaded.");
+  return openManageLinks;
 }
 
 export function openManageLinks() {

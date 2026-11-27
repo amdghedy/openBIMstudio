@@ -2313,7 +2313,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     label: "View",
     items: () => [
       groupLabel("Section"),
-      b("section", "Section Cut", () => (window as any).__obsOpenSectionModal?.(), { title: "Open the interactive section cut window" }),
+      b("section", "Section Cut", () => (ctx.features as any).openSectionModal?.(), { title: "Open the interactive section cut window" }),
       b("section-box", "Section Box", safe(() => {
         (ctx.features as any).sectionBox?.toggle?.();
         refreshRibbon();
@@ -2350,7 +2350,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         const list = (ctx.features as any).scopeBox?.list?.() ?? [];
         if (!list.length) { toast("No scope boxes — click Scope Box to create one", "warn"); return; }
         // Open the unified View Tools Manager panel (replaces console.log dump).
-        (window as any).__obsOpenViewToolsManager?.();
+        (ctx.features as any).openViewToolsManager?.();
       }, "List boxes"), { title: "Open the View Tools Manager panel with all scope boxes / filters / crop regions" }),
       b("crop", "Plan Region", safe(() => {
         (window as any).__obsPlanRegion?.build?.({
@@ -2443,7 +2443,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Matchline"), { title: "Draw a matchline for sheet-split views" }),
       sep(),
       groupLabel("Schedules"),
-      b("schedules", "Element Schedule", () => (window as any).__obsOpenSchedules?.(), { title: "View quantity takeoffs and schedules" }),
+      b("schedules", "Element Schedule", () => (ctx.features as any).openSchedules?.(), { title: "View quantity takeoffs and schedules" }),
       sep(),
       // ── Select ──────────────────────────────────────────────────────
       groupLabel("Select"),
@@ -2529,7 +2529,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast(on ? "Thin lines ON" : "Thin lines OFF", "info");
         refreshRibbon();
       }, "Thin lines"), {
-        active: !!(window as any).__obsThinLines,
+        active: !!(ctx.features as any).thinLines,
         title: "Thin lines — consistent line weight in model views",
       }),
       b("section", "Hidden", safe(() => {
@@ -2771,7 +2771,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("View Tools"),
       b("crop", "View Tools", safe(() => {
-        (window as any).__obsOpenViewToolsManager?.();
+        (ctx.features as any).openViewToolsManager?.();
       }, "View tools manager"), { kbd: "^⇧V", title: "Open the View Tools Manager panel (scope boxes + filters + crop regions) — Ctrl+Shift+V" }),
       sep(),
       groupLabel("Plugins"),
@@ -2852,7 +2852,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Install plugin"), { title: "Install a plugin from the marketplace" }),
       sep(),
       groupLabel("Links"),
-      b("folder-recent", "Manage Links", () => (window as any).__obsManageLinks?.(), { title: "Manage external links (IFC, DWG, BIM)" }),
+      b("folder-recent", "Manage Links", () => (ctx.features as any).manageLinks?.(), { title: "Manage external links (IFC, DWG, BIM)" }),
       sep(),
       groupLabel("Project"),
       b("settings", "Info", safe(() => openProjectInfo(), "Project information"), {
@@ -3050,7 +3050,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         active: isToolWindowOpen("crop"),
         title: "Crop margin around the active clash: -10 cm / +10 cm / reset 30 cm / remove",
       }),
-      b("clash", "Categories", () => (window as any).__obsOpenClashCategories?.(), { title: "Category Clash Rules" }),
+      b("clash", "Categories", () => (ctx.features as any).openClashCategories?.(), { title: "Category Clash Rules" }),
       sep(),
       groupLabel("Tests"),
       b("save", "Save", safe(async () => {

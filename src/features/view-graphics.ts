@@ -362,7 +362,7 @@ export function setThinLines(on: boolean): void {
       }
     }
   });
-  (window as any).__obsThinLines = thinLines;
+  (ctx.features as any).thinLines = thinLines;
 }
 
 export function isThinLines(): boolean {
@@ -459,7 +459,7 @@ export function openGraphicDisplayOptions(): void {
 
   const thin = document.createElement("input");
   thin.type = "checkbox";
-  thin.checked = thinLines || !!(window as any).__obsThinLines;
+  thin.checked = thinLines || !!(ctx.features as any).thinLines;
   thin.onchange = () => setThinLines(thin.checked);
   const thinLab = document.createElement("label");
   thinLab.style.cssText = sunLab.style.cssText;

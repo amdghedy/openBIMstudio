@@ -465,7 +465,8 @@ async function runOnce(): Promise<void> {
   // ── View Tools Manager panel (replaces console.log dumps) ─────────────
   await safe("view-tools-manager", async () => {
     const m: Any = await import("./features/view-tools-manager");
-    m.setupViewToolsManager?.();
+    const svc = m.setupViewToolsManager?.();
+    if (svc) (ctx.features as Any).openViewToolsManager = svc;
   });
 
   // ── Element right-click context menu (native elements) ─────────────────
