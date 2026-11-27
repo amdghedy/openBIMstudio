@@ -3557,7 +3557,7 @@ function ctxItems(tool: string): HTMLElement[] {
     sep(),
     groupLabel("Properties"),
     b("settings", "Properties", safe(() => { try { (ctx.features as any).propertyPalette?.open?.(); } catch { /* */ } }, "Properties")),
-    b("settings", "Type Properties", safe(() => { (window as any).__obsBIMExperience?.execute?.("modify.typeProperties"); }, "Type properties")),
+    b("settings", "Type Properties", safe(() => { (ctx.features as any).bimExperience?.execute?.("modify.typeProperties"); }, "Type properties")),
     sep(),
     groupLabel("Clipboard"),
     mod("paste", "copy"),
@@ -3605,7 +3605,7 @@ function modifyTabItems(model: ModifyTabModel): HTMLElement[] {
       title: button.reason ?? options.title,
     });
   };
-  const cmd = (id: string) => safe(() => { (window as any).__obsBIMExperience?.execute?.(id); }, id);
+  const cmd = (id: string) => safe(() => { (ctx.features as any).bimExperience?.execute?.(id); }, id);
   /** Pass-through for enabled buttons; disabled buttons get the model's reason as tooltip. */
   const dis = (button: ModifyTabButton, options: BtnOpts = {}): BtnOpts =>
     button.enabled ? options : { ...options, disabled: true, title: button.reason ?? options.title };

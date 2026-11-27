@@ -258,7 +258,7 @@ async function registerBIMShortcuts(): Promise<void> {
   // WT/WC are deliberately absent: views cannot tile until gap G12 lands.
   const g8Env: RevitG8Env = {
     executeBimCommand: (id) => {
-      (window as any).__obsBIMExperience?.execute?.(id);
+      (ctx.features as any).bimExperience?.execute?.(id);
     },
     setAuthoringTool: (tool) => {
       const a = getAuthoring();

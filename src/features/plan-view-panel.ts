@@ -5035,7 +5035,7 @@ window.addEventListener("mouseup", () => {
  * window handle (same pattern as ribbon.ts) with a dynamic-import fallback.
  */
 function openTypePropertiesForPlan(): void {
-  const exp: any = (window as any).__obsBIMExperience;
+  const exp: any = (ctx.features as any).bimExperience;
   if (typeof exp?.execute === "function") { exp.execute("modify.typeProperties"); return; }
   void import("./bim-experience").then((m: any) => {
     m.executeBimCommand?.("modify.typeProperties");
