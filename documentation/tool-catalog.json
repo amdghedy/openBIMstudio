@@ -2299,6 +2299,15 @@
       "verifiedScenarios": []
     },
     {
+      "id": "family.gallery",
+      "name": "Family Gallery",
+      "discipline": "Families",
+      "module": "src/features/family-gallery.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "family.sketch",
       "name": "Family from sketch",
       "discipline": "Families",

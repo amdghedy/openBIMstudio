@@ -106,7 +106,7 @@ const recNum = (rec: { pairs: Array<[string, string]> }, code: string | number, 
   return v === undefined ? undefined : parseFloat(v);
 };
 
-test('2D editor: ordinate dimensions, arc variants, MTEXT, leader as entity, DXF round trip', async ({ page }) => {
+test('2D editor: ordinate dimensions, arc variants, MTEXT, leader as entity, DXF round trip', async ({ page }, testInfo) => {
   test.setTimeout(300000);
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String((e as Error).stack || e)));
@@ -250,9 +250,12 @@ test('2D editor: ordinate dimensions, arc variants, MTEXT, leader as entity, DXF
   const dl = page.waitForEvent('download', { timeout: 60000 });
   await run('QSAVE');
   const d = await dl;
-  const dxfPath = await d.path();
-  expect(dxfPath, 'download path').toBeTruthy();
-  const dxfText = fs.readFileSync(dxfPath!, 'utf8');
+  // saveAs() waits for the download to finish writing; reading d.path()
+  // straight after waitForEvent('download') can catch a partially written
+  // file (2D-14; the A11 spec already uses this pattern).
+  const dxfPath = testInfo.outputPath('saved-a10.dxf');
+  await d.saveAs(dxfPath);
+  const dxfText = fs.readFileSync(dxfPath, 'utf8');
   const recs = dxfRecords(dxfText);
   const dims = recs.filter((r) => r.type === 'DIMENSION');
   expect(dims.length).toBe(2);

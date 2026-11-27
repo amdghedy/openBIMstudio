@@ -1,5 +1,6 @@
 import { exportConstraints, verifyConstraints } from "../modules/cad-viewer/constraint-store";
 import { registerDirtyCheck } from "../core/dirty-registry"; registerDirtyCheck(() => tabs.some((t) => t.engine.isDirty()));
+import { registerEscapeScope } from "../core/escape-all";
 /**
  * Drawing Editor — Standalone 2D DWG/DXF Environment.
  *
@@ -51,6 +52,7 @@ import { sanitizeSessionUi, sessionUiSignature, hiddenEntityIndexes, sanitizeHid
 import * as M from "../modules/cad-viewer/viewer-math";
 import * as LayerLock from "../modules/cad-viewer/layer-lock";
 import * as GridSnap from "../modules/cad-viewer/grid-snap";
+import * as Aids from "../modules/cad-viewer/cad-drafting-aids";
 import {
   createCadSnapOverride,
   resolveOverrideKeys as resolveCadOverrideKeys,
@@ -1821,6 +1823,18 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       : savedTwist ? `UCS display: OFF — raw world coordinates shown; the ${savedTwist.toFixed(1)}° saved rotation is not applied` : "UCS display: OFF — raw world coordinates");
   } // Lineweight display
   let showGrid = true;
+  // 2D-2: the drafting aids are shared state (cad-drafting-aids.ts) — the
+  // main-shell status bar toggles the same flags. A fresh engine starts
+  // from the shared state (persisted shell toggles included); a saved
+  // drawing session restored below still wins for this tab.
+  snapOn = Aids.getDraftingAid("osnap");
+  gridSnapOn = Aids.getDraftingAid("snap");
+  orthoOn = Aids.getDraftingAid("ortho");
+  polarOn = Aids.getDraftingAid("polar");
+  otrackOn = Aids.getDraftingAid("otrack");
+  dynOn = Aids.getDraftingAid("dyn");
+  lwtOn = Aids.getDraftingAid("lwt");
+  showGrid = Aids.getDraftingAid("grid");
   let cleanScreen = false;
 
   let currentLayer = "0";
@@ -4998,10 +5012,35 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
    * Grip right-click menu (A11): the five grip modes for the drag in
    * progress, styled like the snap-override menu. Picking a mode keeps
    * the drag alive — the next pointer move drags in the new mode.
+   *
+   * Escape dismissal (2D-13): the menu never receives focus, so its own
+   * keydown listener cannot fire — and the global escape-all orchestrator
+   * consumes bare Escape first, so a private window keydown listener
+   * would never fire either. The menu therefore registers as an
+   * escape-all scope (the sanctioned extension point) on first open;
+   * one Escape press closes the menu (and, via the other scopes, cancels
+   * the drag, as Escape already did).
    */
+  let gripMenuEl: HTMLElement | null = null;
+  let gripMenuClose: ((e: PointerEvent) => void) | null = null;
+  let gripMenuEscapeRegistered = false;
+
+  /** Remove the open grip menu (if any) and its outside-click closer. */
+  function closeGripMenu(): boolean {
+    if (!gripMenuEl) return false;
+    gripMenuEl.remove();
+    gripMenuEl = null;
+    if (gripMenuClose) {
+      document.removeEventListener("pointerdown", gripMenuClose, true);
+      gripMenuClose = null;
+    }
+    return true;
+  }
+
   function showGripModeMenu(ev: MouseEvent): void {
     ev.preventDefault();
     ev.stopPropagation();
+    closeGripMenu();
     document.querySelectorAll(".obs-cad-context-menu").forEach((n) => n.remove());
     const menu = document.createElement("div");
     menu.className = "obs-cad-context-menu";
@@ -5017,18 +5056,24 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       b.style.cssText = "display:flex;align-items:center;width:100%;gap:18px;padding:7px 11px;border:0;border-radius:0;background:transparent;text-align:start;color:inherit;font:inherit;cursor:" + (b.disabled ? "default" : "pointer") + ";opacity:" + (b.disabled ? ".55" : "1");
       b.onmouseenter = () => { if (!b.disabled) b.style.background = "#263447"; };
       b.onmouseleave = () => { b.style.background = "transparent"; };
-      b.onclick = () => { menu.remove(); setGripMode(mode); };
+      b.onclick = () => { closeGripMenu(); setGripMode(mode); };
       menu.appendChild(b);
     };
     addLabel("GRIP MODE — " + (gripDrag ? Sel11.GRIP_MODE_LABELS[gripDrag.mode].toUpperCase() : ""));
     for (const mode of Sel11.GRIP_MODES) addItem(mode);
     document.body.appendChild(menu);
+    gripMenuEl = menu;
     const rect = menu.getBoundingClientRect();
     menu.style.left = `${Math.max(6, Math.min(ev.clientX, window.innerWidth - rect.width - 6))}px`;
     menu.style.top = `${Math.max(6, Math.min(ev.clientY, window.innerHeight - rect.height - 6))}px`;
-    const close = (e: PointerEvent) => { if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener("pointerdown", close, true); } };
+    const close = (e: PointerEvent) => { if (!menu.contains(e.target as Node)) { closeGripMenu(); } };
+    gripMenuClose = close;
     document.addEventListener("pointerdown", close, true);
-    menu.addEventListener("keydown", (e) => { if (e.key === "Escape") { menu.remove(); } });
+    menu.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeGripMenu(); } });
+    if (!gripMenuEscapeRegistered) {
+      gripMenuEscapeRegistered = true;
+      registerEscapeScope({ id: "cad-grip-menu", priority: 150, cancel: () => closeGripMenu() });
+    }
   }
 
   const isModTool = (t: Tool): t is ModKind =>
@@ -8852,6 +8897,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       lwt: () => {
         lwtOn = !lwtOn;
         tools.querySelector("[data-a=lwt]")!.classList.toggle("on", lwtOn);
+        updateStatus();
         draw();
       },
       undo,
@@ -11683,6 +11729,22 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       lwtOn = !lwtOn;
       updateStatus();
       draw();
+    });
+
+    // 2D-2: publish the live aid state to the shared module so the
+    // main-shell status bar (and any other reader) sees the same flags
+    // the viewer toggles switch. applyDraftingAids diffs and only
+    // notifies on a real change, so publishing here can never echo-loop
+    // with the subscriber below.
+    Aids.applyDraftingAids({
+      grid: showGrid,
+      snap: gridSnapOn,
+      osnap: snapOn,
+      ortho: orthoOn,
+      polar: polarOn,
+      otrack: otrackOn,
+      dyn: dynOn,
+      lwt: lwtOn,
     });
   }
 
@@ -17604,6 +17666,38 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   stageEl?.addEventListener("keydown", onCadEscCapture, true);
   cv.addEventListener("keydown", onCadEscCapture, true);
 
+  // 2D-2: apply drafting-aid changes made outside this engine (the
+  // main-shell status bar toggles the shared module). Only the active
+  // tab applies live — an inactive tab syncs from the module when it is
+  // activated (see activate()), so a stale tab can never publish its
+  // old flags back through updateStatus. The subscription is never
+  // removed (same as the window keydown listeners above); the handler
+  // is guarded so a closed engine can never throw into other
+  // subscribers.
+  function syncDraftingAidsFromShared(): boolean {
+    const next = Aids.getDraftingAids();
+    let changed = false;
+    if (snapOn !== next.osnap) { snapOn = next.osnap; changed = true; }
+    if (gridSnapOn !== next.snap) { gridSnapOn = next.snap; changed = true; }
+    if (orthoOn !== next.ortho) { orthoOn = next.ortho; changed = true; }
+    if (polarOn !== next.polar) { polarOn = next.polar; changed = true; }
+    if (otrackOn !== next.otrack) { otrackOn = next.otrack; changed = true; }
+    if (dynOn !== next.dyn) { dynOn = next.dyn; changed = true; }
+    if (lwtOn !== next.lwt) { lwtOn = next.lwt; changed = true; }
+    if (showGrid !== next.grid) { showGrid = next.grid; changed = true; }
+    return changed;
+  }
+  Aids.subscribeDraftingAids(() => {
+    try {
+      if (!screenTypeActive || root.style.display === "none") return;
+      if (!syncDraftingAidsFromShared()) return;
+      updateStatus();
+      if (shell && shell.style.display !== "none") draw();
+    } catch {
+      /* a dead engine must never break other subscribers */
+    }
+  });
+
   const api: CadEngineApi = {
     load,
     close() {
@@ -17631,6 +17725,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         /* */
       }
       showRibbonEngine(ribbonWrap, api);
+      // 2D-2: an inactive tab may have missed shared-state changes (e.g.
+      // toggles made in the main-shell status bar while another drawing
+      // was active) — re-read the shared aids before drawing, so this
+      // tab can never publish stale flags back through updateStatus.
+      syncDraftingAidsFromShared();
+      updateStatus();
       resize();
       draw();
       // Super Copy awareness: switching drawing tabs tells you what is waiting

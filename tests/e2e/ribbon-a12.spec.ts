@@ -102,7 +102,12 @@ test("A12: Manage Energy runs the heat-loss report, not a planned toast", async 
   // No rooms yet → an honest empty result/toast, but no crash and no
   // "planned for a future release" dead end.
   await expect(pageErrors(page)).toEqual([]);
-  const toast = page.locator(".obs-toast");
+  // Scope to the Heat Loss toast: the unscoped `.obs-toast` locator is a
+  // strict-mode flake — in CI (064b9bd4) the stale "Coordination workspace"
+  // toast was still visible alongside this one, so the locator resolved
+  // to 2 elements. The scoped locator must resolve to exactly this toast.
+  const toast = page.locator(".obs-toast", { hasText: "Heat Loss" });
+  await expect(toast).toHaveCount(1);
   await expect(toast).not.toContainText("planned for a future release");
 });
 

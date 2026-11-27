@@ -131,6 +131,34 @@ export function deleteView(id: string): void {
   renderPanel();
 }
 
+/** Rename a saved view (G11 Project Browser menu). */
+export function renameView(id: string, name: string): boolean {
+  const list = loadViews();
+  const view = list.find((v) => v.id === id);
+  if (!view) return false;
+  view.name = name.trim() || view.name;
+  persistViews(list);
+  renderPanel();
+  return true;
+}
+
+/** Duplicate a saved view (G11 Project Browser menu): same camera, fresh id. */
+export function duplicateView(id: string): SavedView | null {
+  const list = loadViews();
+  const src = list.find((v) => v.id === id);
+  if (!src) return null;
+  const copy: SavedView = {
+    ...src,
+    id: (crypto as any).randomUUID?.() ?? `v-${Date.now()}`,
+    name: `${src.name} (copy)`,
+    createdAt: Date.now(),
+  };
+  list.unshift(copy);
+  persistViews(list.slice(0, 64));
+  renderPanel();
+  return copy;
+}
+
 /* ═════════════════════════════════════════════════════════════════════════
    Panel
    ═════════════════════════════════════════════════════════════════════════ */

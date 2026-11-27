@@ -9,6 +9,12 @@ import {
 import { saveProject } from "../modules/projects/projects";
 import { fmtDateTime } from "../core/region";
 import { getActiveTool, getElementCount, getLevel } from "../features/authoring";
+import {
+  getDraftingAids,
+  toggleDraftingAid,
+  DRAFTING_AIDS_EVENT,
+  type DraftingAidKey,
+} from "../modules/cad-viewer/cad-drafting-aids";
 
 const bar = document.createElement("div");
 bar.className = "bb-status";
@@ -74,10 +80,63 @@ zoneSeg.append(z3d, z2d);
 const spacer2 = document.createElement("div");
 spacer2.className = "bb-status__spacer";
 
+// ── Drafting-aid toggles (2D-2, A12 follow-up) ──────────────────────────
+// The CAD viewer's drafting aids (GRID, SNAP, OSNAP, ORTHO, POLAR,
+// OTRACK, DYN, LWT) used to live only inside the per-tab engine closure,
+// so the main-shell status bar showed no toggles at all. These buttons
+// switch the same shared state (`cad-drafting-aids.ts`) the viewer
+// toggles switch: a toggle here is picked up by the active drawing (and
+// by the next drawing opened), and a toggle inside the viewer is
+// reflected here. Buttons are built once (like the zone chips) and only
+// their pressed state is re-rendered by update(), so clicks survive the
+// 1.2 s refresh.
+const AID_DEFS: { key: DraftingAidKey; label: string; title: string }[] = [
+  { key: "grid", label: "GRID", title: "Grid display (F7)" },
+  { key: "snap", label: "SNAP", title: "Snap to grid (F9)" },
+  { key: "osnap", label: "OSNAP", title: "Object Snap (F3)" },
+  { key: "ortho", label: "ORTHO", title: "Ortho mode (F8)" },
+  { key: "polar", label: "POLAR", title: "Polar tracking (F10)" },
+  { key: "otrack", label: "OTRACK", title: "Object snap tracking" },
+  { key: "dyn", label: "DYN", title: "Dynamic Input (F12)" },
+  { key: "lwt", label: "LWT", title: "Lineweight display" },
+];
+const AID_BTN_BASE =
+  "font:700 9.5px system-ui,sans-serif;letter-spacing:.5px;padding:3px 8px;border:none;cursor:pointer;border-radius:3px;";
+const AID_BTN_ON = "background:#0284c7;color:#ffffff;";
+const AID_BTN_OFF = "background:transparent;color:#5b6472;";
+const aidsSeg = document.createElement("div");
+aidsSeg.className = "bb-status__seg";
+aidsSeg.dataset.obsDraftingAids = "1";
+aidsSeg.title = "Drafting aids — the same switches as the Drawing Editor status bar";
+const aidButtons: HTMLButtonElement[] = [];
+for (const def of AID_DEFS) {
+  const b = document.createElement("button");
+  b.textContent = def.label;
+  b.title = def.title;
+  b.dataset.aid = def.key;
+  b.setAttribute("aria-pressed", "false");
+  b.style.cssText = AID_BTN_BASE + AID_BTN_OFF;
+  b.addEventListener("click", () => {
+    toggleDraftingAid(def.key);
+    update();
+  });
+  aidsSeg.appendChild(b);
+  aidButtons.push(b);
+}
+
+function syncAidButtons() {
+  const state = getDraftingAids();
+  for (const b of aidButtons) {
+    const on = state[b.dataset.aid as DraftingAidKey];
+    b.setAttribute("aria-pressed", String(on));
+    b.style.cssText = AID_BTN_BASE + (on ? AID_BTN_ON : AID_BTN_OFF);
+  }
+}
+
 const right = document.createElement("div");
 right.className = "bb-status__seg";
 
-bar.append(left, spacer, center, zoneSeg, coordsSeg, spacer2, right);
+bar.append(left, spacer, center, aidsSeg, zoneSeg, coordsSeg, spacer2, right);
 
 const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) =>
@@ -110,6 +169,7 @@ function styleZoneChip(active: "3d" | "2d") {
 
 function update() {
   styleZoneChip(isPlanViewVisible() || isSheets2dPanelVisible() ? "2d" : "3d");
+  syncAidButtons();
   const tool = getActiveTool();
   const levelVal = getLevel();
   
@@ -191,6 +251,9 @@ export function setupStatusBar() {
   window.addEventListener("obs:save-state", update);
   window.addEventListener("obs:save-failed", update);
   window.addEventListener("obs:project-saved", update);
+  // 2D-2: a drafting-aid toggle anywhere (shell bar, CAD viewer,
+  // command, F-key) re-renders the shell buttons immediately.
+  window.addEventListener(DRAFTING_AIDS_EVENT, update);
   setInterval(update, 1200);
   update();
 }

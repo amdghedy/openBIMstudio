@@ -20,6 +20,11 @@
  * Auth reuses the realtime-client conventions: `__OPENBIM_COLLAB_TOKEN__`
  * (Bearer on POSTs) and the optional
  * `__OPENBIM_COLLAB_SSE_TOKEN_PROVIDER__` for the EventSource URL.
+ * When a long-lived token is configured and no provider is set, the
+ * client mints a short-lived room-bound `?sse=` token from POST
+ * /api/rooms/:id/sse-token (Bearer) — the long-lived token never
+ * appears in a URL (X-2: the old `?token=` fallback leaked a token the
+ * server refuses on every route).
  * An `EventSource` factory can be injected (the Node tests pass a small
  * HTTP-based SSE reader); in the browser the global EventSource is used.
  *
@@ -242,7 +247,23 @@ export class CentralClient {
       }
     } catch { /* fall through */ }
     if (!sseQuery && collabToken()) {
-      sseQuery = `?token=${encodeURIComponent(collabToken())}`;
+      // Mint a short-lived, room-bound token (Bearer <redacted>). The long-lived
+      // token never goes in the URL — it would leak into history, server
+      // logs and proxies — and the server refuses ?token= on this route
+      // (same shape as realtime-client.ts).
+      const minted = await fetch(
+        `${apiBase()}/rooms/${encodeURIComponent(this.roomId)}/sse-token`,
+        { method: "POST", headers: authHeaders() },
+      ).catch(() => null);
+      const data = minted && minted.ok ? await minted.json().catch(() => null) : null;
+      const sse = data && typeof data.sseToken === "string" ? data.sseToken : "";
+      if (sse) sseQuery = `?sse=${encodeURIComponent(sse)}`;
+      // No minted token (a loopback server with no token answers 503, or
+      // the mint failed): open the stream bare, as the no-token path
+      // does — the server rejects an unauthenticated stream and the
+      // client keeps syncing through the Bearer-authenticated fetch
+      // paths, exactly as the old ?token= fallback degraded (it was
+      // refused too, so nothing that worked before is lost).
     }
     const url = `${apiBase()}/rooms/${encodeURIComponent(this.roomId)}/events${sseQuery}`;
     const factory =

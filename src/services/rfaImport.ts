@@ -22,8 +22,11 @@ import type { IfcAPI } from 'web-ifc';
  *
  * The file is supplied as a File / ArrayBuffer / Uint8Array — a local file
  * path is not accepted, because a path cannot be fetched as a URL.
- * No live APS call is made unless FORGE_CLIENT_ID / FORGE_CLIENT_SECRET
- * are set in the environment.
+ * No live APS call is made unless APS_CLIENT_ID / APS_CLIENT_SECRET are
+ * set in the environment (the legacy FORGE_CLIENT_ID / FORGE_CLIENT_SECRET
+ * names are also accepted). Without either pair the import refuses with a
+ * typed RfaApsNotConfiguredError naming exactly which variables are
+ * missing — it never silently pretends the import succeeded.
  */
 
 const APS_AUTH_URL = 'https://developer.api.autodesk.com/authentication/v1/authenticate';
@@ -35,6 +38,64 @@ export const DEFAULT_RFA_BUCKET_KEY = 'openbimstudio-temp';
 
 export const DEFAULT_RFA_MAX_POLL_ATTEMPTS = 60;
 export const DEFAULT_RFA_POLL_INTERVAL_MS = 5_000;
+
+/**
+ * Stable code for the missing-credentials refusal, so callers (and
+ * tests) can distinguish "APS is not configured" from a failed APS
+ * call without parsing the message.
+ */
+export const RFA_APS_NOT_CONFIGURED_CODE = 'RFA_APS_NOT_CONFIGURED';
+
+/**
+ * Thrown when importRFA is called without configured APS credentials.
+ * The import cannot run at all in that state — there is no local .rfa
+ * reader — so the refusal is a hard, typed error naming exactly which
+ * credential variables are missing, never a silent no-op: an earlier
+ * version only logged a warning and resolved, so a caller awaiting the
+ * import could believe the family had been imported when nothing had
+ * happened. `missing` lists the canonical variable names that are
+ * unset; the legacy FORGE_* spellings are accepted as fallbacks (see
+ * resolveApsCredentials) but are never the names the error asks for.
+ */
+export class RfaApsNotConfiguredError extends Error {
+  readonly code = RFA_APS_NOT_CONFIGURED_CODE;
+  readonly missing: string[];
+
+  constructor(missing: string[]) {
+    super(
+      `RFA import needs Autodesk Platform Services credentials, but ${missing.join(' and ')} ` +
+        `${missing.length === 1 ? 'is' : 'are'} not set. ` +
+        'Set APS_CLIENT_ID and APS_CLIENT_SECRET in the environment ' +
+        '(the legacy FORGE_CLIENT_ID / FORGE_CLIENT_SECRET names are also accepted). ' +
+        'No file was uploaded and no APS call was made. ' +
+        'Unblockers: a real .rfa file plus APS credentials — there is no local .rfa reader.',
+    );
+    this.name = 'RfaApsNotConfiguredError';
+    this.missing = missing;
+  }
+}
+
+/**
+ * Read the APS client credentials. The server (server/index.mjs) reads
+ * APS_CLIENT_ID / APS_CLIENT_SECRET and tells the user to configure
+ * those, so they are canonical here too; the FORGE_CLIENT_ID /
+ * FORGE_CLIENT_SECRET names this module originally read are kept as a
+ * legacy fallback so existing setups keep working. Returns the missing
+ * canonical names when either side of the pair is unset in both
+ * spellings — the caller turns that into RfaApsNotConfiguredError.
+ */
+export function resolveApsCredentials(): {
+  clientId: string | undefined;
+  clientSecret: string | undefined;
+  missing: string[];
+} {
+  const clientId = process.env.APS_CLIENT_ID ?? process.env.FORGE_CLIENT_ID;
+  const clientSecret = process.env.APS_CLIENT_SECRET ?? process.env.FORGE_CLIENT_SECRET;
+  const missing: string[] = [];
+  if (!clientId) missing.push('APS_CLIENT_ID');
+  if (!clientSecret) missing.push('APS_CLIENT_SECRET');
+  return { clientId, clientSecret, missing };
+}
 
 /** Minimal HTTP surface the importer needs. Implementations follow axios
  * semantics: a non-2xx response rejects with an error carrying
@@ -236,11 +297,9 @@ export async function importRFA(
   api: IfcAPI,
   options: RfaImportOptions = {},
 ): Promise<void> {
-  const clientId = process.env.FORGE_CLIENT_ID;
-  const clientSecret = process.env.FORGE_CLIENT_SECRET;
+  const { clientId, clientSecret, missing } = resolveApsCredentials();
   if (!clientId || !clientSecret) {
-    console.warn('Forge credentials not set – RFA import unavailable');
-    return;
+    throw new RfaApsNotConfiguredError(missing);
   }
 
   const file = sanitizeFileName(fileName);

@@ -19,18 +19,52 @@
  * right-click actions. Competes with BIM Project Browser presentation.
  */
 import { ctx } from "../core/context";
-import { listSheets, createSheet, createDefaultSheetSet } from "../modules/sheets/sheets";
-import { listMaterials, ensureDefaultMaterials } from "../modules/materials/materials";
-import { listPhases, createDefaultPhases } from "../modules/timeline/timeline";
-import { listSavedViews, restoreView, saveCurrentView } from "./saved-views";
-import { bootViewsStore, listViews } from "../modules/views/store";
+import {
+  listSheets,
+  createSheet,
+  updateSheet,
+  deleteSheet,
+  duplicateSheet,
+  createDefaultSheetSet,
+} from "../modules/sheets/sheets";
+import { listMaterials, ensureDefaultMaterials, addMaterial } from "../modules/materials/materials";
+import {
+  listPhases,
+  addPhase,
+  updatePhase,
+  removePhase,
+  assignSelectionToPhase,
+  createDefaultPhases,
+} from "../modules/timeline/timeline";
+import {
+  listSavedViews,
+  restoreView,
+  saveCurrentView,
+  renameView as renameSavedView,
+  duplicateView as duplicateSavedView,
+  deleteView as deleteSavedView,
+} from "./saved-views";
+import {
+  bootViewsStore,
+  listViews,
+  createView,
+  updateView,
+  deleteView as deleteStoredView,
+  duplicateView as duplicateStoredView,
+} from "../modules/views/store";
+import type { ViewKind } from "../modules/views/types";
 import {
   buildProjectBrowserTree,
   filterProjectBrowserTree,
   type ProjectBrowserNode,
-  type ProjectBrowserNodeKind,
   type ProjectBrowserTreeInput,
 } from "./project-browser-tree";
+import {
+  menuItemsForNode,
+  newViewLabel,
+  type ProjectBrowserMenuActionId,
+} from "./project-browser-menu";
+import { promptLine, confirmDialog } from "./form-modal";
 import { selection } from "./selection";
 import { togglePlanView } from "./plan-view-panel";
 import { toggleSchedules } from "./schedules-panel";
@@ -40,13 +74,15 @@ import { togglePropertyPalette, isPropertyPaletteVisible } from "./property-pale
 import { toggleModelTreePanel } from "./model-tree-panel";
 import { openViewInPanel } from "./views-panel";
 import { fitAll, goHome } from "./camera-tools";
+import { registerEscapeScope } from "../core/escape-all";
 
-type NodeKind = ProjectBrowserNodeKind;
 type BrowserNode = ProjectBrowserNode;
 
 let panel: HTMLElement | null = null;
 let visible = false;
 let expanded = new Set<string>(["views", "views-plan", "views-3d", "sheets", "schedules"]);
+/** Guard: the G11 escape scope is registered once, at setup. */
+let escapeScopeRegistered = false;
 let selectedNodeId: string | null = null;
 /** As-you-type filter text; empty means no filtering. */
 let filterQuery = "";
@@ -87,6 +123,8 @@ function buildTree(): BrowserNode[] {
     families = defs.map((f: any) => ({
       id: String(f.id),
       name: String(f.name),
+      // The right-click menu needs this: built-in families cannot be deleted.
+      builtIn: f.builtIn === true,
       types: (f.types ?? []).map((t: any) => ({ id: String(t.id), name: String(t.name) })),
     }));
   } catch { /* */ }
@@ -215,6 +253,381 @@ function onActivate(node: BrowserNode) {
   render();
 }
 
+function findNode(nodes: BrowserNode[], id: string): BrowserNode | null {
+  for (const n of nodes) {
+    if (n.id === id) return n;
+    if (n.children) {
+      const f = findNode(n.children, id);
+      if (f) return f;
+    }
+  }
+  return null;
+}
+
+function notifyBrowser(message: string, kind: "success" | "warn" | "error" | "info" = "success") {
+  window.dispatchEvent(new CustomEvent("obs-toast", { detail: { message, kind } }));
+}
+
+/* ── Right-click menu (G11) ──────────────────────────────────────────────
+ * The items come from the pure model (./project-browser-menu); this layer
+ * only renders them and executes them against the stores. The menu is a
+ * separate body-level element (like the model-tree panel's), so re-rendering
+ * the tree never destroys it mid-click. */
+
+let menuEl: HTMLDivElement | null = null;
+
+function closeBrowserMenu() {
+  if (menuEl) menuEl.style.display = "none";
+}
+
+function ensureMenuEl(): HTMLDivElement {
+  if (menuEl) return menuEl;
+  menuEl = document.createElement("div");
+  menuEl.id = "obs-project-browser-menu";
+  menuEl.setAttribute("data-obs-ui", "1");
+  menuEl.style.cssText =
+    "position:fixed;z-index:10000;display:none;min-width:220px;max-width:300px;" +
+    "background:var(--bg-floating,#1e1f26);border:1px solid var(--border-default,#3a3a4a);border-radius:8px;" +
+    "box-shadow:0 10px 30px rgba(0,0,0,.55);font:12px system-ui,sans-serif;color:var(--text-primary,#e2e8f0);padding:4px 0";
+  document.body.appendChild(menuEl);
+  // Close on any click outside — same pattern as the model-tree panel's
+  // menu. A click on an item is inside the menu, so it runs before this
+  // handler can close it. Escape is NOT handled here: the global
+  // escape-all orchestrator consumes bare Escape (stopImmediatePropagation)
+  // whenever any scope cancels something, so a private window keydown
+  // listener would never fire; the menu registers as an escape scope in
+  // setupProjectBrowser instead.
+  window.addEventListener("mousedown", (e) => {
+    if (menuEl && !menuEl.contains(e.target as Node)) closeBrowserMenu();
+  });
+  return menuEl;
+}
+
+function openBrowserMenu(node: BrowserNode, x: number, y: number) {
+  const items = menuItemsForNode(node, { hasSelection: !selection.isEmpty() });
+  if (!items || !items.length) return;
+  const el = ensureMenuEl();
+  el.innerHTML = "";
+  for (const it of items) {
+    const row = document.createElement("div");
+    row.className = "pb-menu-item";
+    row.dataset.action = it.id;
+    if (it.disabled) {
+      row.dataset.disabled = "true";
+      row.setAttribute("aria-disabled", "true");
+      if (it.disabledReason) row.title = it.disabledReason;
+    }
+    row.style.cssText =
+      "display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;white-space:nowrap" +
+      (it.disabled ? ";opacity:.45;cursor:default" : "") +
+      (it.danger ? ";color:#f87171" : "");
+    row.innerHTML =
+      `<span style="width:18px;text-align:center;flex-shrink:0">${it.icon ?? ""}</span>` +
+      `<span style="flex:1;overflow:hidden;text-overflow:ellipsis">${esc(it.label)}</span>`;
+    if (!it.disabled) {
+      row.addEventListener("mouseenter", () => { row.style.background = "var(--bg-hover,#2c2d38)"; });
+      row.addEventListener("mouseleave", () => { row.style.background = "transparent"; });
+      row.addEventListener("click", () => {
+        closeBrowserMenu();
+        void runMenuAction(node, it.id);
+      });
+    }
+    el.appendChild(row);
+  }
+  el.style.display = "block";
+  // Keep the whole menu on screen (flip up / left when it would overflow).
+  const mw = el.offsetWidth, mh = el.offsetHeight;
+  let mx = x, my = y;
+  if (x + mw > window.innerWidth - 4) mx = Math.max(0, x - mw);
+  if (y + mh > window.innerHeight - 4) my = Math.max(0, y - mh);
+  el.style.left = `${Math.max(0, mx)}px`;
+  el.style.top = `${Math.max(0, my)}px`;
+}
+
+/** Ask for a new name through the app dialog; null when cancelled/empty. */
+async function promptName(title: string, label: string, current: string): Promise<string | null> {
+  const name = await promptLine(title, label, current);
+  if (name == null) return null;
+  const trimmed = name.trim();
+  if (!trimmed) {
+    notifyBrowser("Name cannot be empty.", "warn");
+    return null;
+  }
+  return trimmed;
+}
+
+function familyService(): any {
+  return (ctx.features as any)?.family;
+}
+
+/**
+ * Execute one menu action for real. Rename prompts through the app
+ * form-modal, delete confirms through the app dialog, and every mutation
+ * goes through the store that owns the data; the tree re-renders after.
+ */
+async function runMenuAction(node: BrowserNode, action: ProjectBrowserMenuActionId): Promise<void> {
+  try {
+    switch (action) {
+      case "open":
+        onActivate(node);
+        return;
+
+      case "expand-all": {
+        const walk = (nodes: BrowserNode[]) => {
+          for (const n of nodes) {
+            expanded.add(n.id);
+            if (n.children) walk(n.children);
+          }
+        };
+        walk(buildTree());
+        render();
+        return;
+      }
+
+      case "open-sheets":
+        toggleSheetsPanel();
+        return;
+      case "open-schedules":
+        toggleSchedules();
+        return;
+      case "open-cost":
+        import("./cost-panel").then((m) => m.toggleCostPanel()).catch(() => {});
+        return;
+      case "open-timeline":
+        toggleTimelinePanel();
+        return;
+      case "open-model-tree":
+        toggleModelTreePanel();
+        return;
+      case "open-properties":
+        ensureDefaultMaterials();
+        if (!isPropertyPaletteVisible()) togglePropertyPalette();
+        return;
+
+      case "new-view": {
+        if (node.kind === "view-group") {
+          // A kind subgroup creates a stored view of that kind.
+          const kind = node.id.replace(/^views-/, "") as ViewKind;
+          const label = newViewLabel(node.label);
+          const name = await promptName(label, "View name", `${label.replace(/^New /, "")} ${listViews().length + 1}`);
+          if (name == null) return;
+          createView(kind, name);
+          notifyBrowser(`Created view "${name}".`);
+          expanded.add("views");
+          expanded.add(node.id);
+        } else {
+          const name = await promptName("Save view", "View name", `View ${listSavedViews().length + 1}`);
+          if (name == null) return;
+          saveCurrentView(name);
+          notifyBrowser(`Saved view "${name}".`);
+          expanded.add("views");
+          expanded.add("views-saved");
+        }
+        render();
+        return;
+      }
+
+      case "save-view": {
+        const name = await promptName("Save view", "View name", `View ${listSavedViews().length + 1}`);
+        if (name == null) return;
+        saveCurrentView(name);
+        notifyBrowser(`Saved view "${name}".`);
+        expanded.add("views");
+        expanded.add("views-saved");
+        render();
+        return;
+      }
+
+      case "new-sheet": {
+        const sheet = createSheet();
+        notifyBrowser(`Created sheet "${sheet.number} — ${sheet.name}".`);
+        expanded.add("sheets");
+        render();
+        return;
+      }
+
+      case "new-phase": {
+        const name = await promptName("New phase", "Phase name", `Phase ${listPhases().length + 1}`);
+        if (name == null) return;
+        addPhase(name);
+        notifyBrowser(`Created phase "${name}".`);
+        expanded.add("phases");
+        render();
+        return;
+      }
+
+      case "new-material": {
+        const name = await promptName("New material", "Material name", "New Material");
+        if (name == null) return;
+        addMaterial({ name });
+        notifyBrowser(`Created material "${name}".`);
+        expanded.add("families");
+        expanded.add("families-materials");
+        render();
+        return;
+      }
+
+      case "new-set": {
+        const name = await promptName("New selection set", "Set name", `Set ${selection.listSets().length + 1}`);
+        if (name == null) return;
+        selection.saveSet(name);
+        notifyBrowser(`Saved selection set "${name}".`);
+        expanded.add("groups");
+        render();
+        return;
+      }
+
+      case "create-default-sheets":
+        createDefaultSheetSet();
+        notifyBrowser("Created the default sheet set.");
+        expanded.add("sheets");
+        render();
+        return;
+
+      case "create-default-phases":
+        createDefaultPhases();
+        notifyBrowser("Created the default phases.");
+        expanded.add("phases");
+        render();
+        return;
+
+      case "rename": {
+        const name = await promptName("Rename", "Name", node.label);
+        if (name == null) return;
+        switch (node.kind) {
+          case "sheet": {
+            updateSheet(String(node.meta?.sheetId ?? ""), { name });
+            break;
+          }
+          case "view-def":
+            updateView(String(node.meta?.viewId ?? ""), { name });
+            break;
+          case "view-saved":
+            renameSavedView(String(node.meta?.viewId ?? ""), name);
+            break;
+          case "family":
+            familyService()?.update?.(String(node.meta?.familyId ?? node.id.replace(/^fam-/, "")), { name });
+            break;
+          case "family-type":
+            familyService()?.updateType?.(
+              String(node.meta?.familyId ?? ""),
+              String(node.meta?.typeId ?? ""),
+              { name },
+            );
+            break;
+          case "group":
+            selection.renameSet(String(node.meta?.setId ?? ""), name);
+            break;
+          case "phase":
+            updatePhase(String(node.meta?.phaseId ?? ""), { name });
+            break;
+          default:
+            return;
+        }
+        notifyBrowser(`Renamed to "${name}".`);
+        render();
+        return;
+      }
+
+      case "duplicate": {
+        switch (node.kind) {
+          case "sheet": {
+            const copy = duplicateSheet(String(node.meta?.sheetId ?? ""));
+            if (copy) notifyBrowser(`Duplicated sheet as "${copy.number} — ${copy.name}".`);
+            break;
+          }
+          case "view-def": {
+            const copy = duplicateStoredView(String(node.meta?.viewId ?? ""));
+            if (copy) notifyBrowser(`Duplicated view as "${copy.name}".`);
+            break;
+          }
+          case "view-saved": {
+            const copy = duplicateSavedView(String(node.meta?.viewId ?? ""));
+            if (copy) notifyBrowser(`Duplicated view as "${copy.name}".`);
+            break;
+          }
+          case "family": {
+            const id = String(node.meta?.familyId ?? node.id.replace(/^fam-/, ""));
+            const copy = familyService()?.duplicate?.(id, `${node.label} (copy)`);
+            if (copy) notifyBrowser(`Duplicated family as "${copy.name}".`);
+            break;
+          }
+          case "family-type": {
+            const fid = String(node.meta?.familyId ?? "");
+            const tid = String(node.meta?.typeId ?? "");
+            const fam = familyService()?.get?.(fid);
+            const type = fam?.types?.find((t: any) => String(t.id) === tid);
+            const copy = familyService()?.createType?.(fid, `${node.label} (copy)`, { ...(type?.values ?? {}) });
+            if (copy) notifyBrowser(`Duplicated type as "${copy.name}".`);
+            break;
+          }
+          case "group": {
+            const copy = selection.duplicateSet(String(node.meta?.setId ?? ""));
+            if (copy) notifyBrowser(`Duplicated set as "${copy.name}".`);
+            break;
+          }
+          case "phase": {
+            const src = listPhases().find((p) => p.id === String(node.meta?.phaseId ?? ""));
+            const np = addPhase(`${src?.name ?? node.label} (copy)`);
+            if (src) assignSelectionToPhase(np.id, [...src.elementIds]);
+            notifyBrowser(`Duplicated phase as "${np.name}".`);
+            break;
+          }
+          default:
+            return;
+        }
+        render();
+        return;
+      }
+
+      case "delete": {
+        const ok = await confirmDialog(`Delete ${node.label}?`, `Delete "${node.label}"?`);
+        if (!ok) return;
+        switch (node.kind) {
+          case "sheet":
+            deleteSheet(String(node.meta?.sheetId ?? ""));
+            break;
+          case "view-def":
+            deleteStoredView(String(node.meta?.viewId ?? ""));
+            break;
+          case "view-saved":
+            deleteSavedView(String(node.meta?.viewId ?? ""));
+            break;
+          case "family": {
+            const id = String(node.meta?.familyId ?? node.id.replace(/^fam-/, ""));
+            if (!familyService()?.remove?.(id)) {
+              notifyBrowser("Built-in families cannot be deleted.", "warn");
+              return;
+            }
+            break;
+          }
+          case "family-type":
+            familyService()?.removeType?.(String(node.meta?.familyId ?? ""), String(node.meta?.typeId ?? ""));
+            break;
+          case "group":
+            selection.deleteSet(String(node.meta?.setId ?? ""));
+            break;
+          case "phase":
+            removePhase(String(node.meta?.phaseId ?? ""));
+            break;
+          default:
+            return;
+        }
+        if (selectedNodeId === node.id) selectedNodeId = null;
+        notifyBrowser(`Deleted "${node.label}".`);
+        render();
+        return;
+      }
+
+      default:
+        return;
+    }
+  } catch (e) {
+    console.warn("[project-browser] menu action", action, e);
+    notifyBrowser(`Could not run "${action}": ${e instanceof Error ? e.message : String(e)}`, "error");
+  }
+}
+
 function renderNode(node: BrowserNode, depth: number, forceExpand = false): string {
   const hasKids = !!(node.children && node.children.length);
   const isExp = forceExpand || expanded.has(node.id);
@@ -252,7 +665,6 @@ function render() {
     el.addEventListener("click", (e) => {
       e.stopPropagation();
       const id = (el as HTMLElement).dataset.id!;
-      const kind = (el as HTMLElement).dataset.kind as NodeKind;
       // Toggle expand on chevron
       const t = (e.target as HTMLElement).closest("[data-toggle]") as HTMLElement | null;
       if (t) {
@@ -263,34 +675,27 @@ function render() {
         return;
       }
       // Find node
-      const find = (nodes: BrowserNode[]): BrowserNode | null => {
-        for (const n of nodes) {
-          if (n.id === id) return n;
-          if (n.children) {
-            const f = find(n.children);
-            if (f) return f;
-          }
-        }
-        return null;
-      };
-      const node = find(tree);
+      const node = findNode(tree, id);
       if (node) onActivate(node);
     });
     el.addEventListener("dblclick", (e) => {
       e.stopPropagation();
       const id = (el as HTMLElement).dataset.id!;
-      const find = (nodes: BrowserNode[]): BrowserNode | null => {
-        for (const n of nodes) {
-          if (n.id === id) return n;
-          if (n.children) {
-            const f = find(n.children);
-            if (f) return f;
-          }
-        }
-        return null;
-      };
-      const node = find(tree);
+      const node = findNode(tree, id);
       if (node) onActivate(node);
+    });
+    // G11: right-click opens the node's context menu (Open / Rename /
+    // Duplicate / Delete and the creation actions). stopPropagation keeps
+    // the viewport context menu from opening over the browser panel.
+    el.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = (el as HTMLElement).dataset.id!;
+      const node = findNode(tree, id);
+      if (!node) return;
+      selectedNodeId = node.id;
+      render();
+      openBrowserMenu(node, (e as MouseEvent).clientX, (e as MouseEvent).clientY);
     });
   });
 }
@@ -445,6 +850,24 @@ export function isProjectBrowserVisible() {
 
 export function setupProjectBrowser() {
   ensurePanel();
+  // G11: the context menu is transient UI — Escape closes it through the
+  // global escape-all orchestrator (priority 150: above the generic
+  // ui-transients scope, below tool/mode scopes), because escape-all
+  // consumes bare Escape before any private window keydown listener runs.
+  if (!escapeScopeRegistered) {
+    escapeScopeRegistered = true;
+    registerEscapeScope({
+      id: "project-browser-menu",
+      priority: 150,
+      cancel: () => {
+        if (menuEl && menuEl.style.display !== "none") {
+          closeBrowserMenu();
+          return true;
+        }
+        return false;
+      },
+    });
+  }
   // Refresh when models load
   try {
     window.addEventListener("obs-toast", () => {
