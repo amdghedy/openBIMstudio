@@ -132,7 +132,7 @@ class Data {
   }
 }
 
-interface Common { layer: string; color?: number; rgb?: number; lineType?: string; lineweight?: number; ltScale?: number; transparency?: number; invisible?: boolean }
+interface Common { layer: string; color?: number; rgb?: number; lineType?: string; lineweight?: number; ltScale?: number; transparency?: number; invisible?: boolean; elevation?: number; thickness?: number }
 
 function common(d: Data): Common {
   const layer = d.s(8) ?? "0";
@@ -150,7 +150,12 @@ function common(d: Data): Common {
   const transparency = d.has(440) ? dxfTransparency(d.n(440)) : undefined;
   // Group 60 Invisible flag — object-level hidden state (HIDEOBJECTS / ISOLATEOBJECTS).
   const invisible = d.n(60) === 1 ? true : undefined;
-  const c0: Common = { layer, color, rgb, lineType, ...(ltScale !== undefined ? { ltScale } : {}), ...(transparency ? { transparency } : {}), ...(invisible ? { invisible } : {}) };
+  // 2D-8: elevation (38) and thickness (39) are AcDbEntity groups; the
+  // LWPOLYLINE case additionally carries group 38 into the vertex Z,
+  // which is the reader's pre-existing convention for imported files.
+  const elevation = d.has(38) && d.n(38) !== 0 ? d.n(38) : undefined;
+  const thickness = d.has(39) && d.n(39) !== 0 ? d.n(39) : undefined;
+  const c0: Common = { layer, color, rgb, lineType, ...(ltScale !== undefined ? { ltScale } : {}), ...(transparency ? { transparency } : {}), ...(invisible ? { invisible } : {}), ...(elevation !== undefined ? { elevation } : {}), ...(thickness !== undefined ? { thickness } : {}) };
   return lw != null ? { ...c0, lineweight: lw } : c0;
 }
 

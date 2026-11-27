@@ -178,6 +178,7 @@ import * as DIM from "../modules/cad-viewer/dimension-system";
 import * as Ann from "../modules/cad-viewer/cad-annotation";
 import * as LayerMgr from "../modules/cad-viewer/cad-layer-manager";
 import * as Poly from "../modules/cad-viewer/cad-polyline";
+import * as Rect from "../modules/cad-viewer/cad-rect";
 import * as Sel11 from "../modules/cad-viewer/cad-selection-a11";
 import * as Sel18 from "../modules/cad-viewer/cad-selection-a18";
 import * as SpaceAdd from "../modules/cad-viewer/cad-space-add";
@@ -1970,6 +1971,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let polyArcStage: "off" | "mid" | "end" = "off";
   let polyArcMid: M.Pt | null = null;
   let polyNextW: { start: number; end: number } = { start: 0, end: 0 };
+  // 2D-8 — RECTANG variants: chamfer/fillet/width/elevation/thickness
+  // persist across RECT invocations, like AutoCAD (chamfer and fillet
+  // are mutually exclusive — setting one clears the other). The Area
+  // mode is one-shot: it is cleared when the rectangle is drawn or the
+  // tool changes, and while it waits for its dimension only a length
+  // (bare number) or W (width) is meaningful.
+  let rectChamfer: { d1: number; d2: number } | null = null;
+  let rectFillet: number | null = null;
+  let rectWidth = 0;
+  let rectElevation = 0;
+  let rectThickness = 0;
+  let rectArea: { area: number; length: number } | { area: number; width: number } | null = null;
+  let rectAreaPending = 0;
+  let rectAreaAwaitingDim = false;
   let markups: Markup[] = [];
   let hits: M.TextHit[] = [],
     hitI = -1;
@@ -5865,6 +5880,244 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     showAcadPrompt();
   }
 
+  /**
+   * RECTANG variants (2D-8): pendingNumeric handlers for the values the
+   * option keywords arm. Each sets the persisted setting (chamfer and
+   * fillet clear each other, like AutoCAD) and returns to the
+   * first-corner prompt — the value applies to the rectangle being
+   * drawn and to later RECT invocations until changed. A bare number
+   * while the Area flow waits for its dimension is the length.
+   */
+  function onRectChamferD1Typed(v: number): void {
+    if (tool !== "rect") return;
+    if (!(v > 0)) {
+      logCmd("RECT: chamfer distances must be greater than zero.");
+      pendingNumeric = onRectChamferD1Typed;
+      showAcadPrompt();
+      return;
+    }
+    rectChamfer = { d1: v, d2: rectChamfer?.d2 ?? 0 };
+    pendingNumeric = onRectChamferD2Typed;
+    logCmd(`Specify second chamfer distance <${fmt(rectChamfer.d2)}>:`);
+    showAcadPrompt();
+  }
+  function onRectChamferD2Typed(v: number): void {
+    if (tool !== "rect") return;
+    if (!(v > 0)) {
+      logCmd("RECT: chamfer distances must be greater than zero.");
+      pendingNumeric = onRectChamferD2Typed;
+      showAcadPrompt();
+      return;
+    }
+    rectChamfer = { d1: rectChamfer?.d1 ?? 0, d2: v };
+    rectFillet = null;
+    pendingNumeric = null;
+    logCmd(`RECT: chamfer distances = ${fmt(rectChamfer.d1)} × ${fmt(rectChamfer.d2)}.`);
+    showAcadPrompt();
+  }
+  function onRectFilletTyped(v: number): void {
+    if (tool !== "rect") return;
+    if (!(v >= 0)) {
+      logCmd("RECT: fillet radius must be zero or greater.");
+      pendingNumeric = onRectFilletTyped;
+      showAcadPrompt();
+      return;
+    }
+    rectFillet = v;
+    rectChamfer = null;
+    pendingNumeric = null;
+    logCmd(v === 0 ? "RECT: fillet radius = 0 — square corners." : `RECT: fillet radius = ${fmt(v)}.`);
+    showAcadPrompt();
+  }
+  function onRectElevationTyped(v: number): void {
+    if (tool !== "rect") return;
+    if (!Number.isFinite(v)) {
+      logCmd("RECT: elevation must be a number.");
+      pendingNumeric = onRectElevationTyped;
+      showAcadPrompt();
+      return;
+    }
+    rectElevation = v;
+    pendingNumeric = null;
+    logCmd(`RECT: elevation = ${fmt(v)}.`);
+    showAcadPrompt();
+  }
+  function onRectThicknessTyped(v: number): void {
+    if (tool !== "rect") return;
+    if (!(v >= 0)) {
+      logCmd("RECT: thickness must be zero or greater.");
+      pendingNumeric = onRectThicknessTyped;
+      showAcadPrompt();
+      return;
+    }
+    rectThickness = v;
+    pendingNumeric = null;
+    logCmd(`RECT: thickness = ${fmt(v)}.`);
+    showAcadPrompt();
+  }
+  function onRectWidthTyped(v: number): void {
+    if (tool !== "rect") return;
+    if (!(v >= 0)) {
+      logCmd("RECT: line width must be zero or greater.");
+      pendingNumeric = onRectWidthTyped;
+      showAcadPrompt();
+      return;
+    }
+    rectWidth = v;
+    pendingNumeric = null;
+    logCmd(v === 0 ? "RECT: line width = 0 — hairline." : `RECT: line width = ${fmt(v)}.`);
+    showAcadPrompt();
+  }
+  function onRectAreaTyped(v: number): void {
+    if (tool !== "rect") return;
+    if (!(v > 0)) {
+      logCmd("RECT: area must be greater than zero.");
+      pendingNumeric = onRectAreaTyped;
+      showAcadPrompt();
+      return;
+    }
+    rectAreaPending = v;
+    rectAreaAwaitingDim = true;
+    pendingNumeric = onRectAreaLengthTyped;
+    logCmd("Enter length of rectangle or [Width]:");
+    showAcadPrompt();
+  }
+  function onRectAreaLengthTyped(v: number): void {
+    if (tool !== "rect") return;
+    if (!(v > 0)) {
+      logCmd("RECT: length must be greater than zero.");
+      pendingNumeric = onRectAreaLengthTyped;
+      showAcadPrompt();
+      return;
+    }
+    rectArea = { area: rectAreaPending, length: v };
+    rectAreaAwaitingDim = false;
+    pendingNumeric = null;
+    logCmd(`RECT: rectangle area = ${fmt(rectArea.area)}, length = ${fmt(v)} (width ${fmt(rectArea.area / v)}).`);
+    showAcadPrompt();
+  }
+  function onRectAreaWidthTyped(v: number): void {
+    if (tool !== "rect") return;
+    if (!(v > 0)) {
+      logCmd("RECT: width must be greater than zero.");
+      pendingNumeric = onRectAreaWidthTyped;
+      showAcadPrompt();
+      return;
+    }
+    rectArea = { area: rectAreaPending, width: v };
+    rectAreaAwaitingDim = false;
+    pendingNumeric = null;
+    logCmd(`RECT: rectangle area = ${fmt(rectArea.area)}, width = ${fmt(v)} (length ${fmt(rectArea.area / v)}).`);
+    showAcadPrompt();
+  }
+
+  /**
+   * In-tool option keywords while RECTANG waits for its first corner
+   * (2D-8): C = chamfer, E = elevation, F = fillet, T = thickness,
+   * W = width, A = area — the AutoCAD option keys, plus the full words
+   * and inline values ("F 5", "C 6 4"). Returns true when the entry was
+   * consumed here, so it never reaches the generic command dispatcher —
+   * "C" must not start CIRCLE mid-rectangle. Anything else returns
+   * false and dispatches normally.
+   */
+  function handleRectOption(trimmed: string): boolean {
+    if (tool !== "rect") return false;
+    if (rectAreaAwaitingDim) {
+      const k = trimmed.trim().toUpperCase();
+      if (k === "W" || k === "WIDTH") {
+        pendingNumeric = onRectAreaWidthTyped;
+        logCmd("Enter width of rectangle:");
+        showAcadPrompt();
+        return true;
+      }
+      // A bare number is consumed by pendingNumeric
+      // (onRectAreaLengthTyped) before this runs.
+      logCmd("RECT Area: enter a length for the rectangle, or W for width.");
+      showAcadPrompt();
+      return true;
+    }
+    if (pts.length !== 0) return false;
+    const act = Rect.parseRectOption(trimmed);
+    switch (act.action) {
+      case "none":
+        return false;
+      case "invalid":
+        logCmd(act.message);
+        showAcadPrompt();
+        return true;
+      case "promptChamfer":
+        pendingNumeric = onRectChamferD1Typed;
+        logCmd(`Specify first chamfer distance <${fmt(rectChamfer?.d1 ?? 0)}>: (type a value + Enter)`);
+        showAcadPrompt();
+        return true;
+      case "setChamfer1":
+        rectChamfer = { d1: act.value, d2: rectChamfer?.d2 ?? 0 };
+        pendingNumeric = onRectChamferD2Typed;
+        logCmd(`Specify second chamfer distance <${fmt(rectChamfer.d2)}>:`);
+        showAcadPrompt();
+        return true;
+      case "setChamfer":
+        rectChamfer = { d1: act.d1, d2: act.d2 };
+        rectFillet = null;
+        logCmd(`RECT: chamfer distances = ${fmt(act.d1)} × ${fmt(act.d2)}.`);
+        showAcadPrompt();
+        return true;
+      case "promptFillet":
+        pendingNumeric = onRectFilletTyped;
+        logCmd(`Specify fillet radius <${fmt(rectFillet ?? 0)}>: (type a value + Enter)`);
+        showAcadPrompt();
+        return true;
+      case "setFillet":
+        rectFillet = act.value;
+        rectChamfer = null;
+        logCmd(act.value === 0 ? "RECT: fillet radius = 0 — square corners." : `RECT: fillet radius = ${fmt(act.value)}.`);
+        showAcadPrompt();
+        return true;
+      case "promptElevation":
+        pendingNumeric = onRectElevationTyped;
+        logCmd(`Specify elevation <${fmt(rectElevation)}>: (type a value + Enter)`);
+        showAcadPrompt();
+        return true;
+      case "setElevation":
+        rectElevation = act.value;
+        logCmd(`RECT: elevation = ${fmt(act.value)}.`);
+        showAcadPrompt();
+        return true;
+      case "promptThickness":
+        pendingNumeric = onRectThicknessTyped;
+        logCmd(`Specify thickness <${fmt(rectThickness)}>: (type a value + Enter)`);
+        showAcadPrompt();
+        return true;
+      case "setThickness":
+        rectThickness = act.value;
+        logCmd(`RECT: thickness = ${fmt(act.value)}.`);
+        showAcadPrompt();
+        return true;
+      case "promptWidth":
+        pendingNumeric = onRectWidthTyped;
+        logCmd(`Specify line width <${fmt(rectWidth)}>: (type a value + Enter)`);
+        showAcadPrompt();
+        return true;
+      case "setWidth":
+        rectWidth = act.value;
+        logCmd(act.value === 0 ? "RECT: line width = 0 — hairline." : `RECT: line width = ${fmt(act.value)}.`);
+        showAcadPrompt();
+        return true;
+      case "promptArea":
+        pendingNumeric = onRectAreaTyped;
+        logCmd("Enter area of rectangle in current units:");
+        showAcadPrompt();
+        return true;
+      case "setArea":
+        rectAreaPending = act.value;
+        rectAreaAwaitingDim = true;
+        pendingNumeric = onRectAreaLengthTyped;
+        logCmd("Enter length of rectangle or [Width]:");
+        showAcadPrompt();
+        return true;
+    }
+  }
+
   /** Tessellated points of the polyline being drawn, with the rubber-band segment to the cursor. */
   function polyPreviewPoints(cur: M.Pt | null): M.Pt[] {
     const base = Poly.displayPoints({
@@ -9556,7 +9809,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       case "mtext":
         return n === 0 ? "Specify first corner of text column:" : "Specify opposite corner of text column:";
       case "rect":
-        return n === 0 ? "Specify first corner point:" : "Specify other corner point:";
+        // 2D-8: AutoCAD offers the variants at the first-corner prompt.
+        return n === 0 ? "Specify first corner point or [Chamfer/Elevation/Fillet/Thickness/Width/Area]:" : "Specify other corner point:";
       case "mview":
         return n === 0 ? "Specify first corner of viewport:" : "Specify opposite corner of viewport:";
       case "poly":
@@ -9716,6 +9970,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     tool = t;
     if (t !== "circle") circleMode = "center";
     if (t !== "arc") arcMode = "3p";
+    // 2D-8: leaving RECT abandons a one-shot Area mode (the persisted
+    // chamfer/fillet/width/elevation/thickness settings survive).
+    if (t !== "rect") {
+      rectArea = null;
+      rectAreaAwaitingDim = false;
+    }
     cv.focus({ preventScroll: true });
     pts = [];
     // A7: leaving PLINE drops its in-progress segments/arc; entering it
@@ -10277,18 +10537,64 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         if (pts.length === 2) {
           const p1 = pts[0],
             p2 = pts[1];
+          // 2D-8: chamfer/fillet/width/elevation/thickness are the
+          // persisted settings; Area is one-shot and the second pick
+          // fixes only the direction of the length side.
+          const opts: Rect.RectOptions = {
+            ...(rectChamfer ? { chamfer: rectChamfer } : {}),
+            ...(rectFillet != null && rectFillet > 0 ? { fillet: rectFillet } : {}),
+            ...(rectWidth > 0 ? { width: rectWidth } : {}),
+            ...(rectElevation !== 0 ? { elevation: rectElevation } : {}),
+            ...(rectThickness > 0 ? { thickness: rectThickness } : {}),
+          };
+          let built: Rect.RectBuild;
+          let label: string;
+          if (rectArea) {
+            const area = rectArea;
+            const fixed =
+              "length" in area
+                ? { kind: "length" as const, value: area.length }
+                : { kind: "width" as const, value: area.width };
+            const sized = Rect.buildRectArea(p1, p2, area.area, fixed, opts);
+            built = sized.build;
+            label = `Rectangle added: ${fmt(sized.length)} × ${fmt(sized.width)} (area ${fmt(area.area)})`;
+            rectArea = null;
+          } else {
+            built = Rect.buildRect(Rect.axisCorners(p1, p2), opts);
+            label = `Rectangle added: ${fmt(Math.abs(p2.x - p1.x))} × ${fmt(Math.abs(p2.y - p1.y))}`;
+          }
+          const notes: string[] = [];
+          if (built.appliedFillet != null) {
+            notes.push(`fillet r=${fmt(built.appliedFillet)}`);
+            if (rectFillet != null && built.appliedFillet < rectFillet) {
+              logCmd(`RECT: fillet radius clamped to ${fmt(built.appliedFillet)} (half the shorter side).`);
+            }
+          }
+          if (built.appliedChamfer) {
+            notes.push(`chamfer ${fmt(built.appliedChamfer.d1)} × ${fmt(built.appliedChamfer.d2)}`);
+            if (
+              rectChamfer &&
+              (built.appliedChamfer.d1 < rectChamfer.d1 || built.appliedChamfer.d2 < rectChamfer.d2)
+            ) {
+              logCmd(
+                `RECT: chamfer distances clamped to ${fmt(built.appliedChamfer.d1)} × ${fmt(built.appliedChamfer.d2)} (half the side).`,
+              );
+            }
+          }
+          if (built.width) notes.push(`width ${fmt(built.width)}`);
+          if (built.elevation) notes.push(`elevation ${fmt(built.elevation)}`);
+          if (built.thickness) notes.push(`thickness ${fmt(built.thickness)}`);
           addDraftEntity({
             type: "LWPOLYLINE",
             layer: currentLayer, ...newObjectProps(),
-            points: [
-              { x: p1.x, y: p1.y },
-              { x: p2.x, y: p1.y },
-              { x: p2.x, y: p2.y },
-              { x: p1.x, y: p2.y },
-            ],
+            points: built.points,
             closed: true,
+            ...(built.bulges ? { bulges: built.bulges } : {}),
+            ...(built.width ? { width: built.width } : {}),
+            ...(built.elevation ? { elevation: built.elevation } : {}),
+            ...(built.thickness ? { thickness: built.thickness } : {}),
           });
-          logCmd(`Rectangle added: ${fmt(Math.abs(p2.x - p1.x))} × ${fmt(Math.abs(p2.y - p1.y))}`);
+          logCmd(notes.length ? `${label} (${notes.join(", ")})` : label);
           pts = [];
         }
         break;
@@ -12375,6 +12681,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // PLINE option keywords while PLINE is active (A7): A = arc segment,
     // C = close in-tool, U = undo last point, W = width.
     if (tool === "poly" && handlePolyOption(trimmed)) {
+      draw();
+      return;
+    }
+    // RECTANG option keywords while RECTANG waits for its first corner
+    // (2D-8): C = chamfer, E = elevation, F = fillet, T = thickness,
+    // W = width, A = area.
+    if (tool === "rect" && handleRectOption(trimmed)) {
       draw();
       return;
     }

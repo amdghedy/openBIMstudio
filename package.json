@@ -455,7 +455,8 @@
     "test:workflow-pack-11": "node tests/workflow-pack-11.test.cjs",
     "test:workflow-pack-12": "node tests/workflow-pack-12.test.cjs",
     "test:workflow-pack-13-14": "node tests/workflow-pack-13-14.test.cjs",
-    "test:cad-table-2d7": "node tests/cad-table-2d7.test.cjs"
+    "test:cad-table-2d7": "node tests/cad-table-2d7.test.cjs",
+    "test:cad-rect-2d8": "node tests/cad-rect-2d8.test.cjs"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",

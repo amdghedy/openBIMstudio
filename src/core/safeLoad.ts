@@ -397,6 +397,8 @@ const dxfEntityBaseSchema = z.object({
   rgb: z.number().int().min(0).max(0xffffff).optional(),
   lineType: z.string().max(128).optional(),
   lineweight: finiteNumber.nonnegative().optional(),
+  elevation: finiteNumber.optional(),
+  thickness: finiteNumber.optional(),
   ltScale: finiteNumber.positive().optional(),
   transparency: finiteNumber.min(0).max(90).optional(),
   invisible: z.boolean().optional(),
