@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 import {
   registerKind, registeredKinds, kindOf, listAllIds, elementCount,
-  applyParamChange, resetElementStoreForTest,
+  applyParamChange, resetElementStoreForTest, serializeKind, hydrateKind,
 } from "../src/core/element-store.ts";
 
 let pass = 0, fail = 0;
@@ -75,6 +75,39 @@ ok(
   "the adapter delegates param changes to applyElementParamChange",
   /applyParamChange: \(id, param, value\) => applyElementParamChange\(id, param, value\)/.test(authoring),
 );
+
+/* ── persistence: serialize/hydrate route through the store (step 4) ── */
+resetElementStoreForTest();
+let box = [{ id: "wall-1" }, { id: "wall-2" }];
+registerKind({
+  kind: "authored",
+  listIds: () => box.map((e) => e.id),
+  owns: (id) => box.some((e) => e.id === id),
+  applyParamChange: () => ({ ok: true }),
+  serialize: () => box,
+  hydrate: (records) => { box = records; },
+});
+registerKind({ kind: "cad", listIds: () => [], owns: () => false, applyParamChange: () => ({ ok: true }) });
+
+ok("serializeKind returns the kind's records", serializeKind("authored").length === 2, JSON.stringify(serializeKind("authored")));
+hydrateKind("authored", [{ id: "wall-9" }]);
+ok("hydrateKind replaces the kind's records", box.length === 1 && box[0].id === "wall-9", JSON.stringify(box));
+const warns2 = [];
+const origWarn2 = console.warn;
+console.warn = (m) => warns2.push(String(m));
+const empty = serializeKind("cad");
+hydrateKind("cad", [{ id: "line-1" }]);
+console.warn = origWarn2;
+ok("a kind without serialize persists nothing and warns", empty.length === 0 && warns2.some((w) => w.includes('"cad"') && w.includes("serialize")), warns2.join(" | "));
+ok("a kind without hydrate skips loudly", warns2.some((w) => w.includes('"cad"') && w.includes("hydrate")), warns2.join(" | "));
+
+/* ── wiring: persistence goes through the store ──────────────────────── */
+const projects = readFileSync("src/modules/projects/projects.ts", "utf8");
+ok("project save reads elements through the store", /serializeKind\("authored"\)/.test(projects));
+ok("project load writes elements through the store", /hydrateKind\("authored",/.test(projects));
+ok("project persistence no longer side-imports element getters", !/getElements/.test(projects));
+const authoring2 = readFileSync("src/features/authoring.ts", "utf8");
+ok("the authored adapter implements serialize/hydrate", /serialize: \(\) => getElements\(\)/.test(authoring2) && /hydrate: \(records\) => setElements\(records as AuthoredElement\[\]\)/.test(authoring2));
 
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

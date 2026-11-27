@@ -34,6 +34,13 @@ export interface ElementKindAdapter {
     param: string,
     value: number | string | boolean,
   ): { ok: boolean; reason?: string };
+  /**
+   * Bulk export of this kind's element records for persistence
+   * (decision step 4). Optional while a kind is not yet persisted.
+   */
+  serialize?(): unknown[];
+  /** Bulk replace this kind's element records from persistence. */
+  hydrate?(records: unknown[]): void;
 }
 
 export interface ParamChangeResult {
@@ -74,6 +81,33 @@ export function listAllIds(): string[] {
   const out: string[] = [];
   for (const adapter of kinds.values()) out.push(...adapter.listIds());
   return out;
+}
+
+/**
+ * Persistence (decision step 4): the project store reads and writes
+ * element state through the store, not through side imports of one
+ * discipline's internals. Kinds without serialize/hydrate are not yet
+ * persisted — the caller gets an empty list / a loud skip, never a
+ * silent partial save.
+ */
+export function serializeKind(kind: string): unknown[] {
+  const adapter = kinds.get(kind);
+  if (!adapter?.serialize) {
+    console.warn(`[element-store] kind "${kind}" has no serialize() — nothing persisted`);
+    return [];
+  }
+  return adapter.serialize();
+}
+
+export function hydrateKind(kind: string, records: unknown[]): void {
+  const adapter = kinds.get(kind);
+  if (!adapter?.hydrate) {
+    console.warn(
+      `[element-store] kind "${kind}" has no hydrate() — ${records.length} record(s) skipped`,
+    );
+    return;
+  }
+  adapter.hydrate(records);
 }
 
 /** Total element count across all kinds. */

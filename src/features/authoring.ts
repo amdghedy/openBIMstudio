@@ -8397,6 +8397,10 @@ export function setupAuthoring() {
     listIds: () => elements.map((e) => e.id),
     owns: (id) => elements.some((e) => e.id === id),
     applyParamChange: (id, param, value) => applyElementParamChange(id, param, value),
+    // Persistence (decision step 4): same state, same semantics —
+    // getElements returns the live array, setElements replaces it.
+    serialize: () => getElements(),
+    hydrate: (records) => setElements(records as AuthoredElement[]),
   });
 }
 /* ═══════════════════════════════════════════════════════════════════════

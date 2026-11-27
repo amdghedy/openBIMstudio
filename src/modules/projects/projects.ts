@@ -11,15 +11,19 @@ import { getNorthState, loadNorth, resetNorth } from "../north/north";
 import { ctx } from "../../core/context";
 import { services, register as registerService } from "../../core/services";
 import * as store from "./store";
-import type { ProjectDoc, ProjectTemplate, ProjectStatus, ProjectUnits } from "./types";
+import type { ProjectDoc, ProjectTemplate, ProjectStatus, ProjectUnits, AuthoredElement } from "./types";
 import {
   establishSceneOffset, computeSceneBounds, fitAll,
   resetPlacementState, updateClipping, resetToDefaultView, resetCameraUpright,
 } from "../../features/camera-tools";
 import {
-  setElements, getElements, clearElements,
+  clearElements,
   getGrids, setGrids, getLevels, setLevels,
 } from "../../features/authoring";
+// Persistence reads and writes element state through the canonical
+// element store (Phase 1, decision 2026-11-26-canonical-element-store.md
+// step 4), not through side imports of one discipline's internals.
+import { serializeKind, hydrateKind } from "../../core/element-store";
 import { refreshModelSelectionUI, clearClash } from "../../features/clash";
 import { getIssues, setIssues, onIssuesChanged } from "../issues/issues";
 import { exportConstraints, importConstraints } from "../parametric-constraints/types";
@@ -175,7 +179,7 @@ export async function saveProject(silent = false) {
   setSaveState({ state: "saving", startedAt: Date.now() });
   const gen = dirtyGeneration;
   try {
-    current.elements = getElements();
+    current.elements = serializeKind("authored") as AuthoredElement[];
     try {
       const lifecycle = (ctx.features as any).mep?.lifecycle;
       if (typeof lifecycle?.snapshot === "function") current.mepLifecycle = lifecycle.snapshot();
@@ -631,7 +635,7 @@ export async function openProject(id: string) {
     setCostData(doc.cost ?? null);
     setGrids(doc.grids ?? []);
     setLevels(doc.levels ?? []);
-    setElements(doc.elements ?? []);
+    hydrateKind("authored", doc.elements ?? []);
     // Parametric restore: constraints + dim locks back into their stores
     // (passive — the saved elements already sit at their locked values).
     try {
