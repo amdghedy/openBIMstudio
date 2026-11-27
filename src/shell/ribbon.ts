@@ -2366,26 +2366,26 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         // G9: crop follows the active view — the plan marks itself active
         // when it opens; the fallback covers "plan never opened yet".
         // No view id is hardcoded at this call site.
-        const viewId = resolveCropViewId((window as any).__obsCropRegion?.getActive?.());
-        (window as any).__obsCropRegion?.setActive?.(viewId);
-        const on = (window as any).__obsCropRegion?.toggle?.(viewId);
+        const viewId = resolveCropViewId((ctx.features as any).cropRegion?.getActive?.());
+        (ctx.features as any).cropRegion?.setActive?.(viewId);
+        const on = (ctx.features as any).cropRegion?.toggle?.(viewId);
         toast(on ? `Crop region ON for "${viewId}" — drag cyan handles to resize` : `Crop region OFF`, "success");
       }, "Crop toggle"), { title: "Toggle the 2D crop region overlay on the active plan view" }),
       b("crop", "Reset", safe(() => {
-        const viewId = resolveCropViewId((window as any).__obsCropRegion?.getActive?.());
-        (window as any).__obsCropRegion?.reset?.(viewId);
+        const viewId = resolveCropViewId((ctx.features as any).cropRegion?.getActive?.());
+        (ctx.features as any).cropRegion?.reset?.(viewId);
         toast("Crop region reset to 100×100 m default", "info");
       }, "Reset crop"), { title: "Reset crop region to default size" }),
       b("crop", "Size 50m", safe(() => {
-        const viewId = resolveCropViewId((window as any).__obsCropRegion?.getActive?.());
-        (window as any).__obsCropRegion?.set?.(viewId, { minX: -25, minY: -25, maxX: 25, maxY: 25, enabled: true });
-        (window as any).__obsCropRegion?.setActive?.(viewId);
+        const viewId = resolveCropViewId((ctx.features as any).cropRegion?.getActive?.());
+        (ctx.features as any).cropRegion?.set?.(viewId, { minX: -25, minY: -25, maxX: 25, maxY: 25, enabled: true });
+        (ctx.features as any).cropRegion?.setActive?.(viewId);
         toast("Crop region set to 50×50 m around origin", "success");
       }, "Size 50m"), { title: "Set crop region to 50×50 m around origin" }),
       b("crop", "Size 100m", safe(() => {
-        const viewId = resolveCropViewId((window as any).__obsCropRegion?.getActive?.());
-        (window as any).__obsCropRegion?.set?.(viewId, { minX: -50, minY: -50, maxX: 50, maxY: 50, enabled: true });
-        (window as any).__obsCropRegion?.setActive?.(viewId);
+        const viewId = resolveCropViewId((ctx.features as any).cropRegion?.getActive?.());
+        (ctx.features as any).cropRegion?.set?.(viewId, { minX: -50, minY: -50, maxX: 50, maxY: 50, enabled: true });
+        (ctx.features as any).cropRegion?.setActive?.(viewId);
         toast("Crop region set to 100×100 m around origin", "success");
       }, "Size 100m"), { title: "Set crop region to 100×100 m around origin" }),
       sep(),

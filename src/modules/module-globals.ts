@@ -359,7 +359,7 @@ void servicesReady("commandPalette").then((palette) => {
 };
 
 // ── Crop Region (2D plan/section/elevation crop with handles) ─────────────
-w.__obsCropRegion = {
+(ctx.features as any).cropRegion = {
   get: getCropRegion,
   set: (viewId: string, region: any) => {
     setCropRegion(viewId, region);
@@ -428,4 +428,4 @@ w.__obsSelectionBox = {
   },
 };
 
-console.log("[obs] v40 module globals registered: crop-region, selection-box");
+console.log("[obs] v40 module globals registered: selection-box");
