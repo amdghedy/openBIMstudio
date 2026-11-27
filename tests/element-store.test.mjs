@@ -7,7 +7,8 @@
  * fail loudly, and duplicate ownership is surfaced, not silent.
  * Wiring part asserts authoring registers the "authored" kind adapter.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import {
   registerKind, registeredKinds, kindOf, listAllIds, elementCount,
   applyParamChange, resetElementStoreForTest, serializeKind, hydrateKind,
@@ -108,6 +109,45 @@ ok("project load writes elements through the store", /hydrateKind\("authored",/.
 ok("project persistence no longer side-imports element getters", !/getElements/.test(projects));
 const authoring2 = readFileSync("src/features/authoring.ts", "utf8");
 ok("the authored adapter implements serialize/hydrate", /serialize: \(\) => getElements\(\)/.test(authoring2) && /hydrate: \(records\) => setElements\(records as AuthoredElement\[\]\)/.test(authoring2));
+
+/* ── ratchet (decision step 5): no NEW element-state owners ─────────────
+   The two canonical owners register into the store; any other file that
+   declares a mutable element-record collection is a parallel owner — the
+   exact silent-data-loss class this store exists to remove. Same style as
+   the ui-honesty globals ratchet: growth fails CI with a named file. */
+const ALLOWED_ELEMENT_OWNERS = new Set([
+  "src/features/authoring.ts", // authored kind adapter (step 1)
+  "src/modules/cad/cad-engine.ts", // cad kind adapter (step 2)
+]);
+// Module-level owner (column 0) or class field (access modifier) — a
+// function-local temporary (indented const, e.g. a read of getElements())
+// is a consumer, not an owner, and is fine.
+const ELEMENT_RECORD_DECL = new RegExp(
+  "^(?:let|const)\\s+\\w+\\s*:\\s*(?:AuthoredElement|CadEntity)\\[\\]\\s*=" +
+    "|^\\s+(?:public|private|protected|readonly)\\s+\\w+\\s*:\\s*(?:AuthoredElement|CadEntity)\\[\\]\\s*=",
+  "m",
+);
+function* walk(dir) {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) {
+      if (name !== "node_modules" && !name.startsWith(".")) yield* walk(p);
+    } else if (name.endsWith(".ts") && !name.endsWith(".d.ts")) {
+      yield p;
+    }
+  }
+}
+const offenders = [];
+for (const file of walk("src")) {
+  if (ALLOWED_ELEMENT_OWNERS.has(file)) continue;
+  const src = readFileSync(file, "utf8");
+  if (ELEMENT_RECORD_DECL.test(src)) offenders.push(file);
+}
+ok(
+  "no element-record collections outside the canonical store owners",
+  offenders.length === 0,
+  offenders.join(", ") || undefined,
+);
 
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);
