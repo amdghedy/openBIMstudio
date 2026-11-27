@@ -574,7 +574,7 @@ function modelGroupButton(): HTMLButtonElement {
       const { promptLine } = await import("../features/form-modal");
       const name = await promptLine("Create group", "Group name:", "Group");
       if (name == null) return;
-      const g = (window as any).__obsGroups?.createFromSelection?.(name, ids, true);
+      const g = (ctx.features as any).groups?.createFromSelection?.(name, ids, true);
       if (g) toast(`Group "${name}" created`, "success");
       else toast("Groups module not loaded", "warn");
     }, "Model group"),
@@ -1217,11 +1217,11 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       m2Btn("stairs", "Stair L-Shape", "stairs", "", "L"),
       m2Btn("stairs", "Stair U-Shape", "stairs", "", "U"),
       b("stairs", "Winder", safe(() => {
-        (window as any).__obsStairs?.buildStair?.({ runType: "winder" });
+        (ctx.features as any).stairs?.buildStair?.({ runType: "winder" });
         toast("Winder stair created", "success");
       }, "Winder"), { title: "Build a winder stair" }),
       b("stairs", "Spiral", safe(() => {
-        (window as any).__obsStairs?.buildStair?.({ runType: "spiral" });
+        (ctx.features as any).stairs?.buildStair?.({ runType: "spiral" });
         toast("Spiral stair created", "success");
       }, "Spiral"), { title: "Build a spiral stair" }),
       sep(),

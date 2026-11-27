@@ -2921,7 +2921,7 @@ function renderPlan(plan: PlanView) {
   // Limit: no level filtering — the rooms store's levelId does not match
   // the plan's level list, so every room / area on the project is shown.
   if (planDisplayModel) {
-    const store: any = (window as any).__obsRooms ?? (ctx.features as any).rooms;
+    const store: any = (ctx.features as any).rooms ?? (ctx.features as any).rooms;
     const rooms = store?.listRooms?.() ?? [];
     const areas = store?.listAreas?.() ?? [];
     const drawBoundary = (pts: Array<{ x: number; z: number }>, label: string, kind: string, color: string) => {
@@ -4820,7 +4820,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
       // Room / Area tags hit-test the rooms store (rooms and areas are not
       // authored elements); Space has no model and places nothing.
       if (mode === "room" || mode === "area") {
-        const store: any = (window as any).__obsRooms ?? (ctx.features as any).rooms;
+        const store: any = (ctx.features as any).rooms ?? (ctx.features as any).rooms;
         const list = mode === "room" ? store?.listRooms?.() ?? [] : store?.listAreas?.() ?? [];
         const hit = mode === "room" ? roomAtPoint(list, w.x, w.z) : areaAtPoint(list, w.x, w.z);
         if (hit) {

@@ -245,7 +245,7 @@ async function registerBIMShortcuts(): Promise<void> {
       }
       void promptLine("Create group", "Group name:", "Group").then((name) => {
         if (name == null) return;
-        (window as Any).__obsGroups?.createFromSelection?.(name, ids, true);
+        (ctx.features as Any).groups?.createFromSelection?.(name, ids, true);
         notify("success", `Group "${name}"`);
       });
     },

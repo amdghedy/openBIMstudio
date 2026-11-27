@@ -143,7 +143,7 @@ export async function setupCriticalGapsUI(): Promise<void> {
     flash(cwBtn, "[OK]");
   });
   const roomBtn = makeButton("obs-adv-room", "[R] Room", "Create sample room", () => {
-    const r = (window as Any).__obsRooms?.createRoom?.({
+    const r = (ctx.features as Any).rooms?.createRoom?.({
       name: "Room",
       boundary: [{ x: 0, z: 0 }, { x: 4, z: 0 }, { x: 4, z: 3 }, { x: 0, z: 3 }],
     });
@@ -170,7 +170,7 @@ export async function setupCriticalGapsUI(): Promise<void> {
       ids = sel?.getSelectedIds?.() ?? [];
     } catch { /* */ }
     if (!ids.length) { flash(groupBtn, "sel?"); return; }
-    const g = (window as Any).__obsGroups?.createFromSelection?.("Group", ids, true);
+    const g = (ctx.features as Any).groups?.createFromSelection?.("Group", ids, true);
     flash(groupBtn, g ? "[OK]" : "[!]");
   });
 

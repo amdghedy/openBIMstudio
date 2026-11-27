@@ -401,7 +401,7 @@ async function registerCommands(): Promise<void> {
         }
         void promptLine("Create group", "Group name:", "Group").then((name) => {
           if (name == null) return;
-          const g = (window as Any).__obsGroups?.createFromSelection?.(name, ids, true);
+          const g = (ctx.features as Any).groups?.createFromSelection?.(name, ids, true);
           if (g) notify("success", `Group "${name}" created`, { timeout: 1800 });
         });
       },
@@ -411,7 +411,7 @@ async function registerCommands(): Promise<void> {
       label: "Create Room (sample boundary)",
       category: "Architecture",
       run: () => {
-        const r = (window as Any).__obsRooms?.createRoom?.({
+        const r = (ctx.features as Any).rooms?.createRoom?.({
           name: "Room",
           boundary: [
             { x: 0, z: 0 },
@@ -428,7 +428,7 @@ async function registerCommands(): Promise<void> {
       label: "Set Work Plane - Floor (XY)",
       category: "Architecture",
       run: () => {
-        (window as Any).__obsRefPlanes?.setActiveWorkPlane?.("rp-xy");
+        (ctx.features as Any).refPlanes?.setActiveWorkPlane?.("rp-xy");
         notify("success", "Work plane: Floor (XY)", { timeout: 1400 });
       },
     },
@@ -437,7 +437,7 @@ async function registerCommands(): Promise<void> {
       label: "Set Work Plane - Front (XZ)",
       category: "Architecture",
       run: () => {
-        (window as Any).__obsRefPlanes?.setActiveWorkPlane?.("rp-xz");
+        (ctx.features as Any).refPlanes?.setActiveWorkPlane?.("rp-xz");
         notify("success", "Work plane: Front (XZ)", { timeout: 1400 });
       },
     },

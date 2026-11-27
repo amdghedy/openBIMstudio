@@ -145,7 +145,7 @@ export function registerClosedGapUiItems(): void {
     label: "Rooms & Areas",
     group: "panels",
     available: true,
-    isVisible: () => !!(window as any).__obsRooms,
+    isVisible: () => !!(ctx.features as any).rooms,
     toggle: () => {
       window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "rooms" } }));
     },
@@ -178,9 +178,9 @@ export function registerClosedGapUiItems(): void {
     label: "Reference Planes",
     group: "panels",
     available: true,
-    isVisible: () => !!(window as any).__obsRefPlanes,
+    isVisible: () => !!(ctx.features as any).refPlanes,
     toggle: () => {
-      const rp = (window as any).__obsRefPlanes;
+      const rp = (ctx.features as any).refPlanes;
       rp?.showOverlay?.(true);
       window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "ref-planes" } }));
     },
@@ -192,7 +192,7 @@ export function registerClosedGapUiItems(): void {
     label: "Model Groups",
     group: "panels",
     available: true,
-    isVisible: () => !!(window as any).__obsGroups,
+    isVisible: () => !!(ctx.features as any).groups,
     toggle: () => {
       window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "groups" } }));
     },

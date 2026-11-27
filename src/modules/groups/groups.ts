@@ -189,7 +189,6 @@ export const groupsStore = new GroupsStore();
 export function setupGroups(): typeof groupsStore {
   groupsStore.boot();
   (ctx.features as any).groups = groupsStore;
-  (window as any).__obsGroups = groupsStore;
   console.log(
     "[groups] ready -",
     groupsStore.listTypes().length,
