@@ -1200,7 +1200,7 @@ async function processQueue() {
 
 /**
  * Import phase record for the reproducible benchmark harness
- * (bench/bench-browser.mjs — read via __obsPerf.importPhases). Keeps the
+ * (bench/bench-browser.mjs — read via the perf feature api importPhases). Keeps the
  * last 50 import results with per-phase timings — conversion (web-ifc →
  * FRAG, worker) and scene load (fragments core). Read-only diagnostics;
  * exposed through ctx.features.importer (no new window globals).

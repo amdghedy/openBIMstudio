@@ -1828,8 +1828,8 @@ function buildWallWithOpenings(
   mesh.userData.baseColor = el.color || COLORS.wall;
   // Accelerate this mesh with BVH for fast raycasting (selection, snapping).
   try {
-    if ((window as any).__obsPerf?.accelerateMesh) {
-      (window as any).__obsPerf.accelerateMesh(mesh);
+    if ((ctx.features as any).perf?.accelerateMesh) {
+      (ctx.features as any).perf.accelerateMesh(mesh);
     }
   } catch { /* BVH not available yet — mesh still works, just slower raycast */ }
   attachWallSweeps(mesh, el);

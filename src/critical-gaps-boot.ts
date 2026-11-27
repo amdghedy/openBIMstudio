@@ -160,7 +160,8 @@ async function runOnce(): Promise<void> {
   });
   await safe("rebar-viewport", async () => {
     const m: Any = await import("./features/rebar-viewport");
-    m.setupRebarViewport?.();
+    const svc = m.setupRebarViewport?.();
+    if (svc) (ctx.features as Any).rebarViewport = svc;
   });
 
   // Wall sweeps & reveals (cornice, baseboard, wainscot, reveal)
@@ -172,7 +173,8 @@ async function runOnce(): Promise<void> {
   // Performance engine: BVH raycasting + InstancedMesh batching
   await safe("perf-engine", async () => {
     const m: Any = await import("./core/performance-engine");
-    m.setupPerformanceEngine?.();
+    const svc = m.setupPerformanceEngine?.();
+    if (svc) (ctx.features as Any).perf = svc;
   });
 
   // Area plans & color fill (spatial analysis: color rooms by department)
@@ -219,7 +221,8 @@ async function runOnce(): Promise<void> {
   // Parametric constraints (lock dimensions, equality, alignment)
   await safe("parametric-constraints", async () => {
     const m: Any = await import("./modules/parametric-constraints");
-    m.setupParametricConstraints?.();
+    const svc = m.setupParametricConstraints?.();
+    if (svc) (ctx.features as Any).constraints = svc;
   });
 
   // Dimension chains (continuous + baseline)
@@ -231,7 +234,8 @@ async function runOnce(): Promise<void> {
   // BIM / Navisworks import (RVT → IFC conversion via APS)
   await safe("bim-import", async () => {
     const m: Any = await import("./features/bim-import");
-    m.setupBIMImport?.();
+    const svc = m.setupBIMImport?.();
+    if (svc) (ctx.features as Any).bimImport = svc;
   });
 
   // Sun settings & shadows (solar study)

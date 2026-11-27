@@ -11,6 +11,7 @@ import * as THREE from "three";
 import { confirmDialog } from "../features/form-modal";
 import { ctx } from "../core/context";
 import { getVisualPreset } from "../features/view-graphics";
+import { getPluginRegistry } from "../plugins/loader";
 import { onNotify, __dispatchToSubscribers, uiAlert } from "../core/notify";
 import { pickFiles, loadIfcFiles, loadFragFiles } from "../features/importer";
 import {
@@ -430,7 +431,7 @@ async function openMassToElementsDialog(): Promise<void> {
     if (!r) return;
     mass = masses.find((m: any) => m.id === String(r.mass)) ?? masses[0];
   }
-  const authoring = (window as any).__obsAuthoring;
+  const authoring = (ctx.features as any).authoring;
   if (typeof authoring?.createElementByType !== "function") { toast("Authoring is not ready", "warn"); return; }
   try {
     const { convertMassToElements } = await import("../modules/parametric/mass-to-elements");
@@ -788,7 +789,7 @@ function parametricToolkitButton(): HTMLButtonElement {
  * the same buttons, the same handlers — not copies with drift. */
 function lockDimensionButton(): HTMLButtonElement {
   return b("dim-aligned", "Lock Dim", safe(async () => {
-    const c = (window as any).__obsConstraints;
+    const c = (ctx.features as any).constraints;
     if (!c) { toast("Constraints module not loaded", "warn"); return; }
     const auth = (ctx.features as any).authoring;
     const ids = auth?.getSelectedIds?.() ?? [];
@@ -811,7 +812,7 @@ function lockDimensionButton(): HTMLButtonElement {
 
 function equalityButton(): HTMLButtonElement {
   return b("dim-aligned", "Equality", safe(() => {
-    const c = (window as any).__obsConstraints;
+    const c = (ctx.features as any).constraints;
     if (!c) { toast("Constraints module not loaded", "warn"); return; }
     const auth = (ctx.features as any).authoring;
     const ids = auth?.getSelectedIds?.() ?? [];
@@ -1364,10 +1365,10 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       // working tools: Generate Rebar, Export BBS, Clash Review.
       groupLabel("Reinforcement"),
       b("rebar", "Generate Rebar", safe(() => {
-        (window as any).__obsRebarViewport?.generate?.();
+        (ctx.features as any).rebarViewport?.generate?.();
       }, "Generate rebar"), { title: "Generate 3D rebar inside the selected beam/column/footing" }),
       b("rebar", "Export BBS", safe(() => {
-        (window as any).__obsRebarViewport?.exportBBS?.();
+        (ctx.features as any).rebarViewport?.exportBBS?.();
       }, "Export BBS"), { title: "Export Bar Bending Schedule as CSV" }),
       b("check", "Clash Review", safe(() => openRebarClashReview(), "Rebar clash review"), {
         title: "Interactive rebar clash, lap-splice and standards review (EC2 / ACI / BS) for the generated rebar",
@@ -1502,7 +1503,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       // Order matches Old OpenBIMStudio Insert tab: Link / Import first
       groupLabel("Link / Import"),
       b("file", "BIM / Navisworks…", safe(() => {
-        (window as any).__obsBIMImport?.pickAndConvert?.();
+        (ctx.features as any).bimImport?.pickAndConvert?.();
       }, "BIM import"), { title: "Import .rvt / .nwd / .nwc / .nwf — converts to IFC locally with your Navisworks (or via APS)" }),
       b("file", "IFC", safe(() => linkIfc(), "Link IFC"), {
         title: "Link IFC models — origin-to-origin federation (same as old OpenBIMStudio)",
@@ -2776,7 +2777,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Plugins"),
       b("component", "Plugin List", safe(async () => {
-        const loaded = (window as any).__obsPluginRegistry;
+        const loaded = getPluginRegistry();
         if (!loaded || loaded.size === 0) { toast("No plugins are loaded.", "info"); return; }
         const { showTableDialog } = await import("../features/form-modal");
         await showTableDialog("Loaded plugins", ["Id", "Name", "Version"],
@@ -2792,13 +2793,13 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Performance"),
       b("system", "BVH Accelerate", safe(() => {
-        const perf = (window as any).__obsPerf;
+        const perf = (ctx.features as any).perf;
         if (!perf) { toast("Performance engine not loaded", "warn"); return; }
         const n = perf.accelerateAllMeshes();
         toast(`BVH built on ${n} mesh(es) — raycast now O(log n)`, "success");
       }, "BVH accelerate"), { title: "Build BVH on all meshes for fast raycasting" }),
       b("system", "Batching", safe(() => {
-        const perf = (window as any).__obsPerf;
+        const perf = (ctx.features as any).perf;
         if (!perf) { toast("Performance engine not loaded", "warn"); return; }
         const on = !perf.isBatchingEnabled();
         perf.setBatchingEnabled(on);
