@@ -124,7 +124,9 @@ test("editor save appears in the panel and browser, persists once across reload"
     .toContain(BRIDGE_NAME);
 
   // The Family Browser shows it too.
-  await page.evaluate(() => (window as any).__obsFamilyBrowser.open());
+  await page.evaluate(() =>
+    (window as any).__OBS_CTX__.features.familyBrowser.open(),
+  );
   const browser = page.locator("#obs-family-browser");
   await expect(browser).toBeVisible({ timeout: 10000 });
   await expect(browser).toContainText(BRIDGE_NAME);

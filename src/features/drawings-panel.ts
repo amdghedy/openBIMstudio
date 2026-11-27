@@ -11,7 +11,7 @@ let panel: HTMLDivElement | null = null;
 let styleOk = false;
 
 function drawings(): Any {
-  return (window as Any).__obsDrawings ?? (ctx.features as Any)?.drawings ?? {};
+  return (ctx.features as Any)?.drawings ?? {};
 }
 
 function toast(kind: string, msg: string): void {
@@ -123,7 +123,7 @@ async function pickAndImport(): Promise<void> {
         toast("success", `Loaded ${file.name}`);
         refreshList();
         // Open the drawing editor so the user sees geometry
-        (window as Any).__obsCad?.open?.();
+        (ctx.features as Any).cad?.open?.();
       }
     } catch (e) {
       toast("error", e instanceof Error ? e.message : String(e));

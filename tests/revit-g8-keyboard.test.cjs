@@ -111,7 +111,7 @@ ok(/for \(const binding of REVIT_G8_BINDINGS\)/.test(bic) && /keys: binding\.key
 for (const [keys, target] of expected) {
   ok(bic.includes(`keys: "${keys}"`) || bic.includes("REVIT_G8_BINDINGS"), `${keys.toUpperCase()} registered from the G8 table`);
 }
-ok(bic.includes('__obsBIMExperience'), "TR/VG dispatch through the BIM command runner");
+ok(bic.includes('(ctx.features as any).bimExperience'), "TR/VG dispatch through the BIM command runner");
 ok(bic.includes('setAuthoringTool'), "CO/MI/AR/OF dispatch through setAuthoringTool");
 ok(bic.includes('isThinLines') && bic.includes('setThinLines'), "TL dispatches through view-graphics");
 ok(bic.includes('./plan-view-panel') && bic.includes('planView?.setTool?.'), "DI opens the plan view and arms its tool");

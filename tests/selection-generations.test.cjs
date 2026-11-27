@@ -391,7 +391,7 @@ t("wiring: Group 1 Move/Rotate/Mirror read authoring state, not the engine", () 
     assert(!body.includes("selectionEngine()"), `${name} must not touch the engine`);
   }
   assert(
-    engineUi.includes("return (w.__obsAuthoring?.getSelectedIds?.() ?? []) as string[];"),
+    engineUi.includes("return ((ctx.features as Any).authoring?.getSelectedIds?.() ?? []) as string[];"),
     "selectedAuthoredIds must read the authoring module's selection state",
   );
 });
@@ -413,7 +413,7 @@ t("wiring: the canonical services SelectionService IS the manager's API", () => 
 
 t("wiring: authoring-core exposes the engine CLASS only, never an instance", () => {
   assert(authoringCore.includes("const selectionApi = { SelectionEngine };"), "authoring-core must expose { SelectionEngine }");
-  assert(authoringCore.includes("w.__obsSelection = selectionApi;"), "authoring-core must publish it as the spec'd global");
+  assert(authoringCore.includes("features().selectionEngine = selectionApi;"), "authoring-core must publish it on ctx.features");
   assert(!authoringCore.includes("new SelectionEngine"), "authoring-core must never instantiate the engine");
 });
 

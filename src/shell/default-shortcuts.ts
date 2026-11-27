@@ -65,7 +65,7 @@ export function registerDefaultShortcuts(): void {
   // (COPYCLIP — Super Copy). Clash Review stays reachable from its menu entry.
   when: () => !isCadHotkeyOwnerActive(),
   handler: () => {
-    const fn = (window as any).__obs_toggleClashReview;
+    const fn = (ctx.features as any).clashReview?.toggle;
     if (typeof fn === "function") fn();
   },
 });
@@ -139,17 +139,17 @@ export function registerDefaultShortcuts(): void {
     // drawing editor owns Esc while its shell is visible (standard drafting cancel behavior in 2D view)
     when: () => {
       try {
-        if ((window as any).__obsCadOwnsEsc?.()) return false;
+        if ((window as any).__OBS_CTX__?.features?.cadOwnsEsc?.()) return false;
       } catch { /* */ }
       return !isWalkModeEnabled();
     },
     handler: async () => {
       // Floor Plan owns Esc when open
       try {
-        if ((window as any).__obsPlanVisible?.()) return;
+        if ((ctx.features as any).planVisible?.()) return;
       } catch { /* */ }
       try {
-        if ((window as any).__obsCadOwnsEsc?.()) return;
+        if ((window as any).__OBS_CTX__?.features?.cadOwnsEsc?.()) return;
       } catch { /* */ }
       // BIM-style Esc:
       // 1) Cancel active authoring tool (wall, duct, move…) → Select
@@ -332,40 +332,40 @@ export function registerDefaultShortcuts(): void {
   /* ── v0.66 view-crop shortcuts ─────────────────────────────────────── */
   shortcuts.register({
     id: "view.selection-box", label: "Selection Box (3D)", keys: "ctrl+shift+b", category: "view",
-    handler: () => { (window as any).__obsSelectionBox?.show?.({ padding: 0.5 }); },
+    handler: () => { (ctx.features as any).selectionBox?.show?.({ padding: 0.5 }); },
   });
   shortcuts.register({
     id: "view.crop-to-selection", label: "Crop to Selection (2D)", keys: "ctrl+shift+r", category: "view",
-    handler: () => { (window as any).__obsSelectionBox?.cropTo?.({ padding: 1.0 }); },
+    handler: () => { (ctx.features as any).selectionBox?.cropTo?.({ padding: 1.0 }); },
   });
   // NOTE: Ctrl+Shift+Z is reserved for Redo (see "redo-ctrl-shift-z" above).
   // Zoom-to-selection uses Ctrl+Shift+F so it never steals Redo.
   shortcuts.register({
     id: "view.zoom-selection", label: "Zoom to Selection", keys: "ctrl+shift+f", category: "view",
-    handler: () => { (window as any).__obsSelectionBox?.zoom?.(); },
+    handler: () => { (ctx.features as any).selectionBox?.zoom?.(); },
   });
   shortcuts.register({
     id: "view.section-box-toggle", label: "Section Box (toggle)", keys: "ctrl+b", category: "view",
-    handler: () => { (window as any).__obsSectionBox?.toggle?.(); },
+    handler: () => { (ctx.features as any).sectionBox?.toggle?.(); },
   });
   shortcuts.register({
     id: "view.scope-box-viz-toggle", label: "Scope Box Visualizer (toggle)", keys: "ctrl+shift+s", category: "view",
-    handler: () => { (window as any).__obsScopeBoxViz?.toggle?.(); },
+    handler: () => { (ctx.features as any).scopeBoxViz?.toggle?.(); },
   });
   shortcuts.register({
     id: "view.isolate", label: "Isolate Selection", keys: "ctrl+i", category: "view",
-    handler: () => { (window as any).__obsSelectionBox?.isolate?.(); },
+    handler: () => { (ctx.features as any).selectionBox?.isolate?.(); },
   });
   shortcuts.register({
     id: "view.reset-isolation", label: "Reset Isolation", keys: "ctrl+shift+i", category: "view",
-    handler: () => { (window as any).__obsSelectionBox?.resetIsolation?.(); },
+    handler: () => { (ctx.features as any).selectionBox?.resetIsolation?.(); },
   });
   shortcuts.register({
     id: "view.tools-manager", label: "View Tools Manager", keys: "ctrl+shift+v", category: "view",
     // While a drawing tab is active, Ctrl+Shift+V belongs to the drawing editor
     // (PASTECLIP — Super Copy). The manager stays reachable from the View menu.
     when: () => !isCadHotkeyOwnerActive(),
-    handler: () => { (window as any).__obsOpenViewToolsManager?.(); },
+    handler: () => { (ctx.features as any).openViewToolsManager?.(); },
   });
 
   console.log("[shortcuts] registered", shortcuts.list().length, "commands");

@@ -4,8 +4,8 @@ import { uiAlert } from "../core/notify";
 let modalEl: HTMLDivElement | null = null;
 
 export function setupClashCategories() {
-  // Expose globally so commands and ribbon can call it
-  (window as any).__obsOpenClashCategories = openClashCategoriesModal;
+  // Returned so main can register it on ctx.features for commands and ribbon.
+  return openClashCategoriesModal;
 }
 
 export function openClashCategoriesModal() {

@@ -264,7 +264,7 @@ await step("measure", () => setupMeasure());
 await step("drawing", () => setupDrawing());
 await step("section", () => setupSection());
 await step("section-modal", () => {
-  setupSectionModal();
+  (ctx.features as any).openSectionModal = setupSectionModal();
   setupSectionPlanePanel();
   setupSectionArrowCameraSync();
   import("./features/command-palette").then(m => {
@@ -273,7 +273,7 @@ await step("section-modal", () => {
       label: "Section Cut",
       category: "View",
       hint: "Open the interactive section cut window",
-      run: () => (window as any).__obsOpenSectionModal?.(),
+      run: () => (ctx.features as any).openSectionModal?.(),
     });
   }).catch(e => console.warn("Failed to register section-modal command", e));
 });
@@ -296,7 +296,7 @@ await step("importer", async () => setupImporter());
 await step("model-align", () => setupModelAlign());
 await step("clash", () => setupClash());
 await step("clash-categories", () => {
-  setupClashCategories();
+  (ctx.features as any).openClashCategories = setupClashCategories();
   // Register command palette entry
   import("./features/command-palette").then(m => {
     m.registerCommand({
@@ -304,7 +304,7 @@ await step("clash-categories", () => {
       label: "Category Clash Rules",
       category: "Clash",
       hint: "Run clashes between specific categories (Native vs IFC)",
-      run: () => (window as any).__obsOpenClashCategories?.(),
+      run: () => (ctx.features as any).openClashCategories?.(),
     });
   }).catch(e => console.warn("Failed to register clash-categories command", e));
 });
@@ -360,21 +360,21 @@ await step("model-tree-panel", () => setupModelTreePanel());
 await step("plan-view", () => setupPlanViewPanel());
 await step("schedules", () => setupSchedulesPanel());
 await step("schedules-ui", () => {
-  setupSchedulesUI();
+  (ctx.features as any).openSchedules = setupSchedulesUI();
   import("./features/command-palette").then(m => {
     m.registerCommand({
       id: "schedules-ui",
       label: "Element Schedule",
       category: "View",
       hint: "View quantity takeoffs and material schedules",
-      run: () => (window as any).__obsOpenSchedules?.(),
+      run: () => (ctx.features as any).openSchedules?.(),
     });
   }).catch(e => console.warn("Failed to register schedules-ui command", e));
 });
 
 await step("file-interop", () => setupFileInterop());
 await step("file-menu", () => setupFileMenu());
-await step("manage-links", () => setupManageLinks());
+await step("manage-links", () => { (ctx.features as any).manageLinks = setupManageLinks(); });
 await step("cad-query", () => setupCadQueryPanel());
 await step("ifc-to-frag", () => setupIfcToFrag());
 await step("ifc-semantics", () => setupIfcSemantics());

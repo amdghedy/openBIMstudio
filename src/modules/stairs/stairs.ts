@@ -268,6 +268,5 @@ export function stairComfort(riserHeight: number, treadDepth: number): {
 
 export function setupStairs(): void {
   (ctx.features as any).stairs = { buildStair, stairComfort };
-  (window as any).__obsStairs = { buildStair, stairComfort };
   console.log("[stairs] generator ready");
 }

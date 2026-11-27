@@ -336,7 +336,6 @@ export type PluginRegisterFn = (
 declare global {
   interface Window {
     __obsRegisterPlugin?: PluginRegisterFn;
-    __obsPluginRegistry?: Map<string, { manifest: PluginManifest; factory: PluginFactory }>;
   }
 }
 

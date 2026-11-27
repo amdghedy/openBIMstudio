@@ -92,7 +92,7 @@ function getFragmentSelection(): Record<string, Set<number>> {
     cont.highlighter?.selection,
     cont.features?.selectionManager,
     cont.selectionManager,
-    w().__obsSelection,
+    (ctx.features as any).selectionEngine,
     w().__obsSelectionManager,
   ];
 

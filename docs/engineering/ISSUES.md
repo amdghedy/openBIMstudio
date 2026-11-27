@@ -10,7 +10,7 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 |----|-------|----------|-------|----------|
 | P0-01 | Global crash containment: error boundaries per panel + crash log | Critical | Phase 0 | 1d | ✅ satisfied |
 | P0-02 | Zod validation at all file-load boundaries (`safeLoad`) | Critical | Phase 0 | 1d | 🔶 partial |
-| P0-03 | Backup-on-load with rotating timestamps | High | Phase 0 | 0.5d | ⬜ open — backup-on-load not wired: `loadJson()` still returns `{}` on parse failure; see [#91](https://github.com/amdghedy/openBIMstudio/issues/91) (corrected 2026-11-20) |
+| P0-03 | Backup-on-load with rotating timestamps | High | Phase 0 | 0.5d | ✅ satisfied — `loadJson()` snapshots before parsing and restores the newest verified backup; [#91](https://github.com/amdghedy/openBIMstudio/issues/91) closed 2026-11-22 (corrected 2026-11-26) |
 | P0-04 | Fail-closed server: origin allow-list, header-only tokens, rate limit | Critical | Phase 0 | 1d | ✅ satisfied |
 | P0-05 | Remove `jsonpath-plus`; add npm audit CI gate | Critical | Phase 0 | 0.5d | ✅ satisfied |
 | P1-01 | Freeze `__obs*` globals with ESLint; typed service registry | High | Phase 1 | 2d | ⬜ open — ESLint freeze never wired in: no eslint dep, no lint script, no CI step; `registry.ts` has no importers (corrected 2026-11-20) |
@@ -77,7 +77,7 @@ Generated November 1, 2026 from the Production Hardening Plan (v0.74.0 evidence 
 
 ## P0-03 — Backup-on-load with rotating timestamps
 
-> **Status correction (2026-11-20):** open — see [#91](https://github.com/amdghedy/openBIMstudio/issues/91). Backup-on-write exists (`server/backup.mjs`); backup-on-load does not: `loadJson()` in `server/index.mjs` returns `{}` on parse failure, with no snapshot and no loud failure.
+> **Status correction (2026-11-26):** satisfied — see [#91](https://github.com/amdghedy/openBIMstudio/issues/91) (closed 2026-11-22) and the [decision record](decisions/2026-11-20-backup-on-load.md). `loadJson()` in `server/index.mjs` now snapshots on load before parsing (`snapshotOnLoad`), recovers the newest verified backup when the live file is missing, and quarantines corrupt stores instead of silently returning `{}`.
 
 - **Labels:** `hardening`, `P0`, `high`
 - **Phase / Estimate:** Phase 0 / 0.5 day
@@ -433,9 +433,9 @@ Evidence-based audit of main against each issue's acceptance criteria
 
 > **Correction (2026-11-20, HEAD `d19735f`):** the "Satisfied on main" list above
 > was wrong for four items, which are open on the tracker and unmarked in the
-> table above: **P0-03** — backup-on-load is not wired (`server/index.mjs`
-> `loadJson()` still returns `{}` on parse failure; backup exists only on
-> write), see [#91](https://github.com/amdghedy/openBIMstudio/issues/91);
+> table above: **P0-03** — backup-on-load is wired as of the #91 fix
+> (closed 2026-11-22): `server/index.mjs` `loadJson()` snapshots on load and
+> recovers from verified backups; see [#91](https://github.com/amdghedy/openBIMstudio/issues/91);
 > **P1-01** — the ESLint freeze was never wired in (no eslint dep, no lint
 > script, no CI step; `src/core/registry.ts` has no importers);
 > **P1-02** — `tsconfig.strict.json` is referenced nowhere outside docs, the

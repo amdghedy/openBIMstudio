@@ -571,12 +571,8 @@ export function setupClashReview(): void {
     onKeyDown(e);
   }, true);
 
-  // Expose for the panel button and shortcuts.
-  (window as any).__obs_openClashReview = openReview;
-  (window as any).__obs_closeClashReview = closeReview;
-  (window as any).__obs_toggleClashReview = toggleReview;
-
-  (ctx.features as any).clashReview = { dispose: unsubCancel };
+  // For the panel button, palette commands and shortcuts.
+  (ctx.features as any).clashReview = { open: openReview, close: closeReview, toggle: toggleReview, dispose: unsubCancel };
 
   console.log("[clash-review] ready");
 }

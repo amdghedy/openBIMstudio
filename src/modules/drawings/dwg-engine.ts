@@ -411,6 +411,5 @@ export function setupDwgEngine(): void {
     parseDxf,
     writeDxf,
   };
-  (window as Any).__obsDrawings = (ctx.features as Any).drawings;
   console.log("[dwg-engine] Drawings DXF/DWG engine ready");
 }

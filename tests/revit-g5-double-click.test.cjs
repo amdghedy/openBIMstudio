@@ -120,7 +120,7 @@ ok(plan.includes("resolveDoubleClickAction"), "plan: resolves through the G5 dis
 ok(plan.includes("nearestAuthoredAt(w)"), "plan: double-click hit-tests the model element");
 ok(plan.includes("openTypePropertiesForPlan"), "plan: element double-click runs the Type Properties helper");
 ok(plan.includes("setPlanSelectedElement(near.element"), "plan: selects the clicked element before opening Type Properties");
-ok(plan.includes('__obsBIMExperience'), "plan: reaches the command through the BIM experience handle");
+ok(plan.includes('(ctx.features as any).bimExperience'), "plan: reaches the command through the BIM experience handle");
 ok(plan.includes('canvasWrap.addEventListener("dblclick", fitPlanView)'), "plan: empty-space fit-view listener is kept");
 {
   const handler = plan.slice(plan.indexOf('canvasWrap.addEventListener("dblclick"'));

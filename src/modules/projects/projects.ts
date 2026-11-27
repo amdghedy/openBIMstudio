@@ -11,15 +11,19 @@ import { getNorthState, loadNorth, resetNorth } from "../north/north";
 import { ctx } from "../../core/context";
 import { services, register as registerService } from "../../core/services";
 import * as store from "./store";
-import type { ProjectDoc, ProjectTemplate, ProjectStatus, ProjectUnits } from "./types";
+import type { ProjectDoc, ProjectTemplate, ProjectStatus, ProjectUnits, AuthoredElement } from "./types";
 import {
   establishSceneOffset, computeSceneBounds, fitAll,
   resetPlacementState, updateClipping, resetToDefaultView, resetCameraUpright,
 } from "../../features/camera-tools";
 import {
-  setElements, getElements, clearElements,
+  clearElements,
   getGrids, setGrids, getLevels, setLevels,
 } from "../../features/authoring";
+// Persistence reads and writes element state through the canonical
+// element store (Phase 1, decision 2026-11-26-canonical-element-store.md
+// step 4), not through side imports of one discipline's internals.
+import { serializeKind, hydrateKind } from "../../core/element-store";
 import { refreshModelSelectionUI, clearClash } from "../../features/clash";
 import { getIssues, setIssues, onIssuesChanged } from "../issues/issues";
 import { exportConstraints, importConstraints } from "../parametric-constraints/types";
@@ -175,7 +179,7 @@ export async function saveProject(silent = false) {
   setSaveState({ state: "saving", startedAt: Date.now() });
   const gen = dirtyGeneration;
   try {
-    current.elements = getElements();
+    current.elements = serializeKind("authored") as AuthoredElement[];
     try {
       const lifecycle = (ctx.features as any).mep?.lifecycle;
       if (typeof lifecycle?.snapshot === "function") current.mepLifecycle = lifecycle.snapshot();
@@ -280,11 +284,11 @@ export async function saveProject(silent = false) {
     } catch (e) { console.warn("[projects] documentation snapshot failed", e); }
 
     try {
-      const pd = (window as any).__obsPlanDims?.serialize?.();
+      const pd = (ctx.features as any).planDims?.serialize?.();
       if (Array.isArray(pd)) current.planDimensions = pd;
-      const pa = (window as any).__obsPlanAnno?.serialize?.();
+      const pa = (ctx.features as any).planAnno?.serialize?.();
       if (pa) current.planAnnotations = pa;
-      const pr = (window as any).__obsPlanRegions?.serialize?.();
+      const pr = (ctx.features as any).planRegions?.serialize?.();
       if (Array.isArray(pr)) current.planRegions2d = pr;
     } catch { /* plan dimensions optional */ }
 
@@ -631,7 +635,7 @@ export async function openProject(id: string) {
     setCostData(doc.cost ?? null);
     setGrids(doc.grids ?? []);
     setLevels(doc.levels ?? []);
-    setElements(doc.elements ?? []);
+    hydrateKind("authored", doc.elements ?? []);
     // Parametric restore: constraints + dim locks back into their stores
     // (passive — the saved elements already sit at their locked values).
     try {
@@ -685,15 +689,15 @@ export async function openProject(id: string) {
       }
     } catch (e) { console.warn("[projects] documentation restore failed", e); }
     try {
-      const pdApi = (window as any).__obsPlanDims;
+      const pdApi = (ctx.features as any).planDims;
       if (pdApi?.load) pdApi.load(doc.planDimensions ?? []);
-      else (window as any).__obsPendingPlanDims = doc.planDimensions ?? [];
-      const paApi = (window as any).__obsPlanAnno;
+      else (ctx.features as any).pendingPlanDims = doc.planDimensions ?? [];
+      const paApi = (ctx.features as any).planAnno;
       if (paApi?.load) paApi.load(doc.planAnnotations ?? null);
-      else (window as any).__obsPendingPlanAnno = doc.planAnnotations ?? null;
-      const prApi = (window as any).__obsPlanRegions;
+      else (ctx.features as any).pendingPlanAnno = doc.planAnnotations ?? null;
+      const prApi = (ctx.features as any).planRegions;
       if (prApi?.load) prApi.load((doc as any).planRegions2d ?? []);
-      else (window as any).__obsPendingPlanRegions = (doc as any).planRegions2d ?? [];
+      else (ctx.features as any).pendingPlanRegions = (doc as any).planRegions2d ?? [];
     } catch { /* */ }
 
     // If no saved offsets, apply the saved positioning mode instead.

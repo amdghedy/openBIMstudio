@@ -2,10 +2,10 @@
  * Milestone 2 registration: makes stairs, railings, ramps, curtain walls, roofs
  * and ceilings first-class authored elements.
  *
- *  - mesh builders: authoring.createMesh() asks window.__obsMeshBuilders[type]
+ *  - mesh builders: authoring.createMesh() asks ctx.features.meshBuilders[type]
  *    (one anchored line added by the installer) before giving up on a type;
  *  - Properties palette: schemas for the six types (SCHEMAS is a mutable table);
- *  - quantities: window.__obsM2Quantities(el) feeds the cost takeoff (installer patch).
+ *  - quantities: ctx.features.m2Quantities(el) feeds the cost takeoff (installer patch).
  */
 import * as THREE from "three";
 import { ctx } from "../../core/context";
@@ -99,12 +99,11 @@ let installed = false;
 export function setupM2Register(): { ok: boolean; detail: string } {
   if (installed) return { ok: true, detail: "already installed" };
   installed = true;
-  const w = window as Any;
-    w.__obsMeshBuilders = w.__obsMeshBuilders ?? {};
-  for (const t of M2_TYPES) w.__obsMeshBuilders[t] = buildM2Mesh;
+  const builders = ((ctx.features as Any).meshBuilders ??= {});
+  for (const t of M2_TYPES) builders[t] = buildM2Mesh;
 
   // Register Compound Wall builder
-  w.__obsMeshBuilders["wall"] = (el: Any) => {
+  builders["wall"] = (el: Any) => {
     const p = el.params || {};
     const layerStr = el.properties?.layers;
     if (layerStr) {
@@ -128,7 +127,7 @@ export function setupM2Register(): { ok: boolean; detail: string } {
     }
     return null;
   };
-  w.__obsM2Quantities = (el: Any) => m2Quantities(el as never);
+  (ctx.features as Any).m2Quantities = (el: Any) => m2Quantities(el as never);
   registerM2Schemas();
   // authored data may already contain these types: rebuild once so they appear
   try { (ctx.features as Any).authoring?.rebuildAuthored?.(); } catch { /* */ }

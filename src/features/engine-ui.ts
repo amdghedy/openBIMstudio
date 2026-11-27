@@ -4,29 +4,29 @@
  * before this module the constraint solver, structural FEM, MEP
  * hydraulics, adaptive components, solid kernel, Modify engine, hosting,
  * parameter engine, relationships and registry were only reachable from
- * the developer console via window.__obs*.
+ * the developer console..
  *
  * Structure:
  *   1. Pure helpers (Node-testable): parsing, frame builder, summaries
  *   2. Floating report card (result display)
- *   3. Structural dialogs  — Analyze tab (v67 __obsStructural engine)
- *   4. Hydraulics dialogs  — Analyze tab (v67 __obsMepPressure engine)
- *   5. Adaptive dialogs    — Architecture tab (v67 __obsAdaptive engine)
- *   6. Solid form dialogs  — Edit tab (v68 __obsSolids engine)
- *   7. Modify dialogs      — Edit tab (v68 __obsModify engine on the
+ *   3. Structural dialogs  — Analyze tab (v67 structural engine)
+ *   4. Hydraulics dialogs  — Analyze tab (v67 MEP pressure engine)
+ *   5. Adaptive dialogs    — Architecture tab (v67 adaptive engine)
+ *   6. Solid form dialogs  — Edit tab (v68 solidKernel engine)
+ *   7. Modify dialogs      — Edit tab (v68 modifyEngine on the
  *                             live authored model via an ElementStore
  *                             adapter)
- *   8. Hosted opening      — Architecture tab (v68 __obsHosting engine)
- *   9. Parameter manager   — Manage tab (v68 __obsParametric engine)
- *  10. Model intelligence  — Manage tab (__obsRegistry + __obsRelationships
- *                             + __obsMepConnectors + __obsSnapping)
+ *   8. Hosted opening      — Architecture tab (v68 hostingEngine)
+ *   9. Parameter manager   — Manage tab (v68 parametricEngine)
+ *  10. Model intelligence  — Manage tab (bimRegistry + relationshipRegistry
+ *                             + mepConnectors + snappingEngine)
  *  11. setupEngineUi() boot
  *
  * Engine access: stateless engines are imported directly (pure modules);
- * singleton-backed registries are read through the window.__obs* handles
+ * singleton-backed registries are read through the ctx.features handles
  * installed by v67/authoring-core so the UI always reflects the same state
  * the console sees. The authoring model is reached exclusively through
- * window.__obsAuthoring so this module never pulls three.js into the
+ * ctx.features.authoring so this module never pulls three.js into the
  * Node test slice.
  */
 
@@ -926,7 +926,7 @@ export async function openAdaptiveRepeatDialog(): Promise<void> {
 
 /** Edit the definition of one selected native adaptive component. */
 export async function openAdaptiveEditDialog(): Promise<void> {
-  const auth = w.__obsAuthoring;
+  const auth = (ctx.features as Any).authoring;
   const ids: string[] = typeof auth?.getSelectedIds === "function" ? auth.getSelectedIds().map(String) : [];
   if (ids.length !== 1) {
     notify("warn", "Select exactly one native adaptive component before choosing Edit Adaptive.");
@@ -1428,13 +1428,13 @@ interface AuthoredLike {
 }
 
 function authoredList(): AuthoredLike[] {
-  const auth = w.__obsAuthoring;
+  const auth = (ctx.features as Any).authoring;
   try { return (auth?.getElements?.() ?? []) as AuthoredLike[]; } catch { return []; }
 }
 
 /** Adapt the authored element array to the v68 Modify ElementStore. */
 export function authoredElementStore(): RemovableElementStore {
-  const auth = w.__obsAuthoring;
+  const auth = (ctx.features as Any).authoring;
   const els = authoredList();
   const find = (id: string): AuthoredLike | undefined => els.find((x) => x.id === id);
   const toModify = (e: AuthoredLike): ModifyElement => {
@@ -1521,11 +1521,11 @@ export function authoredElementStore(): RemovableElementStore {
 }
 
 function selectedAuthoredIds(): string[] {
-  try { return (w.__obsAuthoring?.getSelectedIds?.() ?? []) as string[]; } catch { return []; }
+  try { return ((ctx.features as Any).authoring?.getSelectedIds?.() ?? []) as string[]; } catch { return []; }
 }
 
 function modifyContext(): ModifyContext {
-  const rel = w.__obsRelationships?.registry;
+  const rel = (ctx.features as Any).relationshipRegistry?.registry;
   return {
     store: authoredElementStore(),
     ...(rel ? { relationships: rel } : {}),
@@ -1754,7 +1754,7 @@ export async function openHostFamilyDialog(): Promise<void> {
       typeof instance.params.elevation === "number" ? instance.params.elevation : 0,
     ];
     const placement = attachElementToHost(instance as unknown as AuthoredElement, host, world);
-    try { (w.__obsAuthoring as Any)?.rebuildAuthored?.(); } catch { /* ignore */ }
+    try { ((ctx.features as Any).authoring as Any)?.rebuildAuthored?.(); } catch { /* ignore */ }
     const a: Any = (instance as Any).hostAttachment ?? {};
     showReportCard("Family Hosted", [
       ["Instance", instance.name ?? instance.id],
@@ -1896,7 +1896,7 @@ function h(heading: string): string {
 export function intelligenceReportHtml(): string {
   const parts: string[] = [];
   // Registry (object hierarchy + identity)
-  const reg = w.__obsRegistry?.registry;
+  const reg = (ctx.features as Any).bimRegistry?.registry;
   if (reg) {
     try {
       const st = reg.stats();
@@ -1909,7 +1909,7 @@ export function intelligenceReportHtml(): string {
     } catch { /* ignore */ }
   }
   // Relationships
-  const rel = w.__obsRelationships?.registry;
+  const rel = (ctx.features as Any).relationshipRegistry?.registry;
   if (rel) {
     try {
       const all = rel.queryRelationships({}) ?? [];
@@ -1925,14 +1925,14 @@ export function intelligenceReportHtml(): string {
     } catch { /* ignore */ }
   }
   // MEP connectors
-  const conn = w.__obsMepConnectors ?? w.__obsMep?.connectors;
+  const conn = (ctx.features as Any).mepConnectors ?? w.__obsMep?.connectors;
   if (conn) {
     parts.push(section(h("MEP connectors") +
       `<div>Connector intelligence ready — compatibility gating, fittings, topology validation.</div>` +
       `<div style="color:var(--text-secondary,#9aa3b5)">No network placed yet: route MEP elements, then validate via the API.</div>`));
   }
   // Snapping
-  const snap = w.__obsSnapping;
+  const snap = (ctx.features as Any).snappingEngine;
   if (snap?.settings) {
     try {
       const kinds = Object.entries(snap.settings).filter(([, v]) => v === true).map(([k]) => k);
@@ -1942,7 +1942,7 @@ export function intelligenceReportHtml(): string {
   }
   // Authoring
   try {
-    const els = w.__obsAuthoring?.getElements?.() ?? [];
+    const els = (ctx.features as Any).authoring?.getElements?.() ?? [];
     parts.push(section(h("Authored model") +
       `<div>${els.length} element(s) — constraints, modify and hosted-opening tools operate on this model.</div>`));
   } catch { /* ignore */ }
@@ -2014,7 +2014,7 @@ export function selectionEngine(): SelectionEngine {
 }
 
 function group1Context(): ModifyContext {
-  const rel = w.__obsRelationships?.registry;
+  const rel = (ctx.features as Any).relationshipRegistry?.registry;
   return {
     store: authoredElementStore(),
     ...(rel ? { relationships: rel } : {}),
@@ -2262,7 +2262,7 @@ export function setupEngineUi(): void {
   }).catch((error) => {
     console.warn("[adaptive] viewport interaction failed to initialize", error);
   });
-  w.__obsEngineUi = {
+  (ctx.features as any).engineUi = {
     // structural
     openFrameSolverDialog, openSteelCheckDialog, openRcBeamDialog,
     // hydraulics

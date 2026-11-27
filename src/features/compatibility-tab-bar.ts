@@ -9,6 +9,7 @@ let obstabbedTabs: any;
  * Unified Tab Bar - docks all floating tools into bottom tabbed ribbon.
  * Tabs: Home | Architecture | Modify | View | Drawing | Drawings | Families | Project
  */
+import { ctx } from "../core/context";
 
 type Any = Record<string, any>;
 
@@ -172,23 +173,23 @@ function tabs(): TabDef[] {
           id: "ortho3d",
           label: "3D Ortho",
           title: "VO",
-          run: () => (window as Any).__obsSelPivot?.toggleOrtho?.(),
+          run: () => (ctx.features as Any).selPivot?.toggleOrtho?.(),
         },
         {
           id: "zoomsel",
           label: "Zoom Sel",
           title: "ZO",
-          run: () => void (window as Any).__obsSelPivot?.zoomToSelection?.(),
+          run: () => void (ctx.features as Any).selPivot?.zoomToSelection?.(),
         },
         {
           id: "zoomin",
           label: "Zoom +",
-          run: () => (window as Any).__obsNavCog?.zoomIn?.() ?? (window as Any).__obsSelPivot?.zoomIn?.(),
+          run: () => (window as Any).__obsNavCog?.zoomIn?.() ?? (ctx.features as Any).selPivot?.zoomIn?.(),
         },
         {
           id: "zoomout",
           label: "Zoom -",
-          run: () => (window as Any).__obsNavCog?.zoomOut?.() ?? (window as Any).__obsSelPivot?.zoomOut?.(),
+          run: () => (window as Any).__obsNavCog?.zoomOut?.() ?? (ctx.features as Any).selPivot?.zoomOut?.(),
         },
         {
           id: "lod",
@@ -210,32 +211,32 @@ function tabs(): TabDef[] {
           id: "cadpanel",
           label: "Drawing Tools",
           title: "Ctrl+Shift+D",
-          run: () => (window as Any).__obsCad?.open?.() ?? (window as Any).__obsCad?.toggle?.(),
+          run: () => (ctx.features as Any).cad?.open?.() ?? (ctx.features as Any).cad?.toggle?.(),
         },
         {
           id: "line",
           label: "Line",
-          run: () => (window as Any).__obsCad?.setTool?.("line"),
+          run: () => (ctx.features as Any).cad?.setTool?.("line"),
         },
         {
           id: "pl",
           label: "PLine",
-          run: () => (window as Any).__obsCad?.setTool?.("polyline"),
+          run: () => (ctx.features as Any).cad?.setTool?.("polyline"),
         },
         {
           id: "trim",
           label: "Trim",
-          run: () => (window as Any).__obsCad?.setTool?.("trim"),
+          run: () => (ctx.features as Any).cad?.setTool?.("trim"),
         },
         {
           id: "ext",
           label: "Extend",
-          run: () => (window as Any).__obsCad?.setTool?.("extend"),
+          run: () => (ctx.features as Any).cad?.setTool?.("extend"),
         },
         {
           id: "fillet",
           label: "Fillet",
-          run: () => (window as Any).__obsCad?.setTool?.("fillet"),
+          run: () => (ctx.features as Any).cad?.setTool?.("fillet"),
         },
       ],
     },
@@ -247,17 +248,17 @@ function tabs(): TabDef[] {
           id: "dwg",
           label: "DXF / DWG",
           title: "Ctrl+Shift+G",
-          run: () => (window as Any).__obsDrawingsPanel?.toggle?.(),
+          run: () => (ctx.features as Any).drawingsPanel?.toggle?.(),
         },
         {
           id: "exportdxf",
           label: "Export DXF",
-          run: () => (window as Any).__obsDrawings?.exportCadAsDxf?.(),
+          run: () => (ctx.features as Any).drawings?.exportCadAsDxf?.(),
         },
         {
           id: "importdxf",
           label: "Import DXF",
-          run: () => (window as Any).__obsDrawingsPanel?.open?.(),
+          run: () => (ctx.features as Any).drawingsPanel?.open?.(),
         },
       ],
     },

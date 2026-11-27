@@ -221,7 +221,6 @@ export const phasesStore = new PhasesStore();
 export function setupPhases(): typeof phasesStore {
   phasesStore.boot();
   (ctx.features as any).phases = phasesStore;
-  (window as any).__obsPhases = phasesStore;
   console.log("[phases] ready -", phasesStore.list().map((p) => p.name).join(", "));
   return phasesStore;
 }

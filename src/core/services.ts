@@ -415,6 +415,25 @@ export interface ServiceMap {
     close(): void;
     toggle(): void;
     isOpen(): boolean;
+    register(cmd: {
+      id: string;
+      label: string;
+      category?: string;
+      hint?: string;
+      kbd?: string;
+      run: () => unknown;
+      when?: () => boolean;
+    }): void;
+    unregister(id: string): void;
+    list(): Array<{
+      id: string;
+      label: string;
+      category?: string;
+      hint?: string;
+      kbd?: string;
+      run: () => unknown;
+      when?: () => boolean;
+    }>;
   };
 
   i18n: {

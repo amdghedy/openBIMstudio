@@ -630,6 +630,11 @@ export function moveSectionBox(target: THREE.Vector3): void {
 }
 
 export function setupSectionBox(): void {
+  // Merge, never replace: module-globals registers the toast-ified UI
+  // helpers (toggle/reset/grow/shrink/move) on this same feature key for the
+  // ribbon, and which site boots last must not drop the other's methods -
+  // the e2e suite reads debugPlanes while the ribbon calls grow/shrink.
+  const uiHelpers = ((ctx.features as any).sectionBox ?? {}) as Record<string, unknown>;
   (ctx.features as any).sectionBox = {
     enable: enableSectionBox,
     disable: disableSectionBox,
@@ -647,6 +652,8 @@ export function setupSectionBox(): void {
     grow: growSectionBox,
     move: moveSectionBox,
     enableWithBox: enableSectionBoxWithBox,
+    // Toast-ified ribbon helpers from module-globals win when present.
+    ...uiHelpers,
   };
 
   try {

@@ -93,7 +93,7 @@ function blocked(): boolean {
     }
   }
   try {
-    if ((window as any).__obsPlanVisible?.()) return true;
+    if ((ctx.features as any).planVisible?.()) return true;
     if (ctx.features?.drawing?.isActive?.()) return true;
     if (ctx.features?.walkMode?.isEnabled?.()) return true;
   } catch {
@@ -281,7 +281,7 @@ function applyOrbit(dxTotal: number, dyTotal: number): void {
   // works — but keep it close for stable near/far clipping.
   const isOrtho = (cam as any).isOrthographicCamera;
   if (isOrtho) {
-    sph.radius = Math.max(sph.radius, __obsGetSceneRadiusFallback() * 1.5);
+    sph.radius = Math.max(sph.radius, getSceneRadiusFallback() * 1.5);
   }
 
   const newPos = state.pivot.clone().add(new THREE.Vector3().setFromSpherical(sph));
@@ -729,7 +729,7 @@ function endNavGesture(resetCursor = true): void {
   lastNavGestureAt = performance.now();
 }
 
-function __obsGetSceneRadiusFallback(): number {
+function getSceneRadiusFallback(): number {
   try {
     const c: any = (window as any).__OBS_CTX__;
     const box = c?.scene?.box;

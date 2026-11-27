@@ -231,6 +231,5 @@ export function distributeSelection(axis: AlignAxis): number {
 
 export function setupAlignTool(): void {
   (ctx.features as any).align = { alignSelection, distributeSelection };
-  (window as any).__obsAlign = { alignSelection, distributeSelection };
   console.log("[align-tool] ready");
 }

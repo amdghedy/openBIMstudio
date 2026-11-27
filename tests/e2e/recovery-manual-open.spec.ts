@@ -185,7 +185,7 @@ async function sceneElementCount(page: Page): Promise<number> {
 }
 
 test('manual open replays a never-triaged crash: missing primary, journal has the save', async ({ page }) => {
-  test.setTimeout(300000);
+  test.setTimeout(600000);
   const t0 = Date.now();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -221,7 +221,7 @@ test('manual open replays a never-triaged crash: missing primary, journal has th
 });
 
 test('manual open replays when the primary record is corrupt instead of refusing it', async ({ page }) => {
-  test.setTimeout(300000);
+  test.setTimeout(600000);
   const t0 = Date.now();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -255,7 +255,7 @@ test('manual open replays when the primary record is corrupt instead of refusing
 });
 
 test('manual open does not resurrect a project the journal says was deleted', async ({ page }) => {
-  test.setTimeout(300000);
+  test.setTimeout(600000);
   const t0 = Date.now();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));

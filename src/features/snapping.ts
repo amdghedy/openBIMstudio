@@ -507,7 +507,7 @@ class SnapManager {
       // persistent mep-connection relationship.
       if (this.types.has("connector") && cursorWorld) {
         try {
-          const conns = (window as any).__obsMepConnectors?.getMepConnectors?.() as
+          const conns = (ctx.features as any).mepConnectors?.getMepConnectors?.() as
             Array<{ ownerElementId: string; worldOrigin: [number, number, number]; engaged: boolean }> | undefined;
           if (Array.isArray(conns)) {
             for (const c of conns) {

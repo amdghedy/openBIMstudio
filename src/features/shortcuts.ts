@@ -141,7 +141,7 @@ class ShortcutRegistry {
     // yield its editing combos (and bare command letters) so they reach the
     // CAD hotkey layer instead of being swallowed here.
     try {
-      const ownsKeys = (window as unknown as { __obsCadOwnsKeys?: () => boolean }).__obsCadOwnsKeys;
+      const ownsKeys = (window as any).__OBS_CTX__?.features?.cadOwnsKeys as (() => boolean) | undefined;
       if (typeof ownsKeys === "function" && ownsKeys()) {
         if (CAD_EDITOR_COMBOS.has(combo) || (physCombo && CAD_EDITOR_COMBOS.has(physCombo))) return;
         if (!parts.length && /^[a-z]$/.test(key)) return;
