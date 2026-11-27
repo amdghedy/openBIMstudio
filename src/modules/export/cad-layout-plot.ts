@@ -15,7 +15,9 @@
 //
 // What is drawn, in order:
 //   1. each viewport's model content, transformed model -> sheet
-//      (sheet = vp.center + (model - vp.viewCenter) * scale) and clipped
+//      (the viewport transform rotates the model by -twist around the
+//      view centre, then scales and translates — 2D-26; the raster
+//      plot applies the same rotation through the canvas) and clipped
 //      to the viewport rect at the segment level (Liang-Barsky), then the
 //      viewport border;
 //   2. the layout's own paper-space entities (its titleblock etc.), on
@@ -27,9 +29,6 @@
 //     the same list and are drawn as ordinary LINE/TEXT. (The canvas
 //     renders dimensions the same way: drawEntity has no DIMENSION case.)
 //   * invisible entities (HIDEOBJECTS / ISOLATEOBJECTS state).
-//   * viewport twist: the view rotation is not applied to the model
-//     content (follow-up — twisted viewports are rare and the A8 raster
-//     plot has the same gap).
 //   * SPLINE / HATCH / other entity kinds the reader does not produce
 //     as resolved geometry — skipped, never faked.
 //
@@ -42,10 +41,10 @@ import { createPdfDocument, MM_TO_PT } from "./pdf";
 import {
   resolveLayoutSetup,
   setupPaperMm,
-  viewportScaleOf,
   clipViewportRect,
   createViewport,
 } from "../cad-viewer/cad-viewport-a8";
+import { modelToSheet } from "../cad-viewer/viewer-math";
 import { resolveInsert } from "../drawings/block-refs";
 import { tessellatePolyline } from "../drawings/dxf-geometry";
 import { aciToRgb } from "../drawings/aci";
@@ -236,20 +235,23 @@ interface Collector {
  * `toSheet` maps the entity's own space to sheet space (identity for
  * paper entities, the viewport transform for model entities); `clip`
  * is the rect the segments are clipped against (the viewport rect, or
- * the page rect for paper entities).
+ * the page rect for paper entities). `rotDeg` is the rotation the
+ * viewport applies on the sheet (-twist; 0 for paper entities): model
+ * TEXT keeps its size under the rotation and its rotation gains it.
  */
 function collectEntity(
   c: Collector,
   e: DxfEntity,
   toSheet: (p: Pt) => Pt,
   clip: Rect,
+  rotDeg: number,
   depth: number,
 ): void {
   if (e.invisible) return;
   if (e.type === "DIMENSION") return; // geometry siblings draw; the entity itself is empty
   if (e.type === "INSERT") {
     if (depth > 8) return;
-    for (const child of resolveInsert(c.blocks, e)) collectEntity(c, child, toSheet, clip, depth + 1);
+    for (const child of resolveInsert(c.blocks, e)) collectEntity(c, child, toSheet, clip, rotDeg, depth + 1);
     return;
   }
   if (e.type === "TEXT") {
@@ -257,14 +259,18 @@ function collectEntity(
     // The anchor must be inside (or just outside) the clip rect; the
     // text itself may overhang the edge, as in AutoCAD.
     if (p.x < clip.minX - 50 || p.x > clip.maxX + 50 || p.y < clip.minY - 50 || p.y > clip.maxY + 50) return;
-    const scaleX = toSheet({ x: 1, y: 0 }).x - toSheet({ x: 0, y: 0 }).x;
+    // True scale of the transform: the length of the transformed unit
+    // vector, not its x-component (a twist would shrink that to 0 at
+    // 90°). A rotation preserves length, so this is the viewport scale.
+    const ux = toSheet({ x: 1, y: 0 }), u0 = toSheet({ x: 0, y: 0 });
+    const scaleX = Math.hypot(ux.x - u0.x, ux.y - u0.y);
     const size = Math.max(0.5, Math.abs(e.height * scaleX) * MM_TO_PT);
     c.texts.push({
       x: p.x,
       y: p.y,
       size,
       value: e.value,
-      rotation: e.rotation ?? 0,
+      rotation: (e.rotation ?? 0) + rotDeg,
       align: e.align ?? "left",
       valign: e.valign ?? "baseline",
       color: plotColor(e, c.layers),
@@ -288,13 +294,22 @@ function collectEntity(
   }
   if (e.type === "RAY" || e.type === "XLINE") {
     // Construction lines are infinite; the visible piece is the part
-    // inside the clip rect, found by clipping a long segment across it.
+    // inside the clip rect. Build it in sheet space: the start and the
+    // direction both go through the viewport transform (a twisted
+    // viewport rotates the direction), extend by the sheet diagonal,
+    // then clip. (Previously the model-space points were clipped
+    // against the sheet rect, so a RAY vanished whenever the scale was
+    // not 1 or the view was offset.)
     const L = Math.hypot(clip.maxX - clip.minX, clip.maxY - clip.minY) + 1;
     const ux = e.direction.x, uy = e.direction.y;
     const len = Math.hypot(ux, uy) || 1;
-    const dx = ux / len, dy = uy / len;
-    const a = e.type === "RAY" ? e.start : { x: e.start.x - dx * L, y: e.start.y - dy * L };
-    const b = { x: e.start.x + dx * L, y: e.start.y + dy * L };
+    const p0 = toSheet(e.start);
+    const p1 = toSheet({ x: e.start.x + ux / len, y: e.start.y + uy / len });
+    const dx = p1.x - p0.x, dy = p1.y - p0.y;
+    const dl = Math.hypot(dx, dy) || 1;
+    const sx = dx / dl, sy = dy / dl;
+    const a = e.type === "RAY" ? p0 : { x: p0.x - sx * L, y: p0.y - sy * L };
+    const b = { x: p0.x + sx * L, y: p0.y + sy * L };
     const s = clipSegment(a.x, a.y, b.x, b.y, clip);
     if (s) {
       c.segs.push({
@@ -327,15 +342,17 @@ export function collectCadLayoutGeometry(input: CadLayoutPlotInput): CadLayoutPl
   const identity = (p: Pt): Pt => p;
 
   // 1. Viewport content: model -> sheet, clipped to each viewport.
+  // 2D-26: the transform is the shared viewport transform
+  // (modelToSheet) — it rotates the model by -twist around the view
+  // centre, so a twisted viewport plots rotated, as the canvas shows
+  // it. The clip stays the axis-aligned viewport rect: the window
+  // does not rotate, only the content inside it.
   for (const vp of input.layout.viewports ?? []) {
     if (!vp.viewCenter) continue;
     const rect = clipViewportRect(vp);
-    const scale = viewportScaleOf(vp);
-    const toSheet = (p: Pt): Pt => ({
-      x: vp.center.x + (p.x - vp.viewCenter.x) * scale,
-      y: vp.center.y + (p.y - vp.viewCenter.y) * scale,
-    });
-  for (const e of input.model) collectEntity(c, e, toSheet, rect, 0);
+    const toSheet = (p: Pt): Pt => modelToSheet(vp, p);
+    const rotDeg = -(vp.twist ?? 0);
+  for (const e of input.model) collectEntity(c, e, toSheet, rect, rotDeg, 0);
     // Viewport border, as the canvas draws it — except on a synthetic
     // Model viewport (2D-25), which is a pipeline artifact, not a sheet
     // viewport: a Model plot carries no border.
@@ -356,7 +373,7 @@ export function collectCadLayoutGeometry(input: CadLayoutPlotInput): CadLayoutPl
   }
 
   // 2. Paper-space entities (the sheet's own titleblock etc.), on top.
-  for (const e of input.layout.entities ?? []) collectEntity(c, e, identity, pageRect, 0);
+  for (const e of input.layout.entities ?? []) collectEntity(c, e, identity, pageRect, 0, 0);
 
   return { pageW, pageH, segments: c.segs, texts: c.texts };
 }

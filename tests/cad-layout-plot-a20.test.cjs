@@ -262,6 +262,68 @@ const layers = [{ name: "0", color: 7 }];
     assert.ok(!/Model plots via the raster button/.test(cv), "the button title must not send Model to raster");
   });
 
+  /* ── 2D-26: viewport twist in the vector plot ── */
+  // Same A3 sheet and view as layoutA3, but the viewport is twisted
+  // 90°: the model rotates by -90° around the view centre (50,0) at
+  // scale 2.8, clipped to the same 400x280 window.
+  const viewportTwist90 = {
+    center: { x: 210, y: 148.5 }, width: 400, height: 280,
+    viewCenter: { x: 50, y: 0 }, viewHeight: 100, twist: 90,
+  };
+  const layoutTwist90 = {
+    name: "LayoutT", entities: [], viewports: [viewportTwist90],
+    paper: "A3",
+  };
+
+  await t("2D-26: twisted viewport rotates model LINEs by -twist around the view centre", async () => {
+    const g = P.collectCadLayoutGeometry({ layout: layoutTwist90, model: [line(0, 0, 100, 0)], layers });
+    const hit = g.segments.find((s) => Math.abs(s.x1 - 210) < 1e-9 && Math.abs(s.x2 - 210) < 1e-9 && Math.abs(s.y1 - 288.5) < 1e-9);
+    assert.ok(hit, `segments: ${JSON.stringify(g.segments)}`);
+    assert.ok(Math.abs(hit.y2 - 8.5) < 1e-9, `hit: ${JSON.stringify(hit)}`);
+  });
+
+  await t("2D-26: twisted viewport rotates TEXT position and rotation, keeps its size", async () => {
+    const g = P.collectCadLayoutGeometry({ layout: layoutTwist90, model: [text(50, 0, 10, "UP", { rotation: 30 })], layers });
+    assert.strictEqual(g.texts.length, 1, `texts: ${JSON.stringify(g.texts)}`);
+    const tx = g.texts[0];
+    assert.ok(Math.abs(tx.x - 210) < 1e-9 && Math.abs(tx.y - 148.5) < 1e-9, `text pos: ${JSON.stringify(tx)}`);
+    assert.strictEqual(tx.rotation, -60, `text rotation: ${tx.rotation}`);
+    assert.ok(Math.abs(tx.size - 28 * PT) < 0.01, `text size: ${tx.size}`);
+  });
+
+  await t("2D-26: ARC through a twisted viewport rotates its tessellated points", async () => {
+    const arc = { type: "ARC", layer: "0", center: { x: 50, y: 0 }, radius: 50, startAngle: 0, endAngle: 90 };
+    const g = P.collectCadLayoutGeometry({ layout: layoutTwist90, model: [arc], layers });
+    // Border segments are 0.35 wide; model segments 0.7 — filter the border out.
+    const model = g.segments.filter((s) => s.width > 0.5);
+    assert.ok(model.length > 0, `segments: ${JSON.stringify(g.segments)}`);
+    const xs = model.flatMap((s) => [s.x1, s.x2]), ys = model.flatMap((s) => [s.y1, s.y2]);
+    assert.ok(Math.abs(Math.min(...xs) - 210) < 0.01 && Math.abs(Math.max(...xs) - 350) < 0.01, `arc x range: ${Math.min(...xs)}..${Math.max(...xs)}`);
+    assert.ok(Math.abs(Math.min(...ys) - 8.5) < 0.01 && Math.abs(Math.max(...ys) - 148.5) < 0.01, `arc y range: ${Math.min(...ys)}..${Math.max(...ys)}`);
+  });
+
+  await t("2D-26: RAY is transformed through the viewport, not clipped in model space", async () => {
+    const ray = { type: "RAY", layer: "0", start: { x: 0, y: 0 }, direction: { x: 1, y: 0 } };
+    const g = P.collectCadLayoutGeometry({ layout: layoutA3, model: [ray], layers });
+    const hit = g.segments.find((s) => Math.abs(s.y1 - 148.5) < 1e-9 && Math.abs(s.x1 - 70) < 1e-9);
+    assert.ok(hit, `untwisted RAY segments: ${JSON.stringify(g.segments)}`);
+    assert.ok(Math.abs(hit.x2 - 410) < 1e-9 && Math.abs(hit.y2 - 148.5) < 1e-9, `hit: ${JSON.stringify(hit)}`);
+  });
+
+  await t("2D-26: RAY through a twisted viewport rotates its direction", async () => {
+    const ray = { type: "RAY", layer: "0", start: { x: 0, y: 0 }, direction: { x: 1, y: 0 } };
+    const g = P.collectCadLayoutGeometry({ layout: layoutTwist90, model: [ray], layers });
+    const hit = g.segments.find((s) => Math.abs(s.x1 - 210) < 1e-9 && Math.abs(s.x2 - 210) < 1e-9 && Math.abs(s.y1 - 288.5) < 1e-9);
+    assert.ok(hit, `twisted RAY segments: ${JSON.stringify(g.segments)}`);
+    assert.ok(Math.abs(hit.y2 - 8.5) < 1e-9, `hit: ${JSON.stringify(hit)}`);
+  });
+
+  await t("2D-26: the plotter uses the shared viewport transform (twist-aware)", async () => {
+    const src = fs.readFileSync(path.join(root, "src", "modules", "export", "cad-layout-plot.ts"), "utf8");
+    assert.ok(/modelToSheet\(vp, p\)/.test(src), "collectCadLayoutGeometry must use modelToSheet");
+    assert.ok(!/viewport twist: the view rotation is not applied/.test(src), "the twist follow-up note must be gone");
+  });
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });
