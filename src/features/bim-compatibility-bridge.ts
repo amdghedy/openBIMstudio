@@ -293,19 +293,19 @@ async function registerCommands(): Promise<void> {
       label: "Align Selection (X)",
       category: "Modify",
       kbd: "AL",
-      run: () => (window as Any).__obsAlign?.alignSelection?.("x", "min"),
+      run: () => (ctx.features as Any).align?.alignSelection?.("x", "min"),
     },
     {
       id: "compatibility.align.z",
       label: "Align Selection (Z)",
       category: "Modify",
-      run: () => (window as Any).__obsAlign?.alignSelection?.("z", "min"),
+      run: () => (ctx.features as Any).align?.alignSelection?.("z", "min"),
     },
     {
       id: "compatibility.distribute.x",
       label: "Distribute Selection (X)",
       category: "Modify",
-      run: () => (window as Any).__obsAlign?.distributeSelection?.("x"),
+      run: () => (ctx.features as Any).align?.distributeSelection?.("x"),
     },
     {
       id: "compatibility.match.pick",

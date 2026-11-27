@@ -210,7 +210,7 @@ async function registerBIMShortcuts(): Promise<void> {
     keys: "al",
     category: "tool",
     handler: () => {
-      const n = (window as Any).__obsAlign?.alignSelection?.("x", "min") ?? 0;
+      const n = (ctx.features as Any).align?.alignSelection?.("x", "min") ?? 0;
       notify(n ? "success" : "info", n ? `Aligned ${n}` : "Select elements to align");
     },
   });

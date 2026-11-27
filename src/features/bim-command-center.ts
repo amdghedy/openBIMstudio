@@ -161,7 +161,7 @@ function buildBody(host: HTMLElement): void {
   if (has("__obsRooms")) ready.push("Rooms");
   if (has("__obsPhases")) ready.push("Phases");
   if ((ctx.features as any).visibility) ready.push("Visibility");
-  if (has("__obsAlign")) ready.push("Align");
+  if (!!(ctx.features as Any).align) ready.push("Align");
   status.textContent = ready.length
     ? `Ready: ${ready.join(" - ")}`
     : "Modules still loading... open again in a moment.";
@@ -207,17 +207,17 @@ function buildBody(host: HTMLElement): void {
   host.appendChild(
     section("Modify", [
       btn("Align X", "Min edge - X", () => {
-        const n = (window as Any).__obsAlign?.alignSelection?.("x", "min") ?? 0;
+        const n = (ctx.features as Any).align?.alignSelection?.("x", "min") ?? 0;
         toast(n ? `Aligned ${n}` : "Select elements first", n ? "success" : "info");
-      }, has("__obsAlign")),
+      }, !!(ctx.features as Any).align),
       btn("Align Z", "Min edge - Z", () => {
-        const n = (window as Any).__obsAlign?.alignSelection?.("z", "min") ?? 0;
+        const n = (ctx.features as Any).align?.alignSelection?.("z", "min") ?? 0;
         toast(n ? `Aligned ${n}` : "Select elements first", n ? "success" : "info");
-      }, has("__obsAlign")),
+      }, !!(ctx.features as Any).align),
       btn("Distribute X", "Even spacing", () => {
-        const n = (window as Any).__obsAlign?.distributeSelection?.("x") ?? 0;
+        const n = (ctx.features as Any).align?.distributeSelection?.("x") ?? 0;
         toast(n ? `Distributed ${n}` : "Need 3+ selected", n ? "success" : "info");
-      }, has("__obsAlign")),
+      }, !!(ctx.features as Any).align),
       btn("Match Props", "Pick source", () => {
         (ctx.features as any).bimCompatibility?.matchPropertiesPickSource?.();
       }, !!(ctx.features as any).bimCompatibility),

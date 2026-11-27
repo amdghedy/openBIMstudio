@@ -152,7 +152,7 @@ export async function setupCriticalGapsUI(): Promise<void> {
 
   // -- Modify --------------------------------------------------------
   const alignBtn = makeButton("obs-adv-align", "[A] Align", "Align selection on X", () => {
-    const n = (window as Any).__obsAlign?.alignSelection?.("x", "min") ?? 0;
+    const n = (ctx.features as Any).align?.alignSelection?.("x", "min") ?? 0;
     flash(alignBtn, n ? `[OK] ${n}` : "[--]");
   });
   const matchBtn = makeButton("obs-adv-match", "Match", "Match properties (pick source)", () => {
