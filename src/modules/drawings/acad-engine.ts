@@ -489,6 +489,10 @@ interface CommonOut {
   lineweight?: number;
   ltScale?: number;
   transparency?: number;
+  /** DXF group 38 — carried when the engine emits it (2D-8). */
+  elevation?: number;
+  /** DXF group 39 — carried when the engine emits it (2D-8). */
+  thickness?: number;
 }
 
 export function commonOf(e: Any, inh?: BlockInherit): CommonOut {
@@ -506,6 +510,11 @@ export function commonOf(e: Any, inh?: BlockInherit): CommonOut {
   if (typeof e.ltScale === "number" && e.ltScale !== 1) out.ltScale = e.ltScale;
   const tr = transparencyPct(e.transparency);
   if (tr !== undefined) out.transparency = tr;
+  // 2D-8: pass elevation/thickness through when the engine emits them.
+  // Whether the engine's JSON carries them at all is unverified — DWG
+  // export goes through writeDxf, so the writer leg is what is proved.
+  if (typeof e.elevation === "number" && Number.isFinite(e.elevation) && e.elevation !== 0) out.elevation = e.elevation;
+  if (typeof e.thickness === "number" && Number.isFinite(e.thickness) && e.thickness !== 0) out.thickness = e.thickness;
   return out;
 }
 

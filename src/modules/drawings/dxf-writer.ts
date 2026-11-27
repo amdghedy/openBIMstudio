@@ -224,6 +224,11 @@ function common(e: DxfEntity): string {
   if (e.rgb != null) s += pair(420, e.rgb & 0xffffff);
   if (e.ltScale != null && Math.abs(e.ltScale - 1) > 1e-9) s += pair(48, e.ltScale);
   if (e.transparency) s += pair(440, e.transparency << 24);
+  // 2D-8: elevation (38) and thickness (39) are AcDbEntity groups, so
+  // they ride in the common prologue for every entity type that carries
+  // them; only non-zero values are written.
+  if (e.elevation != null && e.elevation !== 0) s += pair(38, e.elevation);
+  if (e.thickness != null && e.thickness !== 0) s += pair(39, e.thickness);
   return s;
 }
 

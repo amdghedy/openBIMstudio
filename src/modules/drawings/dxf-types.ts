@@ -37,6 +37,18 @@ interface DxfEntityBase {
   lineType?: string;
   /** Lineweight in mm; undefined = BYLAYER. */
   lineweight?: number;
+  /**
+   * Elevation (DXF group 38): the Z of the entity's plane. 0/undefined
+   * = the XY plane. Set by RECTANG's Elevation option (2D-8); the
+   * LWPOLYLINE reader also recovers it from group 38 into the vertices.
+   */
+  elevation?: number;
+  /**
+   * Thickness (DXF group 39): extrusion depth along +Z. 0/undefined =
+   * flat. Set by RECTANG's Thickness option (2D-8); the 2D viewer draws
+   * the plan outline — there is no 3D extrusion view.
+   */
+  thickness?: number;
   /** Per-entity linetype scale (DXF group 48); undefined = 1. */
   ltScale?: number;
   /** Entity transparency in percent 0-90 (DXF group 440); 0/undefined = opaque. */
