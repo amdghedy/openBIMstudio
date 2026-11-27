@@ -17828,11 +17828,28 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         const count = BlockEdit9.countBlockInstances(def.name, be.savedModelEnts, ...(doc.layouts ?? []).map((l) => l.entities));
         const blocks = doc.blocks ?? (doc.blocks = {});
         blocks[def.name] = def;
+        // 2D-23: a block that also lives in the shared library is
+        // redefined there too, so the next INSERT from the library — in
+        // this drawing or any other — places the edited definition, not
+        // the stale one. A document-only block (imported, never added to
+        // the library) is left alone: the library is a curated catalog,
+        // and importing a file must not silently stock it with that
+        // file's blocks. The library model never carried attdefs (BLOCK
+        // drops them the same way), so the sync is geometry-identical to
+        // what BLOCK stores; the document copy keeps the attdefs.
+        let libNote = "";
+        if (blockLib.has(def.name)) {
+          const prev = blockLib.get(def.name);
+          blockLib.add(makeBlock(def.name, def.entities, def.base, doc.layers as any, def.description ?? prev?.description), true);
+          libNote = persistBlockLib()
+            ? " Library copy updated."
+            : " Library copy updated in memory, but the browser refused to store it.";
+        }
         touchBlocks(blocks);
         setActiveBlocks(blocks);
         bindDocumentBlocks(doc);
         markDirty();
-        logCmd(`BCLOSE: block "${def.name}" redefined (${def.entities.length} object(s), base ${def.base.x}, ${def.base.y}) — ${count} reference(s) updated.`);
+        logCmd(`BCLOSE: block "${def.name}" redefined (${def.entities.length} object(s), base ${def.base.x}, ${def.base.y}) — ${count} reference(s) updated.${libNote}`);
       }
     } else {
       // 2D-22: session-authored dimension records go with the discarded geometry.

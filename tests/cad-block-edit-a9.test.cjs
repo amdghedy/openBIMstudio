@@ -87,6 +87,17 @@ const def = {
     assert.strictEqual(B.countBlockInstances("Missing", model, layout), 0);
   });
 
+  await t("2D-23: BCLOSE redefines the library copy of a library block, never a doc-only one", async () => {
+    const cv = fs.readFileSync(path.join(root, "src", "features", "cad-viewer.ts"), "utf8");
+    // The sync is conditional on library membership: a document-only block
+    // (imported, never added to the library) must not be stocked into the
+    // catalog by editing it.
+    assert.ok(/if \(blockLib\.has\(def\.name\)\) \{/.test(cv), "library sync must be gated on membership");
+    assert.ok(/blockLib\.add\(makeBlock\(def\.name, def\.entities, def\.base, doc\.layers as any, def\.description \?\? prev\?\.description\), true\)/.test(cv), "library redefine must rebuild via makeBlock with the edited entities + original base");
+    assert.ok(/persistBlockLib\(\)/.test(cv.split("2D-23:")[1] ?? ""), "library redefine must be persisted");
+    assert.ok(/Library copy updated\./.test(cv), "BCLOSE must report the library update in its log line");
+  });
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });
