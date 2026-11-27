@@ -11,7 +11,7 @@ const MAX_SIDECAR = 64 * 1024 * 1024;
 
 export interface GisBundle { shp: ArrayBuffer; dbf?: ArrayBuffer; prj?: string }
 
-const slice = (u: Uint8Array): ArrayBuffer => u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength) as ArrayBuffer;
+const slice = (u: Uint8Array): ArrayBuffer => u.slice().buffer as ArrayBuffer;
 
 export function packGisBundle(shp: ArrayBuffer, dbf?: ArrayBuffer, prj?: string): Uint8Array {
   const prjBytes = prj ? new TextEncoder().encode(prj) : new Uint8Array(0);

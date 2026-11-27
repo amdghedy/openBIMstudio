@@ -338,7 +338,7 @@ export async function importFiles(files: File[]) {
         if (r.object) {
           addAuxObject(r.object, file.name);
           // Keep the sidecars with the shapefile so a reopened project restores the same units and attributes.
-          let stored = new Uint8Array(buf);
+          let stored: Uint8Array = new Uint8Array(buf);
           if (e === "shp" && (dbfBuf || prjText)) { const { packGisBundle } = await import("../modules/gis/gis-bundle"); stored = packGisBundle(buf, dbfBuf, prjText); }
           (ctx.features.projects as any)?.onModelImported?.(`aux-${uid()}`, file.name, stored);
         }
