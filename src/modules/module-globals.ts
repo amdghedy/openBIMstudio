@@ -215,7 +215,7 @@ void servicesReady("commandPalette").then((palette) => {
 };
 
 // ── Scope Box ─────────────────────────────────────────────────────────────
-w.__obsScopeBox = {
+(ctx.features as any).scopeBox = {
   create: createScopeBox, list: listScopeBoxes, get: getScopeBox,
   delete: deleteScopeBox, update: updateScopeBox,
   applyToView, removeFromView,
@@ -428,4 +428,4 @@ w.__obsSelectionBox = {
   },
 };
 
-console.log("[obs] v40 module globals registered: scope-box, scope-box-viz, crop-region, section-box, selection-box");
+console.log("[obs] v40 module globals registered: scope-box-viz, crop-region, section-box, selection-box");

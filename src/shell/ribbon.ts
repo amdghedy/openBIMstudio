@@ -2334,7 +2334,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Crop"),
       b("crop", "Scope Box", safe(() => {
-        (window as any).__obsScopeBox?.create?.({ name: `Scope Box ${((window as any).__obsScopeBox?.list?.() ?? []).length + 1}`, min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 4, z: 10 } });
+        (ctx.features as any).scopeBox?.create?.({ name: `Scope Box ${((ctx.features as any).scopeBox?.list?.() ?? []).length + 1}`, min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 4, z: 10 } });
         (window as any).__obsScopeBoxViz?.enable?.();
         toast("Scope box created (10×4×10 m) — visualizer ON, drag handles to resize", "success");
       }, "Scope box"), { title: "Create a scope box + enable 3D visualizer with drag handles" }),
@@ -2347,7 +2347,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         title: "Toggle 3D visualization of all scope boxes (with corner/face/center handles)",
       }),
       b("crop", "List Boxes", safe(() => {
-        const list = (window as any).__obsScopeBox?.list?.() ?? [];
+        const list = (ctx.features as any).scopeBox?.list?.() ?? [];
         if (!list.length) { toast("No scope boxes — click Scope Box to create one", "warn"); return; }
         // Open the unified View Tools Manager panel (replaces console.log dump).
         (window as any).__obsOpenViewToolsManager?.();
