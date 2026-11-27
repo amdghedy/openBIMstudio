@@ -1,0 +1,48 @@
+name: AI chat Ollama PDF e2e
+
+# Real local-model check for PR #302. Runs Ollama on the CI runner (free), so no paid service.
+# Kept separate from the blocking jobs; run on demand and on changes to the AI chat.
+on:
+  pull_request:
+    paths:
+      - 'src/features/ai-*.ts'
+      - 'tests/e2e/ai-ollama-pdf.spec.ts'
+      - '.github/workflows/ai-ollama-e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ai-ollama-pdf:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm i --no-save @playwright/test@1.57.0 && npx playwright install --with-deps chromium
+      - name: Install Ollama and pull a small model
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          (ollama serve > ollama.log 2>&1 &)
+          for i in $(seq 1 30); do curl -sf localhost:11434/api/tags && break; sleep 2; done
+          ollama pull qwen2.5:0.5b
+      - run: npm run build
+      - run: npx playwright test --project=chromium tests/e2e/ai-ollama-pdf.spec.ts
+        env:
+          OLLAMA_URL: http://127.0.0.1:11434
+          OLLAMA_MODEL: qwen2.5:0.5b
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-ollama-report
+          path: |
+            playwright-report/
+            test-results/
+            ollama.log
+          if-no-files-found: ignore
