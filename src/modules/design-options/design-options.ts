@@ -159,7 +159,6 @@ export const designOptionsStore = new DesignOptionsStore();
 export function setupDesignOptions(): typeof designOptionsStore {
   designOptionsStore.boot();
   (ctx.features as any).designOptions = designOptionsStore;
-  (window as any).__obsDesignOptions = designOptionsStore;
   console.log("[design-options] ready -", designOptionsStore.listSets().length, "sets");
   return designOptionsStore;
 }

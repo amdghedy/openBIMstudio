@@ -173,23 +173,23 @@ function tabs(): TabDef[] {
           id: "ortho3d",
           label: "3D Ortho",
           title: "VO",
-          run: () => (window as Any).__obsSelPivot?.toggleOrtho?.(),
+          run: () => (ctx.features as Any).selPivot?.toggleOrtho?.(),
         },
         {
           id: "zoomsel",
           label: "Zoom Sel",
           title: "ZO",
-          run: () => void (window as Any).__obsSelPivot?.zoomToSelection?.(),
+          run: () => void (ctx.features as Any).selPivot?.zoomToSelection?.(),
         },
         {
           id: "zoomin",
           label: "Zoom +",
-          run: () => (window as Any).__obsNavCog?.zoomIn?.() ?? (window as Any).__obsSelPivot?.zoomIn?.(),
+          run: () => (window as Any).__obsNavCog?.zoomIn?.() ?? (ctx.features as Any).selPivot?.zoomIn?.(),
         },
         {
           id: "zoomout",
           label: "Zoom -",
-          run: () => (window as Any).__obsNavCog?.zoomOut?.() ?? (window as Any).__obsSelPivot?.zoomOut?.(),
+          run: () => (window as Any).__obsNavCog?.zoomOut?.() ?? (ctx.features as Any).selPivot?.zoomOut?.(),
         },
         {
           id: "lod",

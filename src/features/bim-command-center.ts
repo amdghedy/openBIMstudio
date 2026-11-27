@@ -156,10 +156,10 @@ function buildBody(host: HTMLElement): void {
   status.className = "rcc-status";
   const ready: string[] = [];
   if (!!(ctx.features as Any).stairs) ready.push("Stairs");
-  if (has("__obsRailings")) ready.push("Railings");
+  if (!!(ctx.features as Any).railings) ready.push("Railings");
   if ((ctx.features as Any).curtainWall) ready.push("Curtain");
   if (!!(ctx.features as Any).rooms) ready.push("Rooms");
-  if (has("__obsPhases")) ready.push("Phases");
+  if (!!(ctx.features as Any).phases) ready.push("Phases");
   if ((ctx.features as any).visibility) ready.push("Visibility");
   if (!!(ctx.features as Any).align) ready.push("Align");
   status.textContent = ready.length
@@ -181,7 +181,7 @@ function buildBody(host: HTMLElement): void {
       }, !!(ctx.features as Any).stairs || !!(ctx.features as any).bimCompatibility),
       btn("Railing", "Path + balusters", async () => {
         await (ctx.features as any).bimCompatibility?.placeRailing?.();
-      }, has("__obsRailings") || !!(ctx.features as any).bimCompatibility),
+      }, !!(ctx.features as Any).railings || !!(ctx.features as any).bimCompatibility),
       btn("Curtain Wall", "Mullions + panels", async () => {
         await (ctx.features as any).bimCompatibility?.placeCurtainWall?.();
       }, !!(ctx.features as any).curtainWall || !!(ctx.features as any).bimCompatibility),
@@ -319,16 +319,16 @@ function buildBody(host: HTMLElement): void {
         toast(on ? "ORTHO on" : "ORTHO off", "info");
       }, true),
       btn("3D Ortho", "VO", () => {
-        (window as Any).__obsSelPivot?.toggleOrtho?.();
+        (ctx.features as Any).selPivot?.toggleOrtho?.();
       }, true),
       btn("Zoom Sel", "ZO", () => {
-        void (window as Any).__obsSelPivot?.zoomToSelection?.();
+        void (ctx.features as Any).selPivot?.zoomToSelection?.();
       }, true),
       btn("Zoom +", "+", () => {
-        (window as Any).__obsSelPivot?.zoomIn?.();
+        (ctx.features as Any).selPivot?.zoomIn?.();
       }, true),
       btn("Zoom -", "-", () => {
-        (window as Any).__obsSelPivot?.zoomOut?.();
+        (ctx.features as Any).selPivot?.zoomOut?.();
       }, true),
       btn("Grid", "F7", () => {
         const on = (ctx.features as Any).cad?.engine?.toggleGrid?.();
@@ -351,10 +351,10 @@ function buildBody(host: HTMLElement): void {
       }, !!(ctx.features as Any).rooms),
       btn("Phasing", "Open panel", () => {
         window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "phases" } }));
-      }, has("__obsPhases")),
+      }, !!(ctx.features as Any).phases),
       btn("Design Options", "Open panel", () => {
         window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "design-options" } }));
-      }, has("__obsDesignOptions")),
+      }, !!(ctx.features as Any).designOptions),
       btn("Model Groups", "Open panel", () => {
         window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "groups" } }));
       }, !!(ctx.features as Any).groups),

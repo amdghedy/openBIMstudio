@@ -156,7 +156,7 @@ export function registerClosedGapUiItems(): void {
     label: "Phasing",
     group: "panels",
     available: true,
-    isVisible: () => !!(window as any).__obsPhases,
+    isVisible: () => !!(ctx.features as any).phases,
     toggle: () => {
       window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "phases" } }));
     },
@@ -167,7 +167,7 @@ export function registerClosedGapUiItems(): void {
     label: "Design Options",
     group: "panels",
     available: true,
-    isVisible: () => !!(window as any).__obsDesignOptions,
+    isVisible: () => !!(ctx.features as any).designOptions,
     toggle: () => {
       window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "design-options" } }));
     },
