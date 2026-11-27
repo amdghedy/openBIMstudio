@@ -224,7 +224,7 @@ jobs:
     # is a CDP feature.
     if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -242,10 +242,10 @@ jobs:
         # recovery/crash-recovery/recovery-checkpoints/recovery-manual-open =
         # the #101 recovery contract: real IndexedDB, genuine renderer crashes
         # (CDP Page.crash), journal replay, quarantine and idempotency.
-        # --workers=1 is load-bearing: two crash-cycle tests running in
-        # parallel starve SwiftShader on the 2-core runner and the post-crash
-        # reboot hangs past any test timeout (observed in CI: every hung
-        # attempt passed at ~4 min once it ran next to a non-crash test).
+        # --workers=1 keeps the genuine-crash tests isolated from each
+        # other on the 2-core SwiftShader runner; they are fast again now
+        # that reboots use a fresh context from the captured crash-window
+        # storageState (see recovery.spec.ts), so serial costs ~10 min.
         run: npx playwright test --project=chromium --workers=1 tests/e2e/edit-undo-save.spec.ts tests/e2e/recovery.spec.ts tests/e2e/crash-recovery.spec.ts tests/e2e/recovery-checkpoints.spec.ts tests/e2e/recovery-manual-open.spec.ts --reporter=list
 
       - name: Upload report and screenshots
