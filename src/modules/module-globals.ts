@@ -255,7 +255,7 @@ w.__obsDependentViews = {
 };
 
 // ── Model Checker ─────────────────────────────────────────────────────────
-w.__obsModelChecker = {
+(ctx.features as any).modelChecker = {
   run: (elements: ModelElement[], config?: ModelCheckerConfig) => {
     const report = runModelChecker(elements, config);
     toast(`Model Checker: ${report.summary.errors} errors, ${report.summary.warnings} warnings (${report.durationMs} ms)`, report.summary.errors ? "warn" : "success");
@@ -265,7 +265,7 @@ w.__obsModelChecker = {
 };
 
 // ── Daylighting ───────────────────────────────────────────────────────────
-w.__obsDaylighting = {
+(ctx.features as any).daylighting = {
   run: (p: Partial<DaylightAnalysisParams>) => {
     const r = runDaylightAnalysis(p);
     toast(`Daylighting: avg DF ${r.averageDF.toFixed(2)}% (${classifyDF(r.averageDF)}), sDA ${r.sDA.toFixed(2)}, ASE ${r.ASE.toFixed(2)}`, "success");
@@ -275,7 +275,7 @@ w.__obsDaylighting = {
 };
 
 // ── Structural Loads ───────────────────────────────────────────────────────
-w.__obsStructuralLoads = {
+(ctx.features as any).structuralLoads = {
   createCase: createLoadCase, listCases: listLoadCases, deleteCase: deleteLoadCase,
   createCombination: createLoadCombination, listCombinations: listLoadCombinations,
   resolveCombination, generateDefaultLRFDCombinations, generateDefaultASDCombinations,
@@ -418,4 +418,4 @@ w.__obsSelectionBox = {
   },
 };
 
-console.log("[obs] v40 module globals registered: toposurface, building-pad, property-line, site-components, ramps, trusses, structural-connections, fabrication-parts, scope-box, matchline, plan-region, dependent-views, model-checker, daylighting, structural-loads-ui, worksets, scope-box-viz, crop-region, section-box, selection-box");
+console.log("[obs] v40 module globals registered: toposurface, building-pad, property-line, site-components, ramps, trusses, structural-connections, fabrication-parts, scope-box, matchline, plan-region, dependent-views, worksets, scope-box-viz, crop-region, section-box, selection-box");

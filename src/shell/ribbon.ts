@@ -2022,7 +2022,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
           toast("No loaded model elements to check — load an IFC first", "warn");
           return;
         }
-        const report = (window as any).__obsModelChecker.run(elements);
+        const report = (ctx.features as any).modelChecker.run(elements);
         const rows: ResultRow[] = [
           { label: "Elements checked", value: String(report.totalElements ?? elements.length) },
           { label: "Errors", value: String(report.summary?.errors ?? 0), strong: true },
@@ -2035,7 +2035,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         showResultDialog("Model Checker Report", rows, findings.length ? findings : ["No findings — all shipped rules passed."]);
       }, "Run model checker"), { title: "Run QA rules against loaded elements" }),
       b("inspect", "List Rules", safe(() => {
-        const rules = (window as any).__obsModelChecker.listRules();
+        const rules = (ctx.features as any).modelChecker.listRules();
         toast(`Shipped rules: ${rules.join(", ")}`, "info", 4000);
       }, "List rules"), { title: "List shipped model-checker rule IDs" }),
       sep(),
@@ -2056,7 +2056,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Daylight"),
       b("sun", "Daylight", safe(() => {
-        const r = (window as any).__obsDaylighting.run({
+        const r = (ctx.features as any).daylighting.run({
           room: { width: 6, depth: 4, height: 3 },
           windowArea: 4,
           visibleTransmittance: 0.7,
@@ -2069,7 +2069,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
           { label: "Average daylight factor", value: `${r.averageDF?.toFixed?.(2) ?? r.averageDF}%`, strong: true },
           { label: "sDA (spatial daylight autonomy)", value: String(r.sDA), strong: true },
           { label: "ASE (annual sunlight exposure)", value: String(r.ASE) },
-          { label: "Classification", value: String((window as any).__obsDaylighting.classify?.(r.averageDF) ?? "") },
+          { label: "Classification", value: String((ctx.features as any).daylighting.classify?.(r.averageDF) ?? "") },
         ], ["Demo room 6 × 4 × 3 m, 4 m² window, VT 0.7. Parametric room studies arrive with the generative design editor."]);
       }, "Daylight"), { title: "Compute daylight factor + sDA + ASE for the default room" }),
       b("sun", "Solar", safe(() => {
@@ -2094,14 +2094,14 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Loads"),
       b("loads", "Load Cases", safe(() => {
-        (window as any).__obsStructuralLoads?.createCase?.({ name: "Dead Load", category: "dead", magnitude: 24, direction: { x: 0, y: -1, z: 0 } });
-        (window as any).__obsStructuralLoads?.createCase?.({ name: "Live Load", category: "live", magnitude: 2.5, direction: { x: 0, y: -1, z: 0 } });
+        (ctx.features as any).structuralLoads?.createCase?.({ name: "Dead Load", category: "dead", magnitude: 24, direction: { x: 0, y: -1, z: 0 } });
+        (ctx.features as any).structuralLoads?.createCase?.({ name: "Live Load", category: "live", magnitude: 2.5, direction: { x: 0, y: -1, z: 0 } });
         toast("Dead + Live load cases created", "success");
       }, "Load cases"), { title: "Create default dead + live load cases" }),
       b("loads", "ASCE Combos", safe(() => {
-        const cases = (window as any).__obsStructuralLoads?.listCases?.() ?? [];
+        const cases = (ctx.features as any).structuralLoads?.listCases?.() ?? [];
         if (cases.length < 2) { toast("Create load cases first", "warn"); return; }
-        const combos = (window as any).__obsStructuralLoads?.generateDefaultLRFDCombinations?.();
+        const combos = (ctx.features as any).structuralLoads?.generateDefaultLRFDCombinations?.();
         toast(`Generated ${combos.length} LRFD combinations (ASCE 7-22)`, "success");
       }, "Generate combos"), { title: "Generate ASCE 7 LRFD combinations" }),
       sep(),
