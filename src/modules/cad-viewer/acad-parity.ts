@@ -199,6 +199,30 @@ export function addLayout(doc: DxfDocument, name?: string, sheet?: LayoutSheet):
 }
 
 /**
+ * Delete a paper layout by name (case-insensitive) or 1-based index.
+ * Returns the deleted layout's name, or null when nothing matches.
+ * Pure list surgery — the caller owns the current-space bookkeeping
+ * (stepping off the layout being deleted, clearing cached indices).
+ */
+export function deleteLayout(doc: DxfDocument, target: string | number): string | null {
+  const layouts = doc.layouts ?? [];
+  let idx = -1;
+  if (typeof target === "number" && Number.isInteger(target) && target >= 1 && target <= layouts.length) {
+    idx = target - 1;
+  } else if (typeof target === "string") {
+    const trimmed = target.trim();
+    const asNum = Number(trimmed);
+    if (trimmed !== "" && Number.isInteger(asNum) && asNum >= 1 && asNum <= layouts.length) {
+      idx = asNum - 1;
+    } else {
+      idx = layouts.findIndex((l) => l.name.toLowerCase() === trimmed.toLowerCase());
+    }
+  }
+  if (idx < 0) return null;
+  return layouts.splice(idx, 1)[0].name;
+}
+
+/**
  * One undoable edit, as the CAD viewer records it. `space` is the space
  * the edit was made in (-1 = model, >= 0 = layout index), stamped at push
  * time so UNDO / REDO apply in the owning space even after a layout

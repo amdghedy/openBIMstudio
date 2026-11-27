@@ -7375,6 +7375,57 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     markDirty();
   }
 
+  /** Delete a layout by name or 1-based number (LAYOUT DELETE). Like
+   * AutoCAD, the layout you are standing on cannot be deleted out from
+   * under you: confirming the delete of the current layout steps back
+   * to Model first, and a layout after the deleted one keeps its
+   * identity (its index shifts, so it is re-activated). */
+  async function deleteLayoutAndActivate(target: string): Promise<void> {
+    if (blockEdit) { logCmd("LAYOUT: not available inside BEDIT — close the session with BCLOSE first."); return; }
+    if (!doc) {
+      logCmd("LAYOUT: open a drawing first.");
+      return;
+    }
+    const layouts = doc.layouts ?? [];
+    const trimmed = target.trim();
+    const asNum = Number(trimmed);
+    let idx = -1;
+    if (trimmed !== "" && Number.isInteger(asNum) && asNum >= 1 && asNum <= layouts.length) {
+      idx = asNum - 1;
+    } else {
+      idx = layouts.findIndex((l) => l.name.toLowerCase() === trimmed.toLowerCase());
+    }
+    if (idx < 0) {
+      logCmd(`LAYOUT: no layout named "${target}".`);
+      return;
+    }
+    const victim = layouts[idx];
+    const entCount = victim.entities.length;
+    const vpCount = victim.viewports.length;
+    if (!(await confirmDialog(
+      "Delete layout",
+      `Delete layout "${victim.name}"? Its ${entCount} entit${entCount === 1 ? "y" : "ies"} and ${vpCount} viewport${vpCount === 1 ? "" : "s"} will be removed.`,
+    ))) {
+      logCmd("LAYOUT: delete cancelled.");
+      return;
+    }
+    if (layoutI === idx) activate(-1);
+    const deleted = AcadParity.deleteLayout(doc, idx + 1);
+    if (!deleted) {
+      logCmd(`LAYOUT: could not delete "${victim.name}".`);
+      return;
+    }
+    // The splice shifts every later layout down one index: the cached
+    // per-space indices are stale, and so is the remembered paper layout.
+    layoutIdxCache.clear();
+    lastPaperLayoutI = Math.max(0, Math.min(lastPaperLayoutI, Math.max(0, (doc.layouts?.length ?? 1) - 1)));
+    if (layoutI > idx) activate(layoutI - 1);
+    buildTabs();
+    markDirty();
+    logCmd(`LAYOUT: deleted "${deleted}".`);
+    cadToast("info", `Layout "${deleted}" deleted.`);
+  }
+
   /** MODEL/PAPER status-bar toggle (A13): PAPER goes to the last paper
    * layout, creating Layout1 when the drawing has none; MODEL returns to
    * model space. The drawing state follows the toggle — activate() swaps
@@ -12309,6 +12360,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (sub === "NEW" || sub === "N") {
         // Creates the layout and makes it current, like AutoCAD's LAYOUT New.
         createLayoutAndActivate(parts.slice(2).join(" ") || undefined);
+        return;
+      }
+      if (sub === "DELETE" || sub === "DEL" || sub === "D") {
+        const target = parts.slice(2).join(" ");
+        if (!target) { logCmd("LAYOUT: LAYOUT DELETE <name|number>."); return; }
+        void deleteLayoutAndActivate(target);
         return;
       }
       const list = (doc.layouts ?? []).map((l, i) => `  ${i + 1}. ${l.name} (${l.entities.length} ents)`).join("\n") || "  (none)";
