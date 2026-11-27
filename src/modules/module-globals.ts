@@ -225,7 +225,10 @@ w.__obsScopeBoxViz = {
 };
 
 // ── View Filters ──────────────────────────────────────────────────────────
-w.__obsViewFilters = {
+// View filters, generative design and the PDF underlay used to be
+// window-globals; their only consumers are ribbon buttons, which already
+// read feature APIs off ctx — so these now live on ctx.features.
+(ctx.features as any).viewFilters = {
   create: createViewFilter, list: listViewFilters, get: getViewFilter,
   delete: deleteViewFilter, addFilterToView, removeFilterFromView,
   toggleFilterInView, matchesFilter, resolveOverride,
@@ -279,7 +282,7 @@ w.__obsStructuralLoads = {
 };
 
 // ── Generative Design ─────────────────────────────────────────────────────
-w.__obsGenerativeDesign = {
+(ctx.features as any).generativeDesign = {
   run: (config: StudyConfig) => {
     const r = runStudy(config);
     toast(`Generative study complete: ${r.paretoFront.length} Pareto-optimal solutions, ${r.evaluated} evaluations`, "success");
@@ -311,7 +314,7 @@ void servicesReady("commandPalette").then((palette) => {
 });
 
 // ── PDF Underlay ──────────────────────────────────────────────────────────
-w.__obsPdfUnderlay = {
+(ctx.features as any).pdfUnderlay = {
   load: async (params?: Partial<PdfUnderlayParams>) => {
     const file = await filePicker(".pdf");
     if (!file) { toast("No file selected", "warn"); return null; }
@@ -415,4 +418,4 @@ w.__obsSelectionBox = {
   },
 };
 
-console.log("[obs] v40 module globals registered: toposurface, building-pad, property-line, site-components, ramps, trusses, structural-connections, fabrication-parts, scope-box, view-filters, matchline, plan-region, dependent-views, model-checker, daylighting, structural-loads-ui, generative-design, pdf-underlay, worksets, scope-box-viz, crop-region, section-box, selection-box");
+console.log("[obs] v40 module globals registered: toposurface, building-pad, property-line, site-components, ramps, trusses, structural-connections, fabrication-parts, scope-box, matchline, plan-region, dependent-views, model-checker, daylighting, structural-loads-ui, worksets, scope-box-viz, crop-region, section-box, selection-box");

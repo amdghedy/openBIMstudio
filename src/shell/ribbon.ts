@@ -1538,7 +1538,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         title: "Site mesh (OBJ / STL / PLY / GLB)",
       }),
       b("pdf", "PDF Underlay", safe(() => {
-        (window as any).__obsPdfUnderlay?.load?.();
+        (ctx.features as any).pdfUnderlay?.load?.();
       }, "PDF underlay"), { title: "Load PDF as plan-view raster underlay (snappable)" }),
       sep(),
       groupLabel("Fabrication"),
@@ -2107,7 +2107,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Generative"),
       b("generative", "Run Study", safe(() => {
-        const result = (window as any).__obsGenerativeDesign.run({
+        const result = (ctx.features as any).generativeDesign.run({
           name: "Window-to-Wall Ratio study",
           variables: [
             { name: "wwr", kind: "continuous", min: 0.1, max: 0.6 },
@@ -2412,7 +2412,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Filters"),
       b("system", "Create Filter", safe(async () => {
-        const vf = (window as any).__obsViewFilters;
+        const vf = (ctx.features as any).viewFilters;
         if (!vf?.create) { toast("View filters not loaded", "warn"); return; }
         const { openFormModal } = await import("../features/form-modal");
         const v = await openFormModal({
