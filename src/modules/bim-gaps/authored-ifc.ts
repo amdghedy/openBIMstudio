@@ -22,6 +22,7 @@
  * `stats.skipped` instead of being silently dropped.
  */
 import { stableIfcGuid, isValidIfcGuid } from "./ifc-guid";
+import { validateGeoref, writeGeorefEntities, type Georef } from "../export/ifc-georef";
 import { buildElementGeo, m2Quantities } from "./m2-geometry";
 import { resolveTwinExportGeometry } from "../native-twin/twin-export-geometry";
 import { generateWallSweep, generateRevealCutter } from "../wall-sweeps/geometry";
@@ -103,6 +104,8 @@ export interface IfcExportOptions {
   /** Classification systems + per-element codes, serialized as
    *  IfcClassification / IfcClassificationReference / IfcRelAssociatesClassification. */
   classifications?: IfcClassificationInput[];
+  /** Map coordinate system for the model origin (IFC4: IfcProjectedCRS + IfcMapConversion). */
+  georef?: Georef | null;
 }
 
 export interface IfcExportStats {
@@ -113,6 +116,10 @@ export interface IfcExportStats {
   spaces: number;
   byClass: Record<string, number>;
   skipped: Array<{ id: string; type: string; reason: string }>;
+  /** True when an IfcMapConversion was written. */
+  georeferenced: boolean;
+  /** Why a requested georeference was not written (IFC2X3, invalid values). */
+  georefNote?: string;
 }
 
 export interface IfcExportResult { text: string; stats: IfcExportStats }
@@ -260,7 +267,7 @@ export function exportAuthoredToIfc(elementsIn: IfcElementInput[], opts: IfcExpo
   const f = new Spf();
   const projectName = opts.projectName || "OpenBIMStudio project";
   const keyBase = opts.projectId || projectName;
-  const stats: IfcExportStats = { schema, storeys: 0, elements: 0, openings: 0, spaces: 0, byClass: {}, skipped: [] };
+  const stats: IfcExportStats = { schema, storeys: 0, elements: 0, openings: 0, spaces: 0, byClass: {}, skipped: [], georeferenced: false };
   const bump = (cls: string) => { stats.byClass[cls] = (stats.byClass[cls] ?? 0) + 1; };
 
   /* owner history, units, context */
@@ -280,6 +287,14 @@ export function exportAuthoredToIfc(elementsIn: IfcElementInput[], opts: IfcExpo
   const origin = f.point3(0, 0, 0);
   const wcs = f.add("IFCAXIS2PLACEMENT3D", [ref(origin), "$", "$"]);
   const ctx = f.add("IFCGEOMETRICREPRESENTATIONCONTEXT", ["$", S("Model"), "3", "1.E-05", ref(wcs), "$"]);
+  if (opts.georef) {
+    if (!v4) stats.georefNote = "IFC2X3 has no IfcMapConversion, so the coordinate system was not written. Export IFC4 to carry it.";
+    else {
+      const problems = validateGeoref(opts.georef);
+      if (problems.length) stats.georefNote = "Coordinate system not written: " + problems.map((x) => x.message).join(" ");
+      else { writeGeorefEntities(f, ctx, uLen, opts.georef); stats.georeferenced = true; }
+    }
+  }
   const bodyCtx = v4
     ? f.add("IFCGEOMETRICREPRESENTATIONSUBCONTEXT", [S("Body"), S("Model"), "*", "*", "*", "*", ref(ctx), "$", ".MODEL_VIEW.", "$"])
     : ctx;

@@ -62,6 +62,7 @@ export async function buildModelIfc(schema: IfcSchema = "IFC4") {
   const opts: IfcExportOptions = {
     schema, projectName: name, projectId: project?.id, levels: a.getLevels?.() ?? [], spaces,
     classifications: buildIfcClassifications(elements),
+    georef: (await import("../export/ifc-georef")).getGeoref(),
     fileName: `${name.replace(/[^\w.-]+/g, "_")}_${schema}.ifc`,
   };
   return { opts, ...exportAuthoredToIfc(elements, opts) };
@@ -81,6 +82,7 @@ export async function exportIfc(schema: IfcSchema = "IFC4"): Promise<void> {
     notify(skipped ? "warn" : "success",
       `${schema}: ${r.stats.elements} element(s), ${r.stats.spaces} room(s), ${r.stats.openings} opening(s)` + (skipped ? ` - ${skipped} not exported (see console)` : ""), { timeout: 4500 });
     if (skipped) console.table(r.stats.skipped);
+    if (r.stats.georefNote) notify("warn", r.stats.georefNote, { timeout: 6000 });
   } catch (e) {
     console.error("[bim-gaps] IFC export failed", e);
     notify("error", "IFC export failed: " + (e instanceof Error ? e.message : String(e)));
@@ -160,6 +162,7 @@ export async function setupBimGaps(): Promise<StepStatus[]> {
       ["rg-phase-created", "Phase: set 'phase created' on selection", "Phasing", () => promptAssignPhase("created")],
       ["rg-phase-demolished", "Phase: set 'phase demolished' on selection", "Phasing", () => promptAssignPhase("demolished")],
       ["rg-design-option", "Design option: assign selection", "Phasing", promptAssignDesignOption],
+      ["rg-georef", "Project: set coordinate system (IFC georeference)", "Export", async () => { const { openGeorefDialog } = await import("../export/georef-ui"); const r = await openGeorefDialog(); if (r.changed || r.message) notify(r.changed ? "success" : "info", r.message, { timeout: 5000 }); }],
       ["rg-export-ifc4", "Export: model to IFC4", "Export", () => exportIfc("IFC4")],
       ["rg-export-ifc2x3", "Export: model to IFC2X3 (BIM 2020)", "Export", () => exportIfc("IFC2X3")],
       ["rg-status", "BIM gaps: show status", "Help", () => { console.table(status); notify("info", status.map((s) => `${s.ok ? "OK" : "FAILED"} ${s.name}`).join(" | "), { timeout: 6000 }); }],
