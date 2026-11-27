@@ -592,6 +592,14 @@ function convertEntity(e: Any, cx: Ctx, depth: number, insertLayer: string | nul
       const bulges = verts.map((v) => Number(Array.isArray(v) ? v[2] : v.bulge) || 0);
       const ent: DxfEntity = { ...c, type: "LWPOLYLINE", points, closed: e.closed === true };
       if (bulges.some((b) => b)) ent.bulges = bulges;
+      // 2D-10: the engine emits the DXF group 43 constant width as
+      // `constWidth` (cad-engine-rust/src/json.rs write_lwpolyline,
+      // verified in the raw wasm JSON) — carry it onto the entity instead
+      // of dropping it. Per-vertex widths (40/41) are not in the engine
+      // JSON (vertices are [x, y, bulge] only), so they survive DWG read
+      // only via the LibreDWG fallback leg (dwg-convert.ts).
+      const constW = Number(e.constWidth ?? 0);
+      if (constW > 0) ent.width = constW;
       return [ent];
     }
     case "SPLINE": {

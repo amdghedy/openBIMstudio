@@ -21,6 +21,11 @@ const db={tables:{LAYER:{entries:[{name:"A",colorIndex:1,lineType:"DASHED"}]},LT
   {type:"LINE",layer:"TB",inPaperSpace:true,startPoint:{x:0,y:0},endPoint:{x:400,y:0}},
   {type:"VIEWPORT",layer:"VP",inPaperSpace:true,viewportCenter:{x:200,y:150},viewportWidth:100,viewportHeight:60,viewCenter:{x:5,y:5},viewHeight:30,viewportId:2},
   {type:"VIEWPORT",layer:"VP",inPaperSpace:true,viewportCenter:{x:200,y:150},viewportWidth:400,viewportHeight:300,viewCenter:{x:0,y:0},viewHeight:300,viewportId:1},
+  // 2D-10: polyline widths from the libredwg database shape.
+  {type:"LWPOLYLINE",layer:"A",constantWidth:2.5,vertices:[{x:0,y:40},{x:10,y:40},{x:10,y:50}]},
+  {type:"LWPOLYLINE",layer:"A",vertices:[{x:0,y:60,startWidth:1,endWidth:1.5},{x:10,y:60,startWidth:2,endWidth:2.5},{x:10,y:70}]},
+  {type:"POLYLINE2D",layer:"A",startWidth:3,endWidth:3,vertices:[{x:0,y:80},{x:10,y:80},{x:10,y:90}]},
+  {type:"POLYLINE2D",layer:"A",startWidth:1,endWidth:4,vertices:[{x:20,y:80},{x:30,y:80},{x:30,y:90}]},
  ]};
 const {doc}=dwgDatabaseToDxfDocument(db);
 const E=doc.entities;
@@ -30,5 +35,16 @@ t("edge-path pattern hatch",()=>{const h=E.find(e=>e.hatch&&!e.hatch.solid);asse
 t("text justification",()=>{const x=E.find(e=>e.type==="TEXT"&&e.value==="Hi");near(x.position.x,50);assert.strictEqual(x.align,"center");assert.strictEqual(x.valign,"middle");const m=E.find(e=>e.value==="Mid");assert.strictEqual(m.align,"center");assert.strictEqual(m.valign,"middle")});
 t("attributes: visible kept, invisible and definitions dropped",()=>{assert.ok(E.some(e=>e.value==="TAG"));assert.ok(!E.some(e=>e.value==="HID"));assert.ok(!E.some(e=>e.value==="DEF"))});
 t("leader",()=>assert.ok(E.some(e=>e.type==="LWPOLYLINE"&&!e.closed&&e.points.length===2&&!e.hatch)));
+t("2D-10 polyline widths: constantWidth, per-vertex widths, POLYLINE2D header defaults",()=>{
+  const w=E.find(e=>e.type==="LWPOLYLINE"&&e.points[0].x===0&&e.points[0].y===40);
+  assert.strictEqual(w.width,2.5,"LWPOLYLINE constantWidth must map to width, got "+w.width);
+  const v=E.find(e=>e.type==="LWPOLYLINE"&&e.points[0].x===0&&e.points[0].y===60);
+  assert.deepStrictEqual(v.startWidths,[1,2,0]);assert.deepStrictEqual(v.endWidths,[1.5,2.5,0]);
+  const u=E.find(e=>e.type==="LWPOLYLINE"&&e.points[0].x===0&&e.points[0].y===80);
+  assert.strictEqual(u.width,3,"uniform POLYLINE2D header widths must map to width, got "+u.width);
+  assert.strictEqual(u.startWidths,undefined);
+  const d=E.find(e=>e.type==="LWPOLYLINE"&&e.points[0].x===20&&e.points[0].y===80);
+  assert.deepStrictEqual(d.startWidths,[1,1,1]);assert.deepStrictEqual(d.endWidths,[4,4,4]);
+});
 t("paper space: layout with entity and the real viewport only",()=>{assert.strictEqual(doc.layouts.length,1);assert.strictEqual(doc.layouts[0].entities.length,1);assert.strictEqual(doc.layouts[0].viewports.length,1);near(doc.layouts[0].viewports[0].viewHeight,30);assert.ok(!E.some(e=>e.layer==="TB"))});
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);process.exit(fail?1:0);

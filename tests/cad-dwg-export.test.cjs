@@ -66,6 +66,9 @@ const { writeDxf } = require(find(out, "dxf-writer.js"));
       { type: "CIRCLE", layer: "0", center: { x: 20, y: 30 }, radius: 5 },
       { type: "ARC", layer: "0", center: { x: 40, y: 30 }, radius: 8, startAngle: 0, endAngle: 90 },
       { type: "LWPOLYLINE", layer: "WALLS", points: [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 20 }], closed: false },
+      // 2D-10: wide polylines — constant width and per-vertex widths.
+      { type: "LWPOLYLINE", layer: "WALLS", points: [{ x: 0, y: 60 }, { x: 20, y: 60 }, { x: 20, y: 80 }], closed: false, width: 2.5 },
+      { type: "LWPOLYLINE", layer: "WALLS", points: [{ x: 40, y: 60 }, { x: 60, y: 60 }, { x: 60, y: 80 }], closed: false, startWidths: [1, 2, 0], endWidths: [1.5, 2.5, 0] },
       { type: "TEXT", layer: "0", position: { x: 10, y: 50 }, height: 2.5, value: "DWG export acceptance" },
       { type: "POINT", layer: "0", position: { x: 5, y: 5 } },
     ],
@@ -111,6 +114,20 @@ const { writeDxf } = require(find(out, "dxf-writer.js"));
   const independentText = independent.doc.entities.find((e) => e.type === "TEXT");
   assert.ok(independentText && independentText.value.includes("DWG export acceptance"),
     "independent LibreDWG did not preserve the text entity");
+  // 2D-10: polyline widths survive the DWG step on both read legs.
+  // The acadrust leg carries only the constant width (its JSON has no
+  // per-vertex widths — vertices are [x, y, bulge]); the independent
+  // LibreDWG leg carries both, via dwg-convert.ts.
+  const acadWide = parsed.doc.entities.find((e) => e.type === "LWPOLYLINE" && e.points[0].x === 0 && e.points[0].y === 60);
+  assert.ok(acadWide, "acadrust self-read did not recover the wide polyline");
+  assert.strictEqual(acadWide.width, 2.5, "acadrust self-read lost the constant polyline width, got " + acadWide.width);
+  const indWide = independent.doc.entities.find((e) => e.type === "LWPOLYLINE" && e.points[0].x === 0 && e.points[0].y === 60);
+  assert.ok(indWide, "independent LibreDWG did not recover the wide polyline");
+  assert.strictEqual(indWide.width, 2.5, "independent LibreDWG lost the constant polyline width, got " + indWide.width);
+  const indTaper = independent.doc.entities.find((e) => e.type === "LWPOLYLINE" && e.points[0].x === 40 && e.points[0].y === 60);
+  assert.ok(indTaper, "independent LibreDWG did not recover the tapered polyline");
+  assert.deepStrictEqual(indTaper.startWidths, [1, 2, 0], "independent LibreDWG lost the per-vertex start widths");
+  assert.deepStrictEqual(indTaper.endWidths, [1.5, 2.5, 0], "independent LibreDWG lost the per-vertex end widths");
   let emptyFailed = false;
   try { await acad.exportDxfToDwg(""); } catch { emptyFailed = true; }
   assert.ok(emptyFailed, "empty input must be rejected");
