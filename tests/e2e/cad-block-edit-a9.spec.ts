@@ -269,3 +269,117 @@ test('A9 BEDIT: edit a block in place, all references update, base preserved', a
 
   expect(errors, `page errors: ${errors.join('\n')}`).toEqual([]);
 });
+
+test('2D-21 BEDIT: undo/redo work inside the session and never touch the outer drawing', async ({ page }, testInfo) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(String((e as Error).stack || e)));
+  await page.goto('/');
+  await page.locator('#obs-hero-3d').click({ timeout: 30000 });
+  await expect.poll(() => page.evaluate(() => !!(window as any).__OBS_CTX__), { timeout: 30000 }).toBe(true);
+  await openPaletteWith(page, 'Drawing Editor');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.obs-cad-shell, .obs-cad-viewer').first()).toBeVisible({ timeout: 30000 });
+  const cmd = page.locator('[data-r=cmd]').first();
+  const run = async (c: string) => { await cmd.fill(c); await cmd.press('Enter'); };
+  const hist = async () => page.locator('[data-r=cmdhist]').first().innerText();
+  const lastCensus = async () => {
+    await run('CENSUS');
+    const lines = (await hist()).split('\n').filter((l) => l.includes('CENSUS:'));
+    return lines[lines.length - 1] ?? '';
+  };
+  const expectCensus = async (re: RegExp) => {
+    await expect.poll(lastCensus, { timeout: 15000 }).toMatch(re);
+  };
+  const osnapBtn = page.locator('[data-s=snap]');
+  const setOsnap = async (on: boolean) => {
+    const active = await osnapBtn.evaluate((el) => el.classList.contains('active'));
+    if (active !== on) await osnapBtn.click();
+  };
+  const setToggle = async (sel: string, on: boolean) => {
+    const btn = page.locator(sel);
+    const active = await btn.evaluate((el) => el.classList.contains('active'));
+    if (active !== on) await btn.click();
+  };
+  const canvasBox = async () => (await page.locator('[data-r=cv]').first().boundingBox())!;
+  const banner = page.locator('[data-r=bedit]').first();
+
+  await setOsnap(false);
+  await setToggle('[data-s=polar]', false);
+  await setToggle('[data-s=otrack]', false);
+  await run('NATIVEBLOCKS ON');
+  await expect.poll(async () => /NATIVEBLOCKS: ON/.test(await hist()), { timeout: 10000 }).toBe(true);
+
+  // 1. Import the reference model, then draw one undoable LINE in the model.
+  await page.locator('[data-r=importfile]').first().setInputFiles({ name: 'chair.dxf', mimeType: 'text/plain', buffer: Buffer.from(refDxf) });
+  await expectCensus(/INSERT=2/);
+  await run('ZOOM E');
+  await page.waitForTimeout(600);
+  let box = await canvasBox();
+  let map = await calibrate(page, box);
+  const clickWorld = async (wx: number, wy: number) => {
+    const s = { x: (wx - map.ox) / map.sx, y: (wy - map.oy) / map.sy };
+    await page.mouse.click(s.x, s.y);
+  };
+  await run('LINE');
+  await clickWorld(0, 0);
+  await clickWorld(10, 0);
+  await page.keyboard.press('Escape');
+  await expectCensus(/LINE=1/);
+
+  // 2. BEDIT CHAIR: UNDO with no session edits reports nothing to undo —
+  //    the outer LINE's act is NOT applied to the session.
+  await run('BEDIT CHAIR');
+  await expect.poll(async () => /BEDIT: editing "CHAIR"/.test(await hist()), { timeout: 10000 }).toBe(true);
+  await expect(banner).toBeVisible();
+  await run('UNDO');
+  await expect.poll(async () => /Nothing to undo in this BEDIT session/.test(await hist()), { timeout: 10000 }).toBe(true);
+  await expectCensus(/LINE=1/);
+
+  // 3. Draw a LINE in the session, UNDO removes it, REDO brings it back.
+  box = await canvasBox();
+  map = await calibrate(page, box);
+  await run('LINE');
+  await clickWorld(15, 25);
+  await clickWorld(25, 25);
+  await page.keyboard.press('Escape');
+  await expectCensus(/LINE=2/);
+  await run('UNDO');
+  await expect.poll(async () => /Command: UNDO/.test(await hist()), { timeout: 10000 }).toBe(true);
+  await expectCensus(/LINE=1/);
+  await run('REDO');
+  await expect.poll(async () => /Command: REDO/.test(await hist()), { timeout: 10000 }).toBe(true);
+  await expectCensus(/LINE=2/);
+
+  // 4. UNDO again, then BCLOSE: the definition keeps its original LINE
+  //    only, and the outer drawing is untouched (model LINE + 2 INSERTs).
+  await run('UNDO');
+  await expectCensus(/LINE=1/);
+  await run('BCLOSE');
+  await expect.poll(async () => /BCLOSE: block "CHAIR" redefined \(2 object\(s\), base 10, 20\) — 2 reference\(s\) updated/.test(await hist()), { timeout: 10000 }).toBe(true);
+  await expect(banner).toBeHidden();
+  await expectCensus(/LINE=1/);
+  await expectCensus(/INSERT=2/);
+  {
+    const dl = page.waitForEvent('download', { timeout: 60000 });
+    await run('QSAVE');
+    const d = await dl;
+    await d.saveAs(testInfo.outputPath('saved-after-bedit-undo-2d21.dxf'));
+    const text = fs.readFileSync(testInfo.outputPath('saved-after-bedit-undo-2d21.dxf'), 'utf8');
+    const chair = blockDef(text, 'CHAIR');
+    expect(chair!.entities.filter((r) => r.type === 'LINE').length, 'undone session LINE leaked into the CHAIR block').toBe(1);
+    // LINEs in the ENTITIES section only (the block's own LINE lives in BLOCKS).
+    const recs = dxfRecords(text);
+    let inEntities = false;
+    let modelLineCount = 0;
+    for (const r of recs) {
+      if (r.type === 'SECTION') { inEntities = recStr(r, 2) === 'ENTITIES'; continue; }
+      if (r.type === 'ENDSEC') { inEntities = false; continue; }
+      if (inEntities && r.type === 'LINE') modelLineCount++;
+    }
+    expect(modelLineCount, `expected the 1 model LINE in the saved DXF, got ${modelLineCount}`).toBe(1);
+    const inserts = dxfRecords(text).filter((r) => r.type === 'INSERT' && recStr(r, 2) === 'CHAIR');
+    expect(inserts.length, `expected 2 INSERTs of CHAIR in the saved DXF, got ${inserts.length}`).toBe(2);
+  }
+
+  expect(errors, `page errors: ${errors.join('\n')}`).toEqual([]);
+});

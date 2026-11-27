@@ -2005,9 +2005,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
    * (the definition's entities, in block space) and the drawing's live
    * lists are stashed untouched. The add guards check this first, so no
    * session entity can leak into the model or a layout; closing restores
-   * the stashed lists and drops the session's undo acts (undo inside a
-   * BEDIT session is a follow-up), so the outer drawing's undo history
-   * is exactly what it was when the session opened.
+   * the stashed lists and drops the session's undo acts (2D-21: undo and
+   * redo work inside a session on the session's own acts only), so the
+   * outer drawing's undo history is exactly what it was when the session
+   * opened.
    */
   let blockEdit: {
     session: BlockEdit9.BlockEditSession;
@@ -2188,6 +2189,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
      * after a layout switch, instead of corrupting whichever space happens
      * to be current. */
     space?: number;
+    /** 2D-21: made inside a BEDIT session. Stamped at push time; UNDO /
+     * REDO inside a session only apply acts with this flag, against the
+     * session's working copy — an outer act applied there would corrupt
+     * the stashed model. Acts with this flag never survive the session:
+     * closeBlockEdit truncates the stack to its saved depth. */
+    inBlockEdit?: boolean;
     /** Block table snapshots (BLOCK / redefine): restored with the entities so undo/redo is one transaction. */
     blocksBefore?: Record<string, DxfBlockDef> | null;
     blocksAfter?: Record<string, DxfBlockDef> | null;
@@ -2211,11 +2218,17 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   const pushUndoAct = (act: UndoAction): void => {
     // Stamp the space the edit was made in (A13) — once; a redone action
     // keeps its original space instead of being re-stamped to the space
-    // the redo happened to run from.
+    // the redo happened to run from. Likewise the BEDIT flag (2D-21).
     if (act.space === undefined) act.space = layoutI;
+    if (act.inBlockEdit === undefined) act.inBlockEdit = !!blockEdit;
     undoStack.push(act);
     if (undoStack.length > MAX_UNDO_DEPTH) undoStack.shift();
   };
+  /** Undoable depth from the current context: inside a BEDIT session only
+   * the session's own acts count (2D-21) — the outer acts underneath are
+   * not undoable until the session closes. */
+  const undoDepth = (): number => (blockEdit ? undoStack.filter((a) => a.inBlockEdit).length : undoStack.length);
+  const redoDepth = (): number => (blockEdit ? redoStack.filter((a) => a.inBlockEdit).length : redoStack.length);
   let dirty = false;
   const markDirty = (): void => {
     if (!dirty) {
@@ -4666,7 +4679,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     markDirty();
     redoStack.length = 0;
     ents = keep;
-    if (layoutI < 0) modelEnts = keep;
+    // 2D-21: inside a BEDIT session the stashed model must not be rebound
+    // to the session's list — the session edits `ents` only.
+    if (layoutI < 0 && !blockEdit) modelEnts = keep;
     sel.clear();
     selected = -1;
     rebuildIndex();
@@ -4746,14 +4761,39 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
    * touched the space on screen.
    */
   function undo(): void {
-    // A9: undo inside a BEDIT session is a follow-up — the session's acts
-    // are stamped to model space and would corrupt the stashed model.
-    if (blockEdit) { logCmd("UNDO: not available inside BEDIT — close the session with BCLOSE first."); return; }
+    // 2D-21: undo inside a BEDIT session applies only the session's own
+    // acts, against the session's working copy (`ents`). The outer acts
+    // underneath stay untouched — the old code refused outright because a
+    // session act stamped to model space would corrupt the stashed model.
+    if (blockEdit) {
+      const act = undoStack[undoStack.length - 1];
+      if (!act || !act.inBlockEdit) { logCmd("Nothing to undo in this BEDIT session."); return; }
+      undoStack.pop();
+      restoreBlocks(act.blocksBefore);
+      let next = AcadParity.undoEntityList(ents, act);
+      if (act.type === "modify") {
+        const before = act.before ?? [];
+        const after = act.after ?? [];
+        for (let i = 0; i < after.length; i++) replaceEntityIn(next, after[i], before[i]);
+      }
+      ents = next;
+      redoStack.push(act);
+      rebuildIndex();
+      sel.clear();
+      showProps();
+      draw();
+      logCmd("Command: UNDO");
+      return;
+    }
     const act = undoStack.pop();
     if (!act) {
       logCmd("Nothing to undo.");
       return;
     }
+    // A session act cannot survive closeBlockEdit's truncation; if one is
+    // ever found here, drop it and try the next instead of applying it to
+    // the drawing.
+    if (act.inBlockEdit) { undo(); return; }
     restoreBlocks(act.blocksBefore);
     const space = act.space ?? -1;
     const owned = space < 0 ? modelEnts : doc?.layouts?.[space]?.entities;
@@ -4786,13 +4826,36 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   function redo(): void {
-    // A9: see undo() — redo inside a BEDIT session is not available either.
-    if (blockEdit) { logCmd("REDO: not available inside BEDIT — close the session with BCLOSE first."); return; }
+    // 2D-21: see undo() — redo inside a BEDIT session re-applies only the
+    // session's own acts, against the session's working copy.
+    if (blockEdit) {
+      const act = redoStack[redoStack.length - 1];
+      if (!act || !act.inBlockEdit) { logCmd("Nothing to redo in this BEDIT session."); return; }
+      redoStack.pop();
+      restoreBlocks(act.blocksAfter);
+      let next = AcadParity.redoEntityList(ents, act);
+      if (act.type === "modify") {
+        const before = act.before ?? [];
+        const after = act.after ?? [];
+        for (let i = 0; i < before.length; i++) replaceEntityIn(next, before[i], after[i]);
+      }
+      ents = next;
+      pushUndoAct(act);
+      markDirty();
+      rebuildIndex();
+      sel.clear();
+      showProps();
+      draw();
+      logCmd("Command: REDO");
+      return;
+    }
     const act = redoStack.pop();
     if (!act) {
       logCmd("Nothing to redo.");
       return;
     }
+    // See undo(): a session act cannot survive its session.
+    if (act.inBlockEdit) { redo(); return; }
     restoreBlocks(act.blocksAfter);
     const space = act.space ?? -1;
     const owned = space < 0 ? modelEnts : doc?.layouts?.[space]?.entities;
@@ -4840,7 +4903,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const keep = ents.filter((e) => !picked.has(e));
     const moving = ents.filter((e) => picked.has(e));
     ents = mode === "front" ? [...keep, ...moving] : [...moving, ...keep];
-    if (layoutI < 0) modelEnts = ents;
+    // 2D-21: see eraseSelected — never rebind the stashed model in-session.
+    if (layoutI < 0 && !blockEdit) modelEnts = ents;
     pushUndoAct({ type: "order", orderBefore, orderAfter: ents.slice() });
     markDirty();
     rebuildIndex();
@@ -5493,7 +5557,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const kept = ents.filter((e) => !beforeSet.has(e));
     kept.push(...after);
     ents = kept;
-    if (layoutI < 0) modelEnts = ents;
+    // 2D-21: see eraseSelected — never rebind the stashed model in-session.
+    if (layoutI < 0 && !blockEdit) modelEnts = ents;
     pushUndoAct({ type: "replace", before, after, ...(blocks ? { blocksBefore: blocks.before, blocksAfter: blocks.after } : {}) });
     markDirty();
     redoStack.length = 0;
@@ -5565,7 +5630,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           markDirty();
           redoStack.length = 0;
           ents = keep;
-          if (layoutI < 0) modelEnts = keep;
+          // 2D-21: see eraseSelected — never rebind the stashed model in-session.
+          if (layoutI < 0 && !blockEdit) modelEnts = keep;
           sel.clear();
           selected = -1;
           rebuildIndex();
@@ -6673,7 +6739,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     markDirty();
     redoStack.length = 0;
     ents = keep;
-    if (layoutI < 0) modelEnts = keep;
+    // 2D-21: see eraseSelected — never rebind the stashed model in-session.
+    if (layoutI < 0 && !blockEdit) modelEnts = keep;
     hidden.delete(name);
     sel.clear();
     selected = -1;
@@ -8211,8 +8278,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     addLabel("DRAWING");
     addItem("Layer Properties",openLayerPropertiesManager);
     addItem("Object Properties",()=>{showProps();});
-    addItem("Undo",undo,undoStack.length===0,false,"Ctrl+Z");
-    addItem("Redo",redo,redoStack.length===0,false,"Ctrl+Y");
+    addItem("Undo", undo, undoDepth() === 0, false, "Ctrl+Z");
+    addItem("Redo", redo, redoDepth() === 0, false, "Ctrl+Y");
     document.body.appendChild(menu);
     const rect=menu.getBoundingClientRect();
     menu.style.left=`${Math.max(6,Math.min(ev.clientX,window.innerWidth-rect.width-6))}px`;
@@ -12865,9 +12932,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // on the session's working copy instead of the drawing. Drawing and
     // editing commands pass through (they edit the session's entities);
     // BCLOSE / BEDIT are handled below in the main chain. The same guard
-    // lives in the underlying functions (undo, saveDxf, activate, ...) so
-    // ribbon buttons and keyboard shortcuts are covered too.
-    if (blockEdit && ["QSAVE", "SAVE", "SAVEAS", "SA", "DWGSAVE", "EXPORTDWG", "SVGSAVE", "EXPORTSVG", "PLOT", "PRINT", "UNDO", "U", "REDO", "REFEDIT", "REFCLOSE", "RCLOSE", "NEW", "CLOSE", "LAYOUT", "LO", "IMPORT", "IMP", "PURGE", "PU"].includes(cmd)) {
+    // lives in the underlying functions (saveDxf, activate, ...) so ribbon
+    // buttons and keyboard shortcuts are covered too. UNDO / REDO are NOT
+    // blocked: they are session-scoped in the underlying functions (2D-21).
+    if (blockEdit && ["QSAVE", "SAVE", "SAVEAS", "SA", "DWGSAVE", "EXPORTDWG", "SVGSAVE", "EXPORTSVG", "PLOT", "PRINT", "REFEDIT", "REFCLOSE", "RCLOSE", "NEW", "CLOSE", "LAYOUT", "LO", "IMPORT", "IMP", "PURGE", "PU"].includes(cmd)) {
       logCmd(`${cmd}: not available inside BEDIT — close the session with BCLOSE first.`);
       return;
     }
@@ -13159,7 +13227,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (!count) { logCmd("REPLACE: 0 matches."); return; }
       const before = ents.slice();
       ents = entities;
-      if (layoutI < 0) { modelEnts = ents; doc!.entities = ents; }
+      // 2D-21: inside a BEDIT session the replacement applies to the
+      // session's list only — never rebind the stashed model or doc.entities.
+      if (layoutI < 0 && !blockEdit) { modelEnts = ents; doc!.entities = ents; }
       else if (doc?.layouts?.[layoutI]) doc.layouts[layoutI].entities = ents;
       try { commitModify(before, ents); } catch { markDirty(); }
             draw();
@@ -15240,7 +15310,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ents.forEach((e, i) => { if (rm.has(i)) removed.push(e); else keep.push(e); });
       pushUndoAct({ type: "delete", entities: removed });
       ents = keep;
-      if (layoutI < 0) modelEnts = keep;
+      // 2D-21: see eraseSelected — never rebind the stashed model in-session.
+      if (layoutI < 0 && !blockEdit) modelEnts = keep;
       sel.clear();
       refreshSelCount(); // 2D-32
       markDirty();
@@ -15300,7 +15371,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ents.forEach((e, i) => { if (plIdx.has(i)) removed.push(e); else keep.push(e); });
       pushUndoAct({ type: "delete", entities: removed });
       ents = keep;
-      if (layoutI < 0) modelEnts = keep;
+      // 2D-21: see eraseSelected — never rebind the stashed model in-session.
+      if (layoutI < 0 && !blockEdit) modelEnts = keep;
       sel.clear();
       refreshSelCount(); // 2D-32
       addEntities(lines);
@@ -15318,7 +15390,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ents.forEach((e, i) => { if (rm.has(i)) removed.push(e); else keep.push(e); });
       pushUndoAct({ type: "delete", entities: removed });
       ents = keep;
-      if (layoutI < 0) modelEnts = keep;
+      // 2D-21: see eraseSelected — never rebind the stashed model in-session.
+      if (layoutI < 0 && !blockEdit) modelEnts = keep;
       sel.clear();
       refreshSelCount(); // 2D-32
       markDirty();
@@ -15558,7 +15631,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const tail = lines.slice(-300).join("\n") || "(no commands run yet in this session)";
     const panel = openOverlay(
       `<b style="font-size:15px;color:#38bdf8">DWGHISTORY — session command history</b>` +
-      `<div style="font-size:11px;color:#9aa4b2;margin-top:4px">${escapeHtml(name || "Drawing")} · last ${Math.min(300, lines.length)} entries · ${undoStack.length} undo step(s) deep</div>` +
+      `<div style="font-size:11px;color:#9aa4b2;margin-top:4px">${escapeHtml(name || "Drawing")} · last ${Math.min(300, lines.length)} entries · ${undoDepth()} undo step(s) deep</div>` +
       `<pre style="white-space:pre-wrap;font:11px/1.5 ui-monospace,monospace;background:#0b0d12;border:1px solid #2a3140;border-radius:8px;padding:12px;margin-top:12px;max-height:320px;overflow:auto">${escapeHtml(tail)}</pre>` +
       `<div style="margin-top:12px;text-align:end"><button data-r="h-close" style="padding:6px 14px">Close</button></div>`,
     );
@@ -17690,10 +17763,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
    * point (touchBlocks invalidates every reference's cached resolution);
    * discarding restores the stashed drawing exactly. Either way the
    * session's undo acts are dropped, so the outer drawing's undo history
-   * is what it was when the session opened (undo inside a session is a
-   * follow-up). Dimensions authored inside a session become plain
-   * geometry in the block — their live records point at session entities
-   * that no longer exist in the drawing (follow-up).
+   * is what it was when the session opened (2D-21: undo/redo work inside
+   * a session, on the session's acts only). Dimensions authored inside a
+   * session become plain geometry in the block — their live records point
+   * at session entities that no longer exist in the drawing (follow-up).
    */
   function closeBlockEdit(discard: boolean): void {
     if (!blockEdit) { logCmd("BCLOSE: no BEDIT session active."); return; }
