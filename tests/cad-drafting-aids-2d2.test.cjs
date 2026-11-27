@@ -47,11 +47,14 @@ const hasBar = (needle, label) => assert.ok(statusBar.includes(needle), label ||
 t("defaults match the viewer's declared engine defaults", () => {
   assert.deepEqual(A.getDraftingAids(), {
     grid: true, snap: false, osnap: true, ortho: false,
-    polar: true, otrack: true, dyn: true, lwt: true,
+    polar: true, otrack: true, dyn: true, lwt: true, ducs: true,
   });
   assert.equal(A.DRAFTING_AID_DEFAULTS.osnap, true);
   assert.equal(A.DRAFTING_AID_DEFAULTS.snap, false);
   assert.equal(A.DRAFTING_AID_DEFAULTS.grid, true);
+  assert.equal(A.DRAFTING_AID_DEFAULTS.ducs, true);
+  assert.equal(A.isDraftingAidKey("ducs"), true);
+  assert.deepEqual(A.DRAFTING_AID_KEYS.length, 9);
 });
 
 t("getDraftingAids returns a copy — mutating it does not move the store", () => {
@@ -166,6 +169,28 @@ t("the LWT ribbon action now calls updateStatus() so its toggle publishes", () =
   assert.ok(i >= 0, "lwt ribbon action exists");
   const block = viewer.slice(i, i + 220);
   assert.ok(block.includes("updateStatus();"), "lwt action calls updateStatus");
+});
+
+t("DUCS (2D-29) is a ninth shared aid, wired end to end", () => {
+  // State: toggle round-trips through the shared module alone.
+  A.resetDraftingAids();
+  assert.equal(A.getDraftingAid("ducs"), true);
+  assert.equal(A.toggleDraftingAid("ducs"), false);
+  assert.equal(A.getDraftingAid("ducs"), false);
+  assert.deepEqual(A.applyDraftingAids({ ducs: true }), ["ducs"]);
+  A.resetDraftingAids();
+  // Engine: reads, publishes and syncs the flag like the other eight.
+  has('ducsOn = Aids.getDraftingAid("ducs");', "engine init reads ducs");
+  has("ducs: ducsOn,", "publish carries ducs");
+  has('if (ducsOn !== next.ducs) { ducsOn = next.ducs; changed = true; }', "sync applies ducs");
+  // Shell bar: a real DUCS button.
+  hasBar('{ key: "ducs", label: "DUCS"', "DUCS button defined");
+  // Viewer: its own status-bar button, a DUCS command (ON/OFF/toggle),
+  // and the F6 keybinding, all on the same flag.
+  has('data-s="ducs"', "viewer status bar has a DUCS button");
+  has('{ name: "DUCS", aliases: ["F6"]', "DUCS command registered");
+  has('if (cmd === "DUCS") {', "DUCS command handler exists");
+  has('if (key === "F6") {', "F6 toggles DUCS");
 });
 
 t("status-bar.ts renders real toggle buttons wired to the module", () => {

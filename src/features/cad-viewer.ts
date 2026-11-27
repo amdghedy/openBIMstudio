@@ -321,6 +321,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "LIMITS", aliases: [], description: "Set/report the drawing limits rectangle (LIMITS 0,0 420,297)" },
   { name: "QDIM", aliases: [], description: "Quick dimension: aligned dimensions on every selected LINE" },
   { name: "UCSVIEW", aliases: ["UCSV"], description: "Toggle UCS display — ON applies the drawing's saved view rotation (like AutoCAD), OFF shows raw world coordinates" },
+  { name: "DUCS", aliases: ["F6"], description: "Toggle Dynamic UCS (F6) — the UCS follows the plane of the entity under the cursor; in this 2D viewer the switch is live and persisted, the 3D face alignment has no 3D surface to act on" },
   { name: "DIMSPACE", aliases: [], description: "Even spacing between selected linear/aligned dimensions (DIMSPACE <gap> or DIMSPACE AUTO)" },
   { name: "DIMBREAK", aliases: [], description: "Break dimension lines where selected geometry crosses them" },
   { name: "DIMOVERRIDE", aliases: ["DOV"], description: "Per-dimension style overrides — TEXTHEIGHT, ARROWSIZE, PRECISION, COLOR, SCALE, SUFFIX; CLEAR resets" },
@@ -1782,6 +1783,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   let dynOn = true; // Dynamic Input HUD F12
   let lwtOn = true;
+  let ducsOn = true; // Dynamic UCS F6 (shared drafting aid, 2D-29)
   // UCS display toggle — ON by default so drawings open the way the native
   // CAD app shows them (the file's saved view rotation applied; for
   // DVIEW-twisted drawings that is what makes them upright). OFF shows raw
@@ -1834,6 +1836,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   otrackOn = Aids.getDraftingAid("otrack");
   dynOn = Aids.getDraftingAid("dyn");
   lwtOn = Aids.getDraftingAid("lwt");
+  ducsOn = Aids.getDraftingAid("ducs");
   showGrid = Aids.getDraftingAid("grid");
   let cleanScreen = false;
 
@@ -11428,6 +11431,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd(`GRID: <${showGrid ? "ON" : "OFF"}>`);
       return;
     }
+    if (key === "F6") {
+      ev.preventDefault();
+      ducsOn = !ducsOn;
+      updateStatus();
+      draw();
+      logCmd(`DUCS: <${ducsOn ? "ON" : "OFF"}>`);
+      return;
+    }
     if (key === "F8") {
       ev.preventDefault();
       orthoOn = !orthoOn;
@@ -11722,6 +11733,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       <button class="obs-status-btn ${orthoOn ? "active" : ""}" data-s="ortho" title="Ortho (F8)">ORTHO</button>
       <button class="obs-status-btn ${polarOn ? "active" : ""}" data-s="polar" title="Polar Tracking (F10)">POLAR</button>
       <button class="obs-status-btn ${ucsActive ? "active" : ""}" data-s="ucsview" title="UCS display — ON applies the drawing's saved view rotation (like AutoCAD); OFF shows raw world coordinates">UCS</button>
+      <button class="obs-status-btn ${ducsOn ? "active" : ""}" data-s="ducs" title="Dynamic UCS (F6)">DUCS</button>
       <button class="obs-status-btn ${otrackOn ? "active" : ""}" data-s="otrack" title="Reference line tracking (axis guides while drawing)">OTRACK</button>
       <button class="obs-status-btn ${dynOn ? "active" : ""}" data-s="dyn" title="Dynamic Input (F12)">DYN</button>
       <button class="obs-status-btn ${lwtOn ? "active" : ""}" data-s="lwt" title="Lineweight">LWT</button>
@@ -11770,6 +11782,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       updateStatus();
       draw();
     });
+    statusEl.querySelector("[data-s=ducs]")?.addEventListener("click", () => {
+      ducsOn = !ducsOn;
+      logCmd(`DUCS: <${ducsOn ? "ON" : "OFF"}>`);
+      updateStatus();
+      draw();
+    });
     statusEl.querySelector("[data-s=quick]")?.addEventListener("click", () => setQuickMeasure(!quick));
     statusEl.querySelector("[data-s=dyn]")?.addEventListener("click", () => {
       dynOn = !dynOn;
@@ -11796,6 +11814,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       otrack: otrackOn,
       dyn: dynOn,
       lwt: lwtOn,
+      ducs: ducsOn,
     });
   }
 
@@ -11966,7 +11985,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           if (match) { event.preventDefault(); dynCommandInput.value = match.name; dynCommandInput.dispatchEvent(new Event("input")); }
           return;
         }
-        if (event.key === "F3" || event.key === "F7" || event.key === "F8" || event.key === "F9" || event.key === "F12") {
+        if (event.key === "F3" || event.key === "F6" || event.key === "F7" || event.key === "F8" || event.key === "F9" || event.key === "F12") {
           event.preventDefault();
           const key = event.key;
           closeDynamicCommand();
@@ -13110,6 +13129,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (cmd === "POLAR") {
       const state = (parts[1] ?? "").toUpperCase();
       setPolarTracking(state === "ON" ? true : state === "OFF" ? false : !polarOn);
+      return;
+    }
+    if (cmd === "DUCS") {
+      const state = (parts[1] ?? "").toUpperCase();
+      ducsOn = state === "ON" ? true : state === "OFF" ? false : !ducsOn;
+      updateStatus();
+      draw();
+      logCmd(`DUCS: <${ducsOn ? "ON" : "OFF"}>`);
       return;
     }
     if (cmd === "POLARANG" || cmd === "PANG") {
@@ -17741,6 +17768,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (otrackOn !== next.otrack) { otrackOn = next.otrack; changed = true; }
     if (dynOn !== next.dyn) { dynOn = next.dyn; changed = true; }
     if (lwtOn !== next.lwt) { lwtOn = next.lwt; changed = true; }
+    if (ducsOn !== next.ducs) { ducsOn = next.ducs; changed = true; }
     if (showGrid !== next.grid) { showGrid = next.grid; changed = true; }
     return changed;
   }

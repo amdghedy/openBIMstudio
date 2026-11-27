@@ -97,6 +97,7 @@ const AID_DEFS: { key: DraftingAidKey; label: string; title: string }[] = [
   { key: "ortho", label: "ORTHO", title: "Ortho mode (F8)" },
   { key: "polar", label: "POLAR", title: "Polar tracking (F10)" },
   { key: "otrack", label: "OTRACK", title: "Object snap tracking" },
+  { key: "ducs", label: "DUCS", title: "Dynamic UCS (F6)" },
   { key: "dyn", label: "DYN", title: "Dynamic Input (F12)" },
   { key: "lwt", label: "LWT", title: "Lineweight display" },
 ];
