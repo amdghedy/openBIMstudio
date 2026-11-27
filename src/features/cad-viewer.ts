@@ -77,7 +77,7 @@ import {
   type CadSnapOverrideKind,
 } from "../modules/cad-viewer/cad-snap-override";
 import { resolvedOf, bindDocumentBlocks, setActiveBlocks, touchBlocks, explodeInsert, findBlock, blocksOf, resolveInsert } from "../modules/drawings/block-refs";
-import { setCurrentCadDoc } from "../modules/cad-viewer/cad-current-doc";
+import { setCurrentCadDoc, getCurrentCadDoc } from "../modules/cad-viewer/cad-current-doc";
 import { downloadCadLayoutPdf, modelVectorLayout } from "../modules/export/cad-layout-plot";
 import * as BE from "../modules/drawings/block-edit";
 import { XrefStore, composeXrefs, compareXref, type ComposedXref } from "../modules/drawings/xref-engine";
@@ -589,6 +589,8 @@ interface CadEngineApi {
   close(): void;
   activate(): void;
   deactivate(): void;
+  /** Switch this drawing to a paper layout by index (2D-27 sheets-panel click-through). False when the index is not a layout or a BEDIT session is open. */
+  showLayout(index: number): boolean;
   isDirty(): boolean;
   markSaved(): void;
   copySelection(): boolean;
@@ -658,6 +660,14 @@ try {
 let ribbonStrip: HTMLDivElement | null = null;
 let ribbonTabsRow: HTMLDivElement | null = null;
 let ribbonActive: CadEngineApi | null = null;
+/**
+ * 2D-27: a sheets-panel click-through asked for a layout while the
+ * drawing's tab was gone — the registry doc is re-mounted from its
+ * serialised DXF (openCadLayout) and this is the layout to switch to
+ * once that load finishes. Consumed (and cleared) at the end of
+ * load(), only when the loaded file's name matches.
+ */
+let pendingLayout: { name: string; index: number } | null = null;
 const ribbonEngines = new Map<CadEngineApi, HTMLDivElement>();
 
 /** Ribbon minimize (double-click a tab) - the strip hides, the tab row stays, the drawing gets the space. */
@@ -901,6 +911,62 @@ export function runCadAiCommand(text: string): { ok: boolean; error?: string } {
     agents can discover every command name + alias they may run. */
 export function getCadCommandCatalog(): { name: string; aliases: string[]; description: string }[] {
   return CAD_COMMANDS.map((c) => ({ name: c.name, aliases: [...c.aliases], description: c.description }));
+}
+
+/**
+ * Sheets-panel click-through (2D-27): open the Drawing Editor on a
+ * paper layout of the current CAD drawing, by index.
+ *
+ * Two paths. When the drawing's tab is alive (ribbonActive set — the
+ * registry always tracks the active tab), the shell is simply re-shown
+ * and the tab switched to the layout. When the tab is gone — the usual
+ * case, since reaching a BIM-side panel means the drawing tab was
+ * closed — the registry doc is re-mounted: it is serialised through
+ * the DXF writer (the QSAVE path, which round-trips layouts and
+ * viewports) and opened as a new tab, and the requested layout is
+ * applied when that load finishes (pendingLayout). The re-mount keeps
+ * every saved entity/layout/layer/block; undo history and other
+ * non-serialised session state do not survive it.
+ *
+ * Returns ok=false when there is no current drawing, the index is not
+ * a layout, or a BEDIT session is open (the viewer logs the BEDIT
+ * refusal itself).
+ */
+export function openCadLayout(layoutIndex: number): { ok: boolean; error?: string } {
+  const entry = getCurrentCadDoc();
+  if (!entry) return { ok: false, error: "No CAD drawing is open — open a drawing in the Drawing Editor first." };
+  if (layoutIndex < 0 || layoutIndex >= (entry.doc.layouts?.length ?? 0)) {
+    return { ok: false, error: "That layout no longer exists — reopen the Sheets panel." };
+  }
+  if (ribbonActive) {
+    openCadViewer();
+    if (!ribbonActive.showLayout(layoutIndex)) {
+      return { ok: false, error: "That layout could not be shown — a BEDIT session may be open (close it with BCLOSE first)." };
+    }
+    return { ok: true };
+  }
+  // Tab-restore path: re-mount the registry doc from its serialised DXF.
+  let text: string;
+  try {
+    text = writeDxf(entry.doc);
+  } catch (err) {
+    return { ok: false, error: `Could not reopen the drawing: ${err instanceof Error ? err.message : String(err)}` };
+  }
+  const fileName = /\.dxf$/i.test(entry.name) ? entry.name : `${entry.name || "drawing"}.dxf`;
+  // openFile activates a same-title tab instead of loading — then no
+  // load runs to consume the pending request, so switch directly on
+  // that tab's engine.
+  const existing = tabs.find((t) => t.title.toLowerCase() === fileName.toLowerCase());
+  if (existing) {
+    openCadViewer(new File([text], fileName, { type: "text/plain" }));
+    if (!existing.engine.showLayout(layoutIndex)) {
+      return { ok: false, error: "That layout could not be shown — a BEDIT session may be open (close it with BCLOSE first)." };
+    }
+    return { ok: true };
+  }
+  pendingLayout = { name: fileName, index: layoutIndex };
+  openCadViewer(new File([text], fileName, { type: "text/plain" }));
+  return { ok: true };
 }
 
 function openTabMenu(x: number, y: number, tab: DocTab): void {
@@ -7959,9 +8025,21 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       hooks.onDirty(false);
       scheduleSessionSave();
       hooks.onTitle(name);
+      // 2D-27: a sheets-panel click-through asked for a layout while
+      // the drawing's tab was gone and the doc was re-mounted from the
+      // registry — switch to it now that the load finished. The name
+      // check keeps a stale request from firing on another drawing.
+      if (pendingLayout && pendingLayout.name === name) {
+        const li = pendingLayout.index;
+        pendingLayout = null;
+        if (doc.layouts && li >= 0 && li < doc.layouts.length) activate(li);
+      }
       status(`${r.summary}`);
       setTimeout(() => status(""), 5000);
     } catch (err) {
+      // 2D-27: a failed re-mount drops its pending layout request, so a
+      // later manual open of the same file does not switch layouts.
+      if (pendingLayout && pendingLayout.name === file.name) pendingLayout = null;
       status(`Could not open ${file.name}: ${(err as Error).message}`);
       setTimeout(() => status(""), 7000);
     } finally {
@@ -18951,6 +19029,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       // A20: this tab's document is now the current CAD drawing for the
       // BIM-side panels (batch plotter, sheets panel).
       publishCadDoc();
+    },
+    showLayout(index: number): boolean {
+      // 2D-27: sheets-panel click-through. The closure's activate()
+      // already refuses a switch during BEDIT (A9) — confirm the
+      // switch landed instead of trusting the call.
+      if (blockEdit) return false;
+      if (!doc || !doc.layouts || index < 0 || index >= doc.layouts.length) return false;
+      activate(index);
+      return layoutI === index;
     },
     deactivate() {
       closeSelectionCycle();

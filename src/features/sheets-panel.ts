@@ -47,8 +47,10 @@ function render() {
   // renders. Read-only bridge — the rows display each layout as a sheet
   // (number/name from the layout name, paper from its page setup) and
   // nothing here edits, renames or deletes a CAD layout; no data moves
-  // between the two sheet stores. Clicking through to the viewer on
-  // that layout is a follow-up (needs a tab-restore path).
+  // between the two sheet stores. 2D-27: clicking a row opens the
+  // Drawing Editor on that layout (openCadLayout) — the tab is usually
+  // gone by the time this panel is used, so the registry doc is
+  // re-mounted from its serialised DXF and the layout applied on load.
   const cadDoc = getCurrentCadDoc();
   const cadLayouts = cadDoc?.doc.layouts ?? [];
 
@@ -85,8 +87,8 @@ function render() {
           ? `<div class="obs-sheets__empty">No CAD drawing open — open a drawing in the Drawing Editor.</div>`
           : cadLayouts.length === 0
             ? `<div class="obs-sheets__empty">The current drawing has no layouts yet.</div>`
-            : cadLayouts.map((l) => `
-            <div class="obs-sheets__row obs-sheets__row--cad" title="CAD layout — read-only; edit it in the Drawing Editor">
+            : cadLayouts.map((l, i) => `
+            <div class="obs-sheets__row obs-sheets__row--cad" data-act="open-cad" data-li="${i}" data-name="${esc(l.name)}" title="Open this layout in the Drawing Editor">
               <span class="obs-sheets__name">${esc(l.name)}</span>
               <span class="obs-sheets__meta">${esc(cadLayoutPaperLabel(l, cadDoc.doc.pageSetups))} · ${l.viewports?.length ?? 0} vp</span>
               <span class="obs-sheets__meta" style="color:#fbbf24">CAD</span>
@@ -126,6 +128,25 @@ function render() {
       }
       if (act === "export" && activeId) { exportSheetSvg(activeId); return; }
       if (act === "select" && id) { activeId = id; render(); return; }
+      if (act === "open-cad") {
+        // 2D-27: click through to the viewer on that CAD layout. Resolve
+        // against the live document at click time (the viewer may have
+        // added, renamed or deleted layouts since this panel rendered),
+        // then open the viewer on it. The viewer is imported lazily so
+        // this panel never creates a static cycle with it.
+        const nm = (el as HTMLElement).dataset.name ?? "";
+        const li = Number((el as HTMLElement).dataset.li);
+        const live = getCurrentCadDoc();
+        const byName = live?.doc.layouts?.findIndex((l) => l.name === nm) ?? -1;
+        const target = byName >= 0 ? byName : (Number.isFinite(li) ? li : -1);
+        if (target < 0) { uiAlert("That layout no longer exists — reopen the Sheets panel."); return; }
+        void import("./cad-viewer").then((m) => {
+          const r = m.openCadLayout(target);
+          if (r.ok) setVisible(false);
+          else uiAlert(r.error ?? "Could not open that layout.");
+        });
+        return;
+      }
       if (act === "del" && id) {
         void confirmDialog("Delete sheet", "Delete this sheet?").then((yes) => {
           if (!yes) return;
@@ -264,13 +285,12 @@ function ensurePanel() {
     .obs-sheets__empty { color:#64748b; text-align:center; padding:16px 0; font-size:12px; }
     .obs-sheets__cad { margin-top:12px; }
     .obs-sheets__cad-head { font-size:11px; color:#94a3b8; text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; }
-    /* A20: CAD rows are display-only (read-only bridge) — no pointer, no
-       active state. Clicking through to the viewer on that layout is a
-       follow-up: it needs a tab-restore path (mount the registry doc in
-       a new tab), because the viewer shell covers this panel and closing
-       the viewer destroys the tab. */
-    .obs-sheets__row--cad { cursor:default; }
-    .obs-sheets__row--cad:hover { background:transparent; }
+    /* 2D-27: CAD rows click through to the viewer on that layout
+       (openCadLayout) — pointer + hover like the BIM rows. The rows
+       stay read-only: nothing here edits, renames or deletes a CAD
+       layout. */
+    .obs-sheets__row--cad { cursor:pointer; }
+    .obs-sheets__row--cad:hover { background:#0f172a; }
     .obs-sheets__row--cad .obs-sheets__name { color:#fde68a; }
     .obs-sheets__detail {
       margin-top:12px; padding:12px; background:#0f172a; border-radius:8px; border:1px solid #334155;
