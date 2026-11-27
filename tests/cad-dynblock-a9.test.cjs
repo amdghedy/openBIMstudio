@@ -180,6 +180,60 @@ const ents = [line(0, 0, 10, 0), line(0, 0, 0, 10), line(20, 20, 30, 20)];
     assert.ok(Math.abs(id.x - 100) < 1e-9 && Math.abs(id.y) < 1e-9);
   });
 
+  /* ── 2D-24: viewer-math INSERT bbox / pick / snap follow the installed resolver ── */
+  // The viewer installs resolvedDynOf (the dynamic-aware resolver); the
+  // node test proves the mechanism with a stub that returns the
+  // parameter-moved geometry, exactly what resolvedDynOf returns for a
+  // dynamic block whose linear parameter moved its LINE from (0,0)-(100,0)
+  // to (0,0)-(150,0).
+  await t("2D-24: entityBBox / distToEntity / findSnap follow the installed INSERT resolver", async () => {
+    execSync(
+      "npx tsc src/modules/cad-viewer/viewer-math.ts " +
+        "--outDir " + out + " --module commonjs --target es2020 --skipLibCheck --esModuleInterop",
+      { cwd: root, stdio: "pipe" },
+    );
+    const M = require(find(out, "viewer-math.js"));
+    const BR = require(find(out, "block-refs.js"));
+    const table = {
+      DOOR: {
+        name: "DOOR", base: { x: 0, y: 0 },
+        entities: [line(0, 0, 100, 0), line(0, 0, 0, 50)],
+        attdefs: [],
+      },
+    };
+    const ins = { type: "INSERT", layer: "0", name: "DOOR", position: { x: 0, y: 0 } };
+    BR.setActiveBlocks(table);
+    try {
+      // Default (plain resolvedOf): the base geometry.
+      let b = M.entityBBox(ins);
+      assert.deepStrictEqual(b, { minX: 0, minY: 0, maxX: 100, maxY: 50 }, `base bbox: got ${JSON.stringify(b)}`);
+      assert.ok(Math.abs(M.distToEntity(ins, 148, 0) - 48) < 1e-9, "base pick distance must measure to the unmoved LINE end");
+      // A dynamic-aware resolver returns the moved geometry instead.
+      const moved = [line(0, 0, 150, 0), line(0, 0, 0, 50)];
+      M.setInsertResolver(() => moved);
+      b = M.entityBBox(ins);
+      assert.deepStrictEqual(b, { minX: 0, minY: 0, maxX: 150, maxY: 50 }, `moved bbox: got ${JSON.stringify(b)}`);
+      assert.ok(Math.abs(M.distToEntity(ins, 148, 0)) < 1e-9, "moved pick distance must be 0 on the moved LINE");
+      const idx = M.buildIndex([ins], { minX: -10, minY: -10, maxX: 200, maxY: 60 });
+      const snap = M.findSnap(idx, [ins], 148, 2, 5, ["endpoint"]);
+      assert.ok(snap && Math.abs(snap.x - 150) < 1e-9 && Math.abs(snap.y) < 1e-9, `moved endpoint snap: got ${snap ? `(${snap.x}, ${snap.y})` : "none"}`);
+    } finally {
+      M.setInsertResolver();
+    }
+    // Reset restores the plain resolver: the base geometry again.
+    const b = M.entityBBox(ins);
+    assert.deepStrictEqual(b, { minX: 0, minY: 0, maxX: 100, maxY: 50 }, `reset bbox: got ${JSON.stringify(b)}`);
+    const idx = M.buildIndex([ins], { minX: -10, minY: -10, maxX: 200, maxY: 60 });
+    assert.strictEqual(M.findSnap(idx, [ins], 148, 2, 5, ["endpoint"]), null, "base geometry has no snap near (148,2)");
+  });
+
+  await t("2D-24: the viewer installs resolvedDynOf and restores the default on close", async () => {
+    const cv = fs.readFileSync(path.join(root, "src", "features", "cad-viewer.ts"), "utf8");
+    assert.ok(/M\.setInsertResolver\(resolvedDynOf\)/.test(cv), "viewer must install its dynamic resolver");
+    const close = cv.slice(cv.indexOf("export function closeCadViewer"));
+    assert.ok(/M\.setInsertResolver\(\)/.test(close.slice(0, close.indexOf("\n}\n") + 3)), "close must restore the plain resolver");
+  });
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });
