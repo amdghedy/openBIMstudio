@@ -12,6 +12,12 @@
  *   5. the job URN is base64 of the objectId
  *      (`urn:adsk.objects:os.object:<bucket>/<key>`), not of `<bucket>/<key>`.
  *
+ * Item 4 (residual audit): the missing-credentials path used to warn and
+ * resolve, so a caller could believe the import had succeeded. It now
+ * throws the typed RfaApsNotConfiguredError naming exactly which
+ * credentials are missing (canonical APS_CLIENT_ID / APS_CLIENT_SECRET,
+ * legacy FORGE_* still accepted), with zero HTTP calls. Covered below.
+ *
  * The module is compiled from source with tsc into a temp dir (same
  * harness pattern as parametric-family-hosting / project-file), with
  * node_modules symlinked in so the axios import resolves.
@@ -42,7 +48,7 @@ execSync(
   " src/services/rfaImport.ts",
   { cwd: root, stdio: "inherit", shell: true },
 );
-const { importRFA, DEFAULT_RFA_BUCKET_KEY } = require(path.join(tmpOut, "services/rfaImport.js"));
+const { importRFA, DEFAULT_RFA_BUCKET_KEY, RfaApsNotConfiguredError, RFA_APS_NOT_CONFIGURED_CODE } = require(path.join(tmpOut, "services/rfaImport.js"));
 
 // ── Mock APS client ─────────────────────────────────────────────────────
 const AUTH_URL = "https://developer.api.autodesk.com/authentication/v1/authenticate";
@@ -136,21 +142,45 @@ function makeApi() {
 
 const RFA_BYTES = Uint8Array.from([0x52, 0x45, 0x56, 0x49, 0x54]); // fake .rfa payload
 
-const savedClientId = process.env.FORGE_CLIENT_ID;
-const savedClientSecret = process.env.FORGE_CLIENT_SECRET;
-function setCreds() {
-  process.env.FORGE_CLIENT_ID = "test-client-id";
-  process.env.FORGE_CLIENT_SECRET = "test-client-secret";
-}
-function clearCreds() {
+const savedClientId = process.env.APS_CLIENT_ID;
+const savedClientSecret = process.env.APS_CLIENT_SECRET;
+const savedForgeId = process.env.FORGE_CLIENT_ID;
+const savedForgeSecret = process.env.FORGE_CLIENT_SECRET;
+function clearAllCreds() {
+  delete process.env.APS_CLIENT_ID;
+  delete process.env.APS_CLIENT_SECRET;
   delete process.env.FORGE_CLIENT_ID;
   delete process.env.FORGE_CLIENT_SECRET;
 }
+/** Canonical credentials (the names the server uses and the error asks for). */
+function setCreds() {
+  clearAllCreds();
+  process.env.APS_CLIENT_ID = "test-client-id";
+  process.env.APS_CLIENT_SECRET = "test-client-secret";
+}
+/** Legacy credentials (the FORGE_* names the module originally read). */
+function setForgeCreds() {
+  clearAllCreds();
+  process.env.FORGE_CLIENT_ID = "test-client-id";
+  process.env.FORGE_CLIENT_SECRET = "test-client-secret";
+}
+function setCredsIdOnly() {
+  clearAllCreds();
+  process.env.APS_CLIENT_ID = "test-client-id";
+}
+function setCredsSecretOnly() {
+  clearAllCreds();
+  process.env.APS_CLIENT_SECRET = "test-client-secret";
+}
+function clearCreds() {
+  clearAllCreds();
+}
 function restoreCreds() {
-  if (savedClientId === undefined) delete process.env.FORGE_CLIENT_ID;
-  else process.env.FORGE_CLIENT_ID = savedClientId;
-  if (savedClientSecret === undefined) delete process.env.FORGE_CLIENT_SECRET;
-  else process.env.FORGE_CLIENT_SECRET = savedClientSecret;
+  clearAllCreds();
+  if (savedClientId !== undefined) process.env.APS_CLIENT_ID = savedClientId;
+  if (savedClientSecret !== undefined) process.env.APS_CLIENT_SECRET = savedClientSecret;
+  if (savedForgeId !== undefined) process.env.FORGE_CLIENT_ID = savedForgeId;
+  if (savedForgeSecret !== undefined) process.env.FORGE_CLIENT_SECRET = savedForgeSecret;
 }
 
 (async () => {
@@ -335,13 +365,66 @@ try {
     assert.strictEqual(job.data.input.urn, EXPECTED_URN, "fallback URN must still be base64(objectId)");
   });
 
-  await t("no credentials: returns without any HTTP call", async () => {
+  await t("no credentials: rejects with the typed RfaApsNotConfiguredError, zero HTTP calls", async () => {
     clearCreds();
     const { client, calls } = makeMock({ manifests: [successManifest()] });
     const { api, openModelCalls } = makeApi();
-    await importRFA(RFA_BYTES, FILE, api, { http: client, pollIntervalMs: 0, sleep: async () => {} });
+    let err;
+    try {
+      await importRFA(RFA_BYTES, FILE, api, { http: client, pollIntervalMs: 0, sleep: async () => {} });
+    } catch (e) { err = e; }
+    assert.ok(err instanceof RfaApsNotConfiguredError, `must throw RfaApsNotConfiguredError, got ${err}`);
+    assert.strictEqual(err.code, RFA_APS_NOT_CONFIGURED_CODE);
+    assert.strictEqual(RFA_APS_NOT_CONFIGURED_CODE, "RFA_APS_NOT_CONFIGURED");
+    assert.deepStrictEqual(err.missing, ["APS_CLIENT_ID", "APS_CLIENT_SECRET"]);
+    assert.match(err.message, /APS_CLIENT_ID/, "the error must name the missing client id");
+    assert.match(err.message, /APS_CLIENT_SECRET/, "the error must name the missing client secret");
     assert.strictEqual(calls.length, 0, "no APS call without credentials");
     assert.strictEqual(openModelCalls.length, 0);
+  });
+
+  await t("no credentials, id only: names only the missing secret", async () => {
+    setCredsIdOnly();
+    const { client, calls } = makeMock({ manifests: [successManifest()] });
+    const { api } = makeApi();
+    await assert.rejects(
+      () => importRFA(RFA_BYTES, FILE, api, { http: client, pollIntervalMs: 0, sleep: async () => {} }),
+      (e) => e instanceof RfaApsNotConfiguredError && e.code === "RFA_APS_NOT_CONFIGURED" &&
+        JSON.stringify(e.missing) === JSON.stringify(["APS_CLIENT_SECRET"]) &&
+        /APS_CLIENT_SECRET/.test(e.message) && !/APS_CLIENT_ID is not set/.test(e.message),
+    );
+    assert.strictEqual(calls.length, 0, "no APS call without the secret");
+  });
+
+  await t("no credentials, secret only: names only the missing id", async () => {
+    setCredsSecretOnly();
+    const { client, calls } = makeMock({ manifests: [successManifest()] });
+    const { api } = makeApi();
+    await assert.rejects(
+      () => importRFA(RFA_BYTES, FILE, api, { http: client, pollIntervalMs: 0, sleep: async () => {} }),
+      (e) => e instanceof RfaApsNotConfiguredError && e.code === "RFA_APS_NOT_CONFIGURED" &&
+        JSON.stringify(e.missing) === JSON.stringify(["APS_CLIENT_ID"]) &&
+        /APS_CLIENT_ID/.test(e.message),
+    );
+    assert.strictEqual(calls.length, 0, "no APS call without the id");
+  });
+
+  await t("canonical APS_* credentials: proceeds to authentication", async () => {
+    setCreds();
+    const { client, calls } = makeMock({ manifests: [successManifest()] });
+    const { api, openModelCalls } = makeApi();
+    await importRFA(RFA_BYTES, FILE, api, { http: client, pollIntervalMs: 0, sleep: async () => {} });
+    assert.ok(calls.some((c) => c.method === "POST" && c.url === AUTH_URL), "APS_* must reach the auth call");
+    assert.strictEqual(openModelCalls.length, 1);
+  });
+
+  await t("legacy FORGE_* credentials: still accepted as a fallback", async () => {
+    setForgeCreds();
+    const { client, calls } = makeMock({ manifests: [successManifest()] });
+    const { api, openModelCalls } = makeApi();
+    await importRFA(RFA_BYTES, FILE, api, { http: client, pollIntervalMs: 0, sleep: async () => {} });
+    assert.ok(calls.some((c) => c.method === "POST" && c.url === AUTH_URL), "FORGE_* must still reach the auth call");
+    assert.strictEqual(openModelCalls.length, 1);
   });
 } finally {
   restoreCreds();

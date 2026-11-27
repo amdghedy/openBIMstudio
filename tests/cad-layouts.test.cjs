@@ -135,6 +135,59 @@ t("non-positive viewHeight falls back to 100", () => {
   close(d.layouts[0].viewports[0].viewHeight, 100);
 });
 
+/* ── deleteLayout ──────────────────────────────────────────────────── */
+
+t("deleteLayout removes by name and returns the deleted name", () => {
+  const d = doc();
+  P.addLayout(d, "Sheet A");
+  P.addLayout(d, "Sheet B");
+  assert.strictEqual(P.deleteLayout(d, "Sheet A"), "Sheet A");
+  assert.strictEqual(d.layouts.length, 1);
+  assert.strictEqual(d.layouts[0].name, "Sheet B");
+});
+
+t("deleteLayout matches names case-insensitively", () => {
+  const d = doc();
+  P.addLayout(d, "Sheet A");
+  assert.strictEqual(P.deleteLayout(d, "sheet a"), "Sheet A");
+  assert.strictEqual(d.layouts.length, 0);
+});
+
+t("deleteLayout removes by 1-based index", () => {
+  const d = doc();
+  P.addLayout(d, "Sheet A");
+  P.addLayout(d, "Sheet B");
+  P.addLayout(d, "Sheet C");
+  assert.strictEqual(P.deleteLayout(d, 2), "Sheet B");
+  assert.deepStrictEqual(d.layouts.map((l) => l.name), ["Sheet A", "Sheet C"]);
+  assert.strictEqual(P.deleteLayout(d, "1"), "Sheet A");
+  assert.deepStrictEqual(d.layouts.map((l) => l.name), ["Sheet C"]);
+});
+
+t("deleteLayout returns null for an unknown name or index", () => {
+  const d = doc();
+  P.addLayout(d, "Sheet A");
+  assert.strictEqual(P.deleteLayout(d, "Nope"), null);
+  assert.strictEqual(P.deleteLayout(d, 5), null);
+  assert.strictEqual(P.deleteLayout(d, 0), null);
+  assert.strictEqual(d.layouts.length, 1);
+});
+
+t("deleteLayout on a drawing with no layouts returns null", () => {
+  const d = doc();
+  assert.strictEqual(P.deleteLayout(d, "Layout1"), null);
+});
+
+t("deleteLayout keeps the surviving layouts' entities", () => {
+  const d = doc();
+  P.addLayout(d, "Sheet A");
+  P.addLayout(d, "Sheet B");
+  const keep = line(0, 0, 10, 0);
+  d.layouts[1].entities.push(keep);
+  P.deleteLayout(d, "Sheet A");
+  assert.deepStrictEqual(d.layouts[0].entities, [keep]);
+});
+
 /* ── undo / redo list helpers: space-aware transforms ─────────────── */
 
 t("undo of an add removes exactly the added entities", () => {
@@ -221,6 +274,24 @@ t("LAYOUT NEW creates and activates (not just creates)", () => {
   assert.ok(i >= 0, "LAYOUT command missing");
   const block = viewer.slice(i, i + 1200);
   assert.ok(block.includes("createLayoutAndActivate"), "LAYOUT NEW must switch to the new layout");
+});
+
+t("LAYOUT DELETE is wired with confirm + toast + tab rebuild", () => {
+  const i = viewer.indexOf('cmd === "LAYOUT"');
+  assert.ok(i >= 0, "LAYOUT command missing");
+  const block = viewer.slice(i, i + 1800);
+  assert.ok(block.includes("DELETE"), "LAYOUT DELETE subcommand missing");
+  assert.ok(block.includes("deleteLayoutAndActivate"), "LAYOUT DELETE must call deleteLayoutAndActivate");
+  const fn = viewer.indexOf("async function deleteLayoutAndActivate");
+  assert.ok(fn >= 0, "deleteLayoutAndActivate missing");
+  const body = viewer.slice(fn, fn + 2600);
+  assert.ok(body.includes("confirmDialog(") && body.includes('"Delete layout"'), "delete must confirm like other destructive actions");
+  assert.ok(body.includes("AcadParity.deleteLayout"), "delete must use the pure helper");
+  assert.ok(body.includes('cadToast("info"'), "delete must report through obs-toast");
+  assert.ok(body.includes("buildTabs()"), "delete must rebuild the tab strip");
+  assert.ok(body.includes("markDirty()"), "delete must mark the drawing dirty");
+  assert.ok(body.includes("layoutIdxCache.clear()"), "delete must clear the shifted per-space index cache");
+  assert.ok(body.includes("activate(-1)"), "deleting the current layout must step back to Model first");
 });
 
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);

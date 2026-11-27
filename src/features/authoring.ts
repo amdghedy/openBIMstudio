@@ -6148,12 +6148,13 @@ export function setActiveFamily(familyId: string | null, familyTypeId: string | 
  *
  * Instance overrides survive a type change: when `overridesByElement` is
  * supplied (captured by the caller against the type *before* it changed,
- * as `editFamilyParameter` does, or against the current type resolution,
- * as the manual "Sync instances" action does via
+ * as `editFamilyParameter` and `swapFamilyType` do, or against the
+ * current type resolution — plus the instance's recorded overrides — as
+ * the manual "Sync instances" action does via
  * `placement.captureManualSyncOverrides`), each instance is re-resolved
  * with its own overrides on top of the new type values. Without it,
- * instances are re-resolved from the type alone (the previous behaviour
- * — still used by type swaps, where no pre-change capture exists).
+ * instances are re-resolved from the type alone and any override not
+ * otherwise captured is wiped.
  *
  * Syncs exactly the geometry-key set `placement.ts` defines
  * (`GEOMETRY_KEYS`), via `applyResolvedParams` — not a second hard-coded

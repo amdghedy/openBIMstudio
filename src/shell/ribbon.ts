@@ -187,7 +187,16 @@ function ensureToastHost(): HTMLDivElement {
   return h;
 }
 
-function toast(message: string, kind: ToastKind = "info", ms = 2400): void {
+/**
+ * Render one toast into the ribbon toast host. Render-only: it does NOT
+ * touch the obs-toast bus. The bridge in setupRibbon calls this
+ * directly — it must NOT call `toast()` below, whose dispatch would put
+ * the same toast on the bus a second time (every notify()-originated
+ * toast was observed twice, which broke the family-hosting-ribbon
+ * spec's toast count; the bus is the single observation path, so each
+ * toast may cross it exactly once).
+ */
+function renderToast(message: string, kind: ToastKind = "info", ms = 2400): void {
   const host = ensureToastHost();
   const el = document.createElement("div");
   el.className = "obs-toast";
@@ -198,6 +207,10 @@ function toast(message: string, kind: ToastKind = "info", ms = 2400): void {
     el.classList.add("obs-toast--out");
     setTimeout(() => el.remove(), 250);
   }, ms);
+}
+
+function toast(message: string, kind: ToastKind = "info", ms = 2400): void {
+  renderToast(message, kind, ms);
   // Ribbon toasts used to render only — they never reached the obs-toast
   // bus, so event listeners (the toast log a browser test reads, the
   // toolbox/browser refresh triggers) never saw them. Dispatch the event
@@ -4128,6 +4141,6 @@ export function setupRibbon() {
     const kind = d.kind ?? "info";
     const message = String(d.message ?? "");
     const timeout = d.timeout ?? d.ms ?? (kind === "error" ? 6000 : 2400);
-    toast(message, kind, timeout);
+    renderToast(message, kind, timeout);
   }) as EventListener);
   }

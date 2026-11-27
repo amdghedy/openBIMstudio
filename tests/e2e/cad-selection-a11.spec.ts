@@ -34,9 +34,9 @@ import { openPaletteWith } from './palette';
  *     (150,100) scales ×2 about the grip.
  *  8. Grip menu: right-click during a grip drag opens a menu with the
  *     five modes (Stretch disabled as current); Escape cancels the drag
- *     (the menu is dismissed by the next canvas click); the drag is then
- *     redone with Enter ×4 → Mirror: A's end grip (200,0), cursor
- *     (200,50) mirrors A across x=200.
+ *     and dismisses the menu (2D-13); the drag is then redone with
+ *     Enter ×4 → Mirror: A's end grip (200,0), cursor (200,50) mirrors
+ *     A across x=200.
  *  9. QSAVE + reload + re-import: the saved DXF carries the final
  *     geometry — A (400,50)-(200,0), B (150,-100)-(150,300), the square
  *     rotated to (400,0),(400,100),(300,100),(300,0), the circle
@@ -313,9 +313,8 @@ test('2D editor: fence, lasso, Ctrl+click cycling, grip modes', async ({ page },
 
   // 9. Grip menu + Mirror (Enter four times): A's end grip (200,0).
   //    Right-click mid-drag opens the five-mode menu; Escape cancels the
-  //    drag (the menu is dismissed by the next canvas click); the drag is
-  //    then redone with Enter x4 -> Mirror, cursor (200,50) mirrors A
-  //    across x=200.
+  //    drag and dismisses the menu (2D-13); the drag is then redone with
+  //    Enter x4 -> Mirror, cursor (200,50) mirrors A across x=200.
   await recalibrate();
   await clickWorld(100, 25); // select A alone (A now runs (0,50)-(200,0))
   {
@@ -326,14 +325,16 @@ test('2D editor: fence, lasso, Ctrl+click cycling, grip modes', async ({ page },
     await expect(page.locator('[data-grip-mode]')).toHaveCount(5, { timeout: 10000 });
     await expect(page.locator('[data-grip-mode="stretch"]')).toBeDisabled();
     await expect(page.locator('[data-grip-mode="mirror"]')).toBeEnabled();
-    await page.keyboard.press('Escape'); // cancels the drag; menu stays until the next click
+    await page.keyboard.press('Escape'); // cancels the drag AND dismisses the menu (2D-13)
+    await expect(page.locator('[data-grip-mode]')).toHaveCount(0, { timeout: 10000 });
     await page.mouse.up();
   }
-  // The grip menu is still open and covers part of the canvas, so dismiss
-  // it with a canvas click BEFORE recalibrating — the calibration probes
-  // read the coords readout, which only updates while the cursor is over
-  // the canvas itself.
-  await clickWorld(100, 25); // dismisses the menu and re-selects A
+  // The menu is already dismissed by Escape, so this click only re-selects
+  // A (before 2D-13 the menu stayed open and covered part of the canvas,
+  // and this click was what dismissed it) — recalibrate after it, since
+  // the calibration probes read the coords readout, which only updates
+  // while the cursor is over the canvas itself.
+  await clickWorld(100, 25); // re-selects A
   await recalibrate();
   await clickWorld(100, 25); // re-select A with the fresh map
   {

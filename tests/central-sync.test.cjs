@@ -533,6 +533,47 @@ async function waitFor(fn, timeoutMs = 10000, label = "condition") {
         await killServer(s2);
       }
     });
+
+    await t("SSE stream never carries the long-lived token: with a token server the client mints ?sse= and live events flow (X-2)", async () => {
+      // X-2: openStream() used to fall back to `?token=<long-lived>` when
+      // no SSE-token provider was set — a token the server refuses on
+      // every route, leaked into the URL (history, logs, proxies). The
+      // fix mints a short-lived room-bound ?sse= token with Bearer auth
+      // instead. This drives the real server with a real token and proves
+      // the minted stream is accepted (live central-op delivery).
+      const dataDir3 = path.join(workDir, "data-token");
+      fs.mkdirSync(dataDir3, { recursive: true });
+      const token = "test-central-token-x2";
+      const s3 = await spawnServer({ OBS_DATA_DIR: dataDir3, OBS_SERVER_TOKEN: token });
+      try {
+        const room3 = "token-room";
+        globalThis.__OPENBIM_COLLAB_API__ = s3.base;
+        globalThis.__OPENBIM_COLLAB_TOKEN__ = token;
+        const seenUrls = [];
+        const carol = new CentralClient((url) => { seenUrls.push(url); return new NodeSseReader(url); });
+        const dave = new CentralClient((url) => new NodeSseReader(url));
+        assert.strictEqual(await carol.join(room3, "Carol"), true);
+        assert.strictEqual(await dave.join(room3, "Dave"), true);
+        assert.ok(seenUrls.length >= 1, "at least one stream opened, got " + seenUrls.length);
+        for (const u of seenUrls) {
+          assert.ok(!u.includes("?token=") && !u.includes("&token="), "no ?token= in SSE URL: " + u);
+          assert.ok(u.includes("?sse="), "stream opens with a minted ?sse= token: " + u);
+          assert.ok(!u.includes(token), "the long-lived token never appears in the URL");
+        }
+        // The minted token is accepted: the stream is live, so Dave's op
+        // reaches Carol as a central-op event, not via the 30 s poll.
+        await waitFor(() => carol.connected, 10000, "carol stream connected");
+        const r = await dave.upsertElement("wall-1", { height: 2800, name: "W1" });
+        assert.strictEqual(r.ok, true, JSON.stringify(r));
+        await waitFor(() => carol.state?.elements["wall-1"]?.fields.height === 2800, 10000, "live central-op event on carol");
+        carol.stop();
+        dave.stop();
+      } finally {
+        delete globalThis.__OPENBIM_COLLAB_TOKEN__;
+        globalThis.__OPENBIM_COLLAB_API__ = server.base;
+        await killServer(s3);
+      }
+    });
   } finally {
     try { if (alice) alice.stop(); } catch { /* ignore */ }
     try { if (bob) bob.stop(); } catch { /* ignore */ }

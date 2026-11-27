@@ -1,5 +1,6 @@
 import { exportConstraints, verifyConstraints } from "../modules/cad-viewer/constraint-store";
 import { registerDirtyCheck } from "../core/dirty-registry"; registerDirtyCheck(() => tabs.some((t) => t.engine.isDirty()));
+import { registerEscapeScope } from "../core/escape-all";
 /**
  * Drawing Editor — Standalone 2D DWG/DXF Environment.
  *
@@ -51,6 +52,7 @@ import { sanitizeSessionUi, sessionUiSignature, hiddenEntityIndexes, sanitizeHid
 import * as M from "../modules/cad-viewer/viewer-math";
 import * as LayerLock from "../modules/cad-viewer/layer-lock";
 import * as GridSnap from "../modules/cad-viewer/grid-snap";
+import * as Aids from "../modules/cad-viewer/cad-drafting-aids";
 import {
   createCadSnapOverride,
   resolveOverrideKeys as resolveCadOverrideKeys,
@@ -319,6 +321,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "LIMITS", aliases: [], description: "Set/report the drawing limits rectangle (LIMITS 0,0 420,297)" },
   { name: "QDIM", aliases: [], description: "Quick dimension: aligned dimensions on every selected LINE" },
   { name: "UCSVIEW", aliases: ["UCSV"], description: "Toggle UCS display — ON applies the drawing's saved view rotation (like AutoCAD), OFF shows raw world coordinates" },
+  { name: "DUCS", aliases: ["F6"], description: "Toggle Dynamic UCS (F6) — the UCS follows the plane of the entity under the cursor; in this 2D viewer the switch is live and persisted, the 3D face alignment has no 3D surface to act on" },
   { name: "DIMSPACE", aliases: [], description: "Even spacing between selected linear/aligned dimensions (DIMSPACE <gap> or DIMSPACE AUTO)" },
   { name: "DIMBREAK", aliases: [], description: "Break dimension lines where selected geometry crosses them" },
   { name: "DIMOVERRIDE", aliases: ["DOV"], description: "Per-dimension style overrides — TEXTHEIGHT, ARROWSIZE, PRECISION, COLOR, SCALE, SUFFIX; CLEAR resets" },
@@ -1780,6 +1783,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   let dynOn = true; // Dynamic Input HUD F12
   let lwtOn = true;
+  let ducsOn = true; // Dynamic UCS F6 (shared drafting aid, 2D-29)
   // UCS display toggle — ON by default so drawings open the way the native
   // CAD app shows them (the file's saved view rotation applied; for
   // DVIEW-twisted drawings that is what makes them upright). OFF shows raw
@@ -1821,6 +1825,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       : savedTwist ? `UCS display: OFF — raw world coordinates shown; the ${savedTwist.toFixed(1)}° saved rotation is not applied` : "UCS display: OFF — raw world coordinates");
   } // Lineweight display
   let showGrid = true;
+  // 2D-2: the drafting aids are shared state (cad-drafting-aids.ts) — the
+  // main-shell status bar toggles the same flags. A fresh engine starts
+  // from the shared state (persisted shell toggles included); a saved
+  // drawing session restored below still wins for this tab.
+  snapOn = Aids.getDraftingAid("osnap");
+  gridSnapOn = Aids.getDraftingAid("snap");
+  orthoOn = Aids.getDraftingAid("ortho");
+  polarOn = Aids.getDraftingAid("polar");
+  otrackOn = Aids.getDraftingAid("otrack");
+  dynOn = Aids.getDraftingAid("dyn");
+  lwtOn = Aids.getDraftingAid("lwt");
+  ducsOn = Aids.getDraftingAid("ducs");
+  showGrid = Aids.getDraftingAid("grid");
   let cleanScreen = false;
 
   let currentLayer = "0";
@@ -2403,6 +2420,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (!sel.size) return;
     for (const i of [...sel]) if (!selAccept(i)) sel.delete(i);
     selected = sel.size ? [...sel][sel.size - 1] : -1;
+    refreshSelCount(); // 2D-32: the lock-toggle call sites do not call showProps()
   }
 
   function colorOf(e: DxfEntity): string {
@@ -4998,10 +5016,35 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
    * Grip right-click menu (A11): the five grip modes for the drag in
    * progress, styled like the snap-override menu. Picking a mode keeps
    * the drag alive — the next pointer move drags in the new mode.
+   *
+   * Escape dismissal (2D-13): the menu never receives focus, so its own
+   * keydown listener cannot fire — and the global escape-all orchestrator
+   * consumes bare Escape first, so a private window keydown listener
+   * would never fire either. The menu therefore registers as an
+   * escape-all scope (the sanctioned extension point) on first open;
+   * one Escape press closes the menu (and, via the other scopes, cancels
+   * the drag, as Escape already did).
    */
+  let gripMenuEl: HTMLElement | null = null;
+  let gripMenuClose: ((e: PointerEvent) => void) | null = null;
+  let gripMenuEscapeRegistered = false;
+
+  /** Remove the open grip menu (if any) and its outside-click closer. */
+  function closeGripMenu(): boolean {
+    if (!gripMenuEl) return false;
+    gripMenuEl.remove();
+    gripMenuEl = null;
+    if (gripMenuClose) {
+      document.removeEventListener("pointerdown", gripMenuClose, true);
+      gripMenuClose = null;
+    }
+    return true;
+  }
+
   function showGripModeMenu(ev: MouseEvent): void {
     ev.preventDefault();
     ev.stopPropagation();
+    closeGripMenu();
     document.querySelectorAll(".obs-cad-context-menu").forEach((n) => n.remove());
     const menu = document.createElement("div");
     menu.className = "obs-cad-context-menu";
@@ -5017,18 +5060,24 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       b.style.cssText = "display:flex;align-items:center;width:100%;gap:18px;padding:7px 11px;border:0;border-radius:0;background:transparent;text-align:start;color:inherit;font:inherit;cursor:" + (b.disabled ? "default" : "pointer") + ";opacity:" + (b.disabled ? ".55" : "1");
       b.onmouseenter = () => { if (!b.disabled) b.style.background = "#263447"; };
       b.onmouseleave = () => { b.style.background = "transparent"; };
-      b.onclick = () => { menu.remove(); setGripMode(mode); };
+      b.onclick = () => { closeGripMenu(); setGripMode(mode); };
       menu.appendChild(b);
     };
     addLabel("GRIP MODE — " + (gripDrag ? Sel11.GRIP_MODE_LABELS[gripDrag.mode].toUpperCase() : ""));
     for (const mode of Sel11.GRIP_MODES) addItem(mode);
     document.body.appendChild(menu);
+    gripMenuEl = menu;
     const rect = menu.getBoundingClientRect();
     menu.style.left = `${Math.max(6, Math.min(ev.clientX, window.innerWidth - rect.width - 6))}px`;
     menu.style.top = `${Math.max(6, Math.min(ev.clientY, window.innerHeight - rect.height - 6))}px`;
-    const close = (e: PointerEvent) => { if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener("pointerdown", close, true); } };
+    const close = (e: PointerEvent) => { if (!menu.contains(e.target as Node)) { closeGripMenu(); } };
+    gripMenuClose = close;
     document.addEventListener("pointerdown", close, true);
-    menu.addEventListener("keydown", (e) => { if (e.key === "Escape") { menu.remove(); } });
+    menu.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeGripMenu(); } });
+    if (!gripMenuEscapeRegistered) {
+      gripMenuEscapeRegistered = true;
+      registerEscapeScope({ id: "cad-grip-menu", priority: 150, cancel: () => closeGripMenu() });
+    }
   }
 
   const isModTool = (t: Tool): t is ModKind =>
@@ -6125,6 +6174,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     hidden.delete(name);
     sel.clear();
     selected = -1;
+    refreshSelCount(); // 2D-32: deleteLayerByName does not call showProps()
     rebuildIndex();
     logCmd(`LAYER: deleted layer "${name}" and ${doomed.length} object(s).`);
     return true;
@@ -6523,10 +6573,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             } else {
               const span = bounds ? Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) : 0;
               const h = span > 0 ? span / 100 : 2;
-              addEntities([
+              // MLEADER carries the same filled-triangle arrowhead as LEADER
+              // (2D-9): arrowhead + line + text, committed as real entities.
+              const arrowSize = Math.max(h * 2.5, h);
+              const arrow = Ann.buildLeaderArrowhead(a, b, arrowSize);
+              const parts: DxfEntity[] = [
                 { type: "LINE", layer: currentLayer, ...newObjectProps(), start: { x: a.x, y: a.y }, end: { x: b.x, y: b.y } },
                 { type: "TEXT", layer: currentLayer, ...newObjectProps(), position: { x: b.x + h * 0.25, y: b.y + h * 0.25 }, height: h, value: s },
-              ]);
+              ];
+              if (arrow) parts.unshift({ ...arrow, layer: currentLayer, ...newObjectProps() });
+              addEntities(parts);
               logCmd(`MLEADER: leader with text "${s}" added.`);
             }
             clearPickState();
@@ -7330,6 +7386,57 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     markDirty();
   }
 
+  /** Delete a layout by name or 1-based number (LAYOUT DELETE). Like
+   * AutoCAD, the layout you are standing on cannot be deleted out from
+   * under you: confirming the delete of the current layout steps back
+   * to Model first, and a layout after the deleted one keeps its
+   * identity (its index shifts, so it is re-activated). */
+  async function deleteLayoutAndActivate(target: string): Promise<void> {
+    if (blockEdit) { logCmd("LAYOUT: not available inside BEDIT — close the session with BCLOSE first."); return; }
+    if (!doc) {
+      logCmd("LAYOUT: open a drawing first.");
+      return;
+    }
+    const layouts = doc.layouts ?? [];
+    const trimmed = target.trim();
+    const asNum = Number(trimmed);
+    let idx = -1;
+    if (trimmed !== "" && Number.isInteger(asNum) && asNum >= 1 && asNum <= layouts.length) {
+      idx = asNum - 1;
+    } else {
+      idx = layouts.findIndex((l) => l.name.toLowerCase() === trimmed.toLowerCase());
+    }
+    if (idx < 0) {
+      logCmd(`LAYOUT: no layout named "${target}".`);
+      return;
+    }
+    const victim = layouts[idx];
+    const entCount = victim.entities.length;
+    const vpCount = victim.viewports.length;
+    if (!(await confirmDialog(
+      "Delete layout",
+      `Delete layout "${victim.name}"? Its ${entCount} entit${entCount === 1 ? "y" : "ies"} and ${vpCount} viewport${vpCount === 1 ? "" : "s"} will be removed.`,
+    ))) {
+      logCmd("LAYOUT: delete cancelled.");
+      return;
+    }
+    if (layoutI === idx) activate(-1);
+    const deleted = AcadParity.deleteLayout(doc, idx + 1);
+    if (!deleted) {
+      logCmd(`LAYOUT: could not delete "${victim.name}".`);
+      return;
+    }
+    // The splice shifts every later layout down one index: the cached
+    // per-space indices are stale, and so is the remembered paper layout.
+    layoutIdxCache.clear();
+    lastPaperLayoutI = Math.max(0, Math.min(lastPaperLayoutI, Math.max(0, (doc.layouts?.length ?? 1) - 1)));
+    if (layoutI > idx) activate(layoutI - 1);
+    buildTabs();
+    markDirty();
+    logCmd(`LAYOUT: deleted "${deleted}".`);
+    cadToast("info", `Layout "${deleted}" deleted.`);
+  }
+
   /** MODEL/PAPER status-bar toggle (A13): PAPER goes to the last paper
    * layout, creating Layout1 when the drawing has none; MODEL returns to
    * model space. The drawing state follows the toggle — activate() swaps
@@ -7909,6 +8016,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   /* ── Properties & Measurements ── */
   function showProps() {
+    // 2D-32: every selection change reaches this function (setSel, erase,
+    // undo/redo, commitModify/commitReplace, place-copy, isolate, staged
+    // pick steps), so the status-bar count refreshes here, not only on
+    // the next full updateStatus() rebuild.
+    refreshSelCount();
     if (sel.size > 1) {
       let len = 0,
         area = 0;
@@ -8852,6 +8964,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       lwt: () => {
         lwtOn = !lwtOn;
         tools.querySelector("[data-a=lwt]")!.classList.toggle("on", lwtOn);
+        updateStatus();
         draw();
       },
       undo,
@@ -10842,16 +10955,30 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (gripDrag) {
       const after = ents[gripDrag.i];
       if (gripDrag.moved && after && after !== gripDrag.orig) {
-        const ext = withAssociativeDims([gripDrag.orig], [after]);
-        for (let i = 0; i < ext.before.length; i++) replaceEntity(ext.before[i], ext.after[i]);
-        pushUndoAct({ type: "modify", before: ext.before, after: ext.after });
-        markDirty();
-        redoStack.length = 0;
-        const nb = M.entityBBox(after);
-        if (nb) bounds = bounds ? M.unionBBox(bounds, nb) : nb;
-        rebuildIndex();
-        showProps();
-        logCmd("Grip edit: object updated (Ctrl+Z to undo).");
+        // 2D-33: re-check the lock at release. The start gate (gripAt →
+        // pickable) only proves the layer was unlocked when the drag
+        // began; the layer can be locked — or the entity hidden — while
+        // the drag is in flight (gripDrag holds the index independently
+        // of the selection, so pruneLockedFromSel does not stop it).
+        // Aborting restores the pre-drag geometry and writes nothing to
+        // the locked layer, instead of committing the edit.
+        if (!pickable(after)) {
+          ents[gripDrag.i] = gripDrag.orig;
+          logCmd(
+            `Grip edit aborted — the object${isLayerLocked(after.layer) ? `'s layer "${after.layer}" was locked` : " was hidden"} during the drag.`,
+          );
+        } else {
+          const ext = withAssociativeDims([gripDrag.orig], [after]);
+          for (let i = 0; i < ext.before.length; i++) replaceEntity(ext.before[i], ext.after[i]);
+          pushUndoAct({ type: "modify", before: ext.before, after: ext.after });
+          markDirty();
+          redoStack.length = 0;
+          const nb = M.entityBBox(after);
+          if (nb) bounds = bounds ? M.unionBBox(bounds, nb) : nb;
+          rebuildIndex();
+          showProps();
+          logCmd("Grip edit: object updated (Ctrl+Z to undo).");
+        }
       } else {
         ents[gripDrag.i] = gripDrag.orig; // click without drag — nothing changed
       }
@@ -10868,16 +10995,23 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         if (dg.scope === "instance" && dynDrag.origIns) {
           const after = ents[dg.i] as DxfInsert | undefined;
           if (after && after !== dynDrag.origIns) {
-            const ext = withAssociativeDims([dynDrag.origIns], [after]);
-            for (let i = 0; i < ext.before.length; i++) replaceEntity(ext.before[i], ext.after[i]);
-            pushUndoAct({ type: "modify", before: ext.before, after: ext.after });
-            markDirty();
-            redoStack.length = 0;
-            rebuildIndex();
-            showProps();
-            const set = dynParamStore.get(after.name);
-            const cur = set ? resolvedDynValues(set, after.dynValues)[dg.param.id] : undefined;
-            logCmd(`Dynamic block "${after.name}": ${dg.param.name} = ${String(cur ?? "")} (Ctrl+Z to undo).`);
+            // 2D-33, same guard as the grip-drag release: the instance's
+            // layer can be locked while the parameter drag is in flight.
+            if (!pickable(after)) {
+              ents[dg.i] = dynDrag.origIns;
+              logCmd(`Dynamic block "${after.name}": drag aborted — the instance's layer "${after.layer}" was locked during the drag.`);
+            } else {
+              const ext = withAssociativeDims([dynDrag.origIns], [after]);
+              for (let i = 0; i < ext.before.length; i++) replaceEntity(ext.before[i], ext.after[i]);
+              pushUndoAct({ type: "modify", before: ext.before, after: ext.after });
+              markDirty();
+              redoStack.length = 0;
+              rebuildIndex();
+              showProps();
+              const set = dynParamStore.get(after.name);
+              const cur = set ? resolvedDynValues(set, after.dynValues)[dg.param.id] : undefined;
+              logCmd(`Dynamic block "${after.name}": ${dg.param.name} = ${String(cur ?? "")} (Ctrl+Z to undo).`);
+            }
           }
         } else if (dg.scope === "session" && blockEdit) {
           saveDynParamSet(blockEdit.session.name);
@@ -11331,6 +11465,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd(`GRID: <${showGrid ? "ON" : "OFF"}>`);
       return;
     }
+    if (key === "F6") {
+      ev.preventDefault();
+      ducsOn = !ducsOn;
+      updateStatus();
+      draw();
+      logCmd(`DUCS: <${ducsOn ? "ON" : "OFF"}>`);
+      return;
+    }
     if (key === "F8") {
       ev.preventDefault();
       orthoOn = !orthoOn;
@@ -11583,6 +11725,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   /* ── Status Bar Update ── */
+  /** 2D-32: refresh only the selection-count text in the status bar.
+   * The count used to render only inside updateStatus()'s full innerHTML
+   * rebuild, so it went stale after every selection change until some
+   * other path re-rendered the bar (pointer moves take the coords-only
+   * early return and never touch it). Every selection-mutating path
+   * funnels through showProps(), so that is where the refresh lives —
+   * plus the two paths that mutate `sel` without showProps()
+   * (deleteLayerByName, pruneLockedFromSel). Null-guarded: the span
+   * only exists after updateStatus()'s first full render. */
+  function refreshSelCount(): void {
+    const el = statusEl.querySelector<HTMLElement>("[data-s=selcount]");
+    if (el) el.textContent = sel.size ? sel.size + " selected" : "";
+  }
+
   function updateStatus(p?: M.Pt) {
     const c = p ?? cursor;
     const zoomPct = doc && bounds ? Math.round((view.scale / M.fitView(bounds, view.w, view.h).scale) * 100) : 100;
@@ -11625,6 +11781,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       <button class="obs-status-btn ${orthoOn ? "active" : ""}" data-s="ortho" title="Ortho (F8)">ORTHO</button>
       <button class="obs-status-btn ${polarOn ? "active" : ""}" data-s="polar" title="Polar Tracking (F10)">POLAR</button>
       <button class="obs-status-btn ${ucsActive ? "active" : ""}" data-s="ucsview" title="UCS display — ON applies the drawing's saved view rotation (like AutoCAD); OFF shows raw world coordinates">UCS</button>
+      <button class="obs-status-btn ${ducsOn ? "active" : ""}" data-s="ducs" title="Dynamic UCS (F6)">DUCS</button>
       <button class="obs-status-btn ${otrackOn ? "active" : ""}" data-s="otrack" title="Reference line tracking (axis guides while drawing)">OTRACK</button>
       <button class="obs-status-btn ${dynOn ? "active" : ""}" data-s="dyn" title="Dynamic Input (F12)">DYN</button>
       <button class="obs-status-btn ${lwtOn ? "active" : ""}" data-s="lwt" title="Lineweight">LWT</button>
@@ -11634,7 +11791,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       <span>${escapeHtml(unit)} · ${zoomPct}%</span>
       ${activeViewport !== null && layoutI >= 0 ? `<span class="sep"></span><span data-s="viewport" style="color:#38bdf8;font-weight:600" title="Double-click outside a viewport to leave it">Viewport #${activeViewport + 1} active</span>` : ""}
       <span style="flex:1"></span>
-      <span>${sel.size ? sel.size + " selected" : ""}</span>
+      <span data-s="selcount">${sel.size ? sel.size + " selected" : ""}</span>
     `;
 
     // Status tray button click listeners
@@ -11673,6 +11830,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       updateStatus();
       draw();
     });
+    statusEl.querySelector("[data-s=ducs]")?.addEventListener("click", () => {
+      ducsOn = !ducsOn;
+      logCmd(`DUCS: <${ducsOn ? "ON" : "OFF"}>`);
+      updateStatus();
+      draw();
+    });
     statusEl.querySelector("[data-s=quick]")?.addEventListener("click", () => setQuickMeasure(!quick));
     statusEl.querySelector("[data-s=dyn]")?.addEventListener("click", () => {
       dynOn = !dynOn;
@@ -11683,6 +11846,23 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       lwtOn = !lwtOn;
       updateStatus();
       draw();
+    });
+
+    // 2D-2: publish the live aid state to the shared module so the
+    // main-shell status bar (and any other reader) sees the same flags
+    // the viewer toggles switch. applyDraftingAids diffs and only
+    // notifies on a real change, so publishing here can never echo-loop
+    // with the subscriber below.
+    Aids.applyDraftingAids({
+      grid: showGrid,
+      snap: gridSnapOn,
+      osnap: snapOn,
+      ortho: orthoOn,
+      polar: polarOn,
+      otrack: otrackOn,
+      dyn: dynOn,
+      lwt: lwtOn,
+      ducs: ducsOn,
     });
   }
 
@@ -11853,7 +12033,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           if (match) { event.preventDefault(); dynCommandInput.value = match.name; dynCommandInput.dispatchEvent(new Event("input")); }
           return;
         }
-        if (event.key === "F3" || event.key === "F7" || event.key === "F8" || event.key === "F9" || event.key === "F12") {
+        if (event.key === "F3" || event.key === "F6" || event.key === "F7" || event.key === "F8" || event.key === "F9" || event.key === "F12") {
           event.preventDefault();
           const key = event.key;
           closeDynamicCommand();
@@ -12247,6 +12427,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (sub === "NEW" || sub === "N") {
         // Creates the layout and makes it current, like AutoCAD's LAYOUT New.
         createLayoutAndActivate(parts.slice(2).join(" ") || undefined);
+        return;
+      }
+      if (sub === "DELETE" || sub === "DEL" || sub === "D") {
+        const target = parts.slice(2).join(" ");
+        if (!target) { logCmd("LAYOUT: LAYOUT DELETE <name|number>."); return; }
+        void deleteLayoutAndActivate(target);
         return;
       }
       const list = (doc.layouts ?? []).map((l, i) => `  ${i + 1}. ${l.name} (${l.entities.length} ents)`).join("\n") || "  (none)";
@@ -12993,6 +13179,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       setPolarTracking(state === "ON" ? true : state === "OFF" ? false : !polarOn);
       return;
     }
+    if (cmd === "DUCS") {
+      const state = (parts[1] ?? "").toUpperCase();
+      ducsOn = state === "ON" ? true : state === "OFF" ? false : !ducsOn;
+      updateStatus();
+      draw();
+      logCmd(`DUCS: <${ducsOn ? "ON" : "OFF"}>`);
+      return;
+    }
     if (cmd === "POLARANG" || cmd === "PANG") {
       if (arg) {
         const value = Number(arg);
@@ -13697,6 +13891,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       sel.clear();
       for (const i of ids) if (selAccept(i)) sel.add(i);
       logCmd(`LAYSEL: ${sel.size} on layer "${layer}".`);
+      refreshSelCount(); // 2D-32
       draw();
       return;
     }
@@ -13708,6 +13903,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       sel.clear();
       for (const i of ids) if (selAccept(i)) sel.add(i);
       logCmd(`TYPESEL: ${sel.size} × ${typ.toUpperCase()}.`);
+      refreshSelCount(); // 2D-32
       draw();
       return;
     }
@@ -13749,6 +13945,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     if (cmd === "CLRSEL" || cmd === "SELCLR") {
       sel.clear();
+      refreshSelCount(); // 2D-32
       draw();
       logCmd("CLRSEL: selection cleared.");
       return;
@@ -13764,6 +13961,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         sel.add(i);
       }
       logCmd(`SELECTALL: ${sel.size} object(s).`);
+      refreshSelCount(); // 2D-32
       draw();
       return;
     }
@@ -14216,6 +14414,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         if (ents[i]?.layer && layers.has(ents[i].layer) && !isLayerLocked(ents[i].layer)) sel.add(i);
       }
       logCmd(`SELBYLAYER: ${sel.size} on ${[...layers].join(", ")}`);
+      refreshSelCount(); // 2D-32
       draw();
       return;
     }
@@ -14246,6 +14445,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ents = keep;
       if (layoutI < 0) modelEnts = keep;
       sel.clear();
+      refreshSelCount(); // 2D-32
       markDirty();
       idx = M.buildIndex(ents, bounds ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 });
       syncSpaceIndex();
@@ -14305,6 +14505,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ents = keep;
       if (layoutI < 0) modelEnts = keep;
       sel.clear();
+      refreshSelCount(); // 2D-32
       addEntities(lines);
       draw();
       logCmd(`XPLODEPL: ${removed.length} polyline(s) → ${lines.length} line(s)`);
@@ -14322,6 +14523,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ents = keep;
       if (layoutI < 0) modelEnts = keep;
       sel.clear();
+      refreshSelCount(); // 2D-32
       markDirty();
       draw();
       logCmd(`AUDITZL: removed ${removed.length} zero-length line(s)${zeroLen.length > removed.length ? ` (${zeroLen.length - removed.length} locked-layer line(s) kept)` : ""}`);
@@ -17175,6 +17377,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       sel.clear();
       let n = 0;
       for (const i of existing) if (ents[i] && selAccept(i)) { sel.add(i); n++; }
+      refreshSelCount(); // 2D-32
       draw();
       logCmd(`GROUP ${key}: selected ${n} object${n === 1 ? "" : "s"}.`);
       return;
@@ -17604,6 +17807,39 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   stageEl?.addEventListener("keydown", onCadEscCapture, true);
   cv.addEventListener("keydown", onCadEscCapture, true);
 
+  // 2D-2: apply drafting-aid changes made outside this engine (the
+  // main-shell status bar toggles the shared module). Only the active
+  // tab applies live — an inactive tab syncs from the module when it is
+  // activated (see activate()), so a stale tab can never publish its
+  // old flags back through updateStatus. The subscription is never
+  // removed (same as the window keydown listeners above); the handler
+  // is guarded so a closed engine can never throw into other
+  // subscribers.
+  function syncDraftingAidsFromShared(): boolean {
+    const next = Aids.getDraftingAids();
+    let changed = false;
+    if (snapOn !== next.osnap) { snapOn = next.osnap; changed = true; }
+    if (gridSnapOn !== next.snap) { gridSnapOn = next.snap; changed = true; }
+    if (orthoOn !== next.ortho) { orthoOn = next.ortho; changed = true; }
+    if (polarOn !== next.polar) { polarOn = next.polar; changed = true; }
+    if (otrackOn !== next.otrack) { otrackOn = next.otrack; changed = true; }
+    if (dynOn !== next.dyn) { dynOn = next.dyn; changed = true; }
+    if (lwtOn !== next.lwt) { lwtOn = next.lwt; changed = true; }
+    if (ducsOn !== next.ducs) { ducsOn = next.ducs; changed = true; }
+    if (showGrid !== next.grid) { showGrid = next.grid; changed = true; }
+    return changed;
+  }
+  Aids.subscribeDraftingAids(() => {
+    try {
+      if (!screenTypeActive || root.style.display === "none") return;
+      if (!syncDraftingAidsFromShared()) return;
+      updateStatus();
+      if (shell && shell.style.display !== "none") draw();
+    } catch {
+      /* a dead engine must never break other subscribers */
+    }
+  });
+
   const api: CadEngineApi = {
     load,
     close() {
@@ -17631,6 +17867,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         /* */
       }
       showRibbonEngine(ribbonWrap, api);
+      // 2D-2: an inactive tab may have missed shared-state changes (e.g.
+      // toggles made in the main-shell status bar while another drawing
+      // was active) — re-read the shared aids before drawing, so this
+      // tab can never publish stale flags back through updateStatus.
+      syncDraftingAidsFromShared();
+      updateStatus();
       resize();
       draw();
       // Super Copy awareness: switching drawing tabs tells you what is waiting

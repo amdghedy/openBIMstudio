@@ -62,7 +62,7 @@ export interface ProjectBrowserTreeInput {
   savedViews: { id: string; name: string }[];
   sheets: { id: string; number: string; name: string }[];
   materials: { id: string; name: string }[];
-  families: { id: string; name: string; types: { id: string; name: string }[] }[];
+  families: { id: string; name: string; builtIn?: boolean; types: { id: string; name: string }[] }[];
   groups: { id: string; name: string }[];
   phases: { id: string; name: string; elementCount: number }[];
   /** Stored views from the views module (ViewDef kind + name). */
@@ -194,6 +194,9 @@ export function buildProjectBrowserTree(input: ProjectBrowserTreeInput): Project
     label: f.name,
     icon: "🏠",
     count: f.types.length,
+    // The right-click menu needs this: the family store refuses to remove
+    // built-ins, so Delete is shown disabled for them (G11 menu model).
+    meta: { builtIn: f.builtIn === true },
     children: f.types.map((t) => ({
       id: `famtype-${f.id}-${t.id}`,
       kind: "family-type" as const,

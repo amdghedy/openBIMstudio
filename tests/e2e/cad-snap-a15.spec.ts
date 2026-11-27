@@ -69,6 +69,42 @@ async function readCoords(page: Page): Promise<{ x: number; y: number }> {
   return { x, y };
 }
 
+/** The live canvas box. */
+async function canvasBox(page: Page): Promise<{ x: number; y: number; width: number; height: number }> {
+  return (await page.locator('[data-r=cv]').first().boundingBox())!;
+}
+
+const boxesEqual = (
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+) =>
+  Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) < 0.5 &&
+  Math.abs(a.width - b.width) < 0.5 && Math.abs(a.height - b.height) < 0.5;
+
+/**
+ * Wait until the canvas box stops moving. The canvas resizes while the
+ * surrounding chrome settles (status-bar prompt appearing/disappearing,
+ * ribbon/layout reflow); a calibration solved while it is still moving
+ * goes stale in X as well as Y — CI red on 94753436: the canvas was
+ * re-laid-out mid-calibration (its bitmap was even caught blank in the
+ * CI video), the solved map was 13.7 world units off in X at the raw
+ * pick, and the calibration reads themselves were already X-wrong with
+ * the error decaying as the layout settled. Poll until two consecutive
+ * reads 200 ms apart agree; give up after ~5 s and let the caller
+ * proceed with the current box.
+ */
+async function waitForStableBox(page: Page): Promise<{ x: number; y: number; width: number; height: number }> {
+  let prev = await canvasBox(page);
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(200);
+    const cur = await canvasBox(page);
+    if (boxesEqual(prev, cur)) return cur;
+    prev = cur;
+  }
+  return prev;
+}
+
 /** Solve screen→world from two mouse samples per axis. */
 async function calibrate(page: Page, box: { x: number; y: number; width: number; height: number }): Promise<Affine> {
   const midY = box.y + box.height / 2;
@@ -107,6 +143,20 @@ test('2D editor: nearest-in-aperture snap, apparent intersection, G14 overrides,
   const cmd = page.locator('[data-r=cmd]').first();
   const run = async (c: string) => { await cmd.fill(c); await cmd.press('Enter'); };
   const hist = async () => page.locator('[data-r=cmdhist]').first().innerText();
+  // OSNAP is a bare toggle (no ON/OFF argument), so drive it to a wanted
+  // state and prove the toggle landed by watching for the fresh log line:
+  // the history only appends, so a marker appearing after the snapshot
+  // proves this toggle produced it. Calibrations must run with OSNAP OFF:
+  // the coords readout shows the *snapped* cursor while it is on, which
+  // contaminates the screen→world map (2D-5; the A16 lesson).
+  const setOsnap = async (want: "ON" | "OFF") => {
+    const before = await hist();
+    await run("OSNAP");
+    await expect.poll(async () => {
+      const added = (await hist()).slice(before.length);
+      return added.includes(`OSNAP: <${want}>`);
+    }, { timeout: 10000 }).toBe(true);
+  };
   // F-keys and bare letters are swallowed while a text field has focus,
   // so focus the canvas (tabindex=0, so .focus() works with no click
   // and no side effect) before typing override keys.
@@ -118,10 +168,17 @@ test('2D editor: nearest-in-aperture snap, apparent intersection, G14 overrides,
   await expect.poll(async () => { await run('CENSUS'); return /LINE=5/.test(await hist()); }, { timeout: 15000 }).toBe(true);
   await run('ZOOM E');
   await page.waitForTimeout(600);
-  const box = (await page.locator('[data-r=cv]').first().boundingBox())!;
   // `map` is re-solved before step 3 (see there): the canvas can resize
   // between this calibration and the raw pick, which shifts the map in Y.
+  // Calibrate with OSNAP OFF (2D-5): the coords readout shows the snapped
+  // cursor while it is on, which contaminates the map. Settle first: a
+  // calibration solved while the box is still moving goes stale (see the
+  // step-3 loop for the CI red this guards).
+  await setOsnap("OFF");
+  await waitForStableBox(page);
+  const box = await canvasBox(page);
   let map = await calibrate(page, box);
+  await setOsnap("ON");
   const toScreen = (wx: number, wy: number) => ({ x: (wx - map.ox) / map.sx, y: (wy - map.oy) / map.sy });
   // The aperture is 14 px; the click geometry below was designed for
   // 11–45 world units. Outside that range the test cannot tell the old
@@ -175,13 +232,37 @@ test('2D editor: nearest-in-aperture snap, apparent intersection, G14 overrides,
   // and here (a few px of layout settling); the view keeps its centre
   // and scale but updates view.h, so screenToWorld shifts in Y only and
   // the frozen map puts the raw pick ~7 world units low — the CI failure
-  // (raw y −3.83 instead of 3, raw x exact). The snap-based steps above
-  // are immune (the snap point is exact); only this raw pick needs a
-  // current map. The re-solve hovers are far from any endpoint (239+
-  // world units, aperture ~40), so the armed SE override cannot snap
-  // them, and hovering never consumes the one-shot override.
-  const box3 = (await page.locator('[data-r=cv]').first().boundingBox())!;
-  map = await calibrate(page, box3);
+  // on f6836965 (raw y −3.83 instead of 3, raw x exact). The snap-based
+  // steps above are immune (the snap point is exact); only this raw pick
+  // needs a current map. The re-solve hovers are far from any endpoint
+  // (239+ world units, aperture ~40), so the armed SE override cannot
+  // snap them, and hovering never consumes the one-shot override.
+  //
+  // Settle first, then prove the box did not move across the OSNAP-ON
+  // rebuild; loop if it did. A single re-solve is not enough: CI red on
+  // 94753436 showed the layout still moving DURING the re-solve itself
+  // (the canvas bitmap was caught blank mid-calibration in the CI video
+  // and the calibration reads were already X-wrong, the error decaying
+  // as the layout settled), so the map solved from it was 13.7 world
+  // units off in X at the raw pick. Calibrations must run with OSNAP OFF
+  // (2D-5), so each loop iteration toggles OFF, settles, calibrates,
+  // toggles ON, settles again, and only then checks the box. The toggle
+  // itself cannot move the box (the rebuild is idempotent — only the
+  // OSNAP button's active class changes), so the loop converges once the
+  // layout has settled; three attempts bound the worst case.
+  // Same OSNAP-off rule as the first calibration — safe mid-tool: the
+  // OSNAP command only flips the master switch (no tool change), so the
+  // LINE tool stays active and the armed SE override survives it.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await setOsnap("OFF");
+    await waitForStableBox(page);
+    const box3 = await canvasBox(page);
+    map = await calibrate(page, box3);
+    await setOsnap("ON");
+    await waitForStableBox(page);
+    if (boxesEqual(box3, await canvasBox(page))) break;
+    // Layout moved across the toggle — re-solve on the settled box.
+  }
   await page.mouse.move(toScreen(500, 3).x, toScreen(500, 3).y);
   await page.waitForTimeout(200);
   const raw = await readCoords(page);

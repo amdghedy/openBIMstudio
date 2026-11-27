@@ -63,6 +63,20 @@ export interface AuthoredElement {
   familyId?: string;
   /** BIM-style: the family type this element instantiates (optional). */
   familyTypeId?: string;
+  /**
+   * Per-instance family parameter overrides (FU5 completion): the
+   * GEOMETRY_KEYS this instance deliberately deviates from its type on,
+   * any scope — including type-scope keys. Recorded at write time by
+   * placement.editFamilyParameter / placement.overrideInstanceParameter /
+   * placement.swapFamilyType, and read by
+   * placement.captureManualSyncOverrides so a manual sync preserves
+   * genuine overrides while still refreshing stale inherited values
+   * (unrecorded deviations). A key is recorded only while its stored
+   * value actually differs from the type resolution; writing the type
+   * value clears it. Serialised with the element, so it travels with
+   * the project document like hostAttachment.
+   */
+  familyOverrides?: string[];
   params: {
     start?: Vec2;
     end?: Vec2;

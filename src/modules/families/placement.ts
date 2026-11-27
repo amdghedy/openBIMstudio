@@ -78,6 +78,35 @@ export function applyResolvedParams(
   return changed;
 }
 
+/**
+ * Keep the per-instance override record truthful (FU5 completion).
+ * `element.familyOverrides` names the GEOMETRY_KEYS this instance
+ * deliberately deviates from its type on, any scope — the only thing
+ * that can tell a genuine override apart from a stale inherited value
+ * (from stored params alone the two are indistinguishable). A key is
+ * recorded only while its stored value actually differs from the given
+ * type resolution, and cleared the moment it matches again, so writing
+ * the type value back never freezes a stale value on a later sync.
+ * Keys outside GEOMETRY_KEYS are never recorded: the sync machinery
+ * cannot see them, so recording them would be a lie. An empty record
+ * is removed rather than persisted as `[]`.
+ */
+function refreshOverrideRecord(
+  element: AuthoredElement,
+  key: string,
+  typeResolvedValues: Record<string, any> | null,
+): void {
+  if (!GEOMETRY_KEYS.includes(key)) return;
+  const stored = (element.params as Record<string, any>)[key];
+  const base = typeResolvedValues?.[key];
+  const deviates = typeof stored === "number" && Number.isFinite(stored) && stored !== base;
+  const record = element.familyOverrides ?? (element.familyOverrides = []);
+  const at = record.indexOf(key);
+  if (deviates && at === -1) record.push(key);
+  else if (!deviates && at !== -1) record.splice(at, 1);
+  if (record.length === 0) delete element.familyOverrides;
+}
+
 export interface EditResult {
   applied: "instance" | "type" | "none";
   instancesSynced: number;
@@ -105,6 +134,7 @@ export function editFamilyParameter(
 
   if (param.scope === "instance") {
     (element.params as Record<string, any>)[paramName] = value;
+    refreshOverrideRecord(element, paramName, svc.resolveParams(family.id, element.familyTypeId ?? null));
     return { applied: "instance", instancesSynced: 0 };
   }
 
@@ -174,6 +204,44 @@ export function editFamilyParameter(
   }
 
   return { applied: "none", instancesSynced: 0 };
+}
+
+/**
+ * Deliberately override one parameter on THIS instance only, without
+ * touching the type — including a type-scope parameter. This is the
+ * opt-in escape hatch `editFamilyParameter` deliberately does not
+ * offer: that function routes type-scope edits to the type (Revit
+ * semantics — the property palette uses it, and a type parameter edited
+ * there edits the type). Use this when one instance must deviate from
+ * its type (one door taller than its type, a placement-time caller
+ * override), or from import/script flows that set per-instance values
+ * directly.
+ *
+ * The value is written to the instance and the key is recorded in
+ * `element.familyOverrides` exactly when it genuinely deviates from
+ * the current type resolution, so a later manual sync preserves it
+ * while still refreshing stale values. Writing the type value clears
+ * the record. Returns `applied: "none"` when the family or parameter
+ * does not exist; non-geometry keys are written (like
+ * `editFamilyParameter` does) but never recorded — the sync machinery
+ * cannot see them.
+ */
+export function overrideInstanceParameter(
+  element: AuthoredElement,
+  paramName: string,
+  value: any,
+): EditResult {
+  const svc = familyService();
+  if (!svc || !element.familyId) return { applied: "none", instancesSynced: 0 };
+  const family = svc.get(element.familyId);
+  if (!family) return { applied: "none", instancesSynced: 0 };
+  const param = family.parameters.find((p: FamilyParameter) => p.name === paramName);
+  if (!param) {
+    return { applied: "none", instancesSynced: 0, reason: `unknown parameter "${paramName}"` };
+  }
+  (element.params as Record<string, any>)[paramName] = value;
+  refreshOverrideRecord(element, paramName, svc.resolveParams(family.id, element.familyTypeId ?? null));
+  return { applied: "instance", instancesSynced: 0 };
 }
 
 // ── Generic family hosting (Slice 9) ───────────────────────────────────────
@@ -353,6 +421,20 @@ export function swapFamilyType(
     newTypeId,
     overridesByElement,
   ) ?? 0;
+  // The overrides the swap re-applied are genuine by construction
+  // (captured against the type being left, the correct baseline), so
+  // record them: a later manual sync must preserve them instead of
+  // reading them as stale deviations from the new type. Keys whose
+  // stored value now matches the new type are not recorded — the record
+  // only holds genuine deviations.
+  const newResolved = newTypeId ? svc.resolveParams(family.id, newTypeId) : null;
+  for (const [id, ov] of overridesByElement) {
+    const target = siblings.find((s) => s.id === id);
+    if (!target) continue;
+    for (const key of Object.keys(ov)) {
+      refreshOverrideRecord(target, key, newResolved);
+    }
+  }
   return { swapped: true, instancesSynced };
 }
 
@@ -365,26 +447,32 @@ export function swapFamilyType(
  * what its type resolves to *right now*, via `extractInstanceOverrides`
  * — the same delta Slice 1 uses for type edits, except the comparison
  * here is against the current type (there is no pre-change type to
- * compare against on a manual sync). Only keys that can legitimately
- * carry a per-instance override are captured:
+ * compare against on a manual sync). Two key sets are captured:
  *
  *   - instance-scope family parameters (e.g. `thickness`, `elevation`),
  *     and geometry keys the family does not declare at all
- *     (placement-level values, per-instance by nature);
- *   - a type-scope parameter is NEVER captured. `editFamilyParameter`
- *     routes type-scope edits to the type, so no UI path ever writes a
- *     type-scope value onto an instance: a stored type-scope value that
- *     differs from the current type resolution is a stale inherited
- *     value (the type changed out-of-band, e.g. via a catalog import),
- *     not an override. Capturing it would freeze the stale value and
- *     make the manual sync a no-op for exactly the keys it exists to
- *     refresh.
+ *     (placement-level values, per-instance by nature) — the FU5 set;
+ *   - any key in the instance's override record
+ *     (`element.familyOverrides`), ANY scope: a recorded key is a
+ *     genuine deviation by construction (recorded at write time by
+ *     `editFamilyParameter`, `overrideInstanceParameter` or
+ *     `swapFamilyType`), so its type-scope value may be captured too.
  *
- * Residual limit (inherent without a separate override record on the
- * element, as Slice 1 already noted): an instance-scope key whose *type*
- * value changed out-of-band, on an instance the user never overrode,
- * is indistinguishable from a genuine override and is preserved rather
- * than refreshed. The capture errs towards preserving instance data.
+ * An UNRECORDED type-scope deviation is still never captured: no UI
+ * path writes a type-scope value onto an instance except the deliberate
+ * `overrideInstanceParameter`, so an unrecorded deviation is a stale
+ * inherited value (the type changed out-of-band, e.g. via a catalog
+ * import), not an override. Capturing it would freeze the stale value
+ * and make the manual sync a no-op for exactly the keys it exists to
+ * refresh.
+ *
+ * Residual limit (inherent without a record for legacy elements):
+ * an instance-scope key whose *type* value changed out-of-band, on an
+ * instance the user never overrode and which therefore carries no
+ * record, is indistinguishable from a genuine override and is preserved
+ * rather than refreshed. The capture errs towards preserving instance
+ * data; overrides written through the recording paths above no longer
+ * have this ambiguity.
  *
  * `familyTypeId` null means all types of the family (the button syncs
  * every instance then); otherwise only instances of that type are
@@ -422,10 +510,17 @@ export function captureManualSyncOverrides(
     }
     const currentResolved = resolvedByType.get(cacheKey);
     if (!currentResolved) continue;
+    // Recorded overrides extend the key set: a key in the element's
+    // override record is a genuine deviation by construction (recorded
+    // at write time), so its type-scope value may be captured too.
+    // Unrecorded type-scope deviations stay excluded — they are stale
+    // inherited values, not overrides.
+    const recorded = (el.familyOverrides ?? []).filter((key) => GEOMETRY_KEYS.includes(key));
+    const keys = recorded.length ? [...new Set([...overrideKeys, ...recorded])] : overrideKeys;
     const ov = extractInstanceOverrides(
       currentResolved,
       (el.params ?? {}) as Record<string, any>,
-      overrideKeys,
+      keys,
     );
     if (Object.keys(ov).length) captured.set(el.id, ov);
   }

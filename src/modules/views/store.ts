@@ -110,6 +110,24 @@ export function deleteView(id: string): boolean {
   return true;
 }
 
+/**
+ * Duplicate a stored view (G11 Project Browser menu): the copy keeps the
+ * kind and its plan / elevation / section configuration, with a fresh id.
+ */
+export function duplicateView(id: string): ViewDef | null {
+  const src = views.find((v) => v.id === id);
+  if (!src) return null;
+  const now = Date.now();
+  const copy: ViewDef = {
+    ...JSON.parse(JSON.stringify(src)),
+    id: `view-${now.toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    name: `${src.name} (copy)`,
+    createdAt: now,
+    updatedAt: now,
+  };
+  return addView(copy);
+}
+
 export function createView(kind: ViewKind, name: string, discipline: Discipline = "COORD"): ViewDef {
   const now = Date.now();
   const def: ViewDef = {
