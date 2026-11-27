@@ -37,8 +37,10 @@ export function setLineWeight(elementType: string, widthMm: number, color?: stri
 export function listLineWeights(): LineWeightRule[] { return [...rules.values()]; }
 
 let installed = false;
+let lineWeightsApi: any = null;
 export function setupLineWeights() {
-  if (installed) return; installed = true;
-  (window as any).__obsLineWeights = { get: getLineWeight, set: setLineWeight, list: listLineWeights };
-  console.log("[line-weights] ready. Configure pen weights per element type via __obsLineWeights.");
+  if (installed) return lineWeightsApi; installed = true;
+  lineWeightsApi = { get: getLineWeight, set: setLineWeight, list: listLineWeights };
+  console.log("[line-weights] ready. Configure pen weights per element type via the lineWeights feature api.");
+  return lineWeightsApi;
 }

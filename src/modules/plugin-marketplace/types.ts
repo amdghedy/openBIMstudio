@@ -42,8 +42,10 @@ export async function installPlugin(id: string): Promise<boolean> {
 }
 
 let installed = false;
+let marketplaceApi: any = null;
 export function setupPluginMarketplace() {
-  if (installed) return; installed = true;
-  (window as any).__obsMarketplace = { list: listMarketplace, search: searchMarketplace, install: installPlugin };
-  console.log("[plugin-marketplace] ready. Browse via __obsMarketplace.list() or install via __obsMarketplace.install(id).");
+  if (installed) return marketplaceApi; installed = true;
+  marketplaceApi = { list: listMarketplace, search: searchMarketplace, install: installPlugin };
+  console.log("[plugin-marketplace] ready. Browse and install via the marketplace feature api.");
+  return marketplaceApi;
 }

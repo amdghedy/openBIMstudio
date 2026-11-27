@@ -373,7 +373,7 @@ function b(
  * logic and the Massing & Site copy targeted a global that never existed
  * (__obsInPlaceMass). One implementation, two call sites. */
 async function openInPlaceMassDialog(): Promise<void> {
-  const mc = (window as any).__obsMass;
+  const mc = (ctx.features as any).mass;
   if (!mc) { toast("Mass module not loaded", "warn"); return; }
   const { openFormModal } = await import("../features/form-modal");
   const r = await openFormModal({
@@ -395,7 +395,7 @@ async function openInPlaceMassDialog(): Promise<void> {
 }
 
 async function openMassFloorsDialog(): Promise<void> {
-  const mc = (window as any).__obsMass;
+  const mc = (ctx.features as any).mass;
   if (!mc) { toast("Mass module not loaded", "warn"); return; }
   const masses = mc.list();
   if (!masses.length) { toast("No masses created yet", "info"); return; }
@@ -411,7 +411,7 @@ async function openMassFloorsDialog(): Promise<void> {
 
 /** Convert one conceptual mass into native authored elements (Revit parity Rank 6). */
 async function openMassToElementsDialog(): Promise<void> {
-  const mc = (window as any).__obsMass;
+  const mc = (ctx.features as any).mass;
   if (!mc) { toast("Mass module not loaded", "warn"); return; }
   const masses = mc.list();
   if (!masses.length) { toast("No masses created yet", "info"); return; }
@@ -1573,7 +1573,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         title: "Element types and materials library",
       }),
       b("component", "Materials", safe(async () => {
-        const m = (window as any).__obsMaterials;
+        const m = (ctx.features as any).materials;
         if (!m) { toast("Materials module not loaded", "warn"); return; }
         const list = m.list();
         const auth = (ctx.features as any).authoring;
@@ -1632,7 +1632,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Analysis"),
       b("system", "Color Fill", safe(async () => {
-        const ap = (window as any).__obsAreaPlans;
+        const ap = (ctx.features as any).areaPlans;
         if (!ap) { toast("Area plans module not loaded", "warn"); return; }
         const schemes = ap.list();
         const { pickFromList } = await import("../features/form-modal");
@@ -1647,7 +1647,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast(`Color fill enabled: ${choice}. Open Plan View to see rooms colored.`, "success");
       }, "Color fill"), { title: "Color fill plan — color rooms by department/occupancy/area type" }),
       b("sun", "Sun Settings", safe(async () => {
-        const sun = (window as any).__obsSun;
+        const sun = (ctx.features as any).sun;
         if (!sun) { toast("Sun settings module not loaded", "warn"); return; }
         const s = sun.get();
         const { openFormModal } = await import("../features/form-modal");
@@ -1670,7 +1670,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast(`Sun set to ${date} ${time} at lat ${lat}°`, "success");
       }, "Sun settings"), { title: "Configure sun position + shadows for solar study" }),
       b("sun", "Shadows", safe(() => {
-        const sun = (window as any).__obsSun;
+        const sun = (ctx.features as any).sun;
         if (!sun) { toast("Sun settings not loaded", "warn"); return; }
         const s = sun.get();
         sun.set({ enabled: !s.enabled });
@@ -1690,7 +1690,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     items: () => [
       groupLabel("Graphics"),
       b("dim-linear", "Line Weights", safe(async () => {
-        const lw = (window as any).__obsLineWeights;
+        const lw = (ctx.features as any).lineWeights;
         if (!lw) { toast("Line weights module not loaded", "warn"); return; }
         const list = lw.list();
         const { showTableDialog } = await import("../features/form-modal");
@@ -1698,7 +1698,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
           list.map((r: any) => [r.elementType, r.widthMm, r.color]), `${list.length} rules`);
       }, "Line weights"), { title: "View line weight assignments per element type" }),
       b("grid", "Grid Bubbles", safe(async () => {
-        const gb = (window as any).__obsGridBubbles;
+        const gb = (ctx.features as any).gridBubbles;
         if (!gb) { toast("Grid bubbles module not loaded", "warn"); return; }
         const grids = gb.getGrids();
         const levels = gb.getLevels();
@@ -1796,7 +1796,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Keynotes"),
       b("text", "Assign Keynote", safe(async () => {
-        const k = (window as any).__obsKeynotes;
+        const k = (ctx.features as any).keynotes;
         if (!k) { toast("Keynotes module not loaded", "warn"); return; }
         const auth = (ctx.features as any).authoring;
         const ids = auth?.getSelectedIds?.() ?? [];
@@ -1832,7 +1832,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast("Detail line — click points to draw", "success");
       }, "Detail line")),
       b("detail-component", "Detail Comp…", safe(async () => {
-        const dc = (window as any).__obsDetailComponents;
+        const dc = (ctx.features as any).detailComponents;
         if (!dc) { toast("Detail components module not loaded", "warn"); return; }
         const list = dc.list();
         const { pickFromList } = await import("../features/form-modal");
@@ -1858,7 +1858,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         pv.startRegion("masking");
       }, "Masking region"), { title: "Draw a masking region to hide geometry (plan view)" }),
       b("model-curve", "Model Curve", safe(() => {
-        const mc = (window as any).__obsModelCurves;
+        const mc = (ctx.features as any).modelCurves;
         if (!mc) { toast("Model curves module not loaded", "warn"); return; }
         const auth = (ctx.features as any).authoring;
         const ids = auth?.getSelectedIds?.() ?? [];
@@ -2073,7 +2073,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         ], ["Demo room 6 × 4 × 3 m, 4 m² window, VT 0.7. Parametric room studies arrive with the generative design editor."]);
       }, "Daylight"), { title: "Compute daylight factor + sDA + ASE for the default room" }),
       b("sun", "Solar", safe(() => {
-        const sun = (window as any).__obsSun;
+        const sun = (ctx.features as any).sun;
         if (!sun) { toast("Sun module not loaded", "warn"); return; }
         sun.set({ enabled: true });
         toast("Sun enabled — use Sun panel to set date/time/lat", "info");
@@ -2807,7 +2807,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Analysis"),
       b("connection", "Analytical", safe(async () => {
-        const am = (window as any).__obsAnalytical;
+        const am = (ctx.features as any).analytical;
         if (!am) { toast("Analytical model not loaded", "warn"); return; }
         const nodes = am.getNodes();
         const members = am.getMembers();
@@ -2826,7 +2826,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Marketplace"),
       b("component", "Browse Plugins", safe(async () => {
-        const mp = (window as any).__obsMarketplace;
+        const mp = (ctx.features as any).marketplace;
         if (!mp) { toast("Marketplace not loaded", "warn"); return; }
         const list = mp.list();
         const { showTableDialog } = await import("../features/form-modal");
@@ -2834,7 +2834,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
           list.map((x: any) => [x.name, x.version, x.author, x.description]), "Plugins shipped with this build");
       }, "Browse marketplace"), { title: "Browse plugin marketplace" }),
       b("component", "Install Plugin", safe(async () => {
-        const mp = (window as any).__obsMarketplace;
+        const mp = (ctx.features as any).marketplace;
         if (!mp) { toast("Marketplace not loaded", "warn"); return; }
         const list = mp.list();
         const { pickFromList } = await import("../features/form-modal");

@@ -178,25 +178,29 @@ async function runOnce(): Promise<void> {
   // Area plans & color fill (spatial analysis: color rooms by department)
   await safe("area-plans", async () => {
     const m: Any = await import("./modules/area-plans");
-    m.setupAreaPlans?.();
+    const svc = m.setupAreaPlans?.();
+    if (svc) (ctx.features as Any).areaPlans = svc;
   });
 
   // Detail components & repeating details
   await safe("detail-components", async () => {
     const m: Any = await import("./modules/detail-components");
-    m.setupDetailComponents?.();
+    const svc = m.setupDetailComponents?.();
+    if (svc) (ctx.features as Any).detailComponents = svc;
   });
 
   // Keynotes
   await safe("keynotes", async () => {
     const m: Any = await import("./modules/keynotes");
-    m.setupKeynotes?.();
+    const svc = m.setupKeynotes?.();
+    if (svc) (ctx.features as Any).keynotes = svc;
   });
 
   // Model curves on faces
   await safe("model-curves", async () => {
     const m: Any = await import("./modules/model-curves");
-    m.setupModelCurves?.();
+    const svc = m.setupModelCurves?.();
+    if (svc) (ctx.features as Any).modelCurves = svc;
   });
 
   // Filled regions & masking regions (2D detail annotation)
@@ -208,7 +212,8 @@ async function runOnce(): Promise<void> {
   // Material assignment engine (3D rendering + quantity takeoff)
   await safe("material-assignment", async () => {
     const m: Any = await import("./modules/material-assignment");
-    m.setupMaterialAssignment?.();
+    const svc = m.setupMaterialAssignment?.();
+    if (svc) (ctx.features as Any).materials = svc;
   });
 
   // Parametric constraints (lock dimensions, equality, alignment)
@@ -232,31 +237,36 @@ async function runOnce(): Promise<void> {
   // Sun settings & shadows (solar study)
   await safe("sun-settings", async () => {
     const m: Any = await import("./modules/sun-settings");
-    m.setupSunSettings?.();
+    const svc = m.setupSunSettings?.();
+    if (svc) (ctx.features as Any).sun = svc;
   });
 
   // Line weights by element type
   await safe("line-weights", async () => {
     const m: Any = await import("./modules/line-weights");
-    m.setupLineWeights?.();
+    const svc = m.setupLineWeights?.();
+    if (svc) (ctx.features as Any).lineWeights = svc;
   });
 
   // Grid bubbles & level markers in views
   await safe("grid-bubbles", async () => {
     const m: Any = await import("./modules/grid-bubbles");
-    m.setupGridBubbles?.();
+    const svc = m.setupGridBubbles?.();
+    if (svc) (ctx.features as Any).gridBubbles = svc;
   });
 
   // In-place mass / freeform (conceptual massing)
   await safe("in-place-mass", async () => {
     const m: Any = await import("./modules/in-place-mass");
-    m.setupInPlaceMass?.();
+    const svc = m.setupInPlaceMass?.();
+    if (svc) (ctx.features as Any).mass = svc;
   });
 
   // Structural analytical model (FEM nodes + members + loads)
   await safe("analytical-model", async () => {
     const m: Any = await import("./modules/analytical-model");
-    m.setupAnalyticalModel?.();
+    const svc = m.setupAnalyticalModel?.();
+    if (svc) (ctx.features as Any).analytical = svc;
   });
 
   // Energy analysis (heat loss, solar gain, gbXML export)
@@ -268,7 +278,8 @@ async function runOnce(): Promise<void> {
   // Plugin marketplace registry
   await safe("plugin-marketplace", async () => {
     const m: Any = await import("./modules/plugin-marketplace");
-    m.setupPluginMarketplace?.();
+    const svc = m.setupPluginMarketplace?.();
+    if (svc) (ctx.features as Any).marketplace = svc;
   });
 
   // Project base point & survey point (shared coordinates)
