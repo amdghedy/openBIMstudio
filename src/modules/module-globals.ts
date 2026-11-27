@@ -384,6 +384,10 @@ void servicesReady("commandPalette").then((palette) => {
 
 // ── Section Box (interactive 6-face handles) ─────────────────────────────
 (ctx.features as any).sectionBox = {
+  // Merge over setupSectionBox's engine api (debugPlanes/getBox/setBox and
+  // friends) - replacing it drops those methods and breaks the section-box
+  // e2e; these toast-ified helpers are the ribbon-facing surface.
+  ...(((ctx.features as any).sectionBox ?? {}) as Record<string, unknown>),
   toggle: () => {
     const on = toggleSectionBox();
     toast(on ? "Section Box ON — drag the cyan arrows on each face to stretch / shrink" : "Section Box OFF", "success");

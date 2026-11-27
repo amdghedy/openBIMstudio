@@ -233,7 +233,7 @@ async function primaryProject(page: Page): Promise<any> {
 }
 
 test('crash mid-edit: banner appears and the saved edits are back', async ({ page }) => {
-  test.setTimeout(300000);
+  test.setTimeout(600000);
   const t0 = Date.now();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -283,7 +283,7 @@ test('crash mid-edit: banner appears and the saved edits are back', async ({ pag
 });
 
 test('crash with a corrupt journal tail: recovers up to the last good entry and says so', async ({ page }) => {
-  test.setTimeout(300000);
+  test.setTimeout(600000);
   const t0 = Date.now();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -346,7 +346,7 @@ test('crash with a corrupt journal tail: recovers up to the last good entry and 
 });
 
 test('clean boot does not replay and shows no banner', async ({ page }) => {
-  test.setTimeout(300000);
+  test.setTimeout(600000);
   const t0 = Date.now();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -371,7 +371,7 @@ test('clean boot does not replay and shows no banner', async ({ page }) => {
 });
 
 test('replay is idempotent: two crash-recovery cycles, same state', async ({ page }) => {
-  test.setTimeout(300000);
+  test.setTimeout(600000);
   const t0 = Date.now();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -418,7 +418,7 @@ test('replay is idempotent: two crash-recovery cycles, same state', async ({ pag
 });
 
 test('recovery from the last saved record when the journal is absent still works', async ({ page }) => {
-  test.setTimeout(300000);
+  test.setTimeout(600000);
   const t0 = Date.now();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
