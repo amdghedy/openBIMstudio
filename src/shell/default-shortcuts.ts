@@ -65,7 +65,7 @@ export function registerDefaultShortcuts(): void {
   // (COPYCLIP — Super Copy). Clash Review stays reachable from its menu entry.
   when: () => !isCadHotkeyOwnerActive(),
   handler: () => {
-    const fn = (window as any).__obs_toggleClashReview;
+    const fn = (ctx.features as any).clashReview?.toggle;
     if (typeof fn === "function") fn();
   },
 });

@@ -7088,7 +7088,7 @@ export function rebuildAuthored(): void { rebuild(); markDirty(); }
 
 /** When on, moving an MEP part also moves everything connected to it (default on). */
 let moveConnectedMep = (() => { try { return localStorage.getItem("obs.moveConnectedMep") !== "0"; } catch { return true; } })();
-try { (window as any).__obsMoveConnected = moveConnectedMep; } catch { /* */ }
+try { (ctx.features as any).moveConnected = moveConnectedMep; } catch { /* */ }
 export function isMoveConnectedMep(): boolean { return moveConnectedMep; }
 export function setMoveConnectedMep(on: boolean): void {
   moveConnectedMep = on;

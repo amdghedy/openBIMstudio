@@ -1734,7 +1734,6 @@ export function setupFamilyBrowser(): void {
     reload: reloadAll,
   };
   (ctx.features as any).familyBrowser = api;
-  (window as any).__obsFamilyBrowser = api;
 
   // Family bridge: a save in the Family Creator (or any other store
   // change) refreshes the open browser live, so a just-saved family
