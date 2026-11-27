@@ -290,16 +290,16 @@ function buildBody(host: HTMLElement): void {
   host.appendChild(
     section("Drawing / Drafting", [
       btn("Drawing Panel", "Ctrl+Shift+D", () => {
-        const c = (window as Any).__obsCad;
+        const c = (ctx.features as Any).cad;
         if (c?.toggle) c.toggle();
         else toast("Drawing loading...", "info");
       }, true),
       btn("Line", "L", () => {
-        (window as Any).__obsCad?.open?.();
+        (ctx.features as Any).cad?.open?.();
         window.dispatchEvent(new KeyboardEvent("keydown", { key: "l", bubbles: true }));
       }, true),
       btn("Polyline", "PL - Enter ends", () => {
-        const c = (window as Any).__obsCad;
+        const c = (ctx.features as Any).cad;
         c?.open?.();
         // set tool via engine
         try {
@@ -309,13 +309,13 @@ function buildBody(host: HTMLElement): void {
         } catch { /* */ }
       }, true),
       btn("Circle", "CC", () => {
-        const c = (window as Any).__obsCad;
+        const c = (ctx.features as Any).cad;
         c?.open?.();
         c?.engine?.setTool?.("circle");
         toast("CIRCLE", "info");
       }, true),
       btn("Ortho", "F8", () => {
-        const on = (window as Any).__obsCad?.engine?.toggleOrtho?.();
+        const on = (ctx.features as Any).cad?.engine?.toggleOrtho?.();
         toast(on ? "ORTHO on" : "ORTHO off", "info");
       }, true),
       btn("3D Ortho", "VO", () => {
@@ -331,7 +331,7 @@ function buildBody(host: HTMLElement): void {
         (window as Any).__obsSelPivot?.zoomOut?.();
       }, true),
       btn("Grid", "F7", () => {
-        const on = (window as Any).__obsCad?.engine?.toggleGrid?.();
+        const on = (ctx.features as Any).cad?.engine?.toggleGrid?.();
         toast(on ? "GRID on" : "GRID off", "info");
       }, true),
       btn("Drawings DXF", "Ctrl+Shift+G", () => {

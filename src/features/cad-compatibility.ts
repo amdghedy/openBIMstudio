@@ -912,7 +912,6 @@ export function setupCadCompatibility(): void {
     close: closeCadPanel,
     toggle: toggleCadPanel,
   };
-  (window as Any).__obsCad = (ctx.features as Any).cad;
 
   void (async () => {
     try {

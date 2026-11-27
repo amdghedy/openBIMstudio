@@ -9,6 +9,7 @@ let obstabbedTabs: any;
  * Unified Tab Bar - docks all floating tools into bottom tabbed ribbon.
  * Tabs: Home | Architecture | Modify | View | Drawing | Drawings | Families | Project
  */
+import { ctx } from "../core/context";
 
 type Any = Record<string, any>;
 
@@ -210,32 +211,32 @@ function tabs(): TabDef[] {
           id: "cadpanel",
           label: "Drawing Tools",
           title: "Ctrl+Shift+D",
-          run: () => (window as Any).__obsCad?.open?.() ?? (window as Any).__obsCad?.toggle?.(),
+          run: () => (ctx.features as Any).cad?.open?.() ?? (ctx.features as Any).cad?.toggle?.(),
         },
         {
           id: "line",
           label: "Line",
-          run: () => (window as Any).__obsCad?.setTool?.("line"),
+          run: () => (ctx.features as Any).cad?.setTool?.("line"),
         },
         {
           id: "pl",
           label: "PLine",
-          run: () => (window as Any).__obsCad?.setTool?.("polyline"),
+          run: () => (ctx.features as Any).cad?.setTool?.("polyline"),
         },
         {
           id: "trim",
           label: "Trim",
-          run: () => (window as Any).__obsCad?.setTool?.("trim"),
+          run: () => (ctx.features as Any).cad?.setTool?.("trim"),
         },
         {
           id: "ext",
           label: "Extend",
-          run: () => (window as Any).__obsCad?.setTool?.("extend"),
+          run: () => (ctx.features as Any).cad?.setTool?.("extend"),
         },
         {
           id: "fillet",
           label: "Fillet",
-          run: () => (window as Any).__obsCad?.setTool?.("fillet"),
+          run: () => (ctx.features as Any).cad?.setTool?.("fillet"),
         },
       ],
     },
