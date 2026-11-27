@@ -15802,7 +15802,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         }
         return groupHtml(child, depth + 1, childPath);
       }).join("");
-      return `<div data-r="filter-group-box" data-path="${path}" style="border:1px solid #293548;border-radius:6px;padding:8px;margin-top:6px;${depth > 0 ? "margin-left:16px;background:#0d1117;" : ""}">
+      return `<div data-r="filter-group-box" data-path="${path}" style="border:1px solid #293548;border-radius:6px;padding:8px;margin-top:6px;${depth > 0 ? "margin-inline-start:16px;background:#0d1117;" : ""}">
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <span style="font-size:11px;color:#94a3b8">${depth === 0 ? "Match" : "Group"}:</span>
           <select data-r="filter-group-op" data-path="${path}" style="background:#0e1017;color:#e8eaf0;border:1px solid #2a2e3a;border-radius:4px;padding:4px">
