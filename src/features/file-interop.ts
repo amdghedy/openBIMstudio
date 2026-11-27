@@ -10,7 +10,7 @@ import { FILE_LIMITS, guardSize, guardZipDirectory } from "../core/file-guard";
 import { normalizeProjectDoc } from "../modules/projects/project-schema";
 
 export const ACCEPT_ALL =
-  ".ifc,.ifczip,.zip,.frag,.obs.json,.json,.glb,.gltf,.obj,.stl,.ply,.fbx,.dae,.3ds,.rvt,.rfa,.rte,.rft,.dwg,.dxf,.skp,.geojson,.shp,.dbf,.step,.stp,.iges,.igs,.brep,.3dm";
+  ".ifc,.ifczip,.zip,.frag,.obs.json,.json,.glb,.gltf,.obj,.stl,.ply,.fbx,.dae,.3ds,.rvt,.rfa,.rte,.rft,.dwg,.dxf,.skp,.geojson,.shp,.dbf,.prj,.step,.stp,.iges,.igs,.brep,.3dm";
 
 const DESKTOP_ONLY: Record<string, string> = {
   rvt: "BIM files cannot be converted in the browser.\n\nIn BIM: File → Export → IFC → export the model, then import the .ifc here.",
@@ -164,7 +164,9 @@ export async function restoreAux(blob: Blob, name: string, modelId?: string) {
   const buf = await blob.arrayBuffer();
   if (/\.(geojson|shp)$/i.test(name)) {
     const { openGis } = await import("./gis-import");
-    const r = openGis(buf, name);
+    const { unpackGisBundle } = await import("../modules/gis/gis-bundle");
+    const b = unpackGisBundle(buf);
+    const r = openGis(b.shp, name, b.dbf, b.prj);
     if (r.object) addAuxObject(r.object, name);
     return;
   }
@@ -327,11 +329,18 @@ export async function importFiles(files: File[]) {
           const dbfSize = guardSize("shapefile", sib.size);
           if (!dbfSize.ok) throw new Error(`"${sib.name}": ${dbfSize.reason} The file was not opened and your project is unchanged.`);
         }
+        const prjFile = e === "shp" ? files.find((f) => ext(f.name) === "prj" && f.name.replace(/\.[^.]+$/, "").toLowerCase() === base) : undefined;
+        if (prjFile && prjFile.size > 1_000_000) throw new Error(`"${prjFile.name}": a coordinate-system file over 1 MB is not valid. The file was not opened and your project is unchanged.`);
         const buf = await file.arrayBuffer();
-        const r = openGis(buf, file.name, sib ? await sib.arrayBuffer() : undefined);
+        const dbfBuf = sib ? await sib.arrayBuffer() : undefined;
+        const prjText = prjFile ? await prjFile.text() : undefined;
+        const r = openGis(buf, file.name, dbfBuf, prjText);
         if (r.object) {
           addAuxObject(r.object, file.name);
-          (ctx.features.projects as any)?.onModelImported?.(`aux-${uid()}`, file.name, new Uint8Array(buf));
+          // Keep the sidecars with the shapefile so a reopened project restores the same units and attributes.
+          let stored: Uint8Array = new Uint8Array(buf);
+          if (e === "shp" && (dbfBuf || prjText)) { const { packGisBundle } = await import("../modules/gis/gis-bundle"); stored = packGisBundle(buf, dbfBuf, prjText); }
+          (ctx.features.projects as any)?.onModelImported?.(`aux-${uid()}`, file.name, stored);
         }
         uiAlert(r.message);
         continue;

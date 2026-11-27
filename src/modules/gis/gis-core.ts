@@ -13,6 +13,7 @@ export interface GisLayer { name: string; features: GisFeature[]; warnings: stri
 export interface LocalFeature { kind: GisKind; parts: Array<Array<[number, number]>>; props: GisFeature["props"] }
 export interface LocalLayer { name: string; features: LocalFeature[]; warnings: string[]; crsNote: string; origin: { x: number; y: number }; geographic: boolean; widthM: number; heightM: number }
 
+import { parseCrs, isCrs, crsCaveats, type Crs } from "./crs";
 import { safeLoad, GeoJsonSchema } from "../../core/safeLoad";
 
 /* ───────────────────────────── GeoJSON ───────────────────────────── */
@@ -188,21 +189,37 @@ export function parseShapefile(shp: ArrayBuffer, dbf?: ArrayBuffer, name = "Shap
 const R = 6_378_137;
 
 /** Convert a layer to local metres (x east, y north) centred on its bounding box. */
-export function toLocal(layer: GisLayer, origin?: { x: number; y: number }): LocalLayer {
+export function toLocal(layer: GisLayer, origin?: { x: number; y: number }, prjText?: string): LocalLayer {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const f of layer.features) for (const p of f.parts) for (const [x, y] of p) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
   if (!Number.isFinite(minX)) return { name: layer.name, features: [], warnings: [...layer.warnings, "The file has no usable geometry."], crsNote: "", origin: { x: 0, y: 0 }, geographic: false, widthM: 0, heightM: 0 };
-  const geographic = minX >= -180 && maxX <= 180 && minY >= -90 && maxY <= 90;
+  // A .prj, when present and readable, decides what the coordinates are; only without one is it guessed from their range.
+  let crs: Crs | undefined, prjProblem = "";
+  if (prjText !== undefined) { const c = parseCrs(prjText); if (isCrs(c)) crs = c; else prjProblem = c.error; }
+  const inRange = minX >= -180 && maxX <= 180 && minY >= -90 && maxY <= 90;
+  const geographic = crs ? crs.kind === "geographic" && inRange : inRange;
+  const scale = crs && crs.kind === "projected" ? crs.unit.toMetre : 1;
   const o = origin ?? { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
   const k = Math.cos((o.y * Math.PI) / 180);
   const conv = geographic
     ? ([x, y]: number[]): [number, number] => [((x - o.x) * Math.PI / 180) * R * k, ((y - o.y) * Math.PI / 180) * R]
-    : ([x, y]: number[]): [number, number] => [x - o.x, y - o.y];
+    : ([x, y]: number[]): [number, number] => [(x - o.x) * scale, (y - o.y) * scale];
+  let warnings: string[];
   const features = layer.features.map((f) => ({ kind: f.kind, parts: f.parts.map((p) => p.map(conv)), props: f.props }));
-  const crsNote = geographic
-    ? `Treated as WGS84 lon/lat and projected to local metres about (${o.x.toFixed(5)}, ${o.y.toFixed(5)}) with an equirectangular approximation.`
-    : "Coordinates are outside lon/lat range, so they are assumed to be projected metres already; only re-centred. The .prj file is not read, so units and CRS are NOT verified.";
-  const widthM = geographic ? ((maxX - minX) * Math.PI / 180) * R * k : maxX - minX;
-  const heightM = geographic ? ((maxY - minY) * Math.PI / 180) * R : maxY - minY;
-  return { name: layer.name, features, warnings: layer.warnings, crsNote, origin: o, geographic, widthM, heightM };
+  let crsNote: string;
+  if (crs && crs.kind === "projected") {
+    crsNote = `Coordinate system from the .prj: ${crs.name}, unit ${crs.unit.name} (×${+crs.unit.toMetre.toFixed(10)} to metres) — converted to metres and re-centred.`;
+  } else if (crs && geographic) {
+    crsNote = `Coordinate system from the .prj: ${crs.name} (geographic). Projected to local metres about (${o.x.toFixed(5)}, ${o.y.toFixed(5)}) with an equirectangular approximation.`;
+  } else if (crs) {
+    crsNote = `The .prj says "${crs.name}" (geographic) but the coordinates are outside lon/lat range, so they are assumed to be metres and only re-centred — units NOT verified.`;
+  } else if (geographic) {
+    crsNote = `${prjProblem ? `The .prj could not be used (${prjProblem}). ` : ""}Treated as WGS84 lon/lat and projected to local metres about (${o.x.toFixed(5)}, ${o.y.toFixed(5)}) with an equirectangular approximation.`;
+  } else {
+    crsNote = `${prjProblem ? `The .prj could not be used (${prjProblem}). ` : ""}Coordinates are outside lon/lat range, so they are assumed to be projected metres already; only re-centred. ${prjText === undefined ? "No .prj file was provided" : "The coordinate system was not read"}, so units and CRS are NOT verified — a drawing in feet would be ${(1 / 0.3048).toFixed(2)}× too large.`;
+  }
+  if (crs) warnings = [...layer.warnings, ...crsCaveats(crs)]; else warnings = layer.warnings;
+  const widthM = geographic ? ((maxX - minX) * Math.PI / 180) * R * k : (maxX - minX) * scale;
+  const heightM = geographic ? ((maxY - minY) * Math.PI / 180) * R : (maxY - minY) * scale;
+  return { name: layer.name, features, warnings, crsNote, origin: o, geographic, widthM, heightM };
 }
