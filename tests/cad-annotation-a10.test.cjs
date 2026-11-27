@@ -410,6 +410,31 @@ try {
     assert.ok(viewer.includes("addEntities(parts);"), "leader does not commit entities");
     assert.ok(viewer.includes('logCmd(`Leader added: "${t}".`);'), "leader log not updated");
   });
+  t("viewer: MLEADER creates the same arrowhead as LEADER (2D-9)", () => {
+    // Scope the markers to the MLEADER case so they cannot match the
+    // LEADER case above: the slice runs from `case "mleader"` to the next
+    // top-level `case "`.
+    const mleaderStart = viewer.indexOf('case "mleader": {');
+    assert.ok(mleaderStart >= 0, "no mleader case in viewer");
+    const mleaderEnd = viewer.indexOf('\n      case "', mleaderStart + 1);
+    assert.ok(mleaderEnd > mleaderStart, "mleader case has no end");
+    const mleader = viewer.slice(mleaderStart, mleaderEnd);
+    assert.ok(mleader.includes("Ann.buildLeaderArrowhead(a, b, arrowSize)"), "mleader does not build an arrowhead");
+    assert.ok(mleader.includes('if (arrow) parts.unshift({ ...arrow, layer: currentLayer, ...newObjectProps() });'), "mleader arrowhead not committed");
+    assert.ok(mleader.includes("addEntities(parts);"), "mleader does not commit entities");
+    // The arrowhead is built from the same points as the leader line.
+    assert.ok(mleader.includes('start: { x: a.x, y: a.y }, end: { x: b.x, y: b.y }'), "mleader line does not run arrow point → landing");
+    // Behavioural proof on the shared builder with MLEADER-style args:
+    // tip at the arrow point, base trailing back toward the landing.
+    const arrow = ann.buildLeaderArrowhead({ x: 0, y: 0 }, { x: 10, y: 0 }, 5);
+    assert.ok(arrow);
+    assert.strictEqual(arrow.type, "LWPOLYLINE");
+    assert.strictEqual(arrow.closed, true);
+    assert.strictEqual(arrow.hatch.solid, true);
+    nearPt(arrow.points[0], { x: 0, y: 0 });
+    nearPt(arrow.points[1], { x: 5, y: -1.6 });
+    nearPt(arrow.points[2], { x: 5, y: 1.6 });
+  });
   t("viewer: addDraftEntity/paste no longer double-add in model space (found by the A10 spec)", () => {
     // In model space ents IS modelEnts (same array), so the old unguarded
     // `if (layoutI < 0) modelEnts.push(e)` pushed every drafted entity

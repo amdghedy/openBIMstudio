@@ -6573,10 +6573,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             } else {
               const span = bounds ? Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) : 0;
               const h = span > 0 ? span / 100 : 2;
-              addEntities([
+              // MLEADER carries the same filled-triangle arrowhead as LEADER
+              // (2D-9): arrowhead + line + text, committed as real entities.
+              const arrowSize = Math.max(h * 2.5, h);
+              const arrow = Ann.buildLeaderArrowhead(a, b, arrowSize);
+              const parts: DxfEntity[] = [
                 { type: "LINE", layer: currentLayer, ...newObjectProps(), start: { x: a.x, y: a.y }, end: { x: b.x, y: b.y } },
                 { type: "TEXT", layer: currentLayer, ...newObjectProps(), position: { x: b.x + h * 0.25, y: b.y + h * 0.25 }, height: h, value: s },
-              ]);
+              ];
+              if (arrow) parts.unshift({ ...arrow, layer: currentLayer, ...newObjectProps() });
+              addEntities(parts);
               logCmd(`MLEADER: leader with text "${s}" added.`);
             }
             clearPickState();
