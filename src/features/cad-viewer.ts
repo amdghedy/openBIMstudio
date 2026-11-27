@@ -2018,6 +2018,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     savedBounds: M.BBox | null;
     savedModelBounds: M.BBox | null;
     savedUndoDepth: number;
+    /** 2D-22: dimension-record ids that existed when the session opened — any record not in this set was authored inside the session, so its geometry lives in the block, not the model. */
+    dimIdsAtOpen: Set<string>;
   } | null = null;
   const xrefManager = new AcadAdv.XrefManager();
   const dynBlocks = new AcadAdv.DynBlockStore();
@@ -3062,6 +3064,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             }
           }
         }
+        break;
+      }
+      case "DIMENSION": {
+        // 2D-22: a DIMENSION entity inside a block definition draws from
+        // its definition points — the record is rebuilt with the inverse
+        // of the save mapping and rendered by the same geometry builder
+        // the live dimension tools use. Without this a block dimension
+        // would be invisible in every reference (drawEntity has no other
+        // DIMENSION handling: the model only ever draws dimension geometry
+        // as LINE/TEXT via its live records).
+        const rec = DIM.dimRecordOfDimension(e);
+        if (!rec) break;
+        const style = dimStyleList.find((s) => s.name === e.styleName) ?? dimStyleList[0];
+        for (const g of DIM.buildDimEntities(rec, style, e.text ?? "")) drawEntity(c, g, v, flipY);
         break;
       }
     }
@@ -16834,8 +16850,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
    * emits nothing: a bare DIMENSION with no block would re-measure
    * differently from what the user sees.
    */
-  function dimensionEntitiesForSave(entities: DxfEntity[]): DxfEntity[] {
-    const out: DxfEntity[] = [];
+  function dimensionEntitiesForSave(entities: DxfEntity[]): Extract<DxfEntity, { type: "DIMENSION" }>[] {
+    const out: Extract<DxfEntity, { type: "DIMENSION" }>[] = [];
     for (const rec of dimRecords.values()) {
       if (rec.mode !== "linear" && rec.mode !== "aligned" && rec.mode !== "radial" && rec.mode !== "diameter" && rec.mode !== "ordinate") continue;
       const geom = entities.filter((e) => e.meta?.dimId === rec.id);
@@ -17734,6 +17750,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       savedBounds: bounds,
       savedModelBounds: modelBounds,
       savedUndoDepth: undoStack.length,
+      dimIdsAtOpen: new Set(dimRecords.keys()),
     };
     ents = session.entities;
     layoutI = -1;
@@ -17764,9 +17781,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
    * discarding restores the stashed drawing exactly. Either way the
    * session's undo acts are dropped, so the outer drawing's undo history
    * is what it was when the session opened (2D-21: undo/redo work inside
-   * a session, on the session's acts only). Dimensions authored inside a
-   * session become plain geometry in the block — their live records point
-   * at session entities that no longer exist in the drawing (follow-up).
+   * a session, on the session's acts only). 2D-22: dimensions authored
+   * inside a session become real DIMENSION entities in the block
+   * definition (their live records are dropped — the geometry now lives
+   * in the block, so a record pointing at block-space coordinates would
+   * be stale); angular / arc-length / centre-mark dimensions have no
+   * DIMENSION entity in this model, so theirs stay plain geometry, with
+   * the record dropped all the same.
    */
   function closeBlockEdit(discard: boolean): void {
     if (!blockEdit) { logCmd("BCLOSE: no BEDIT session active."); return; }
@@ -17775,7 +17796,31 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // A9: session visibility hiding must not leak into the restored drawing.
     for (const e of dynHiddenSession) hiddenEntities.delete(e);
     dynHiddenSession.clear();
+    // 2D-22: any dimension record not present when the session opened was
+    // authored inside it — its geometry lives in the session list, not the
+    // model, so its record must not survive the close: on save the
+    // convertible ones become real DIMENSION entities in the block
+    // definition (built by the same dimensionEntitiesForSave the QSAVE
+    // path uses) and the rest keep their geometry as plain lines/text;
+    // on discard the records go with the geometry. The DIMCONTINUE /
+    // DIMBASELINE chain roots are cleared too when they point at a
+    // session record.
+    const sessionDimIds = [...dimRecords.keys()].filter((id) => !be.dimIdsAtOpen.has(id));
+    const dropSessionDims = (): void => {
+      for (const id of sessionDimIds) { dimRecords.delete(id); dimOverrides.delete(id); }
+      if (lastLinearRecord && sessionDimIds.includes(lastLinearRecord.id)) lastLinearRecord = null;
+      if (lastBaselineRecord && sessionDimIds.includes(lastBaselineRecord.id)) lastBaselineRecord = null;
+    };
     if (!discard) {
+      if (sessionDimIds.length) {
+        const converted = dimensionEntitiesForSave(ents);
+        if (converted.length) {
+          const ids = new Set(converted.map((d) => d.dimId));
+          ents = ents.filter((e) => !(e.meta?.dimId && ids.has(e.meta.dimId)));
+          ents.push(...converted);
+        }
+        dropSessionDims();
+      }
       let def: DxfBlockDef;
       try { def = BlockEdit9.closeBlockEditSession(be.session, ents); }
       catch (e) { blockEdit = be; applyDynVisibilityToSession(); logCmd(`BCLOSE: ${(e as Error).message}`); return; }
@@ -17790,6 +17835,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         logCmd(`BCLOSE: block "${def.name}" redefined (${def.entities.length} object(s), base ${def.base.x}, ${def.base.y}) — ${count} reference(s) updated.`);
       }
     } else {
+      // 2D-22: session-authored dimension records go with the discarded geometry.
+      dropSessionDims();
       logCmd(`BEDIT: discarded changes to "${be.session.name}".`);
     }
     ents = be.savedEnts;
