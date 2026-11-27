@@ -291,15 +291,39 @@ function convertList(list: Any[], cx: Ctx, depth: number, insertLayer: string | 
           const closed = e.closed === true || e.isClosed === true || (flag & 1) === 1;
           const verts = raw
             .filter((v) => !(toNum(v?.flag ?? v?.flags) & 16)) // spline-frame points
-            .map((v) => ({ ...toPt(v), bulge: toNum(v?.bulge) || undefined }));
+            .map((v) => ({
+              ...toPt(v),
+              bulge: toNum(v?.bulge) || undefined,
+              startWidth: toNum(pick(v, ["startWidth", "start_width"])),
+              endWidth: toNum(pick(v, ["endWidth", "end_width"])),
+            }));
           // A7: keep the vertices and their bulges — expanding here turned
-          // every DWG arc segment into straight chords on import. (The
-          // engine does not expose polyline widths under a verifiable
-          // field name, so widths still come only from DXF for now.)
+          // every DWG arc segment into straight chords on import.
+          // 2D-10: polyline widths — verified against a real DWG through
+          // libredwg-web 0.8.4 (types + runtime dump): LWPOLYLINE carries
+          // `constantWidth` (DXF group 43) and per-vertex `startWidth` /
+          // `endWidth` (groups 40/41); old-style POLYLINE2D/3D carries the
+          // defaults on the header as `startWidth` / `endWidth`. Lineweight
+          // is a different property and is deliberately NOT mapped here.
           if (verts.length >= 2) {
             const ent: DxfEntity = { ...c, type: "LWPOLYLINE", points: verts.map((v) => ({ x: v.x, y: v.y, z: v.z })), closed };
             const bulges = verts.map((v) => v.bulge || 0);
             if (bulges.some((b) => b)) ent.bulges = bulges;
+            const constW = toNum(pick(e, ["constantWidth", "constWidth"]));
+            const hdrSW = toNum(pick(e, ["startWidth", "defaultStartWidth"]));
+            const hdrEW = toNum(pick(e, ["endWidth", "defaultEndWidth"]));
+            if (constW > 0) ent.width = constW;
+            else if (hdrSW > 0 && hdrSW === hdrEW) ent.width = hdrSW;
+            const startW = verts.map((v) => v.startWidth);
+            const endW = verts.map((v) => v.endWidth);
+            if (startW.some((w) => w) || endW.some((w) => w)) ent.startWidths = startW, ent.endWidths = endW;
+            else if (ent.width === undefined && (hdrSW > 0 || hdrEW > 0)) {
+              // Old-style POLYLINE header defaults with differing ends:
+              // apply them to every vertex (the uniform case already became
+              // `width` above, so it must not also gain redundant arrays).
+              ent.startWidths = verts.map(() => hdrSW);
+              ent.endWidths = verts.map(() => hdrEW);
+            }
             out.push(ent);
           }
           break;

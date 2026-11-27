@@ -64,6 +64,26 @@ const doc = () => ({
     const x = back.entities.find((e) => e.type === "TEXT");
     assert.strictEqual(x.value, "Hello"); assert.strictEqual(x.height, 5); assert.strictEqual(x.style, "Arial");
   });
+  await t("2D-10: a polyline's constant width survives the DWG round trip", async () => {
+    // NOTE: only the CONSTANT width is asserted here. Per-vertex widths
+    // (DXF 40/41) do not survive this leg: the engine JSON carries vertices
+    // as [x, y, bulge] only (cad-engine-rust/src/json.rs), so they need a
+    // Rust-side change to emit — out of reach for this item. They do survive
+    // the independent LibreDWG leg (see cad-dwg-export.test.cjs).
+    const d = {
+      units: "mm",
+      layers: [{ name: "0", color: 7 }],
+      entities: [
+        { type: "LWPOLYLINE", layer: "0", points: [P(0, 0), P(20, 0), P(20, 20)], closed: false, width: 2.5 },
+        { type: "LWPOLYLINE", layer: "0", points: [P(40, 0), P(60, 0), P(60, 20)], closed: false },
+      ],
+    };
+    const b = (await A.parseWithAcadEngine(await A.exportDxfToDwg(W.writeDxf(d)), "wide.dwg")).doc;
+    const wide = b.entities.find((e) => e.type === "LWPOLYLINE" && e.points[0].x === 0);
+    const hair = b.entities.find((e) => e.type === "LWPOLYLINE" && e.points[0].x === 40);
+    assert.strictEqual(wide.width, 2.5, "constant width (DXF group 43) must survive DWG read, got " + wide.width);
+    assert.strictEqual(hair.width, undefined, "a hairline polyline must not gain a width");
+  });
   await t("the first paper-space sheet and its viewport survive", () => {
     const L = (back.layouts || []).find((l) => l.viewports && l.viewports.length);
     assert.ok(L, "a layout with a viewport");
