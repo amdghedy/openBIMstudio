@@ -21,7 +21,10 @@
  *   (the cursor starts ON the grip, so it cannot supply one); MIRROR
  *   mirrors across the line through the grip and the cursor. All modes
  *   transform the pre-drag entity absolutely, so repeated moves never
- *   drift.
+ *   drift. 2D-12: the Reference option (R) replaces the auto-captured
+ *   zero reference with a user-picked reference point — rotate measures
+ *   from its direction, scale divides by its length, move displaces
+ *   from it to the new point.
  */
 
 import type { DxfEntity } from "../drawings/dxf-types";
@@ -284,6 +287,20 @@ export function captureGripRef(base: M.Pt, p: M.Pt, minDist: number): GripRef | 
   return { angleDeg: angleOf(base, p), dist: d };
 }
 
+/**
+ * 2D-12 — the zero reference from a USER-PICKED reference point
+ * (AutoCAD Reference option, R during a grip edit): the angle and
+ * distance of the picked point from the grip (the base point). Null
+ * when the picked point is effectively on the grip — the caller falls
+ * back to the auto-captured zero reference instead of dividing by
+ * a zero-length reference.
+ */
+export function gripRefFromPoint(base: M.Pt, refPt: M.Pt, minDist: number): GripRef | null {
+  const d = dist(base, refPt);
+  if (!(d >= minDist)) return null;
+  return { angleDeg: angleOf(base, refPt), dist: d };
+}
+
 /** Rotation (degrees, CCW positive) from the reference direction to the cursor. */
 export function gripRotateDeg(refAngleDeg: number, base: M.Pt, to: M.Pt): number {
   return norm360(angleOf(base, to) - refAngleDeg);
@@ -311,8 +328,14 @@ export interface GripModeResult {
  * `ref` is the rotate/scale zero reference (null until the first
  * significant move captures it); `minRefDist` is the world distance a
  * move must cover before it counts as the reference (the viewer passes
- * a few screen pixels in world units). Returns null when the mode does
- * not apply to this grip/entity (stretch on a grip with no drag rule,
+ * a few screen pixels in world units). `userRefPt` is the 2D-12
+ * user-picked Reference point (AutoCAD R): when set it overrides the
+ * auto-captured zero reference — rotate measures from the reference
+ * direction, scale divides by the reference length, and move displaces
+ * by (to − userRefPt) instead of (to − base). A reference point
+ * effectively on the grip is unusable and falls back to auto-capture;
+ * stretch / mirror ignore it. Returns null when the mode does not
+ * apply to this grip/entity (stretch on a grip with no drag rule,
  * or rotate/scale/mirror on an unhandled type).
  */
 export function applyGripMode(
@@ -323,6 +346,7 @@ export function applyGripMode(
   to: M.Pt,
   gi: number,
   minRefDist = 1e-6,
+  userRefPt: M.Pt | null = null,
 ): GripModeResult | null {
   switch (mode) {
     case "stretch": {
@@ -331,17 +355,23 @@ export function applyGripMode(
     }
     case "move": {
       if (!TRANSFORMABLE.has(e.type)) return null;
-      return { entity: translateEnt(e, to.x - base.x, to.y - base.y), ref };
+      // 2D-12: Reference — the displacement runs from the picked
+      // reference point to the new point, not from the grip.
+      const from = userRefPt ?? base;
+      return { entity: translateEnt(e, to.x - from.x, to.y - from.y), ref };
     }
     case "rotate": {
       if (!TRANSFORMABLE.has(e.type)) return null;
-      const r = ref ?? captureGripRef(base, to, minRefDist);
+      // 2D-12: a picked reference point is the zero reference; an
+      // already-captured one wins (the viewer clears it when arming),
+      // and a point on the grip falls back to auto-capture.
+      const r = ref ?? (userRefPt ? gripRefFromPoint(base, userRefPt, minRefDist) : null) ?? captureGripRef(base, to, minRefDist);
       if (!r) return { entity: e, ref: null };
       return { entity: rotateEnt(e, base.x, base.y, gripRotateDeg(r.angleDeg, base, to)), ref: r };
     }
     case "scale": {
       if (!TRANSFORMABLE.has(e.type)) return null;
-      const r = ref ?? captureGripRef(base, to, minRefDist);
+      const r = ref ?? (userRefPt ? gripRefFromPoint(base, userRefPt, minRefDist) : null) ?? captureGripRef(base, to, minRefDist);
       if (!r) return { entity: e, ref: null };
       return { entity: scaleEnt(e, base.x, base.y, gripScaleFactor(r.dist, base, to)), ref: r };
     }
