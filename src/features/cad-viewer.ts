@@ -2420,6 +2420,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (!sel.size) return;
     for (const i of [...sel]) if (!selAccept(i)) sel.delete(i);
     selected = sel.size ? [...sel][sel.size - 1] : -1;
+    refreshSelCount(); // 2D-32: the lock-toggle call sites do not call showProps()
   }
 
   function colorOf(e: DxfEntity): string {
@@ -6173,6 +6174,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     hidden.delete(name);
     sel.clear();
     selected = -1;
+    refreshSelCount(); // 2D-32: deleteLayerByName does not call showProps()
     rebuildIndex();
     logCmd(`LAYER: deleted layer "${name}" and ${doomed.length} object(s).`);
     return true;
@@ -8008,6 +8010,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   /* ── Properties & Measurements ── */
   function showProps() {
+    // 2D-32: every selection change reaches this function (setSel, erase,
+    // undo/redo, commitModify/commitReplace, place-copy, isolate, staged
+    // pick steps), so the status-bar count refreshes here, not only on
+    // the next full updateStatus() rebuild.
+    refreshSelCount();
     if (sel.size > 1) {
       let len = 0,
         area = 0;
@@ -11691,6 +11698,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   /* ── Status Bar Update ── */
+  /** 2D-32: refresh only the selection-count text in the status bar.
+   * The count used to render only inside updateStatus()'s full innerHTML
+   * rebuild, so it went stale after every selection change until some
+   * other path re-rendered the bar (pointer moves take the coords-only
+   * early return and never touch it). Every selection-mutating path
+   * funnels through showProps(), so that is where the refresh lives —
+   * plus the two paths that mutate `sel` without showProps()
+   * (deleteLayerByName, pruneLockedFromSel). Null-guarded: the span
+   * only exists after updateStatus()'s first full render. */
+  function refreshSelCount(): void {
+    const el = statusEl.querySelector<HTMLElement>("[data-s=selcount]");
+    if (el) el.textContent = sel.size ? sel.size + " selected" : "";
+  }
+
   function updateStatus(p?: M.Pt) {
     const c = p ?? cursor;
     const zoomPct = doc && bounds ? Math.round((view.scale / M.fitView(bounds, view.w, view.h).scale) * 100) : 100;
@@ -11743,7 +11764,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       <span>${escapeHtml(unit)} · ${zoomPct}%</span>
       ${activeViewport !== null && layoutI >= 0 ? `<span class="sep"></span><span data-s="viewport" style="color:#38bdf8;font-weight:600" title="Double-click outside a viewport to leave it">Viewport #${activeViewport + 1} active</span>` : ""}
       <span style="flex:1"></span>
-      <span>${sel.size ? sel.size + " selected" : ""}</span>
+      <span data-s="selcount">${sel.size ? sel.size + " selected" : ""}</span>
     `;
 
     // Status tray button click listeners
@@ -13843,6 +13864,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       sel.clear();
       for (const i of ids) if (selAccept(i)) sel.add(i);
       logCmd(`LAYSEL: ${sel.size} on layer "${layer}".`);
+      refreshSelCount(); // 2D-32
       draw();
       return;
     }
@@ -13854,6 +13876,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       sel.clear();
       for (const i of ids) if (selAccept(i)) sel.add(i);
       logCmd(`TYPESEL: ${sel.size} × ${typ.toUpperCase()}.`);
+      refreshSelCount(); // 2D-32
       draw();
       return;
     }
@@ -13895,6 +13918,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     if (cmd === "CLRSEL" || cmd === "SELCLR") {
       sel.clear();
+      refreshSelCount(); // 2D-32
       draw();
       logCmd("CLRSEL: selection cleared.");
       return;
@@ -13910,6 +13934,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         sel.add(i);
       }
       logCmd(`SELECTALL: ${sel.size} object(s).`);
+      refreshSelCount(); // 2D-32
       draw();
       return;
     }
@@ -14362,6 +14387,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         if (ents[i]?.layer && layers.has(ents[i].layer) && !isLayerLocked(ents[i].layer)) sel.add(i);
       }
       logCmd(`SELBYLAYER: ${sel.size} on ${[...layers].join(", ")}`);
+      refreshSelCount(); // 2D-32
       draw();
       return;
     }
@@ -14392,6 +14418,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ents = keep;
       if (layoutI < 0) modelEnts = keep;
       sel.clear();
+      refreshSelCount(); // 2D-32
       markDirty();
       idx = M.buildIndex(ents, bounds ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 });
       syncSpaceIndex();
@@ -14451,6 +14478,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ents = keep;
       if (layoutI < 0) modelEnts = keep;
       sel.clear();
+      refreshSelCount(); // 2D-32
       addEntities(lines);
       draw();
       logCmd(`XPLODEPL: ${removed.length} polyline(s) → ${lines.length} line(s)`);
@@ -14468,6 +14496,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ents = keep;
       if (layoutI < 0) modelEnts = keep;
       sel.clear();
+      refreshSelCount(); // 2D-32
       markDirty();
       draw();
       logCmd(`AUDITZL: removed ${removed.length} zero-length line(s)${zeroLen.length > removed.length ? ` (${zeroLen.length - removed.length} locked-layer line(s) kept)` : ""}`);
@@ -17321,6 +17350,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       sel.clear();
       let n = 0;
       for (const i of existing) if (ents[i] && selAccept(i)) { sel.add(i); n++; }
+      refreshSelCount(); // 2D-32
       draw();
       logCmd(`GROUP ${key}: selected ${n} object${n === 1 ? "" : "s"}.`);
       return;

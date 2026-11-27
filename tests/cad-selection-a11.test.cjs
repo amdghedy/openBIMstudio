@@ -230,6 +230,32 @@ try {
     assert.ok(/tb\("fence"/.test(viewerSrc), "fence ribbon button missing");
     assert.ok(/tb\("lasso"/.test(viewerSrc), "lasso ribbon button missing");
   });
+  t("viewer (2D-32): selection count refreshes on selection change, not only on updateStatus()", () => {
+    // The count span is a stable target, updated in place.
+    assert.ok(/<span data-s="selcount">/.test(viewerSrc), "count span has no data-s=selcount marker");
+    assert.ok(/function refreshSelCount\(\): void \{/.test(viewerSrc), "refreshSelCount missing");
+    assert.ok(/const el = statusEl\.querySelector<HTMLElement>\("\[data-s=selcount\]"\)/.test(viewerSrc), "refresh targets the selcount span");
+    assert.ok(/el\.textContent = sel\.size \? sel\.size \+ " selected" : ""/.test(viewerSrc), "refresh writes the count text");
+    // showProps() is the funnel every selection-mutating path reaches.
+    const showProps = viewerSrc.slice(viewerSrc.indexOf("function showProps() {"));
+    assert.ok(showProps.startsWith("function showProps() {\n    // 2D-32"), "showProps does not refresh the count first");
+    // The two paths that mutate sel without showProps() refresh directly.
+    assert.ok(/refreshSelCount\(\); \/\/ 2D-32: deleteLayerByName does not call showProps\(\)/.test(viewerSrc), "deleteLayerByName does not refresh the count");
+    assert.ok(/refreshSelCount\(\); \/\/ 2D-32: the lock-toggle call sites do not call showProps\(\)/.test(viewerSrc), "pruneLockedFromSel does not refresh the count");
+    // The command handlers that mutate sel directly (no setSel, no
+    // showProps) refresh at the mutation site — eight dispatch sites,
+    // plus GROUP, whose selection recall lives in groupCmd().
+    for (const cmd of ["LAYSEL", "TYPESEL", "CLRSEL", "SELECTALL", "SELBYLAYER", "ERASEOUT", "XPLODEPL", "AUDITZL"]) {
+      const i = viewerSrc.indexOf(`cmd === "${cmd}"`);
+      assert.ok(i >= 0, `${cmd} handler missing`);
+      const block = viewerSrc.slice(i, i + 1200);
+      assert.ok(block.includes("refreshSelCount(); // 2D-32"), `${cmd} does not refresh the count`);
+    }
+    const groupCmd = viewerSrc.slice(viewerSrc.indexOf("function groupCmd("));
+    assert.ok(groupCmd.includes("refreshSelCount(); // 2D-32"), "groupCmd recall does not refresh the count");
+    // The full-bar rebuild still renders the same count, so the two paths agree.
+    assert.ok(/<span data-s="selcount">\$\{sel\.size \? sel\.size \+ " selected" : ""\}<\/span>/.test(viewerSrc), "full render and refresh disagree on the count text");
+  });
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
