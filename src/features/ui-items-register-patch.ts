@@ -203,7 +203,7 @@ export function registerClosedGapUiItems(): void {
     label: "Copy / Monitor",
     group: "panels",
     available: true,
-    isVisible: () => !!(window as any).__obsCopyMonitor,
+    isVisible: () => !!(ctx.features as any).copyMonitor,
     toggle: () => {
       window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "copy-monitor" } }));
     },

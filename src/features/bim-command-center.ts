@@ -360,7 +360,7 @@ function buildBody(host: HTMLElement): void {
       }, !!(ctx.features as Any).groups),
       btn("Copy / Monitor", "Open panel", () => {
         window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "copy-monitor" } }));
-      }, has("__obsCopyMonitor")),
+      }, !!(ctx.features as Any).copyMonitor),
       btn("Solve Hosts", "Openings + offsets", () => {
         const fn = (window as Any).__obsSolveHostedConstraints;
         if (typeof fn !== "function") {
