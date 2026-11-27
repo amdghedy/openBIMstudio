@@ -273,6 +273,8 @@
     "glbFailed": "Could not write the GLB: {message}",
     "glbNoGeometry": "There is no geometry to export yet.",
     "parts": {
+      "basisCatalogue": "sheet value",
+      "basisInferred": "inferred here",
       "title": "Parts",
       "showAll": "Show all parts",
       "exportTitle": "What the IFC and GLB downloads contain",
@@ -366,6 +368,23 @@
     },
     "taskState": {
       "title": "Task state (read only)"
+    },
+    "cat": {
+      "title": "Data sheet table (packaged booster sets)",
+      "found": "The sheet has {n} model page(s) with a dimensions table. Page shown: {model}.",
+      "model": "Model page",
+      "type": "Type (flow and voltage column)",
+      "depth": "Which row is the overall depth",
+      "choose": "Choose...",
+      "full": "Full flow",
+      "half": "Half flow",
+      "conn": "connection",
+      "depthJ": "end view, includes pipework",
+      "depthH": "side view",
+      "inferred": "Control panel and manifolds follow the sheet and catalogue values. Motors, pump heads, valves, flanges, frame and posts are proportions chosen here, marked inferred in the parts list. Manifold length is not on the sheet.",
+      "create": "Create from the table",
+      "none": "No dimensions table was found.",
+      "needChoice": "Choose the type and the depth row first. Nothing is chosen for you."
     }
   },
   "counts": {

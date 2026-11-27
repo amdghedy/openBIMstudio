@@ -5,11 +5,21 @@
 // It draws what the engine resolved, so it shows a change as soon as a
 // parameter changes.
 
+import { bendSamplePoints } from "./layout";
 import type { ResolvedPart } from "./layout";
 
 interface Box { x0: number; x1: number; y0: number; y1: number }
 
 function partBoxes(p: ResolvedPart): { x: [number, number]; y: [number, number]; z: [number, number] } {
+  if (p.shape === "prism" && p.points?.length) {
+    const us = p.points.map((q) => q[0] * p.r), vs = p.points.map((q) => q[1] * p.r);
+    return { x: [p.cx + Math.min(...us), p.cx + Math.max(...us)], y: [p.cy + Math.min(...vs), p.cy + Math.max(...vs)], z: [p.cz - p.h / 2, p.cz + p.h / 2] };
+  }
+  if (p.shape === "bend") {
+    const pts = bendSamplePoints(p);
+    const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]), zs = pts.map((q) => q[2]);
+    return { x: [Math.min(...xs), Math.max(...xs)], y: [Math.min(...ys), Math.max(...ys)], z: [Math.min(...zs), Math.max(...zs)] };
+  }
   const hx = p.shape === "cylinder" ? p.r : p.w / 2;
   const hz = p.shape === "cylinder" ? p.r : p.d / 2;
   return { x: [p.cx - hx, p.cx + hx], y: [p.cy - p.h / 2, p.cy + p.h / 2], z: [p.cz - hz, p.cz + hz] };
@@ -40,7 +50,7 @@ export function renderThreeViews(
       const x = ox + b.x0 * scale, w = (b.x1 - b.x0) * scale;
       const h = (b.y1 - b.y0) * scale;
       const y = flipY ? oy - b.y1 * scale : (H - pad - v.hm * scale) + (b.y0 + v.hm / 2) * scale;
-      const cls = p.shape === "cylinder" ? "#f59e0b" : "#60a5fa";
+      const cls = p.shape === "cylinder" || p.shape === "bend" ? "#f59e0b" : "#60a5fa";
       out += `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" fill="${cls}" fill-opacity="0.25" stroke="${cls}" stroke-width="1"><title>${esc(p.name)}</title></rect>`;
     }
   });
