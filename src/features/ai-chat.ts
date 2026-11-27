@@ -25,6 +25,13 @@
  *   5. Stop when the provider returns a text-only response
  */
 import { PRESETS, type Preset } from "./ai-presets";
+import {
+  MAX_ATTACHMENTS, isPdfFile, readPdfAttachment, attachmentsForStorage, attachmentsToPrompt, attachmentChars,
+  type ChatAttachment,
+} from "./ai-attachments";
+import {
+  MODEL_MODE_ORDER, MODEL_MODE_LABEL, MODEL_MODE_TAGS, pickModelForMode, describeModePick, ollamaNumCtx, type ModelMode,
+} from "./ai-local-models";
 import { ctx } from "../core/context";
 import { makeDockable, type DockHandle } from "./dockable";
 import {
@@ -56,6 +63,8 @@ import {
   type EmbeddingConfig,
 } from "./ai-embeddings";
 import { fmtDateTime, fmtNumber } from "../core/region";
+import { notify } from "../core/notify";
+import { isPrivateEndpoint, endpointHost } from "./ai-privacy";
 
 const SYSTEM_PROMPT = `You are the AI BIM agent inside openBIMstudio, a browser-based openBIM authoring and coordination environment.
 
@@ -280,6 +289,154 @@ inputTools.append(autoScrollLbl, sendBtn);
 inputRow.append(input, inputTools);
 panel.append(header, settingsPane, messages, footer, inputRow);
 
+
+/* ── PDF attachments + local model modes ─────────────────────────────── */
+let pendingAttachments: ChatAttachment[] = [];
+const MODE_KEY = "obs.ai.localMode";
+type ModeChoice = ModelMode | "manual";
+function loadMode(): ModeChoice {
+  try { const v = localStorage.getItem(MODE_KEY); if (v === "fast" || v === "analyze" || v === "reason") return v; } catch { /* */ }
+  return "manual";
+}
+let modeChoice: ModeChoice = loadMode();
+let installedTags: string[] | null = null;
+let installedAt = 0;
+
+const attachRow = document.createElement("div");
+attachRow.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%;box-sizing:border-box;min-width:0";
+
+const fileInput = document.createElement("input");
+fileInput.type = "file";
+fileInput.accept = "application/pdf,.pdf";
+fileInput.multiple = true;
+fileInput.style.display = "none";
+
+const attachBtn = document.createElement("button");
+attachBtn.type = "button";
+attachBtn.textContent = "Attach PDF";
+attachBtn.title = "Read the text of a PDF in this browser and add it to your question";
+attachBtn.style.cssText =
+  "padding:4px 10px;background:transparent;color:var(--text-secondary,#a0a6b5);border:1px solid var(--border-default,#2a2e3a);" +
+  "border-radius:6px;cursor:pointer;font:11px system-ui";
+
+const modeSel = document.createElement("select");
+modeSel.title = "Local model mode (Ollama)";
+modeSel.style.cssText =
+  "padding:4px 6px;background:var(--bg-inset,#0e1017);color:var(--text-primary,#e8eaf0);border:1px solid var(--border-default,#2a2e3a);" +
+  "border-radius:6px;font:11px system-ui;max-width:170px";
+{
+  const manual = document.createElement("option");
+  manual.value = "manual";
+  manual.textContent = "Model: settings";
+  modeSel.appendChild(manual);
+  for (const m of MODEL_MODE_ORDER) {
+    const o = document.createElement("option");
+    o.value = m;
+    o.textContent = `${MODEL_MODE_LABEL[m]} mode`;
+    modeSel.appendChild(o);
+  }
+  modeSel.value = modeChoice;
+}
+
+const modeNote = document.createElement("div");
+modeNote.style.cssText = "font-size:10px;color:var(--text-tertiary,#6b7280);width:100%;line-height:1.4";
+
+attachRow.append(attachBtn, modeSel, fileInput);
+const chipsRow = document.createElement("div");
+chipsRow.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;width:100%";
+inputRow.insertBefore(chipsRow, input);
+inputRow.insertBefore(attachRow, inputTools);
+inputRow.insertBefore(modeNote, inputTools);
+
+function attachmentLabel(a: ChatAttachment): string {
+  const pages = `${a.pageCount} page${a.pageCount === 1 ? "" : "s"}`;
+  if (a.noText) return `${a.name} (${pages}, no text layer, not readable)`;
+  if (!a.text && a.chars === 0 && !a.noText) return `${a.name} (${pages})`;
+  return `${a.name} (${pages}${a.truncated ? ", cut to fit" : ""})`;
+}
+
+function renderAttachRow(): void {
+  const local = cfg.kind === "ollama";
+  modeSel.style.display = local ? "" : "none";
+  chipsRow.textContent = "";
+  for (const a of pendingAttachments) {
+    const chip = document.createElement("span");
+    chip.style.cssText =
+      "display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-size:10px;" +
+      "background:var(--bg-hover,#232633);color:var(--text-primary,#e8eaf0)";
+    chip.append(document.createTextNode(attachmentLabel(a)));
+    const x = document.createElement("button");
+    x.type = "button";
+    x.textContent = "✕";
+    x.setAttribute("aria-label", `Remove ${a.name}`);
+    x.style.cssText = "background:transparent;border:0;color:inherit;cursor:pointer;padding:0 2px;font-size:10px";
+    x.onclick = () => { pendingAttachments = pendingAttachments.filter((p) => p !== a); renderAttachRow(); };
+    chip.appendChild(x);
+    chipsRow.appendChild(chip);
+  }
+  let note = "";
+  if (pendingAttachments.length) {
+    note = isPrivateEndpoint(cfg.kind === "ollama" ? "/ollama" : cfg.endpoint)
+      ? "PDF text stays on this computer with a local model."
+      : `PDF text will be sent to ${endpointHost(cfg.endpoint)}.`;
+  }
+  if (local && modeChoice !== "manual") {
+    const tags = MODEL_MODE_TAGS[modeChoice];
+    note += (note ? " " : "") + `${MODEL_MODE_LABEL[modeChoice]} tries ${tags.join(", ")} in that order, using the first one installed in your Ollama.`;
+  }
+  modeNote.textContent = note;
+  modeNote.style.display = note ? "" : "none";
+}
+
+async function addPdfFiles(files: FileList | File[]): Promise<void> {
+  for (const f of Array.from(files)) {
+    if (!isPdfFile(f)) { notify("warn", `${f.name} is not a PDF. Only PDF files can be attached.`); continue; }
+    if (pendingAttachments.length >= MAX_ATTACHMENTS) { notify("warn", `At most ${MAX_ATTACHMENTS} PDFs per message.`); break; }
+    attachBtn.disabled = true;
+    attachBtn.textContent = "Reading PDF…";
+    try {
+      const a = await readPdfAttachment(f);
+      if (a.noText) notify("warn", `${f.name} has no text layer (it looks scanned). There is no OCR here, so nothing can be read from it.`);
+      pendingAttachments.push(a);
+    } catch (err) {
+      notify("error", `Could not read ${f.name}: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      attachBtn.disabled = false;
+      attachBtn.textContent = "Attach PDF";
+    }
+  }
+  renderAttachRow();
+}
+
+attachBtn.onclick = () => fileInput.click();
+fileInput.onchange = () => { if (fileInput.files?.length) void addPdfFiles(fileInput.files); fileInput.value = ""; };
+modeSel.onchange = () => {
+  modeChoice = modeSel.value as ModeChoice;
+  try { localStorage.setItem(MODE_KEY, modeChoice); } catch { /* */ }
+  renderAttachRow();
+};
+input.addEventListener("dragover", (e) => { if (e.dataTransfer?.types.includes("Files")) e.preventDefault(); });
+input.addEventListener("drop", (e) => {
+  const fl = e.dataTransfer?.files;
+  if (fl && fl.length) { e.preventDefault(); void addPdfFiles(fl); }
+});
+
+/** The config to use for this request: the saved one, or the model a mode picks from what Ollama reports installed. */
+async function resolveRequestConfig(): Promise<{ cfg: ProviderConfig } | { error: string }> {
+  if (cfg.kind !== "ollama" || modeChoice === "manual") return { cfg };
+  try {
+    if (!installedTags || Date.now() - installedAt > 60_000) {
+      installedTags = await listModels(cfg);
+      installedAt = Date.now();
+    }
+  } catch (err) {
+    return { error: `Could not read your installed Ollama models: ${err instanceof Error ? err.message : String(err)}` };
+  }
+  const pick = pickModelForMode(modeChoice, installedTags);
+  if (!pick.model) return { error: describeModePick(pick) };
+  return { cfg: { ...cfg, model: pick.model } };
+}
+
 /* ═════════════════════════════════════════════════════════════════════════
    Markdown rendering
    ═════════════════════════════════════════════════════════════════════════ */
@@ -442,7 +599,7 @@ function persistCurrent(): void {
   if (!currentConvId) return;
   const conv = conversations.find((c) => c.id === currentConvId);
   if (!conv) return;
-  conv.messages = history.map((m) => ({ ...m }));
+  conv.messages = history.map((m) => (m.attachments ? { ...m, attachments: attachmentsForStorage(m.attachments) } : { ...m }));
   conv.updatedAt = Date.now();
   const firstUser = history.find((m) => m.role === "user");
   if (firstUser && (!conv.title || conv.title === "New chat")) {
@@ -485,6 +642,7 @@ function renderHeader(): void {
   if (renderingHeader) return;
   renderingHeader = true;
   try {
+    renderAttachRow();
     header.innerHTML = "";
 
     // ── Row 1: title + actions ──
@@ -1385,6 +1543,12 @@ function renderBubble(m: ChatMessage): HTMLElement {
 
   if (isUser) {
     bubble.textContent = m.content;
+    if (m.attachments?.length) {
+      const note = document.createElement("div");
+      note.style.cssText = "margin-top:6px;font-size:10px;opacity:.8;white-space:normal";
+      note.textContent = m.attachments.map((a) => "PDF: " + attachmentLabel(a)).join(" · ");
+      bubble.appendChild(note);
+    }
   } else {
     const html = renderMarkdown(m.content || "");
     bubble.innerHTML =
@@ -1563,6 +1727,22 @@ async function runAgentLoop(): Promise<void> {
 
   try {
     const sys: ChatMessage = { role: "system", content: cadHosted ? SYSTEM_PROMPT + CAD_AI_ADDENDUM : SYSTEM_PROMPT };
+    const resolved = await resolveRequestConfig();
+    if ("error" in resolved) {
+      history.push({ role: "assistant", content: `⚠ ${resolved.error}` });
+      renderMessages();
+      persistCurrent();
+      return;
+    }
+    const reqCfg = resolved.cfg;
+    // Attachment text is added to the prompt here, so chats are saved without it.
+    const wireOf = (list: ChatMessage[]): ChatMessage[] => list.map((m): ChatMessage => {
+      if (!m.attachments?.length) return m;
+      const { attachments: att, ...rest } = m;
+      return { ...rest, content: m.content + attachmentsToPrompt(att) };
+    });
+    const docChars = history.reduce((n, m) => n + attachmentChars(m.attachments), 0);
+    const numCtx = reqCfg.kind === "ollama" && docChars > 0 ? ollamaNumCtx(docChars + 4000) : undefined;
 
     for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
       const bubble = createStreamingBubble();
@@ -1570,11 +1750,12 @@ async function runAgentLoop(): Promise<void> {
       let firstToken = true;
 
       const result = await callChatStream(
-        cfg,
+        reqCfg,
         {
-          messages: [sys, ...history],
+          messages: [sys, ...wireOf(history)],
           tools: TOOLS,
           signal: abort.signal,
+          ...(numCtx ? { numCtx } : {}),
         },
         (delta) => {
           if (firstToken) {
@@ -1640,14 +1821,18 @@ async function runAgentLoop(): Promise<void> {
    ═════════════════════════════════════════════════════════════════════════ */
 async function send(): Promise<void> {
   if (busy) return;
-  const text = input.value.trim();
-  if (!text) return;
+  let text = input.value.trim();
+  const attachments = pendingAttachments;
+  if (!text && !attachments.length) return;
+  if (!text) text = "Read the attached PDF and summarize what it contains.";
 
   input.value = "";
   input.style.height = "auto";
+  pendingAttachments = [];
+  renderAttachRow();
 
   ensureConversation();
-  history.push({ role: "user", content: text });
+  history.push({ role: "user", content: text, ...(attachments.length ? { attachments } : {}) });
   renderMessages();
   persistCurrent();
 
