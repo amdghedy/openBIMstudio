@@ -329,6 +329,7 @@
     "test:cad-polyline-a7": "node tests/cad-polyline-a7.test.cjs",
     "test:cad-selection-a11": "node tests/cad-selection-a11.test.cjs",
     "test:cad-selection-a18": "node tests/cad-selection-a18.test.cjs",
+    "test:cad-selection-2d15": "node tests/cad-selection-2d15-filter-andor.test.cjs",
     "test:cad-viewport-a8": "node tests/cad-viewport-a8.test.cjs",
     "test:cad-dwg-a19": "node tests/cad-dwg-a19.test.cjs",
     "test:cad-space-add-a9": "node tests/cad-space-add-a9.test.cjs",
