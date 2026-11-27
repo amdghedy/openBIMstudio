@@ -762,6 +762,10 @@ export function closeCadViewer(): void {
   hideShell();
   unregisterCadAliasEditorOpener?.();
   unregisterCadAliasEditorOpener = null;
+  // 2D-24: viewer-math's INSERT resolver points at this viewer's
+  // resolvedDynOf — drop it so later bbox / pick / snap calls outside
+  // the viewer fall back to the plain resolver, not a dead closure.
+  M.setInsertResolver();
 }
 
 function byId(id: number): DocTab | null {
@@ -2709,6 +2713,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const evaluated = Dyn9.evaluateDynBlock(def.entities, set.params, values);
     return resolveInsert(table, ins, undefined, evaluated);
   }
+  // 2D-24: bbox / pick / snap must see the same evaluated geometry the
+  // canvas draws — viewer-math resolves INSERTs through this hook (its
+  // plain default is resolvedOf, which returns the definition as stored
+  // and is stale for heavily-moved dynamic geometry). Restored in
+  // closeCadViewer.
+  M.setInsertResolver(resolvedDynOf);
 
   /**
    * Effective values with lookup rows applied (A9): what the Properties
