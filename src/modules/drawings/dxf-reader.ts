@@ -24,6 +24,7 @@ import {
 } from "./dxf-geometry";
 import { attachNative } from "./native-curves";
 import { bindDocumentBlocks, resolveInsert } from "./block-refs";
+import { normalizeTable } from "./cad-table";
 import { paperNameForMm } from "../cad-viewer/viewer-math";
 
 /** IMAGEDEF handle -> file path, filled per parse (parsing is synchronous). */
@@ -131,7 +132,7 @@ class Data {
   }
 }
 
-interface Common { layer: string; color?: number; rgb?: number; lineType?: string; lineweight?: number; ltScale?: number; transparency?: number; invisible?: boolean }
+interface Common { layer: string; color?: number; rgb?: number; lineType?: string; lineweight?: number; ltScale?: number; transparency?: number; invisible?: boolean; elevation?: number; thickness?: number }
 
 function common(d: Data): Common {
   const layer = d.s(8) ?? "0";
@@ -149,7 +150,12 @@ function common(d: Data): Common {
   const transparency = d.has(440) ? dxfTransparency(d.n(440)) : undefined;
   // Group 60 Invisible flag — object-level hidden state (HIDEOBJECTS / ISOLATEOBJECTS).
   const invisible = d.n(60) === 1 ? true : undefined;
-  const c0: Common = { layer, color, rgb, lineType, ...(ltScale !== undefined ? { ltScale } : {}), ...(transparency ? { transparency } : {}), ...(invisible ? { invisible } : {}) };
+  // 2D-8: elevation (38) and thickness (39) are AcDbEntity groups; the
+  // LWPOLYLINE case additionally carries group 38 into the vertex Z,
+  // which is the reader's pre-existing convention for imported files.
+  const elevation = d.has(38) && d.n(38) !== 0 ? d.n(38) : undefined;
+  const thickness = d.has(39) && d.n(39) !== 0 ? d.n(39) : undefined;
+  const c0: Common = { layer, color, rgb, lineType, ...(ltScale !== undefined ? { ltScale } : {}), ...(transparency ? { transparency } : {}), ...(invisible ? { invisible } : {}), ...(elevation !== undefined ? { elevation } : {}), ...(thickness !== undefined ? { thickness } : {}) };
   return lw != null ? { ...c0, lineweight: lw } : c0;
 }
 
@@ -472,6 +478,9 @@ export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocume
 
   // 2. Sort records into header / layers / blocks / model space.
   const layers: DxfLayer[] = [];
+  // 2D-6: LAYER handle (group 5) → name, so a viewport's per-viewport
+  // freeze (group 331 handles) resolves back to layer names.
+  const layerNameByHandle = new Map<string, string>();
   const blocks = new Map<string, Block>();
   const xrefDecls: DxfXrefDecl[] = [];
   const modelRecs: Rec[] = [];
@@ -563,8 +572,11 @@ export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocume
         const d = new Data(r.pairs);
         const rawColor = d.n(62, 7);
         const transparency = d.has(440) ? dxfTransparency(d.n(440)) : 0;
+        const layerName = d.s(2) ?? "0";
+        const layerHandle = d.s(5)?.trim().toUpperCase();
+        if (layerHandle && !layerNameByHandle.has(layerHandle)) layerNameByHandle.set(layerHandle, layerName);
         layers.push({
-          name: d.s(2) ?? "0",
+          name: layerName,
           color: Math.abs(rawColor) || 7,
           ...(d.has(420) ? { rgb: d.n(420) & 0xffffff } : {}),
           lineType: d.s(6),
@@ -708,12 +720,20 @@ export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocume
           // bit 16384 is the viewport zoom lock, and group 340 is the
           // rectangular clip boundary.
           const clip = clipFor(r);
+          // 2D-6: per-viewport freeze — group 331, one soft-pointer handle
+          // per frozen layer. Handles that do not resolve to a known layer
+          // are dropped, never invented.
+          const frozenLayers = vd.all(331)
+            .map((h) => layerNameByHandle.get(h.trim().toUpperCase()))
+            .filter((n): n is string => n !== undefined)
+            .filter((n, i, arr) => arr.indexOf(n) === i);
           vps.push({
             center: vd.pt(10, 20, 30), width: vd.n(40), height: vd.n(41),
             viewCenter: vd.pt(12, 22, 0), viewHeight: vd.n(45), twist: vd.n(51) || undefined,
             scale: vd.n(41) / vd.n(45),
             ...((vd.n(90, 0) & 16384) !== 0 ? { locked: true } : {}),
             ...(clip ? { clip } : {}),
+            ...(frozenLayers.length ? { frozenLayers } : {}),
           });
         }
         return false;
@@ -1018,6 +1038,89 @@ function expandRecs(
       case "POINT":
         push({ ...c, type: "POINT", position: d.pt(10, 20, 30) });
         break;
+
+      case "ACAD_TABLE": {
+        // Real ACAD_TABLE (Autodesk DXF reference, AcDbTable): counts (91/92)
+        // and sizes (141 one per row, 142 one per column) come before the
+        // per-cell records, and group 91 is reused per cell (override flag) —
+        // so counts are only read before the first 171, and cell texts come
+        // from group 1 (older files) or 302 (AutoCAD 2007+), one per cell in
+        // row-major order. Group 140 (text height) and 281 (1 = header
+        // suppressed) are table-level and may sit after the cell records —
+        // this writer emits them there — so they are read anywhere in the
+        // record and the last 140 wins. Merged cells are not represented —
+        // each cell reads as its own cell.
+        let rows = 0, cols = 0, seenCell = false;
+        const rowHeights: number[] = [], colWidths: number[] = [];
+        const texts1: string[] = [], texts302: string[] = [];
+        let textHeight: number | undefined;
+        let headerSuppressed: boolean | undefined;
+        // Group 92 is reused: proxy-graphics byte count in AcDbEntity, then
+        // the column count in AcDbTable. Gate the table groups on the
+        // AcDbTable marker when the file carries one (marker-less files
+        // parse ungated, as before).
+        const hasMarker = r.pairs.some((p) => p.code === 100 && p.value.trim() === "AcDbTable");
+        let inTable = !hasMarker;
+        for (const p of r.pairs) {
+          if (p.code === 100 && p.value.trim() === "AcDbTable") { inTable = true; continue; }
+          if (!inTable) continue;
+          switch (p.code) {
+            case 91:
+              if (!seenCell && !rows) rows = Math.max(0, Math.min(50, Math.round(num(p.value))));
+              break;
+            case 92:
+              if (!seenCell && !cols) cols = Math.max(0, Math.min(50, Math.round(num(p.value))));
+              break;
+            case 141:
+              if (!seenCell) rowHeights.push(num(p.value));
+              break;
+            case 142:
+              if (!seenCell) colWidths.push(num(p.value));
+              break;
+            case 171:
+              seenCell = true;
+              break;
+            case 1:
+              if (seenCell) texts1.push(cleanText(p.value));
+              break;
+            case 302:
+              if (seenCell) texts302.push(cleanText(p.value));
+              break;
+            case 140:
+              textHeight = num(p.value);
+              break;
+            case 281:
+              headerSuppressed = num(p.value) === 1;
+              break;
+          }
+        }
+        rows = rows || rowHeights.length;
+        cols = cols || colWidths.length;
+        if (!rows || !cols) { skip("ACAD_TABLE (no rows or columns)"); break; }
+        const texts = texts302.length === rows * cols ? texts302 : texts1.length === rows * cols ? texts1 : texts302.length >= texts1.length ? texts302 : texts1;
+        const cells: string[][] = [];
+        for (let j = 0; j < rows; j++) {
+          const row: string[] = [];
+          for (let i = 0; i < cols; i++) row.push(texts[j * cols + i] ?? "");
+          cells.push(row);
+        }
+        const dir = d.pt(11, 21, 31);
+        const rot = Math.abs(dir.x) < 1e-12 && Math.abs(dir.y) < 1e-12 ? 0 : (Math.atan2(dir.y, dir.x) * 180) / Math.PI;
+        const table = normalizeTable({
+          ...c,
+          type: "TABLE",
+          position: d.pt(10, 20, 30),
+          colWidths: colWidths.slice(0, cols),
+          rowHeights: rowHeights.slice(0, rows),
+          cells,
+          ...(textHeight != null && textHeight > 0 ? { textHeight } : {}),
+          ...(Math.abs(rot) > 1e-9 ? { rotation: rot } : {}),
+          ...(headerSuppressed === false ? { headerRow: true } : {}),
+        });
+        if (!table) { skip("ACAD_TABLE (bad sizes)"); break; }
+        push(table);
+        break;
+      }
 
       // RAY (10/20/30 start, 11/21/31 direction — one-sided infinity) and
       // XLINE (same groups — infinite both ways): construction lines drawn

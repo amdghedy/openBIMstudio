@@ -37,6 +37,18 @@ interface DxfEntityBase {
   lineType?: string;
   /** Lineweight in mm; undefined = BYLAYER. */
   lineweight?: number;
+  /**
+   * Elevation (DXF group 38): the Z of the entity's plane. 0/undefined
+   * = the XY plane. Set by RECTANG's Elevation option (2D-8); the
+   * LWPOLYLINE reader also recovers it from group 38 into the vertices.
+   */
+  elevation?: number;
+  /**
+   * Thickness (DXF group 39): extrusion depth along +Z. 0/undefined =
+   * flat. Set by RECTANG's Thickness option (2D-8); the 2D viewer draws
+   * the plan outline — there is no 3D extrusion view.
+   */
+  thickness?: number;
   /** Per-entity linetype scale (DXF group 48); undefined = 1. */
   ltScale?: number;
   /** Entity transparency in percent 0-90 (DXF group 440); 0/undefined = opaque. */
@@ -208,6 +220,35 @@ export type DxfEntity =
       position: DxfPoint;
     })
   | (DxfEntityBase & {
+      type: "TABLE";
+      /**
+       * Top-left corner (insertion point) in world coordinates. Columns run
+       * rightward from here along the table's rotation, rows run downward
+       * (the table occupies the local rectangle lx in [0, width],
+       * ly in [0, height], ly measured down from the top row).
+       */
+      position: DxfPoint;
+      /** Column widths in drawing units, left to right. */
+      colWidths: number[];
+      /** Row heights in drawing units, top to bottom. */
+      rowHeights: number[];
+      /** Cell text, [row][col]; a missing entry reads as "". */
+      cells: string[][];
+      /**
+       * Cell text height in drawing units; absent = half the smallest row
+       * height. Written to DXF as the table-level group 140.
+       */
+      textHeight?: number;
+      /** Rotation of the table in degrees (counter-clockwise); 0 = axis-aligned. */
+      rotation?: number;
+      /**
+       * First row is a header: drawn bold with a shaded background, and
+       * written to DXF as group 281 = 0 (1 = header suppressed).
+       * Merged cells are not represented.
+       */
+      headerRow?: boolean;
+    })
+  | (DxfEntityBase & {
       type: "DIMENSION";
       /**
        * In-memory link to the dimension's drawn geometry: entities carrying
@@ -339,6 +380,15 @@ export interface DxfViewport {
    * non-rectangular clip is a follow-up).
    */
   clip?: { minX: number; minY: number; maxX: number; maxY: number };
+  /**
+   * Layer names frozen in this viewport only (AutoCAD VPLAYER /
+   * per-viewport freeze, 2D-6). Entities on these layers are hidden
+   * through this viewport but stay visible in every other viewport and in
+   * model space. DXF: VIEWPORT group 331, one per frozen layer (a
+   * soft-pointer handle to the LAYER object); the writer emits only names
+   * that resolve to a layer handle, the reader keeps only names it knows.
+   */
+  frozenLayers?: string[];
 }
 
 /** Plot area choices for a page setup / layout (DXF AcDbPlotSettings group 74). */

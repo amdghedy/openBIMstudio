@@ -10,6 +10,8 @@
 // Engine axes (X width, Y up, Z depth) map to IFC (X, Y = -Z, Z = Y).
 // Units are metres.
 
+import { bendFrame } from "./layout";
+import { BEND_RATIO } from "./templates";
 import type { ResolvedPart } from "./layout";
 
 export interface IfcCreatorInput {
@@ -120,9 +122,64 @@ export function writeIfc2x3(input: IfcCreatorInput): IfcWriteResult {
   // Geometry: one extruded solid per part (engine -> IFC axes).
   const solids: number[] = [];
   for (const p of input.parts) {
-    const ix = p.cx, iy = -p.cz, iz = p.cy - p.h / 2;
+    // Cylinders may lie along X or Z (engine). Engine X -> IFC X, engine Z -> IFC -Y, engine Y -> IFC Z.
+    if (p.shape === "bend") {
+      // Written as a closed faceted solid (IFCFACETEDBREP) of the elbow: the same torus sector the engine revolves, sampled
+      // every 5 degrees along the sweep and 24 points round the pipe. A revolved-solid entity was tried first and
+      // web-ifc (the viewer this app imports with) misplaces its axis and reads its angle in degrees whatever the unit says.
+      const steps = Math.max(2, Math.ceil(p.h / 5)), around = 24;
+      const rings: number[][] = [];
+      const fr = bendFrame(p.axis ?? "y");
+      for (let i = 0; i <= steps; i++) {
+        const phi = ((p.h * Math.PI) / 180) * (i / steps), ring: number[] = [];
+        for (let k = 0; k < around; k++) {
+          const t = (k / around) * Math.PI * 2, rad = BEND_RATIO * p.r + p.r * Math.cos(t), y = p.r * Math.sin(t);
+          const lx = rad * Math.sin(phi), ly = y, lz = rad * Math.cos(phi);
+          const ex = p.cx + lx * fr.lx[0] + ly * fr.ly[0] + lz * fr.lz[0], ey = p.cy + lx * fr.lx[1] + ly * fr.ly[1] + lz * fr.lz[1], ez = p.cz + lx * fr.lx[2] + ly * fr.ly[2] + lz * fr.lz[2];
+          ring.push(add(`IFCCARTESIANPOINT((${f(ex)},${f(-ez)},${f(ey)}))`));
+        }
+        rings.push(ring);
+      }
+      const faces: number[] = [];
+      const face = (ids: number[]) => {
+        const loop = add(`IFCPOLYLOOP((${ids.map(ref).join(",")}))`);
+        const bound = add(`IFCFACEOUTERBOUND(${ref(loop)},.T.)`);
+        faces.push(add(`IFCFACE((${ref(bound)}))`));
+      };
+      for (let i = 0; i < steps; i++) for (let k = 0; k < around; k++) {
+        const k2 = (k + 1) % around;
+        face([rings[i][k], rings[i][k2], rings[i + 1][k2], rings[i + 1][k]]);
+      }
+      face([...rings[0]].reverse());
+      face([...rings[steps]]);
+      const shell = add(`IFCCLOSEDSHELL((${faces.map(ref).join(",")}))`);
+      solids.push(add(`IFCFACETEDBREP(${ref(shell)})`));
+      continue;
+    }
+    if (p.shape === "prism") {
+      // Outline x = engine X = IFC X, outline y = engine Y = IFC Z; extruded along engine Z = IFC -Y, centred on cz.
+      const pts = (p.points ?? []).map((q) => [q[0] * p.r, q[1] * p.r] as [number, number]);
+      const pb = add(`IFCCARTESIANPOINT((${f(p.cx)},${f(-p.cz + p.h / 2)},${f(p.cy)}))`);
+      const pa = add("IFCDIRECTION((0.,-1.,0.))");
+      const ppos = add(`IFCAXIS2PLACEMENT3D(${ref(pb)},${ref(pa)},${ref(dx)})`);
+      const ids = pts.map((q) => add(`IFCCARTESIANPOINT((${f(q[0])},${f(q[1])}))`));
+      const poly = add(`IFCPOLYLINE((${[...ids, ids[0]].map(ref).join(",")}))`);
+      const prof = add(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,${stepString(p.name)},${ref(poly)})`);
+      solids.push(add(`IFCEXTRUDEDAREASOLID(${ref(prof)},${ref(ppos)},${ref(dz)},${f(p.h)})`));
+      continue;
+    }
+    const ax = p.axis ?? "y";
+    const horizontal = p.shape === "cylinder" && ax !== "y";
+    const dir: [number, number, number] = ax === "x" ? [1, 0, 0] : ax === "z" ? [0, -1, 0] : [0, 0, 1];
+    const cx = p.cx, cy = -p.cz, cz = p.cy;
+    const half = p.h / 2;
+    const ix = horizontal ? cx - dir[0] * half : cx, iy = horizontal ? cy - dir[1] * half : cy, iz = horizontal ? cz : cz - p.h / 2;
     const base = add(`IFCCARTESIANPOINT((${f(ix)},${f(iy)},${f(iz)}))`);
-    const pos = add(`IFCAXIS2PLACEMENT3D(${ref(base)},$,$)`);
+    let pos: number;
+    if (horizontal) {
+      const axisDir = add(`IFCDIRECTION((${f(dir[0])},${f(dir[1])},${f(dir[2])}))`);
+      pos = add(`IFCAXIS2PLACEMENT3D(${ref(base)},${ref(axisDir)},${ref(dz)})`);
+    } else pos = add(`IFCAXIS2PLACEMENT3D(${ref(base)},$,$)`);
     const p2 = add("IFCCARTESIANPOINT((0.,0.))");
     const pos2 = add(`IFCAXIS2PLACEMENT2D(${ref(p2)},$)`);
     const profile = p.shape === "cylinder"

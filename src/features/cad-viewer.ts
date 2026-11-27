@@ -50,6 +50,21 @@ import { setCadHotkeyOwner } from "../core/cad-hotkey-ownership";
 import { resolveDblClick } from "../shell/ribbon-collapse";
 import { sanitizeSessionUi, sessionUiSignature, hiddenEntityIndexes, sanitizeHiddenEntities, type SessionUi, type SessionHiddenEntities } from "../modules/cad-viewer/session-state";
 import * as M from "../modules/cad-viewer/viewer-math";
+import {
+  cellAt,
+  cellTextPoint,
+  createTable,
+  deleteTableColumn,
+  deleteTableRow,
+  explodeTable,
+  insertTableColumn,
+  insertTableRow,
+  setCellText,
+  tableCorners,
+  tablePoint,
+  tableTextHeight,
+  tableWidth,
+} from "../modules/drawings/cad-table";
 import * as LayerLock from "../modules/cad-viewer/layer-lock";
 import * as GridSnap from "../modules/cad-viewer/grid-snap";
 import * as Aids from "../modules/cad-viewer/cad-drafting-aids";
@@ -163,6 +178,7 @@ import * as DIM from "../modules/cad-viewer/dimension-system";
 import * as Ann from "../modules/cad-viewer/cad-annotation";
 import * as LayerMgr from "../modules/cad-viewer/cad-layer-manager";
 import * as Poly from "../modules/cad-viewer/cad-polyline";
+import * as Rect from "../modules/cad-viewer/cad-rect";
 import * as Sel11 from "../modules/cad-viewer/cad-selection-a11";
 import * as Sel18 from "../modules/cad-viewer/cad-selection-a18";
 import * as SpaceAdd from "../modules/cad-viewer/cad-space-add";
@@ -305,6 +321,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "LAYER", aliases: ["LA", "LAYERS"], description: "Open Layer Properties Manager" },
   { name: "LINETYPE", aliases: ["LT", "LTYPE"], description: "Open the Linetype Manager (load linetypes, set current)" },
   { name: "LTSCALE", aliases: ["LTS"], description: "Set the global linetype scale, e.g. LTSCALE 2" },
+  { name: "CANNOSCALE", aliases: ["ANNOSCALE"], description: "Set the annotation scale, e.g. CANNOSCALE 1:50 — text, leaders and dimension arrowheads render at this scale" },
   { name: "STYLE", aliases: ["ST"], description: "Open the Text Style Manager (fonts, heights, presets)" },
   { name: "TEXT", aliases: ["T", "DT", "DTEXT"], description: "Place text with the current text style" },
   { name: "MTEXT", aliases: ["MT"], description: "Place multiline text with a column width (wraps at the width)" },
@@ -321,6 +338,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "LIMITS", aliases: [], description: "Set/report the drawing limits rectangle (LIMITS 0,0 420,297)" },
   { name: "QDIM", aliases: [], description: "Quick dimension: aligned dimensions on every selected LINE" },
   { name: "UCSVIEW", aliases: ["UCSV"], description: "Toggle UCS display — ON applies the drawing's saved view rotation (like AutoCAD), OFF shows raw world coordinates" },
+  { name: "DUCS", aliases: ["F6"], description: "Toggle Dynamic UCS (F6) — the UCS follows the plane of the entity under the cursor; in this 2D viewer the switch is live and persisted, the 3D face alignment has no 3D surface to act on" },
   { name: "DIMSPACE", aliases: [], description: "Even spacing between selected linear/aligned dimensions (DIMSPACE <gap> or DIMSPACE AUTO)" },
   { name: "DIMBREAK", aliases: [], description: "Break dimension lines where selected geometry crosses them" },
   { name: "DIMOVERRIDE", aliases: ["DOV"], description: "Per-dimension style overrides — TEXTHEIGHT, ARROWSIZE, PRECISION, COLOR, SCALE, SUFFIX; CLEAR resets" },
@@ -467,6 +485,12 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "DIMSTYLE", aliases: ["D", "DST", "DSTYLE"], description: "Open the Dimension Style Manager: text height, tick size, precision, suffix, measurement factor — apply to all or selected dimensions" },
   { name: "DIMUPDATE", aliases: ["DIMUPD"], description: "Re-render the selected dimensions with their current style (re-measured)" },
   { name: "TABLE", aliases: ["TB"], description: "Insert a drawing table (rows × columns grid)" },
+  { name: "TABLEEDIT", aliases: ["TEDIT"], description: "Edit a cell of the selected table: TABLEEDIT <row> <column> <text>" },
+  { name: "TABLEADDROW", aliases: [], description: "Insert a row in the selected table (after row <n>, or at the end)" },
+  { name: "TABLEDELROW", aliases: [], description: "Delete a row from the selected table (row <n>, or the last row)" },
+  { name: "TABLEADDCOL", aliases: [], description: "Insert a column in the selected table (after column <n>, or at the end)" },
+  { name: "TABLEDELCOL", aliases: [], description: "Delete a column from the selected table (column <n>, or the last column)" },
+  { name: "TABLESTYLE", aliases: [], description: "Set the selected table's text height and header row" },
   { name: "IMPORT", aliases: ["IMP"], description: "Merge a DWG / DXF file into the current drawing" },
   { name: "BLOCK", aliases: ["B", "BMAKE"], description: "Create a native block definition from the selected objects (base point, name); they become one reference" },
   { name: "BEDIT", aliases: ["BE"], description: "Edit a block definition in place — the model is hidden, the definition's objects are edited, BCLOSE saves it back so every reference updates" },
@@ -1782,6 +1806,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   let dynOn = true; // Dynamic Input HUD F12
   let lwtOn = true;
+  let ducsOn = true; // Dynamic UCS F6 (shared drafting aid, 2D-29)
+  // 2D-30: annotation scale factor (CANNOSCALE). 1 = no scaling. TEXT /
+  // MTEXT keep their nominal stored height and render at height × this
+  // factor; dimension and leader arrowheads are baked at creation, so
+  // their sizes are multiplied by it when built (dimStyleOf below, the
+  // leader cases). Persisted per drawing through the session UI.
+  let annoScale = 1;
   // UCS display toggle — ON by default so drawings open the way the native
   // CAD app shows them (the file's saved view rotation applied; for
   // DVIEW-twisted drawings that is what makes them upright). OFF shows raw
@@ -1797,10 +1828,35 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   // record shapes stay stable; merged wherever a record's style is resolved.
   const dimOverrides = new Map<string, Partial<DIM.DimStyle>>();
 
+  /**
+   * 2D-30: a dimension style as built under the current annotation scale.
+   * Only the arrowhead size is scaled here: the dimension's TEXT keeps its
+   * nominal height because the paint path scales TEXT by annoScale, and
+   * scaling it here too would double it. An arrowSize of 0 means "derive
+   * from text height" — materialised at the same scaled size so the 0 case
+   * scales too instead of silently staying at 1×.
+   */
+  function annoScaledStyle(style: DIM.DimStyle): DIM.DimStyle {
+    if (annoScale === 1) return style;
+    const arrow = (style.arrowSize > 0 ? style.arrowSize : style.textHeight * 2.5) * annoScale;
+    return { ...style, arrowSize: arrow };
+  }
+
+  /** Set the annotation scale (CANNOSCALE / status-bar button). False when the factor is not usable. */
+  function setAnnoScale(factor: number): boolean {
+    if (!Ann.isValidAnnoScale(factor)) return false;
+    annoScale = factor;
+    updateStatus();
+    draw();
+    markDirty();
+    logCmd(`CANNOSCALE: annotation scale ${Ann.formatAnnoScale(factor)} (factor ${factor}) — text, leaders and dimension arrowheads render at this scale.`);
+    return true;
+  }
+
   /** A record's effective style: its named style merged with DIMOVERRIDE. */
   function dimStyleOf(rec: DIM.DimRecord): DIM.DimStyle {
     const base = dimStyleList.find((st) => st.name === rec.styleName) ?? currentDimStyle();
-    return { ...base, ...(dimOverrides.get(rec.id) ?? {}) };
+    return annoScaledStyle({ ...base, ...(dimOverrides.get(rec.id) ?? {}) });
   }
   let drawingLimits: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
 
@@ -1834,6 +1890,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   otrackOn = Aids.getDraftingAid("otrack");
   dynOn = Aids.getDraftingAid("dyn");
   lwtOn = Aids.getDraftingAid("lwt");
+  ducsOn = Aids.getDraftingAid("ducs");
   showGrid = Aids.getDraftingAid("grid");
   let cleanScreen = false;
 
@@ -1914,6 +1971,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   let polyArcStage: "off" | "mid" | "end" = "off";
   let polyArcMid: M.Pt | null = null;
   let polyNextW: { start: number; end: number } = { start: 0, end: 0 };
+  // 2D-8 — RECTANG variants: chamfer/fillet/width/elevation/thickness
+  // persist across RECT invocations, like AutoCAD (chamfer and fillet
+  // are mutually exclusive — setting one clears the other). The Area
+  // mode is one-shot: it is cleared when the rectangle is drawn or the
+  // tool changes, and while it waits for its dimension only a length
+  // (bare number) or W (width) is meaningful.
+  let rectChamfer: { d1: number; d2: number } | null = null;
+  let rectFillet: number | null = null;
+  let rectWidth = 0;
+  let rectElevation = 0;
+  let rectThickness = 0;
+  let rectArea: { area: number; length: number } | { area: number; width: number } | null = null;
+  let rectAreaPending = 0;
+  let rectAreaAwaitingDim = false;
   let markups: Markup[] = [];
   let hits: M.TextHit[] = [],
     hitI = -1;
@@ -2209,7 +2280,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
   function currentUi(): SessionUi {
     return {
-      bg, cmode, snapOn, gridSnapOn, orthoOn, polarOn, polarAngle, otrackOn, dynOn, lwtOn, showGrid, showText, showHatch, showLt,
+      bg, cmode, snapOn, gridSnapOn, orthoOn, polarOn, polarAngle, otrackOn, dynOn, lwtOn, annoScale, showGrid, showText, showHatch, showLt,
       snapModes: [...snapModes], typeFilter: [...typeFilter], propFilter: propFilter.length ? propFilter.map((c) => ({ ...c })) : undefined, currentLayer,
       lockedLayers: doc ? doc.layers.filter((l) => l.locked).map((l) => l.name) : [],
     };
@@ -2306,6 +2377,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (u.otrackOn !== undefined) otrackOn = u.otrackOn;
       if (u.dynOn !== undefined) dynOn = u.dynOn;
       if (u.lwtOn !== undefined) lwtOn = u.lwtOn;
+      if (u.annoScale !== undefined) annoScale = u.annoScale;
       if (u.showGrid !== undefined) showGrid = u.showGrid;
       if (u.showText !== undefined) showText = u.showText;
       if (u.showHatch !== undefined) showHatch = u.showHatch;
@@ -2417,6 +2489,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (!sel.size) return;
     for (const i of [...sel]) if (!selAccept(i)) sel.delete(i);
     selected = sel.size ? [...sel][sel.size - 1] : -1;
+    refreshSelCount(); // 2D-32: the lock-toggle call sites do not call showProps()
   }
 
   function colorOf(e: DxfEntity): string {
@@ -2817,14 +2890,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         break;
       }
       case "TEXT": {
-        const px = e.height * v.scale;
+        // 2D-30: the annotation scale sizes the rendered glyphs — the
+        // stored height stays nominal (the same text renders at the right
+        // paper size at any scale), so every height-derived screen term
+        // in this case uses ts, never the bare view scale.
+        const ts = v.scale * annoScale;
+        const px = e.height * ts;
         const o = M.textOrigin(e);
         // Native CAD keeps drawing real glyphs at any zoom: only go to a
         // placeholder stroke when the text would be sub-pixel on screen.
         if (px < 0.75) {
           const p = P(e.position.x, e.position.y);
-          const w = M.textBox(e).w * v.scale;
-          const ox = o.dx * v.scale;
+          const w = M.textBox(e).w * ts;
+          const ox = o.dx * ts;
           c.moveTo(p.x + ox, p.y);
           c.lineTo(p.x + ox + w, p.y);
           c.stroke();
@@ -2850,8 +2928,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           // glyphs so the text stays readable over dense linework.
           if (e.mask && bl.length) {
             const wpx = Math.max(1, ...lines.map((ls) => c.measureText(ls.map((r) => r.text).join("")).width));
-            const top = -bl[0] * v.scale - px * 0.85;
-            const bot = -bl[bl.length - 1] * v.scale + px * 0.25;
+            const top = -bl[0] * ts - px * 0.85;
+            const bot = -bl[bl.length - 1] * ts + px * 0.25;
             const xoff = (e.align ?? "left") === "center" ? -wpx / 2 : (e.align ?? "left") === "right" ? -wpx : 0;
             c.save();
             c.fillStyle = BG[bg] ?? "#212830";
@@ -2863,8 +2941,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             const shx = px >= 5 ? strokeFontFor(e.font) : undefined;
             for (let li = 0; li < lines.length; li++) {
               const lineText = lines[li].map((r) => r.text).join("");
-              if (shx && drawStrokeLine(c, shx, lineText, Math.min(px, 600), e.align ?? "left", -bl[li] * v.scale)) continue;
-              c.fillText(lineText, 0, -bl[li] * v.scale);
+              if (shx && drawStrokeLine(c, shx, lineText, Math.min(px, 600), e.align ?? "left", -bl[li] * ts)) continue;
+              c.fillText(lineText, 0, -bl[li] * ts);
             }
           } else {
             // Inline \\C / \\f codes: paint run by run with its own colour and
@@ -2887,7 +2965,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
                 if (r.bold != null || r.italic != null)
                   c.font = M.textFontCss({ ...e, bold: r.bold, italic: r.italic }, pxs);
                 c.fillStyle = r.rgb != null ? rgbToCss(r.rgb & 0xffffff) : r.color != null ? rgbToCss(aciToRgb(r.color, fg())) : base as string;
-                c.fillText(r.text, x, -bl[li] * v.scale);
+                c.fillText(r.text, x, -bl[li] * ts);
                 x += widths[ri];
               });
               c.fillStyle = base;
@@ -2895,6 +2973,82 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           }
         }
         c.restore();
+        break;
+      }
+      case "TABLE": {
+        // One editable table: the grid, a shaded + bold header row, and the
+        // cell text in the table's own frame (rotation included). Cell text
+        // is clipped to its cell so a long value cannot spill over the grid.
+        const gpt = (lx: number, ly: number): { x: number; y: number } => {
+          const q = tablePoint(e, lx, ly);
+          return P(q.x, q.y);
+        };
+        const xs = [0];
+        for (const w of e.colWidths) xs.push(xs[xs.length - 1] + w);
+        const ys = [0];
+        for (const h of e.rowHeights) ys.push(ys[ys.length - 1] + h);
+        const W = xs[xs.length - 1], H = ys[ys.length - 1];
+        if (e.headerRow && e.rowHeights.length) {
+          const h0 = e.rowHeights[0];
+          c.save();
+          c.fillStyle = "rgba(148,163,184,0.18)";
+          c.beginPath();
+          [gpt(0, 0), gpt(W, 0), gpt(W, h0), gpt(0, h0)].forEach((s, i) => {
+            i ? c.lineTo(s.x, s.y) : c.moveTo(s.x, s.y);
+          });
+          c.closePath();
+          c.fill();
+          c.restore();
+        }
+        c.beginPath();
+        for (const y of ys) {
+          const a = gpt(0, y), b = gpt(W, y);
+          c.moveTo(a.x, a.y);
+          c.lineTo(b.x, b.y);
+        }
+        for (const x of xs) {
+          const a = gpt(x, 0), b = gpt(x, H);
+          c.moveTo(a.x, a.y);
+          c.lineTo(b.x, b.y);
+        }
+        c.stroke();
+        const th = tableTextHeight(e);
+        const pxH = th * v.scale;
+        if (pxH >= 0.75) {
+          const rot = ((-(e.rotation ?? 0) * Math.PI) / 180 - ((v.rot ?? 0) * Math.PI) / 180);
+          for (let r = 0; r < e.rowHeights.length; r++) {
+            for (let col = 0; col < e.colWidths.length; col++) {
+              const value = e.cells[r]?.[col] ?? "";
+              if (!value) continue;
+              const tp = cellTextPoint(e, r, col);
+              const sp = P(tp.x, tp.y);
+              c.save();
+              c.translate(sp.x, sp.y);
+              c.rotate(rot);
+              const fake = { type: "TEXT", layer: e.layer, position: e.position, height: th, value, bold: e.headerRow && r === 0 } as Extract<DxfEntity, { type: "TEXT" }>;
+              c.font = M.textFontCss(fake, Math.min(pxH, 600));
+              c.textAlign = "left";
+              c.textBaseline = "middle";
+              // Clip to the cell: the corners mapped back into this
+              // translated + rotated frame, so a long value cannot spill
+              // over the grid even on a rotated table.
+              const local = (lx: number, ly: number): { x: number; y: number } => {
+                const s = gpt(lx, ly);
+                const dx = s.x - sp.x, dy = s.y - sp.y;
+                const cos = Math.cos(-rot), sin = Math.sin(-rot);
+                return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+              };
+              c.beginPath();
+              [local(xs[col], ys[r]), local(xs[col + 1], ys[r]), local(xs[col + 1], ys[r + 1]), local(xs[col], ys[r + 1])].forEach((q, i) => {
+                i ? c.lineTo(q.x, q.y) : c.moveTo(q.x, q.y);
+              });
+              c.closePath();
+              c.clip();
+              c.fillText(value, 0, 0);
+              c.restore();
+            }
+          }
+        }
         break;
       }
     }
@@ -3017,10 +3171,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     ix: M.SpatialIndex | null,
     cull: M.BBox,
     skipSel: boolean,
+    // 2D-6: extra layers hidden for this paint only (a viewport's frozen
+    // layers). The global `hidden` set is untouched — the freeze applies
+    // through one viewport, never to model space or other viewports.
+    extraHidden?: ReadonlySet<string>,
   ): void {
     const paintAt = (i: number): void => {
       const e = list[i];
-      if (!e || !shown(e) || (skipSel && sel.has(i))) return;
+      if (!e || !shown(e) || (extraHidden && extraHidden.has(e.layer)) || (skipSel && sel.has(i))) return;
       // The viewport query has already culled ordinary geometry. Construction
       // lines are deliberately included by queryIndexBox and clipped per view.
       if (ix && e.type !== "RAY" && e.type !== "XLINE") {
@@ -3388,6 +3546,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           h: ctr.y * 2,
         };
         const rad = Math.hypot(vp.width, vp.height) / 2 / sc;
+        // 2D-6: layers frozen in this viewport are hidden through it only.
+        const vpFrozen = vp.frozenLayers?.length ? new Set(vp.frozenLayers) : undefined;
         paintEntities(
           c,
           vv,
@@ -3400,6 +3560,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             maxY: vp.viewCenter.y + rad,
           },
           false,
+          vpFrozen,
         );
         c.restore();
         c.save();
@@ -5719,6 +5880,244 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     showAcadPrompt();
   }
 
+  /**
+   * RECTANG variants (2D-8): pendingNumeric handlers for the values the
+   * option keywords arm. Each sets the persisted setting (chamfer and
+   * fillet clear each other, like AutoCAD) and returns to the
+   * first-corner prompt — the value applies to the rectangle being
+   * drawn and to later RECT invocations until changed. A bare number
+   * while the Area flow waits for its dimension is the length.
+   */
+  function onRectChamferD1Typed(v: number): void {
+    if (tool !== "rect") return;
+    if (!(v > 0)) {
+      logCmd("RECT: chamfer distances must be greater than zero.");
+      pendingNumeric = onRectChamferD1Typed;
+      showAcadPrompt();
+      return;
+    }
+    rectChamfer = { d1: v, d2: rectChamfer?.d2 ?? 0 };
+    pendingNumeric = onRectChamferD2Typed;
+    logCmd(`Specify second chamfer distance <${fmt(rectChamfer.d2)}>:`);
+    showAcadPrompt();
+  }
+  function onRectChamferD2Typed(v: number): void {
+    if (tool !== "rect") return;
+    if (!(v > 0)) {
+      logCmd("RECT: chamfer distances must be greater than zero.");
+      pendingNumeric = onRectChamferD2Typed;
+      showAcadPrompt();
+      return;
+    }
+    rectChamfer = { d1: rectChamfer?.d1 ?? 0, d2: v };
+    rectFillet = null;
+    pendingNumeric = null;
+    logCmd(`RECT: chamfer distances = ${fmt(rectChamfer.d1)} × ${fmt(rectChamfer.d2)}.`);
+    showAcadPrompt();
+  }
+  function onRectFilletTyped(v: number): void {
+    if (tool !== "rect") return;
+    if (!(v >= 0)) {
+      logCmd("RECT: fillet radius must be zero or greater.");
+      pendingNumeric = onRectFilletTyped;
+      showAcadPrompt();
+      return;
+    }
+    rectFillet = v;
+    rectChamfer = null;
+    pendingNumeric = null;
+    logCmd(v === 0 ? "RECT: fillet radius = 0 — square corners." : `RECT: fillet radius = ${fmt(v)}.`);
+    showAcadPrompt();
+  }
+  function onRectElevationTyped(v: number): void {
+    if (tool !== "rect") return;
+    if (!Number.isFinite(v)) {
+      logCmd("RECT: elevation must be a number.");
+      pendingNumeric = onRectElevationTyped;
+      showAcadPrompt();
+      return;
+    }
+    rectElevation = v;
+    pendingNumeric = null;
+    logCmd(`RECT: elevation = ${fmt(v)}.`);
+    showAcadPrompt();
+  }
+  function onRectThicknessTyped(v: number): void {
+    if (tool !== "rect") return;
+    if (!(v >= 0)) {
+      logCmd("RECT: thickness must be zero or greater.");
+      pendingNumeric = onRectThicknessTyped;
+      showAcadPrompt();
+      return;
+    }
+    rectThickness = v;
+    pendingNumeric = null;
+    logCmd(`RECT: thickness = ${fmt(v)}.`);
+    showAcadPrompt();
+  }
+  function onRectWidthTyped(v: number): void {
+    if (tool !== "rect") return;
+    if (!(v >= 0)) {
+      logCmd("RECT: line width must be zero or greater.");
+      pendingNumeric = onRectWidthTyped;
+      showAcadPrompt();
+      return;
+    }
+    rectWidth = v;
+    pendingNumeric = null;
+    logCmd(v === 0 ? "RECT: line width = 0 — hairline." : `RECT: line width = ${fmt(v)}.`);
+    showAcadPrompt();
+  }
+  function onRectAreaTyped(v: number): void {
+    if (tool !== "rect") return;
+    if (!(v > 0)) {
+      logCmd("RECT: area must be greater than zero.");
+      pendingNumeric = onRectAreaTyped;
+      showAcadPrompt();
+      return;
+    }
+    rectAreaPending = v;
+    rectAreaAwaitingDim = true;
+    pendingNumeric = onRectAreaLengthTyped;
+    logCmd("Enter length of rectangle or [Width]:");
+    showAcadPrompt();
+  }
+  function onRectAreaLengthTyped(v: number): void {
+    if (tool !== "rect") return;
+    if (!(v > 0)) {
+      logCmd("RECT: length must be greater than zero.");
+      pendingNumeric = onRectAreaLengthTyped;
+      showAcadPrompt();
+      return;
+    }
+    rectArea = { area: rectAreaPending, length: v };
+    rectAreaAwaitingDim = false;
+    pendingNumeric = null;
+    logCmd(`RECT: rectangle area = ${fmt(rectArea.area)}, length = ${fmt(v)} (width ${fmt(rectArea.area / v)}).`);
+    showAcadPrompt();
+  }
+  function onRectAreaWidthTyped(v: number): void {
+    if (tool !== "rect") return;
+    if (!(v > 0)) {
+      logCmd("RECT: width must be greater than zero.");
+      pendingNumeric = onRectAreaWidthTyped;
+      showAcadPrompt();
+      return;
+    }
+    rectArea = { area: rectAreaPending, width: v };
+    rectAreaAwaitingDim = false;
+    pendingNumeric = null;
+    logCmd(`RECT: rectangle area = ${fmt(rectArea.area)}, width = ${fmt(v)} (length ${fmt(rectArea.area / v)}).`);
+    showAcadPrompt();
+  }
+
+  /**
+   * In-tool option keywords while RECTANG waits for its first corner
+   * (2D-8): C = chamfer, E = elevation, F = fillet, T = thickness,
+   * W = width, A = area — the AutoCAD option keys, plus the full words
+   * and inline values ("F 5", "C 6 4"). Returns true when the entry was
+   * consumed here, so it never reaches the generic command dispatcher —
+   * "C" must not start CIRCLE mid-rectangle. Anything else returns
+   * false and dispatches normally.
+   */
+  function handleRectOption(trimmed: string): boolean {
+    if (tool !== "rect") return false;
+    if (rectAreaAwaitingDim) {
+      const k = trimmed.trim().toUpperCase();
+      if (k === "W" || k === "WIDTH") {
+        pendingNumeric = onRectAreaWidthTyped;
+        logCmd("Enter width of rectangle:");
+        showAcadPrompt();
+        return true;
+      }
+      // A bare number is consumed by pendingNumeric
+      // (onRectAreaLengthTyped) before this runs.
+      logCmd("RECT Area: enter a length for the rectangle, or W for width.");
+      showAcadPrompt();
+      return true;
+    }
+    if (pts.length !== 0) return false;
+    const act = Rect.parseRectOption(trimmed);
+    switch (act.action) {
+      case "none":
+        return false;
+      case "invalid":
+        logCmd(act.message);
+        showAcadPrompt();
+        return true;
+      case "promptChamfer":
+        pendingNumeric = onRectChamferD1Typed;
+        logCmd(`Specify first chamfer distance <${fmt(rectChamfer?.d1 ?? 0)}>: (type a value + Enter)`);
+        showAcadPrompt();
+        return true;
+      case "setChamfer1":
+        rectChamfer = { d1: act.value, d2: rectChamfer?.d2 ?? 0 };
+        pendingNumeric = onRectChamferD2Typed;
+        logCmd(`Specify second chamfer distance <${fmt(rectChamfer.d2)}>:`);
+        showAcadPrompt();
+        return true;
+      case "setChamfer":
+        rectChamfer = { d1: act.d1, d2: act.d2 };
+        rectFillet = null;
+        logCmd(`RECT: chamfer distances = ${fmt(act.d1)} × ${fmt(act.d2)}.`);
+        showAcadPrompt();
+        return true;
+      case "promptFillet":
+        pendingNumeric = onRectFilletTyped;
+        logCmd(`Specify fillet radius <${fmt(rectFillet ?? 0)}>: (type a value + Enter)`);
+        showAcadPrompt();
+        return true;
+      case "setFillet":
+        rectFillet = act.value;
+        rectChamfer = null;
+        logCmd(act.value === 0 ? "RECT: fillet radius = 0 — square corners." : `RECT: fillet radius = ${fmt(act.value)}.`);
+        showAcadPrompt();
+        return true;
+      case "promptElevation":
+        pendingNumeric = onRectElevationTyped;
+        logCmd(`Specify elevation <${fmt(rectElevation)}>: (type a value + Enter)`);
+        showAcadPrompt();
+        return true;
+      case "setElevation":
+        rectElevation = act.value;
+        logCmd(`RECT: elevation = ${fmt(act.value)}.`);
+        showAcadPrompt();
+        return true;
+      case "promptThickness":
+        pendingNumeric = onRectThicknessTyped;
+        logCmd(`Specify thickness <${fmt(rectThickness)}>: (type a value + Enter)`);
+        showAcadPrompt();
+        return true;
+      case "setThickness":
+        rectThickness = act.value;
+        logCmd(`RECT: thickness = ${fmt(act.value)}.`);
+        showAcadPrompt();
+        return true;
+      case "promptWidth":
+        pendingNumeric = onRectWidthTyped;
+        logCmd(`Specify line width <${fmt(rectWidth)}>: (type a value + Enter)`);
+        showAcadPrompt();
+        return true;
+      case "setWidth":
+        rectWidth = act.value;
+        logCmd(act.value === 0 ? "RECT: line width = 0 — hairline." : `RECT: line width = ${fmt(act.value)}.`);
+        showAcadPrompt();
+        return true;
+      case "promptArea":
+        pendingNumeric = onRectAreaTyped;
+        logCmd("Enter area of rectangle in current units:");
+        showAcadPrompt();
+        return true;
+      case "setArea":
+        rectAreaPending = act.value;
+        rectAreaAwaitingDim = true;
+        pendingNumeric = onRectAreaLengthTyped;
+        logCmd("Enter length of rectangle or [Width]:");
+        showAcadPrompt();
+        return true;
+    }
+  }
+
   /** Tessellated points of the polyline being drawn, with the rubber-band segment to the cursor. */
   function polyPreviewPoints(cur: M.Pt | null): M.Pt[] {
     const base = Poly.displayPoints({
@@ -6170,6 +6569,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     hidden.delete(name);
     sel.clear();
     selected = -1;
+    refreshSelCount(); // 2D-32: deleteLayerByName does not call showProps()
     rebuildIndex();
     logCmd(`LAYER: deleted layer "${name}" and ${doomed.length} object(s).`);
     return true;
@@ -6194,6 +6594,58 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     markDirty();
     scheduleSessionSave();
     logCmd(`LAYER: renamed "${oldName}" to "${target.trim()}".`);
+    return true;
+  }
+
+  // ── 2D-7: editable TABLE cells ──────────────────────────────────────
+  /** The table the row/column/style commands act on: the first selected
+   * TABLE, or the drawing's only TABLE when there is exactly one. */
+  function selectedTable(): { index: number; entity: Extract<DxfEntity, { type: "TABLE" }> } | null {
+    for (const i of [...sel]) {
+      const e = ents[i];
+      if (e?.type === "TABLE") return { index: i, entity: e };
+    }
+    const all = ents.map((e, i) => ({ index: i, entity: e })).filter((x) => x.entity.type === "TABLE");
+    return all.length === 1 ? (all[0] as { index: number; entity: Extract<DxfEntity, { type: "TABLE" }> }) : null;
+  }
+
+  /** Prompt for a cell's new text on the command line (the DDEDIT pattern:
+   * empty Enter keeps the existing text, Esc cancels), then commit it. */
+  function promptTableCellEdit(i: number, row: number, col: number): void {
+    const e = ents[i];
+    if (!e || e.type !== "TABLE") return;
+    const cur = e.cells[row]?.[col] ?? "";
+    if (pick) pick.obj = i;
+    setSel([i]);
+    logCmd(`Table cell ${row + 1},${col + 1}: ${cur || "(empty)"}`);
+    logCmd("Enter new text: (empty Enter keeps the existing text, Esc cancels)");
+    pendingText = (s) => {
+      pendingText = null;
+      // The captured entity, not the live index: the table may have been
+      // edited or deleted while the prompt was open.
+      const ent = ents[i];
+      if (!ent || ent !== e || ent.type !== "TABLE" || !s) {
+        logCmd("TABLEEDIT: cell unchanged.");
+      } else {
+        commitModify([ent], [setCellText(ent, row, col, s)]);
+        logCmd(`TABLEEDIT: cell ${row + 1},${col + 1} updated.`);
+      }
+      clearPickState();
+      setTool("select");
+      draw();
+    };
+  }
+
+  /** Edit the cell under a pick point (DDEDIT / double-click entry point). */
+  function editTableCell(i: number, wp: M.Pt): boolean {
+    const e = ents[i];
+    if (!e || e.type !== "TABLE") return false;
+    const cell = cellAt(e, wp.x, wp.y);
+    if (!cell) {
+      logCmd("TABLEEDIT: pick inside the table.");
+      return true;
+    }
+    promptTableCellEdit(i, cell.row, cell.col);
     return true;
   }
 
@@ -6478,8 +6930,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           return true;
         }
         const e = ents[hit];
+        // 2D-7: DDEDIT on a table edits the picked cell.
+        if (e.type === "TABLE") return editTableCell(hit, wp);
         if (e.type !== "TEXT") {
-          logCmd("DDEDIT: pick a TEXT / MTEXT object.");
+          logCmd("DDEDIT: pick a TEXT / MTEXT object or a table cell.");
           return true;
         }
         pick.obj = hit;
@@ -6568,10 +7022,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             } else {
               const span = bounds ? Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) : 0;
               const h = span > 0 ? span / 100 : 2;
-              addEntities([
+              // MLEADER carries the same filled-triangle arrowhead as LEADER
+              // (2D-9): arrowhead + line + text, committed as real entities.
+              // 2D-30: the arrowhead is baked geometry, so it is sized by the
+              // annotation scale at creation (the TEXT keeps its nominal
+              // height — the paint path scales TEXT by annoScale).
+              const arrowSize = Math.max(h * 2.5, h) * annoScale;
+              const arrow = Ann.buildLeaderArrowhead(a, b, arrowSize);
+              const parts: DxfEntity[] = [
                 { type: "LINE", layer: currentLayer, ...newObjectProps(), start: { x: a.x, y: a.y }, end: { x: b.x, y: b.y } },
                 { type: "TEXT", layer: currentLayer, ...newObjectProps(), position: { x: b.x + h * 0.25, y: b.y + h * 0.25 }, height: h, value: s },
-              ]);
+              ];
+              if (arrow) parts.unshift({ ...arrow, layer: currentLayer, ...newObjectProps() });
+              addEntities(parts);
               logCmd(`MLEADER: leader with text "${s}" added.`);
             }
             clearPickState();
@@ -6928,7 +7391,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const after: DxfEntity[] = [];
     let hatched = 0, blockRefs = 0;
     for (const e of before) {
-      if (e.type === "LWPOLYLINE") {
+      if (e.type === "TABLE") {
+        // 2D-7: a table explodes back to its grid lines + one TEXT per
+        // non-empty cell — the loose form the tool used to emit.
+        for (const part of explodeTable(e)) after.push(part);
+      } else if (e.type === "LWPOLYLINE") {
         if (e.hatch) hatched++;
         const n = e.points.length;
         const m = e.closed ? n : n - 1;
@@ -6946,7 +7413,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       } else after.push(e);
     }
     if (after.length === before.length && !blockRefs) {
-      logCmd("EXPLODE: nothing to explode in the selection — polylines and block references are the composite objects.");
+      logCmd("EXPLODE: nothing to explode in the selection — polylines, block references and tables are the composite objects.");
       return;
     }
     commitReplace(before, after);
@@ -7373,6 +7840,57 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     activate((doc.layouts?.length ?? 1) - 1);
     logCmd(`LAYOUT: created "${nm}".`);
     markDirty();
+  }
+
+  /** Delete a layout by name or 1-based number (LAYOUT DELETE). Like
+   * AutoCAD, the layout you are standing on cannot be deleted out from
+   * under you: confirming the delete of the current layout steps back
+   * to Model first, and a layout after the deleted one keeps its
+   * identity (its index shifts, so it is re-activated). */
+  async function deleteLayoutAndActivate(target: string): Promise<void> {
+    if (blockEdit) { logCmd("LAYOUT: not available inside BEDIT — close the session with BCLOSE first."); return; }
+    if (!doc) {
+      logCmd("LAYOUT: open a drawing first.");
+      return;
+    }
+    const layouts = doc.layouts ?? [];
+    const trimmed = target.trim();
+    const asNum = Number(trimmed);
+    let idx = -1;
+    if (trimmed !== "" && Number.isInteger(asNum) && asNum >= 1 && asNum <= layouts.length) {
+      idx = asNum - 1;
+    } else {
+      idx = layouts.findIndex((l) => l.name.toLowerCase() === trimmed.toLowerCase());
+    }
+    if (idx < 0) {
+      logCmd(`LAYOUT: no layout named "${target}".`);
+      return;
+    }
+    const victim = layouts[idx];
+    const entCount = victim.entities.length;
+    const vpCount = victim.viewports.length;
+    if (!(await confirmDialog(
+      "Delete layout",
+      `Delete layout "${victim.name}"? Its ${entCount} entit${entCount === 1 ? "y" : "ies"} and ${vpCount} viewport${vpCount === 1 ? "" : "s"} will be removed.`,
+    ))) {
+      logCmd("LAYOUT: delete cancelled.");
+      return;
+    }
+    if (layoutI === idx) activate(-1);
+    const deleted = AcadParity.deleteLayout(doc, idx + 1);
+    if (!deleted) {
+      logCmd(`LAYOUT: could not delete "${victim.name}".`);
+      return;
+    }
+    // The splice shifts every later layout down one index: the cached
+    // per-space indices are stale, and so is the remembered paper layout.
+    layoutIdxCache.clear();
+    lastPaperLayoutI = Math.max(0, Math.min(lastPaperLayoutI, Math.max(0, (doc.layouts?.length ?? 1) - 1)));
+    if (layoutI > idx) activate(layoutI - 1);
+    buildTabs();
+    markDirty();
+    logCmd(`LAYOUT: deleted "${deleted}".`);
+    cadToast("info", `Layout "${deleted}" deleted.`);
   }
 
   /** MODEL/PAPER status-bar toggle (A13): PAPER goes to the last paper
@@ -7954,6 +8472,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
   /* ── Properties & Measurements ── */
   function showProps() {
+    // 2D-32: every selection change reaches this function (setSel, erase,
+    // undo/redo, commitModify/commitReplace, place-copy, isolate, staged
+    // pick steps), so the status-bar count refreshes here, not only on
+    // the next full updateStatus() rebuild.
+    refreshSelCount();
     if (sel.size > 1) {
       let len = 0,
         area = 0;
@@ -8568,7 +9091,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       rg(
         "Tables",
         tb("table", "table", "Table") +
-          rb("schedule", "Edit Size", `data-a="tablesize"`, "Set the next table's rows × columns"),
+          rb("schedule", "Edit Size", `data-a="tablesize"`, "Set the next table's rows × columns") +
+          rb("text", "Edit Cell", `data-a="table-edit"`, "Edit a cell of the selected table (TABLEEDIT)") +
+          rb("table-add-row", "Insert Row", `data-a="table-addrow"`, "Insert a row in the selected table (TABLEADDROW)") +
+          rb("table-del-row", "Delete Row", `data-a="table-delrow"`, "Delete a row from the selected table (TABLEDELROW)") +
+          rb("table-add-col", "Insert Column", `data-a="table-addcol"`, "Insert a column in the selected table (TABLEADDCOL)") +
+          rb("table-del-col", "Delete Column", `data-a="table-delcol"`, "Delete a column from the selected table (TABLEDELCOL)") +
+          rb("table-style", "Style", `data-a="table-style"`, "Set the selected table's text height and header row (TABLESTYLE)"),
         "",
         "",
         "annotate",
@@ -9018,6 +9547,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           }
         });
       },
+      "table-edit": () => executeDrawingCommand("TABLEEDIT"),
+      "table-addrow": () => executeDrawingCommand("TABLEADDROW"),
+      "table-delrow": () => executeDrawingCommand("TABLEDELROW"),
+      "table-addcol": () => executeDrawingCommand("TABLEADDCOL"),
+      "table-delcol": () => executeDrawingCommand("TABLEDELCOL"),
+      "table-style": () => executeDrawingCommand("TABLESTYLE"),
       // drawing workspace expansion pack: layer isolation + quick edit shortcuts
       layiso: () => executeDrawingCommand("LAYISO"),
       layoff: () => executeDrawingCommand("LAYOFF"),
@@ -9274,7 +9809,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       case "mtext":
         return n === 0 ? "Specify first corner of text column:" : "Specify opposite corner of text column:";
       case "rect":
-        return n === 0 ? "Specify first corner point:" : "Specify other corner point:";
+        // 2D-8: AutoCAD offers the variants at the first-corner prompt.
+        return n === 0 ? "Specify first corner point or [Chamfer/Elevation/Fillet/Thickness/Width/Area]:" : "Specify other corner point:";
       case "mview":
         return n === 0 ? "Specify first corner of viewport:" : "Specify opposite corner of viewport:";
       case "poly":
@@ -9434,6 +9970,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     tool = t;
     if (t !== "circle") circleMode = "center";
     if (t !== "arc") arcMode = "3p";
+    // 2D-8: leaving RECT abandons a one-shot Area mode (the persisted
+    // chamfer/fillet/width/elevation/thickness settings survive).
+    if (t !== "rect") {
+      rectArea = null;
+      rectAreaAwaitingDim = false;
+    }
     cv.focus({ preventScroll: true });
     pts = [];
     // A7: leaving PLINE drops its in-progress segments/arc; entering it
@@ -9995,18 +10537,64 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         if (pts.length === 2) {
           const p1 = pts[0],
             p2 = pts[1];
+          // 2D-8: chamfer/fillet/width/elevation/thickness are the
+          // persisted settings; Area is one-shot and the second pick
+          // fixes only the direction of the length side.
+          const opts: Rect.RectOptions = {
+            ...(rectChamfer ? { chamfer: rectChamfer } : {}),
+            ...(rectFillet != null && rectFillet > 0 ? { fillet: rectFillet } : {}),
+            ...(rectWidth > 0 ? { width: rectWidth } : {}),
+            ...(rectElevation !== 0 ? { elevation: rectElevation } : {}),
+            ...(rectThickness > 0 ? { thickness: rectThickness } : {}),
+          };
+          let built: Rect.RectBuild;
+          let label: string;
+          if (rectArea) {
+            const area = rectArea;
+            const fixed =
+              "length" in area
+                ? { kind: "length" as const, value: area.length }
+                : { kind: "width" as const, value: area.width };
+            const sized = Rect.buildRectArea(p1, p2, area.area, fixed, opts);
+            built = sized.build;
+            label = `Rectangle added: ${fmt(sized.length)} × ${fmt(sized.width)} (area ${fmt(area.area)})`;
+            rectArea = null;
+          } else {
+            built = Rect.buildRect(Rect.axisCorners(p1, p2), opts);
+            label = `Rectangle added: ${fmt(Math.abs(p2.x - p1.x))} × ${fmt(Math.abs(p2.y - p1.y))}`;
+          }
+          const notes: string[] = [];
+          if (built.appliedFillet != null) {
+            notes.push(`fillet r=${fmt(built.appliedFillet)}`);
+            if (rectFillet != null && built.appliedFillet < rectFillet) {
+              logCmd(`RECT: fillet radius clamped to ${fmt(built.appliedFillet)} (half the shorter side).`);
+            }
+          }
+          if (built.appliedChamfer) {
+            notes.push(`chamfer ${fmt(built.appliedChamfer.d1)} × ${fmt(built.appliedChamfer.d2)}`);
+            if (
+              rectChamfer &&
+              (built.appliedChamfer.d1 < rectChamfer.d1 || built.appliedChamfer.d2 < rectChamfer.d2)
+            ) {
+              logCmd(
+                `RECT: chamfer distances clamped to ${fmt(built.appliedChamfer.d1)} × ${fmt(built.appliedChamfer.d2)} (half the side).`,
+              );
+            }
+          }
+          if (built.width) notes.push(`width ${fmt(built.width)}`);
+          if (built.elevation) notes.push(`elevation ${fmt(built.elevation)}`);
+          if (built.thickness) notes.push(`thickness ${fmt(built.thickness)}`);
           addDraftEntity({
             type: "LWPOLYLINE",
             layer: currentLayer, ...newObjectProps(),
-            points: [
-              { x: p1.x, y: p1.y },
-              { x: p2.x, y: p1.y },
-              { x: p2.x, y: p2.y },
-              { x: p1.x, y: p2.y },
-            ],
+            points: built.points,
             closed: true,
+            ...(built.bulges ? { bulges: built.bulges } : {}),
+            ...(built.width ? { width: built.width } : {}),
+            ...(built.elevation ? { elevation: built.elevation } : {}),
+            ...(built.thickness ? { thickness: built.thickness } : {}),
           });
-          logCmd(`Rectangle added: ${fmt(Math.abs(p2.x - p1.x))} × ${fmt(Math.abs(p2.y - p1.y))}`);
+          logCmd(notes.length ? `${label} (${notes.join(", ")})` : label);
           pts = [];
         }
         break;
@@ -10245,7 +10833,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             const [tip, landing] = leaderPts;
             const span = bounds ? Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) : 0;
             const h = span > 0 ? span / 100 : 2;
-            const arrowSize = Math.max(h * 2.5, h);
+            // 2D-30: the arrowhead is baked geometry, so it is sized by the
+            // annotation scale at creation (the TEXT keeps its nominal
+            // height — the paint path scales TEXT by annoScale).
+            const arrowSize = Math.max(h * 2.5, h) * annoScale;
             const arrow = Ann.buildLeaderArrowhead(tip, landing, arrowSize);
             const parts: DxfEntity[] = [
               { type: "LINE", layer: currentLayer, ...newObjectProps(), start: { x: tip.x, y: tip.y }, end: { x: landing.x, y: landing.y } },
@@ -10625,7 +11216,10 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           break;
         }
         const prev = lastBaselineRecord ?? root;
-        const style = currentDimStyle();
+        // 2D-30: the spacing derives from the arrow size, so it uses the
+        // annotation-scaled style — at a larger scale the staggered
+        // baseline rows clear the larger rendered text.
+        const style = annoScaledStyle(currentDimStyle());
         const spacing = Math.max(style.textHeight * 2.2, (style.arrowSize > 0 ? style.arrowSize : style.textHeight * 2.5) * 1.6);
         const rec = DIM.baselineDimRecord(root, prev, `dim-${Date.now().toString(36)}-${++dimSeq}`, p, style.name, currentLayer, spacing);
         const entities = commitDimRecord(rec);
@@ -10648,27 +11242,22 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         pts.push(p);
         if (pts.length === 2) {
           const [t1, t2] = pts;
-          const cols = tableDims.cols,
-            rows = tableDims.rows;
-          const w = (t2.x - t1.x) / cols,
-            h = (t2.y - t1.y) / rows;
-          const list: DxfEntity[] = [];
-          for (let c = 0; c <= cols; c++)
-            list.push({ type: "LINE", layer: currentLayer, start: { x: t1.x + c * w, y: t1.y }, end: { x: t1.x + c * w, y: t2.y } });
-          for (let r = 0; r <= rows; r++)
-            list.push({ type: "LINE", layer: currentLayer, start: { x: t1.x, y: t1.y + r * h }, end: { x: t2.x, y: t1.y + r * h } });
-          const hh = Math.min(Math.abs(h) * 0.6, Math.max(1e-6, Math.abs(w) * 0.5));
-          for (let r = 0; r < rows; r++)
-            for (let c = 0; c < cols; c++)
-              list.push({
-                type: "TEXT",
-                layer: currentLayer,
-                position: { x: t1.x + (c + 0.08) * w, y: t1.y + (r + 0.5) * h },
-                height: hh,
-                value: `${r + 1},${c + 1}`,
-              });
-          addEntities(list);
-          logCmd(`Table added: ${rows} rows × ${cols} columns (TABLE <rows> <cols> to change).`);
+          try {
+            // 2D-7: one editable TABLE entity (rows/columns/cells), not the
+            // loose LINE + TEXT grid this used to emit — the grid and the
+            // cell labels are the table's own data now.
+            const table = createTable({
+              layer: currentLayer,
+              position: t1,
+              size: { x: t2.x - t1.x, y: t2.y - t1.y },
+              rows: tableDims.rows,
+              cols: tableDims.cols,
+            });
+            addEntities([table]);
+            logCmd(`Table added: ${tableDims.rows} rows × ${tableDims.cols} columns (TABLE <rows> <cols> to change). Double-click a cell to edit it.`);
+          } catch (err) {
+            logCmd(`TABLE: ${err instanceof Error ? err.message : String(err)}`);
+          }
           pts = [];
         }
         break;
@@ -10888,16 +11477,30 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (gripDrag) {
       const after = ents[gripDrag.i];
       if (gripDrag.moved && after && after !== gripDrag.orig) {
-        const ext = withAssociativeDims([gripDrag.orig], [after]);
-        for (let i = 0; i < ext.before.length; i++) replaceEntity(ext.before[i], ext.after[i]);
-        pushUndoAct({ type: "modify", before: ext.before, after: ext.after });
-        markDirty();
-        redoStack.length = 0;
-        const nb = M.entityBBox(after);
-        if (nb) bounds = bounds ? M.unionBBox(bounds, nb) : nb;
-        rebuildIndex();
-        showProps();
-        logCmd("Grip edit: object updated (Ctrl+Z to undo).");
+        // 2D-33: re-check the lock at release. The start gate (gripAt →
+        // pickable) only proves the layer was unlocked when the drag
+        // began; the layer can be locked — or the entity hidden — while
+        // the drag is in flight (gripDrag holds the index independently
+        // of the selection, so pruneLockedFromSel does not stop it).
+        // Aborting restores the pre-drag geometry and writes nothing to
+        // the locked layer, instead of committing the edit.
+        if (!pickable(after)) {
+          ents[gripDrag.i] = gripDrag.orig;
+          logCmd(
+            `Grip edit aborted — the object${isLayerLocked(after.layer) ? `'s layer "${after.layer}" was locked` : " was hidden"} during the drag.`,
+          );
+        } else {
+          const ext = withAssociativeDims([gripDrag.orig], [after]);
+          for (let i = 0; i < ext.before.length; i++) replaceEntity(ext.before[i], ext.after[i]);
+          pushUndoAct({ type: "modify", before: ext.before, after: ext.after });
+          markDirty();
+          redoStack.length = 0;
+          const nb = M.entityBBox(after);
+          if (nb) bounds = bounds ? M.unionBBox(bounds, nb) : nb;
+          rebuildIndex();
+          showProps();
+          logCmd("Grip edit: object updated (Ctrl+Z to undo).");
+        }
       } else {
         ents[gripDrag.i] = gripDrag.orig; // click without drag — nothing changed
       }
@@ -10914,16 +11517,23 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         if (dg.scope === "instance" && dynDrag.origIns) {
           const after = ents[dg.i] as DxfInsert | undefined;
           if (after && after !== dynDrag.origIns) {
-            const ext = withAssociativeDims([dynDrag.origIns], [after]);
-            for (let i = 0; i < ext.before.length; i++) replaceEntity(ext.before[i], ext.after[i]);
-            pushUndoAct({ type: "modify", before: ext.before, after: ext.after });
-            markDirty();
-            redoStack.length = 0;
-            rebuildIndex();
-            showProps();
-            const set = dynParamStore.get(after.name);
-            const cur = set ? resolvedDynValues(set, after.dynValues)[dg.param.id] : undefined;
-            logCmd(`Dynamic block "${after.name}": ${dg.param.name} = ${String(cur ?? "")} (Ctrl+Z to undo).`);
+            // 2D-33, same guard as the grip-drag release: the instance's
+            // layer can be locked while the parameter drag is in flight.
+            if (!pickable(after)) {
+              ents[dg.i] = dynDrag.origIns;
+              logCmd(`Dynamic block "${after.name}": drag aborted — the instance's layer "${after.layer}" was locked during the drag.`);
+            } else {
+              const ext = withAssociativeDims([dynDrag.origIns], [after]);
+              for (let i = 0; i < ext.before.length; i++) replaceEntity(ext.before[i], ext.after[i]);
+              pushUndoAct({ type: "modify", before: ext.before, after: ext.after });
+              markDirty();
+              redoStack.length = 0;
+              rebuildIndex();
+              showProps();
+              const set = dynParamStore.get(after.name);
+              const cur = set ? resolvedDynValues(set, after.dynValues)[dg.param.id] : undefined;
+              logCmd(`Dynamic block "${after.name}": ${dg.param.name} = ${String(cur ?? "")} (Ctrl+Z to undo).`);
+            }
           }
         } else if (dg.scope === "session" && blockEdit) {
           saveDynParamSet(blockEdit.session.name);
@@ -11031,6 +11641,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       const { wp } = rawPoint(ev);
       const i = idx ? M.pickEntity(idx, ents, wp.x, wp.y, 10 / view.scale, pickable) : -1;
       const e = i >= 0 ? ents[i] : undefined;
+      if (e?.type === "TABLE") { editTableCell(i, wp); draw(); updateStatus(); return; }
       if (e?.type === "INSERT") { openBlockEdit(e.name); draw(); updateStatus(); return; }
     }
     // A8: double-click a viewport to work inside it (wheel / drag zoom and
@@ -11377,6 +11988,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       logCmd(`GRID: <${showGrid ? "ON" : "OFF"}>`);
       return;
     }
+    if (key === "F6") {
+      ev.preventDefault();
+      ducsOn = !ducsOn;
+      updateStatus();
+      draw();
+      logCmd(`DUCS: <${ducsOn ? "ON" : "OFF"}>`);
+      return;
+    }
     if (key === "F8") {
       ev.preventDefault();
       orthoOn = !orthoOn;
@@ -11629,6 +12248,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   }
 
   /* ── Status Bar Update ── */
+  /** 2D-32: refresh only the selection-count text in the status bar.
+   * The count used to render only inside updateStatus()'s full innerHTML
+   * rebuild, so it went stale after every selection change until some
+   * other path re-rendered the bar (pointer moves take the coords-only
+   * early return and never touch it). Every selection-mutating path
+   * funnels through showProps(), so that is where the refresh lives —
+   * plus the two paths that mutate `sel` without showProps()
+   * (deleteLayerByName, pruneLockedFromSel). Null-guarded: the span
+   * only exists after updateStatus()'s first full render. */
+  function refreshSelCount(): void {
+    const el = statusEl.querySelector<HTMLElement>("[data-s=selcount]");
+    if (el) el.textContent = sel.size ? sel.size + " selected" : "";
+  }
+
   function updateStatus(p?: M.Pt) {
     const c = p ?? cursor;
     const zoomPct = doc && bounds ? Math.round((view.scale / M.fitView(bounds, view.w, view.h).scale) * 100) : 100;
@@ -11671,16 +12304,18 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       <button class="obs-status-btn ${orthoOn ? "active" : ""}" data-s="ortho" title="Ortho (F8)">ORTHO</button>
       <button class="obs-status-btn ${polarOn ? "active" : ""}" data-s="polar" title="Polar Tracking (F10)">POLAR</button>
       <button class="obs-status-btn ${ucsActive ? "active" : ""}" data-s="ucsview" title="UCS display — ON applies the drawing's saved view rotation (like AutoCAD); OFF shows raw world coordinates">UCS</button>
+      <button class="obs-status-btn ${ducsOn ? "active" : ""}" data-s="ducs" title="Dynamic UCS (F6)">DUCS</button>
       <button class="obs-status-btn ${otrackOn ? "active" : ""}" data-s="otrack" title="Reference line tracking (axis guides while drawing)">OTRACK</button>
       <button class="obs-status-btn ${dynOn ? "active" : ""}" data-s="dyn" title="Dynamic Input (F12)">DYN</button>
       <button class="obs-status-btn ${lwtOn ? "active" : ""}" data-s="lwt" title="Lineweight">LWT</button>
+      <button class="obs-status-btn" data-s="anno" title="Annotation scale (CANNOSCALE) — text, leaders and dimension arrowheads render at this scale; click to cycle 1:1 → 1:2 → 1:5 → 1:10 → 1:20 → 1:50 → 1:100">${Ann.formatAnnoScale(annoScale)}</button>
       <button class="obs-status-btn ${quick ? "active" : ""}" data-s="quick" title="Quick Measure">QUICK</button>
       <span data-s="quick-readout" style="display:${quick ? "inline-flex" : "none"};max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#a7f3d0;font-size:10px">${escapeHtml(quickMeasureText(c))}</span>
       <span class="sep"></span>
       <span>${escapeHtml(unit)} · ${zoomPct}%</span>
       ${activeViewport !== null && layoutI >= 0 ? `<span class="sep"></span><span data-s="viewport" style="color:#38bdf8;font-weight:600" title="Double-click outside a viewport to leave it">Viewport #${activeViewport + 1} active</span>` : ""}
       <span style="flex:1"></span>
-      <span>${sel.size ? sel.size + " selected" : ""}</span>
+      <span data-s="selcount">${sel.size ? sel.size + " selected" : ""}</span>
     `;
 
     // Status tray button click listeners
@@ -11719,6 +12354,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       updateStatus();
       draw();
     });
+    statusEl.querySelector("[data-s=ducs]")?.addEventListener("click", () => {
+      ducsOn = !ducsOn;
+      logCmd(`DUCS: <${ducsOn ? "ON" : "OFF"}>`);
+      updateStatus();
+      draw();
+    });
     statusEl.querySelector("[data-s=quick]")?.addEventListener("click", () => setQuickMeasure(!quick));
     statusEl.querySelector("[data-s=dyn]")?.addEventListener("click", () => {
       dynOn = !dynOn;
@@ -11729,6 +12370,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       lwtOn = !lwtOn;
       updateStatus();
       draw();
+    });
+    // 2D-30: per-button listener (fresh element each re-render, like the
+    // other aid buttons — NOT the delegated statusEl listener, which
+    // re-attaches on every updateStatus and would advance the cycle once
+    // per accumulated listener instead of once per click).
+    statusEl.querySelector("[data-s=anno]")?.addEventListener("click", () => {
+      setAnnoScale(Ann.nextAnnoScale(annoScale));
     });
 
     // 2D-2: publish the live aid state to the shared module so the
@@ -11745,6 +12393,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       otrack: otrackOn,
       dyn: dynOn,
       lwt: lwtOn,
+      ducs: ducsOn,
     });
   }
 
@@ -11915,7 +12564,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           if (match) { event.preventDefault(); dynCommandInput.value = match.name; dynCommandInput.dispatchEvent(new Event("input")); }
           return;
         }
-        if (event.key === "F3" || event.key === "F7" || event.key === "F8" || event.key === "F9" || event.key === "F12") {
+        if (event.key === "F3" || event.key === "F6" || event.key === "F7" || event.key === "F8" || event.key === "F9" || event.key === "F12") {
           event.preventDefault();
           const key = event.key;
           closeDynamicCommand();
@@ -12032,6 +12681,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // PLINE option keywords while PLINE is active (A7): A = arc segment,
     // C = close in-tool, U = undo last point, W = width.
     if (tool === "poly" && handlePolyOption(trimmed)) {
+      draw();
+      return;
+    }
+    // RECTANG option keywords while RECTANG waits for its first corner
+    // (2D-8): C = chamfer, E = elevation, F = fillet, T = thickness,
+    // W = width, A = area.
+    if (tool === "rect" && handleRectOption(trimmed)) {
       draw();
       return;
     }
@@ -12203,6 +12859,21 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       } else logCmd(`LTSCALE = ${doc?.ltscale ?? 1}. Enter a positive number, e.g. LTSCALE 2`);
       return;
     }
+    // 2D-30: annotation scale (CANNOSCALE). No argument reports the
+    // current scale; a bare factor ("2") or a ratio ("1:50") sets it.
+    if (cmd === "CANNOSCALE" || cmd === "ANNOSCALE") {
+      if (!arg) {
+        logCmd(`CANNOSCALE: annotation scale ${Ann.formatAnnoScale(annoScale)} (factor ${annoScale}).`);
+        return;
+      }
+      const v = Ann.parseAnnoScale(arg);
+      if (v === null) {
+        logCmd(`CANNOSCALE: enter a positive scale, e.g. CANNOSCALE 2 or CANNOSCALE 1:50 (current ${Ann.formatAnnoScale(annoScale)}).`);
+        return;
+      }
+      setAnnoScale(v);
+      return;
+    }
     if (cmd === "ST" || cmd === "STYLE") {
       openTextStyleManager(styleApi);
       return;
@@ -12309,6 +12980,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       if (sub === "NEW" || sub === "N") {
         // Creates the layout and makes it current, like AutoCAD's LAYOUT New.
         createLayoutAndActivate(parts.slice(2).join(" ") || undefined);
+        return;
+      }
+      if (sub === "DELETE" || sub === "DEL" || sub === "D") {
+        const target = parts.slice(2).join(" ");
+        if (!target) { logCmd("LAYOUT: LAYOUT DELETE <name|number>."); return; }
+        void deleteLayoutAndActivate(target);
         return;
       }
       const list = (doc.layouts ?? []).map((l, i) => `  ${i + 1}. ${l.name} (${l.entities.length} ents)`).join("\n") || "  (none)";
@@ -13055,6 +13732,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       setPolarTracking(state === "ON" ? true : state === "OFF" ? false : !polarOn);
       return;
     }
+    if (cmd === "DUCS") {
+      const state = (parts[1] ?? "").toUpperCase();
+      ducsOn = state === "ON" ? true : state === "OFF" ? false : !ducsOn;
+      updateStatus();
+      draw();
+      logCmd(`DUCS: <${ducsOn ? "ON" : "OFF"}>`);
+      return;
+    }
     if (cmd === "POLARANG" || cmd === "PANG") {
       if (arg) {
         const value = Number(arg);
@@ -13384,6 +14069,113 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         logCmd(`Next table: ${r0} rows × ${c0} columns.`);
       }
       setTool("table");
+      return;
+    }
+
+    /* ── 2D-7: editable TABLE commands ── */
+    if (cmd === "TABLEEDIT" || cmd === "TEDIT") {
+      const sel = selectedTable();
+      if (!sel) {
+        logCmd("TABLEEDIT: select a table first (or draw one — TABLEEDIT needs exactly one table when nothing is selected).");
+        return;
+      }
+      const r = parseInt(parts[1] ?? "", 10), c = parseInt(parts[2] ?? "", 10);
+      if (!Number.isInteger(r) || !Number.isInteger(c) || r < 1 || c < 1 || r > sel.entity.rowHeights.length || c > sel.entity.colWidths.length) {
+        logCmd(`TABLEEDIT: specify a cell, e.g. TABLEEDIT 1 2 New text — this table is ${sel.entity.rowHeights.length} rows × ${sel.entity.colWidths.length} columns.`);
+        return;
+      }
+      const text = parts.slice(3).join(" ");
+      if (text) {
+        commitModify([sel.entity], [setCellText(sel.entity, r - 1, c - 1, text)]);
+        logCmd(`TABLEEDIT: cell ${r},${c} updated.`);
+        draw();
+      } else {
+        promptTableCellEdit(sel.index, r - 1, c - 1);
+      }
+      return;
+    }
+    if (cmd === "TABLEADDROW" || cmd === "TABLEDELROW" || cmd === "TABLEADDCOL" || cmd === "TABLEDELCOL") {
+      const sel = selectedTable();
+      if (!sel) {
+        logCmd(`${cmd}: select a table first (or draw one — this command needs exactly one table when nothing is selected).`);
+        return;
+      }
+      const isRow = cmd.endsWith("ROW");
+      const count = isRow ? sel.entity.rowHeights.length : sel.entity.colWidths.length;
+      const n = parseInt(parts[1] ?? "", 10);
+      try {
+        if (cmd === "TABLEADDROW") {
+          // TABLEADDROW [n] inserts a row AFTER row n (default: at the end).
+          const at = Number.isInteger(n) ? Math.max(0, Math.min(n, count)) : count;
+          commitModify([sel.entity], [insertTableRow(sel.entity, at)]);
+          logCmd(`TABLEADDROW: row inserted at ${at + 1} — ${count + 1} rows now.`);
+        } else if (cmd === "TABLEDELROW") {
+          const at = Number.isInteger(n) ? n - 1 : count - 1;
+          const next = deleteTableRow(sel.entity, at);
+          if (!next) { logCmd("TABLEDELROW: cannot delete the last row."); return; }
+          commitModify([sel.entity], [next]);
+          logCmd(`TABLEDELROW: row ${at + 1} deleted — ${count - 1} rows now.`);
+        } else if (cmd === "TABLEADDCOL") {
+          const at = Number.isInteger(n) ? Math.max(0, Math.min(n, count)) : count;
+          commitModify([sel.entity], [insertTableColumn(sel.entity, at)]);
+          logCmd(`TABLEADDCOL: column inserted at ${at + 1} — ${count + 1} columns now.`);
+        } else {
+          const at = Number.isInteger(n) ? n - 1 : count - 1;
+          const next = deleteTableColumn(sel.entity, at);
+          if (!next) { logCmd("TABLEDELCOL: cannot delete the last column."); return; }
+          commitModify([sel.entity], [next]);
+          logCmd(`TABLEDELCOL: column ${at + 1} deleted — ${count - 1} columns now.`);
+        }
+      } catch (err) {
+        logCmd(`${cmd}: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+      }
+      draw();
+      return;
+    }
+    if (cmd === "TABLESTYLE") {
+      const sel = selectedTable();
+      if (!sel) {
+        logCmd("TABLESTYLE: select a table first (or draw one — this command needs exactly one table when nothing is selected).");
+        return;
+      }
+      const heightArg = parseFloat(parts[1] ?? "");
+      const headerArg = (parts[2] ?? "").toUpperCase();
+      if (Number.isFinite(heightArg) && heightArg > 0) {
+        const next: Extract<DxfEntity, { type: "TABLE" }> = { ...sel.entity, textHeight: heightArg };
+        if (headerArg === "HEADER") next.headerRow = true;
+        else if (headerArg === "NOHEADER") delete next.headerRow;
+        commitModify([sel.entity], [next]);
+        logCmd(`TABLESTYLE: text height ${fmt(heightArg)}${headerArg === "HEADER" ? ", header row on" : headerArg === "NOHEADER" ? ", header row off" : ""}.`);
+        draw();
+        return;
+      }
+      // No height on the command line: prompt for it, then for the header row.
+      void promptLine("Table Style", "Text height", String(tableTextHeight(sel.entity))).then((s) => {
+        const h = parseFloat(s ?? "");
+        if (!Number.isFinite(h) || h <= 0) {
+          logCmd("TABLESTYLE: text height unchanged.");
+          return;
+        }
+        void pickFromList(
+          "Table Style",
+          "Header row",
+          [
+            { value: "yes", label: "First row is a header (bold + shaded)" },
+            { value: "no", label: "No header row" },
+          ],
+          sel.entity.headerRow ? "yes" : "no",
+        ).then((v) => {
+          const ent = ents[sel.index];
+          if (!ent || ent.type !== "TABLE") return;
+          const next: Extract<DxfEntity, { type: "TABLE" }> = { ...ent, textHeight: h };
+          if (v === "yes") next.headerRow = true;
+          else delete next.headerRow;
+          commitModify([ent], [next]);
+          logCmd(`TABLESTYLE: text height ${fmt(h)}${v === "yes" ? ", header row on" : ", header row off"}.`);
+          draw();
+        });
+      });
       return;
     }
 
@@ -13759,6 +14551,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       sel.clear();
       for (const i of ids) if (selAccept(i)) sel.add(i);
       logCmd(`LAYSEL: ${sel.size} on layer "${layer}".`);
+      refreshSelCount(); // 2D-32
       draw();
       return;
     }
@@ -13770,6 +14563,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       sel.clear();
       for (const i of ids) if (selAccept(i)) sel.add(i);
       logCmd(`TYPESEL: ${sel.size} × ${typ.toUpperCase()}.`);
+      refreshSelCount(); // 2D-32
       draw();
       return;
     }
@@ -13811,6 +14605,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     if (cmd === "CLRSEL" || cmd === "SELCLR") {
       sel.clear();
+      refreshSelCount(); // 2D-32
       draw();
       logCmd("CLRSEL: selection cleared.");
       return;
@@ -13826,6 +14621,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         sel.add(i);
       }
       logCmd(`SELECTALL: ${sel.size} object(s).`);
+      refreshSelCount(); // 2D-32
       draw();
       return;
     }
@@ -14278,6 +15074,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         if (ents[i]?.layer && layers.has(ents[i].layer) && !isLayerLocked(ents[i].layer)) sel.add(i);
       }
       logCmd(`SELBYLAYER: ${sel.size} on ${[...layers].join(", ")}`);
+      refreshSelCount(); // 2D-32
       draw();
       return;
     }
@@ -14308,6 +15105,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ents = keep;
       if (layoutI < 0) modelEnts = keep;
       sel.clear();
+      refreshSelCount(); // 2D-32
       markDirty();
       idx = M.buildIndex(ents, bounds ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 });
       syncSpaceIndex();
@@ -14367,6 +15165,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ents = keep;
       if (layoutI < 0) modelEnts = keep;
       sel.clear();
+      refreshSelCount(); // 2D-32
       addEntities(lines);
       draw();
       logCmd(`XPLODEPL: ${removed.length} polyline(s) → ${lines.length} line(s)`);
@@ -14384,6 +15183,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       ents = keep;
       if (layoutI < 0) modelEnts = keep;
       sel.clear();
+      refreshSelCount(); // 2D-32
       markDirty();
       draw();
       logCmd(`AUDITZL: removed ${removed.length} zero-length line(s)${zeroLen.length > removed.length ? ` (${zeroLen.length - removed.length} locked-layer line(s) kept)` : ""}`);
@@ -15276,13 +16076,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           <input data-r="vp-clip-maxx-${i}" value="${num(c?.maxX)}" placeholder="maxX" style="width:64px">
           <input data-r="vp-clip-maxy-${i}" value="${num(c?.maxY)}" placeholder="maxY" style="width:64px">
         </span></td>
+        <td style="padding:4px 8px"><input data-r="vp-frozen-${i}" value="${escapeHtml((vp.frozenLayers ?? []).join(", "))}" placeholder="layer names, comma-separated" style="width:180px" title="Layers hidden through this viewport only (VPLAYER / per-viewport freeze)"></td>
       </tr>`;
     }).join("");
     const panel = openOverlay(`
       <b style="font-size:15px;color:#38bdf8">Viewports — "${escapeHtml(L.name)}" (VPORT)</b>
-      <div style="font-size:12px;color:#9aa4b2;margin-top:4px">Scale is sheet units per model unit; clip is a rectangle in sheet coordinates (empty = no clip).</div>
+      <div style="font-size:12px;color:#9aa4b2;margin-top:4px">Scale is sheet units per model unit; clip is a rectangle in sheet coordinates (empty = no clip). Frozen layers are hidden through that viewport only — everywhere else they stay visible.</div>
       <table style="margin-top:12px;font-size:12px;border-collapse:collapse">
-        <tr style="color:#9aa4b2"><th style="padding:4px 8px;text-align:start">Viewport</th><th style="padding:4px 8px;text-align:start">Scale</th><th style="padding:4px 8px">Locked</th><th style="padding:4px 8px;text-align:start">Clip (sheet rect)</th></tr>
+        <tr style="color:#9aa4b2"><th style="padding:4px 8px;text-align:start">Viewport</th><th style="padding:4px 8px;text-align:start">Scale</th><th style="padding:4px 8px">Locked</th><th style="padding:4px 8px;text-align:start">Clip (sheet rect)</th><th style="padding:4px 8px;text-align:start">Frozen layers</th></tr>
         ${rows}
       </table>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
@@ -15306,6 +16107,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         } else {
           logCmd(`VPORT: viewport #${i + 1} clip ignored — enter all four numbers with max > min, or leave all four empty.`);
         }
+        // 2D-6: per-viewport freeze — comma-separated layer names. Only
+        // names that exist in the layer table are kept; unknown names are
+        // ignored with a warning, never invented as layers. Applied before
+        // the lock below, because a locked viewport refuses edits (same
+        // rule as scale and clip above).
+        const frozenRaw = (panel.querySelector<HTMLInputElement>(`[data-r=vp-frozen-${i}]`)!).value.split(",");
+        const known = new Set(doc!.layers.map((l) => l.name));
+        const unknown = frozenRaw.map((n) => n.trim()).filter((n) => n !== "" && !known.has(n));
+        if (unknown.length) logCmd(`VPORT: viewport #${i + 1} frozen layers ignored — no such layer: ${unknown.join(", ")}.`);
+        next = Vp8.setViewportFrozenLayers(next, frozenRaw.filter((n) => known.has(n.trim())));
         next.locked = (panel.querySelector<HTMLInputElement>(`[data-r=vp-lock-${i}]`)!).checked;
         return next;
       });
@@ -16236,6 +17047,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           return `X|${e.layer}|${f(e.start.x)},${f(e.start.y)}|${f(e.direction.x)},${f(e.direction.y)}`;
         case "DIMENSION":
           return `D|${e.layer}|${e.dimType}|${f(e.defPoint.x)},${f(e.defPoint.y)}|${e.extOrigin1 ? `${f(e.extOrigin1.x)},${f(e.extOrigin1.y)}` : ""}|${e.extOrigin2 ? `${f(e.extOrigin2.x)},${f(e.extOrigin2.y)}` : ""}|${e.curvePoint ? `${f(e.curvePoint.x)},${f(e.curvePoint.y)}` : ""}|${e.text ?? ""}`;
+        case "TABLE":
+          return `B|${e.layer}|${f(e.position.x)},${f(e.position.y)}|${f(e.rotation ?? 0)}|${e.colWidths.map(f).join(",")}|${e.rowHeights.map(f).join(",")}|${JSON.stringify(e.cells)}`;
       }
     };
     for (const e of before) {
@@ -17237,6 +18050,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       sel.clear();
       let n = 0;
       for (const i of existing) if (ents[i] && selAccept(i)) { sel.add(i); n++; }
+      refreshSelCount(); // 2D-32
       draw();
       logCmd(`GROUP ${key}: selected ${n} object${n === 1 ? "" : "s"}.`);
       return;
@@ -17684,6 +18498,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (otrackOn !== next.otrack) { otrackOn = next.otrack; changed = true; }
     if (dynOn !== next.dyn) { dynOn = next.dyn; changed = true; }
     if (lwtOn !== next.lwt) { lwtOn = next.lwt; changed = true; }
+    if (ducsOn !== next.ducs) { ducsOn = next.ducs; changed = true; }
     if (showGrid !== next.grid) { showGrid = next.grid; changed = true; }
     return changed;
   }

@@ -159,6 +159,67 @@ try {
     assert.strictEqual(ann.buildLeaderArrowhead({ x: 0, y: 0 }, { x: 0, y: 0 }, 5), null);
   });
 
+  // ── Annotation scale (2D-30, CANNOSCALE) ──
+  t("anno scale parse: bare factor and ratios", () => {
+    assert.strictEqual(ann.parseAnnoScale("2"), 2);
+    assert.strictEqual(ann.parseAnnoScale("1"), 1);
+    assert.strictEqual(ann.parseAnnoScale("1:50"), 50);
+    assert.strictEqual(ann.parseAnnoScale("1:1"), 1);
+    assert.strictEqual(ann.parseAnnoScale("2:1"), 0.5);
+    assert.strictEqual(ann.parseAnnoScale("1:100"), 100);
+    assert.strictEqual(ann.parseAnnoScale(" 1:20 "), 20);
+  });
+  t("anno scale parse: rejects empty, non-numeric, zero/negative and oversized values", () => {
+    for (const bad of ["", " ", "abc", "0", "-2", "1:0", "0:50", "-1:50", "1:-50", "1:2:3", "10001", "1:10001", "NaN", "Infinity"]) {
+      assert.strictEqual(ann.parseAnnoScale(bad), null, JSON.stringify(bad));
+    }
+  });
+  t("anno scale format: factor back to a scale label", () => {
+    assert.strictEqual(ann.formatAnnoScale(1), "1:1");
+    assert.strictEqual(ann.formatAnnoScale(50), "1:50");
+    assert.strictEqual(ann.formatAnnoScale(2.5), "1:2.5");
+    assert.strictEqual(ann.formatAnnoScale(0.5), "2:1");
+    assert.strictEqual(ann.formatAnnoScale(0.25), "4:1");
+  });
+  t("anno scale cycle: next listed factor above the current one, else back to 1", () => {
+    assert.strictEqual(ann.nextAnnoScale(1), 2);
+    assert.strictEqual(ann.nextAnnoScale(2), 5);
+    assert.strictEqual(ann.nextAnnoScale(50), 100);
+    assert.strictEqual(ann.nextAnnoScale(100), 1);
+    assert.strictEqual(ann.nextAnnoScale(3), 5); // between listed values: the next one above
+    assert.strictEqual(ann.nextAnnoScale(200), 1);
+  });
+  t("anno scale validity: finite positive factors up to the bound", () => {
+    assert.strictEqual(ann.isValidAnnoScale(1), true);
+    assert.strictEqual(ann.isValidAnnoScale(10000), true);
+    for (const bad of [0, -1, 10000.1, NaN, Infinity, "2", null, undefined]) {
+      assert.strictEqual(ann.isValidAnnoScale(bad), false, String(bad));
+    }
+  });
+  t("anno scale dimension build: a doubled arrowSize doubles the arrowheads, text height stays nominal", () => {
+    // The viewer's dimStyleOf scales only arrowSize by annoScale (the
+    // paint path scales TEXT by it, so scaling textHeight here too would
+    // double the dimension text). Proved at the builder: the same linear
+    // record under a style with arrowSize ×2.
+    const rec = { id: "dim-lin", styleName: "ISO-25", mode: "linear", layer: "DIMS", p1: { x: 0, y: 0 }, p2: { x: 100, y: 0 }, placement: { x: 50, y: -20 } };
+    // A linear dimension's arrowheads are architectural ticks: two LINE
+    // strokes per endpoint (meta.role "arrow"), each of length
+    // arrow × √(1 + 0.32²) ≈ arrow × 1.05.
+    const tickLen = (e) => Math.hypot(e.end.x - e.start.x, e.end.y - e.start.y);
+    const ticks = (built) => built.filter((e) => e.type === "LINE" && e.meta?.role === "arrow");
+    const base = sys.buildDimEntities(rec, sys.defaultDimStyles()[0], "100.00");
+    const scaled = sys.buildDimEntities(rec, { ...sys.defaultDimStyles()[0], arrowSize: sys.defaultDimStyles()[0].arrowSize * 2 }, "100.00");
+    assert.strictEqual(ticks(base).length, 4);
+    assert.strictEqual(ticks(scaled).length, 4);
+    for (const e of ticks(base)) near(tickLen(e), 2.5 * Math.hypot(1, 0.32));
+    for (const e of ticks(scaled)) near(tickLen(e), 5 * Math.hypot(1, 0.32));
+    // The dimension text is built at the nominal height in both cases —
+    // the viewer paints it at height × annoScale, so it must not be
+    // pre-scaled here.
+    assert.strictEqual(base.find((e) => e.type === "TEXT").height, 2.5);
+    assert.strictEqual(scaled.find((e) => e.type === "TEXT").height, 2.5);
+  });
+
   // ── Ordinate dimension (system + builders) ──
   const style = sys.defaultDimStyles()[0]; // ISO-25, text 2.5 / arrow 2.5 / 2 decimals
   t("ordinate measure: the feature's WCS coordinate, sign kept", () => {
@@ -409,6 +470,31 @@ try {
     assert.ok(viewer.includes('if (arrow) parts.unshift({ ...arrow, layer: currentLayer, ...newObjectProps() });'), "leader arrowhead not committed");
     assert.ok(viewer.includes("addEntities(parts);"), "leader does not commit entities");
     assert.ok(viewer.includes('logCmd(`Leader added: "${t}".`);'), "leader log not updated");
+  });
+  t("viewer: MLEADER creates the same arrowhead as LEADER (2D-9)", () => {
+    // Scope the markers to the MLEADER case so they cannot match the
+    // LEADER case above: the slice runs from `case "mleader"` to the next
+    // top-level `case "`.
+    const mleaderStart = viewer.indexOf('case "mleader": {');
+    assert.ok(mleaderStart >= 0, "no mleader case in viewer");
+    const mleaderEnd = viewer.indexOf('\n      case "', mleaderStart + 1);
+    assert.ok(mleaderEnd > mleaderStart, "mleader case has no end");
+    const mleader = viewer.slice(mleaderStart, mleaderEnd);
+    assert.ok(mleader.includes("Ann.buildLeaderArrowhead(a, b, arrowSize)"), "mleader does not build an arrowhead");
+    assert.ok(mleader.includes('if (arrow) parts.unshift({ ...arrow, layer: currentLayer, ...newObjectProps() });'), "mleader arrowhead not committed");
+    assert.ok(mleader.includes("addEntities(parts);"), "mleader does not commit entities");
+    // The arrowhead is built from the same points as the leader line.
+    assert.ok(mleader.includes('start: { x: a.x, y: a.y }, end: { x: b.x, y: b.y }'), "mleader line does not run arrow point → landing");
+    // Behavioural proof on the shared builder with MLEADER-style args:
+    // tip at the arrow point, base trailing back toward the landing.
+    const arrow = ann.buildLeaderArrowhead({ x: 0, y: 0 }, { x: 10, y: 0 }, 5);
+    assert.ok(arrow);
+    assert.strictEqual(arrow.type, "LWPOLYLINE");
+    assert.strictEqual(arrow.closed, true);
+    assert.strictEqual(arrow.hatch.solid, true);
+    nearPt(arrow.points[0], { x: 0, y: 0 });
+    nearPt(arrow.points[1], { x: 5, y: -1.6 });
+    nearPt(arrow.points[2], { x: 5, y: 1.6 });
   });
   t("viewer: addDraftEntity/paste no longer double-add in model space (found by the A10 spec)", () => {
     // In model space ents IS modelEnts (same array), so the old unguarded

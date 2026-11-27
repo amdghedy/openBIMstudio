@@ -228,3 +228,65 @@ export function buildLeaderArrowhead(
     hatch: { solid: true, loops: [points] },
   } as Extract<DxfEntity, { type: "LWPOLYLINE" }> & { layer: string };
 }
+
+/* ───────────────────── Annotation scale (2D-30) ─────────────────────
+ *
+ * AutoCAD's CANNOSCALE: the current annotation scale. An annotative
+ * object stores its paper height and renders at paper height × the
+ * scale factor in model space, so the same text reads at the same
+ * paper size whatever the viewport scale. Here the factor is the
+ * number after the colon: CANNOSCALE 1:50 → factor 50; a bare number
+ * is the factor itself (CANNOSCALE 2 → factor 2). The general form
+ * A:B → factor B/A covers 1:1, 1:50 and 2:1 alike.
+ *
+ * Two deliberate boundaries, so a scaled annotation never double-scales:
+ * - TEXT/MTEXT (including dimension and leader text, which are TEXT
+ *   entities) keep their nominal stored height; the paint path
+ *   multiplies the rendered height by the factor.
+ * - Dimension and leader arrowheads are baked geometry, so they are
+ *   sized by the factor at creation (the dimension style's arrowSize
+ *   via the viewer's dimStyleOf, the leader's arrowSize at the pick).
+ * The helpers below are pure so the node suite can prove them. */
+
+/** Largest annotation-scale factor accepted (same bound as the session sanitize). */
+export const MAX_ANNO_SCALE = 10000;
+
+/** Standard scales the status-bar button cycles through (factors). */
+export const ANNO_SCALE_CYCLE: readonly number[] = [1, 2, 5, 10, 20, 50, 100];
+
+/** True when `v` is a usable annotation-scale factor. */
+export function isValidAnnoScale(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v) && v > 0 && v <= MAX_ANNO_SCALE;
+}
+
+/**
+ * Parse a CANNOSCALE argument: a bare factor ("2" → 2) or a ratio
+ * ("1:50" → 50, "2:1" → 0.5). Returns null for anything that is not a
+ * positive ratio — empty, non-numeric, zero or negative parts, a factor
+ * above MAX_ANNO_SCALE.
+ */
+export function parseAnnoScale(input: string): number | null {
+  const s = input.trim();
+  if (!s) return null;
+  const parts = s.split(":");
+  if (parts.length > 2) return null;
+  const nums = parts.map((p) => Number(p.trim()));
+  if (nums.some((n) => !Number.isFinite(n) || n <= 0)) return null;
+  const factor = parts.length === 2 ? nums[1] / nums[0] : nums[0];
+  return isValidAnnoScale(factor) ? factor : null;
+}
+
+/** Render a factor the way AutoCAD shows the scale: 50 → "1:50", 1 → "1:1", 0.5 → "2:1". */
+export function formatAnnoScale(scale: number): string {
+  const trim = (n: number): string => {
+    const s = String(Math.round(n * 1e6) / 1e6);
+    return s;
+  };
+  if (!Number.isFinite(scale) || scale <= 0) return "1:1";
+  return scale >= 1 ? `1:${trim(scale)}` : `${trim(1 / scale)}:1`;
+}
+
+/** Next scale in the status-bar cycle: the first listed factor above the current one, else back to 1. */
+export function nextAnnoScale(current: number): number {
+  return ANNO_SCALE_CYCLE.find((s) => s > current) ?? 1;
+}

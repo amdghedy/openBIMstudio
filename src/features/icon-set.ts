@@ -74,7 +74,8 @@ export type IconName =
   | "cut" | "paste" | "polygon" | "spline" | "ellipse" | "donut" | "point"
   | "hatch" | "wipeout" | "xline" | "ray" | "trim" | "extend" | "break"
   | "stretch" | "join" | "fillet" | "chamfer" | "explode" | "align"
-  | "matchprop" | "find" | "table" | "center-mark" | "dim-arclen"
+  | "matchprop" | "find" | "table" | "table-add-row" | "table-del-row"
+  | "table-add-col" | "table-del-col" | "table-style" | "center-mark" | "dim-arclen"
   | "dim-diameter" | "dim-baseline" | "dim-continue" | "dim-ordinate" | "ucs" | "purge"
   | "audit" | "layer-state" | "import" | "export" | "calc";
 
@@ -336,6 +337,12 @@ const PATHS: Record<IconName, string> = {
   matchprop: `<path d="M5 5 H13 V10 H5 Z"/><path d="M9 10 V15"/><rect x="7" y="15" width="10" height="5" rx="1"/><path d="M13 7.5 H19 M17 5.5 L19 7.5 L17 9.5"/>`,
   find: `<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15 L21 21"/><path d="M8 10.5 H13 M10.5 8 V13"/>`,
   table: `<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9.5 H21 M3 15 H21 M9 4 V20 M15 4 V20"/>`,
+  // 2D-7: table edit operations — the grid with a + / − row or column, or a shaded header.
+  "table-add-row": `<rect x="3" y="7" width="18" height="13" rx="1"/><path d="M3 12 H21 M9 7 V20 M15 7 V20"/><path d="M12 1.5 V5.5 M10 3.5 H14"/>`,
+  "table-del-row": `<rect x="3" y="7" width="18" height="13" rx="1"/><path d="M3 12 H21 M9 7 V20 M15 7 V20"/><path d="M10 3.5 H14"/>`,
+  "table-add-col": `<rect x="3" y="4" width="15" height="16" rx="1"/><path d="M3 9.5 H18 M3 15 H18 M9 4 V20"/><path d="M20 9 V13 M18 11 H22"/>`,
+  "table-del-col": `<rect x="3" y="4" width="15" height="16" rx="1"/><path d="M3 9.5 H18 M3 15 H18 M9 4 V20"/><path d="M18 11 H22"/>`,
+  "table-style": `<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9.5 H21 M3 15 H21 M9 4 V20 M15 4 V20" fill="currentColor" opacity="0.35"/>`,
   "center-mark": `<circle cx="12" cy="12" r="7"/><path d="M2.5 12 H21.5 M12 2.5 V21.5"/>`,
   "dim-arclen": `<path d="M4 18 A10 10 0 0 1 20 18"/><path d="M4 18 L5.5 13.5 M20 18 L18.5 13.5"/><path d="M9 10 Q12 12 15 10" stroke-dasharray="1.5 1.5" opacity="0.7"/>`,
   "dim-diameter": `<circle cx="12" cy="12" r="8"/><path d="M6.3 6.3 L17.7 17.7"/><path d="M6.3 6.3 L7.5 9 M6.3 6.3 L9 7.5 M17.7 17.7 L16.5 15 M17.7 17.7 L15 16.5"/>`,

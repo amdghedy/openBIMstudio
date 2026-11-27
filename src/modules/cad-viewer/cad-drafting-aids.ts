@@ -3,7 +3,7 @@
  * toggles).
  *
  * The CAD viewer's drafting aids (GRID, SNAP, OSNAP, ORTHO, POLAR,
- * OTRACK, DYN, LWT) used to live only as `let` bindings inside the
+ * OTRACK, DYN, LWT, DUCS) used to live only as `let` bindings inside the
  * per-tab engine closure in cad-viewer.ts, so the main-shell status bar
  * (`src/shell/status-bar.ts`) had no way to read or switch them — it
  * showed no toggles at all. This module is the single source of truth:
@@ -47,7 +47,8 @@ export type DraftingAidKey =
   | "polar"
   | "otrack"
   | "dyn"
-  | "lwt";
+  | "lwt"
+  | "ducs";
 
 export const DRAFTING_AID_KEYS: readonly DraftingAidKey[] = [
   "grid",
@@ -58,12 +59,13 @@ export const DRAFTING_AID_KEYS: readonly DraftingAidKey[] = [
   "otrack",
   "dyn",
   "lwt",
+  "ducs",
 ];
 
 /**
  * The viewer defaults, as declared in cad-viewer.ts (`buildEngine`):
  * OSNAP on, grid on, polar tracking on, OTRACK on, dynamic input on,
- * lineweight display on; grid snap and ortho off.
+ * lineweight display on, dynamic UCS on; grid snap and ortho off.
  */
 export const DRAFTING_AID_DEFAULTS: Readonly<Record<DraftingAidKey, boolean>> = {
   grid: true,
@@ -74,6 +76,13 @@ export const DRAFTING_AID_DEFAULTS: Readonly<Record<DraftingAidKey, boolean>> = 
   otrack: true,
   dyn: true,
   lwt: true,
+  // DUCS (Dynamic UCS) defaults ON, as in AutoCAD. In this 2D viewer
+  // DUCS is the switch itself — persisted, shown in both status bars,
+  // togglable from the command line (DUCS) and F6. The 3D face alignment
+  // it gates in AutoCAD has no 3D surface to act on here, so no geometry
+  // path reads the flag yet; the UCS-origin completion it would gate is
+  // not implemented either (the UCS prompt has no pick handler).
+  ducs: true,
 };
 
 export const DRAFTING_AIDS_EVENT = "obs:cad-drafting-aids";

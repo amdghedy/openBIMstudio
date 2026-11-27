@@ -168,6 +168,28 @@ export function setViewportClip(vp: DxfViewport, clip: BBox | null): DxfViewport
 }
 
 /**
+ * Per-viewport freeze (2D-6): set the layers hidden through this viewport
+ * only. Names are trimmed, de-duplicated (first occurrence wins) and empty
+ * entries dropped; an empty result clears the field. A locked viewport
+ * refuses, like scale and clip. The freeze itself is purely a visibility
+ * list — it never touches the layers' global frozen/off state.
+ */
+export function setViewportFrozenLayers(vp: DxfViewport, names: string[]): DxfViewport {
+  if (vp.locked) return vp;
+  const seen = new Set<string>();
+  const frozen = names.map((n) => n.trim()).filter((n) => n !== "" && !seen.has(n) && (seen.add(n), true));
+  if (!frozen.length) {
+    const { frozenLayers: _f, ...rest } = vp;
+    return rest;
+  }
+  return { ...vp, frozenLayers: frozen };
+}
+
+/** True when the named layer is frozen in this viewport only. */
+export const isLayerFrozenInViewport = (vp: DxfViewport, layer: string): boolean =>
+  (vp.frozenLayers ?? []).includes(layer);
+
+/**
  * Zoom inside a viewport at a screen point, the way the sheet view zooms at the
  * cursor: the model point under the cursor stays under it. `sheetScale` is the
  * sheet view's px-per-sheet-unit; `screenCenter` is the viewport's screen centre

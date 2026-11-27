@@ -3,6 +3,7 @@
  * No DOM, no THREE.
  */
 import type { DxfDocument, DxfEntity, DxfPoint, DxfUnits } from "./dxf-types";
+import { explodeTable, mirrorTable, tableCorners, tableHeight, tableTextHeight } from "./cad-table";
 
 const DEG = Math.PI / 180;
 
@@ -421,6 +422,39 @@ export function transformEntity(e: DxfEntity, m: InsertXform): DxfEntity[] {
         ...(e.text !== undefined ? { text: e.text } : {}),
         ...(e.textPoint ? { textPoint: xp(m, e.textPoint) } : {}),
       }];
+    case "TABLE": {
+      // A similarity (uniform scale, rotation, optional mirror) keeps the
+      // table a table: the frame rotates/reflects exactly, widths and
+      // heights scale, and a mirror reverses the rows (see mirrorTable).
+      // A non-uniform scale shears the rectangle into a parallelogram no
+      // TABLE can hold — explode to the exact loose grid + text instead.
+      if (uniform) {
+        const s = Math.abs(m.sx);
+        const rot = textAngleThrough(m, e.rotation ?? 0);
+        const h = tableHeight(e) * s;
+        const th = tableTextHeight(e) * s;
+        let position = xp(m, e.position);
+        let rowHeights = e.rowHeights.map((x) => x * s);
+        let cells = e.cells;
+        if (mirrored) {
+          const ra = rot * DEG;
+          position = { x: position.x - Math.sin(ra) * h, y: position.y + Math.cos(ra) * h, z: position.z ?? 0 };
+          rowHeights = [...rowHeights].reverse();
+          cells = [...cells].reverse().map((r) => [...r]);
+        }
+        const rotNorm = (((rot % 360) + 360) % 360 + 180) % 360 - 180;
+        return [{
+          ...base, type: "TABLE", position,
+          colWidths: e.colWidths.map((x) => x * s),
+          rowHeights,
+          cells: cells.map((r) => [...r]),
+          textHeight: th,
+          ...(Math.abs(rotNorm) > 1e-9 ? { rotation: rotNorm } : {}),
+          ...(e.headerRow ? { headerRow: true } : {}),
+        }];
+      }
+      return explodeTable(e).flatMap((part) => transformEntity(part, m));
+    }
   }
   return [];
 }
@@ -445,6 +479,7 @@ export function computeExtents(entities: DxfEntity[]): DxfDocument["extents"] | 
         for (const p of arcPoints(e.center.x, e.center.y, e.radius, e.startAngle * DEG, e.endAngle * DEG)) add(p.x, p.y);
         break;
       case "TEXT": case "POINT": add(e.position.x, e.position.y); break;
+      case "TABLE": for (const p of tableCorners(e)) add(p.x, p.y); break;
       case "DIMENSION":
         add(e.defPoint.x, e.defPoint.y);
         if (e.extOrigin1) add(e.extOrigin1.x, e.extOrigin1.y);
@@ -509,6 +544,10 @@ export function flipEntityX(e: DxfEntity): DxfEntity {
     case "RAY":
     case "XLINE": return { ...e, start: fp(e.start), direction: fp(e.direction) };
     case "TEXT": return { ...e, position: fp(e.position), rotation: 180 - (e.rotation ?? 0), align: e.align === "left" ? "right" : e.align === "right" ? "left" : e.align };
+    case "TABLE":
+      // Mirror across the Y axis (x -> -x): the frame reflects and the rows
+      // reverse so every cell keeps its world position (see mirrorTable).
+      return mirrorTable(e, { x: 0, y: 0 }, { x: 0, y: 1 });
     case "DIMENSION":
       return {
         ...e, defPoint: fp(e.defPoint),

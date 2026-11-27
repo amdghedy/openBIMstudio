@@ -7,6 +7,7 @@ import type { DxfDimStyle, DxfDocument, DxfEntity, DxfLayer, DxfLayout, DxfPoint
 import { ensureLinetypes, fontDxfFile, isTrueTypeFont, lineweightToDxf, linetypesInUse } from "./cad-styles";
 import { PAPER_MM, TEXT_LINE_PITCH } from "../cad-viewer/viewer-math";
 import { polylineBBox } from "./dxf-geometry";
+import { tableCorners, tableTextHeight } from "./cad-table";
 import { nativeIfValid, splineDxfBody, ellipseDxfBody } from "./native-curves";
 import type { DxfAttDef, DxfBlockDef, DxfInsert } from "./dxf-types";
 
@@ -92,8 +93,9 @@ function writePoint(codes: [number, number, number], p: DxfPoint): string {
 let handleSeq = 0x100;
 const nextHandle = (): string => (handleSeq++).toString(16).toUpperCase();
 
-function layerTable(layers: DxfLayer[]): string {
+function layerTable(layers: DxfLayer[]): { text: string; handles: Map<string, string> } {
   let s = "";
+  const handles = new Map<string, string>();
   s += pair(0, "TABLE");
   s += pair(2, "LAYER");
   s += pair(5, "2");
@@ -101,7 +103,11 @@ function layerTable(layers: DxfLayer[]): string {
   s += pair(70, layers.length);
   for (const layer of layers) {
     s += pair(0, "LAYER");
-    s += pair(5, nextHandle());
+    const handle = nextHandle();
+    // 2D-6: a viewport's per-viewport freeze (group 331) names layers by
+    // handle, so the handle of every layer is recorded here.
+    if (!handles.has(layer.name)) handles.set(layer.name, handle);
+    s += pair(5, handle);
     s += pair(100, "AcDbSymbolTableRecord");
     s += pair(100, "AcDbLayerTableRecord");
     s += pair(2, layer.name);
@@ -115,7 +121,7 @@ function layerTable(layers: DxfLayer[]): string {
     if (layer.plot === false) s += pair(290, 0);
   }
   s += pair(0, "ENDTAB");
-  return s;
+  return { text: s, handles };
 }
 
 function linetypeTable(defs: Record<string, number[]>): string {
@@ -218,6 +224,11 @@ function common(e: DxfEntity): string {
   if (e.rgb != null) s += pair(420, e.rgb & 0xffffff);
   if (e.ltScale != null && Math.abs(e.ltScale - 1) > 1e-9) s += pair(48, e.ltScale);
   if (e.transparency) s += pair(440, e.transparency << 24);
+  // 2D-8: elevation (38) and thickness (39) are AcDbEntity groups, so
+  // they ride in the common prologue for every entity type that carries
+  // them; only non-zero values are written.
+  if (e.elevation != null && e.elevation !== 0) s += pair(38, e.elevation);
+  if (e.thickness != null && e.thickness !== 0) s += pair(39, e.thickness);
   return s;
 }
 
@@ -306,8 +317,8 @@ function inPaperSpace(rec: string): string {
   return rec.replace(/^(0\n[^\n]+\n5\n[0-9A-F]+\n100\nAcDbEntity\n)/, "$167\n1\n");
 }
 
-/** VIEWPORT entity; returns the written text plus its handle (null in the legacy form, which has none). A8: a locked viewport carries group 90 bit 16384; a clipped viewport carries group 340 pointing at its clip-boundary entity. */
-function writeViewport(vp: DxfViewport, id: number, clipHandle?: string | null): { text: string; handle: string | null } {
+/** VIEWPORT entity; returns the written text plus its handle (null in the legacy form, which has none). A8: a locked viewport carries group 90 bit 16384; a clipped viewport carries group 340 pointing at its clip-boundary entity. 2D-6: a per-viewport freeze carries group 331 per frozen layer (soft-pointer handle to the LAYER object); names with no layer handle are dropped. */
+function writeViewport(vp: DxfViewport, id: number, clipHandle?: string | null, layerHandles?: Map<string, string>): { text: string; handle: string | null } {
   let handle: string | null = null;
   let s = pair(0, "VIEWPORT");
   if (legacyPrologue) {
@@ -335,6 +346,13 @@ function writeViewport(vp: DxfViewport, id: number, clipHandle?: string | null):
   if (clipHandle) s += pair(340, clipHandle);
   // A8: viewport zoom lock — DXF reference, VIEWPORT group 90 bit 16384.
   if (vp.locked) s += pair(90, 16384);
+  // 2D-6: per-viewport freeze — DXF reference, VIEWPORT group 331, one
+  // soft-pointer handle per frozen layer. Stale names (no layer handle)
+  // are dropped rather than written as dangling pointers.
+  for (const name of vp.frozenLayers ?? []) {
+    const h = layerHandles?.get(name);
+    if (h) s += pair(331, h);
+  }
   return { text: s, handle };
 }
 
@@ -635,7 +653,49 @@ function writeEntity(e: DxfEntity, styleName: (t: Extract<DxfEntity, { type: "TE
     // block holds this dimension's drawn geometry); without one the entity
     // still carries its definition points for the native fallback.
     s += writeDimensionEntity(e, dimBlockByEntity?.get(e));
+  } else if (e.type === "TABLE") {
+    s += writeTableEntity(e);
   }
+  return s;
+}
+
+/**
+ * Real ACAD_TABLE (Autodesk DXF reference, AcDbTable): insertion point (10),
+ * horizontal direction (11), row/column counts (91/92), row heights (141,
+ * one per row), column widths (142, one per column), then one cell record
+ * per cell in row-major order (171 text type, 172-176 flags, 91 override,
+ * 178 virtual edge, 145 rotation, 1 text — empty cells still emit group 1
+ * so the reader can align texts with cells), then the table-level
+ * overrides (281 header suppressed, 140 text height). No TABLESTYLE handle
+ * (342) and no anonymous *T block (2/343) are written: this file carries
+ * no TABLESTYLE table and no *T block definition, so those pointers would
+ * dangle — native CAD and ezdxf read the geometry and text from the
+ * groups above, and merged cells are not represented.
+ */
+function writeTableEntity(e: Extract<DxfEntity, { type: "TABLE" }>): string {
+  const rows = e.rowHeights.length, cols = e.colWidths.length;
+  const rot = ((e.rotation ?? 0) * Math.PI) / 180;
+  let s = entityHead(e, "ACAD_TABLE");
+  if (!legacyPrologue) s += pair(100, "AcDbBlockReference");
+  s += writePoint([10, 20, 30], e.position);
+  if (!legacyPrologue) s += pair(100, "AcDbTable");
+  s += pair(280, 0); // table data version: 0 = 2010
+  s += writePoint([11, 21, 31], { x: Math.cos(rot), y: Math.sin(rot), z: 0 });
+  s += pair(90, 0);
+  s += pair(91, rows);
+  s += pair(92, cols);
+  s += pair(93, 0) + pair(94, 0) + pair(95, 0) + pair(96, 0);
+  for (const h of e.rowHeights) s += pair(141, h);
+  for (const w of e.colWidths) s += pair(142, w);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      s += pair(171, 1) + pair(172, 0) + pair(173, 0) + pair(174, 0) + pair(175, 1) + pair(176, 1);
+      s += pair(91, 0) + pair(178, 0) + pair(145, 0);
+      s += pair(1, e.cells[r]?.[c] ?? "");
+    }
+  }
+  s += pair(281, e.headerRow ? 0 : 1);
+  s += pair(140, tableTextHeight(e));
   return s;
 }
 
@@ -671,6 +731,8 @@ function computeExtents(entities: DxfEntity[]): { min: DxfPoint; max: DxfPoint }
       if (e.curvePoint) add(e.curvePoint);
       if (e.leaderEnd) add(e.leaderEnd);
       if (e.textPoint) add(e.textPoint);
+    } else if (e.type === "TABLE") {
+      for (const p of tableCorners(e)) add(p);
     } else if (e.type === "RAY" || e.type === "XLINE") {
       // Native behaviour: infinite lines do not define the drawing extents.
     }
@@ -891,7 +953,8 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
   s += pair(0, "SECTION");
   s += pair(2, "TABLES");
   s += linetypeTable(defs);
-  s += layerTable(layers);
+  const layerTableOut = layerTable(layers);
+  s += layerTableOut.text;
   s += styles.table;
   // The style names a DIMENSION's group 3 can reference; only written when
   // the file actually carries dimensions, so dimension-free saves are
@@ -927,7 +990,7 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
         // A8: the clip boundary is written before the viewport that points at it.
         const clip = vp.clip ? writeClipBoundary(vp.clip) : null;
         if (clip) s += clip.text;
-        s += writeViewport(vp, k + 2, clip?.handle).text;
+        s += writeViewport(vp, k + 2, clip?.handle, layerTableOut.handles).text;
       });
       s += pair(0, "ENDBLK") + pair(5, nextHandle()) + pair(100, "AcDbEntity") + pair(67, 1) + pair(8, "0") + pair(100, "AcDbBlockEnd");
     });
@@ -964,7 +1027,7 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
       // A8: the clip boundary is written before the viewport that points at it.
       const clip = vp.clip ? writeClipBoundary(vp.clip) : null;
       if (clip) s += clip.text;
-      const w = writeViewport(vp, i + 2, clip?.handle);
+      const w = writeViewport(vp, i + 2, clip?.handle, layerTableOut.handles);
       s += w.text;
       if (w.handle) firstLayoutViewportHandles.push(w.handle);
     });

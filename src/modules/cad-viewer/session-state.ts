@@ -17,6 +17,8 @@ export interface SessionUi {
   otrackOn?: boolean;
   dynOn?: boolean;
   lwtOn?: boolean;
+  /** Annotation scale factor (2D-30, CANNOSCALE): text, leaders and dimension arrowheads render at this scale. 1 = no scaling. */
+  annoScale?: number;
   showGrid?: boolean;
   showText?: boolean;
   showHatch?: boolean;
@@ -46,6 +48,7 @@ export function sanitizeSessionUi(raw: unknown, bgOptions: readonly string[], sn
   if (typeof r.cmode === "string" && (MODES as string[]).includes(r.cmode)) out.cmode = r.cmode as SessionColorMode;
   for (const k of BOOLS) if (typeof r[k] === "boolean") out[k] = r[k] as boolean;
   if (typeof r.polarAngle === "number" && Number.isFinite(r.polarAngle) && r.polarAngle > 0 && r.polarAngle <= 180) out.polarAngle = r.polarAngle;
+  if (typeof r.annoScale === "number" && Number.isFinite(r.annoScale) && r.annoScale > 0 && r.annoScale <= 10000) out.annoScale = r.annoScale;
   const sm = strArr(r.snapModes, 40); if (sm) out.snapModes = sm.filter((k) => snapKinds.includes(k));
   const tf = strArr(r.typeFilter, 60); if (tf) out.typeFilter = tf;
   if (Array.isArray(r.propFilter)) {
