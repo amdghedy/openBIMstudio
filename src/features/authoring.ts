@@ -8108,7 +8108,7 @@ export function setupAuthoring() {
 
   function handleAuthoringCancel(): boolean {
     try {
-      if ((window as any).__obsPlanVisible?.()) return false;
+      if ((ctx.features as any).planVisible?.()) return false;
     } catch { /* */ }
 
     const hasSomething =
@@ -8161,7 +8161,7 @@ export function setupAuthoring() {
     const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
     if (tag === "input" || tag === "textarea" || (e.target as HTMLElement)?.isContentEditable) return;
 
-    try { if ((window as any).__obsPlanVisible?.()) return; } catch { /* */ }
+    try { if ((ctx.features as any).planVisible?.()) return; } catch { /* */ }
 
     // ── Numeric entry during a grip drag: Enter commits precisely ──
     // Digits typed while a grip is dragged land in AccuDraw's typed buffer

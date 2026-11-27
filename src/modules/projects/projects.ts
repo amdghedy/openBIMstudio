@@ -284,11 +284,11 @@ export async function saveProject(silent = false) {
     } catch (e) { console.warn("[projects] documentation snapshot failed", e); }
 
     try {
-      const pd = (window as any).__obsPlanDims?.serialize?.();
+      const pd = (ctx.features as any).planDims?.serialize?.();
       if (Array.isArray(pd)) current.planDimensions = pd;
-      const pa = (window as any).__obsPlanAnno?.serialize?.();
+      const pa = (ctx.features as any).planAnno?.serialize?.();
       if (pa) current.planAnnotations = pa;
-      const pr = (window as any).__obsPlanRegions?.serialize?.();
+      const pr = (ctx.features as any).planRegions?.serialize?.();
       if (Array.isArray(pr)) current.planRegions2d = pr;
     } catch { /* plan dimensions optional */ }
 
@@ -689,15 +689,15 @@ export async function openProject(id: string) {
       }
     } catch (e) { console.warn("[projects] documentation restore failed", e); }
     try {
-      const pdApi = (window as any).__obsPlanDims;
+      const pdApi = (ctx.features as any).planDims;
       if (pdApi?.load) pdApi.load(doc.planDimensions ?? []);
-      else (window as any).__obsPendingPlanDims = doc.planDimensions ?? [];
-      const paApi = (window as any).__obsPlanAnno;
+      else (ctx.features as any).pendingPlanDims = doc.planDimensions ?? [];
+      const paApi = (ctx.features as any).planAnno;
       if (paApi?.load) paApi.load(doc.planAnnotations ?? null);
-      else (window as any).__obsPendingPlanAnno = doc.planAnnotations ?? null;
-      const prApi = (window as any).__obsPlanRegions;
+      else (ctx.features as any).pendingPlanAnno = doc.planAnnotations ?? null;
+      const prApi = (ctx.features as any).planRegions;
       if (prApi?.load) prApi.load((doc as any).planRegions2d ?? []);
-      else (window as any).__obsPendingPlanRegions = (doc as any).planRegions2d ?? [];
+      else (ctx.features as any).pendingPlanRegions = (doc as any).planRegions2d ?? [];
     } catch { /* */ }
 
     // If no saved offsets, apply the saved positioning mode instead.

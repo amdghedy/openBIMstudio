@@ -93,7 +93,7 @@ function blocked(): boolean {
     }
   }
   try {
-    if ((window as any).__obsPlanVisible?.()) return true;
+    if ((ctx.features as any).planVisible?.()) return true;
     if (ctx.features?.drawing?.isActive?.()) return true;
     if (ctx.features?.walkMode?.isEnabled?.()) return true;
   } catch {

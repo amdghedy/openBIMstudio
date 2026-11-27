@@ -146,7 +146,7 @@ export function registerDefaultShortcuts(): void {
     handler: async () => {
       // Floor Plan owns Esc when open
       try {
-        if ((window as any).__obsPlanVisible?.()) return;
+        if ((ctx.features as any).planVisible?.()) return;
       } catch { /* */ }
       try {
         if ((window as any).__obsCadOwnsEsc?.()) return;
