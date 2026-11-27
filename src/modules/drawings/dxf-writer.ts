@@ -11,6 +11,22 @@ import { tableCorners, tableTextHeight } from "./cad-table";
 import { nativeIfValid, splineDxfBody, ellipseDxfBody } from "./native-curves";
 import type { DxfAttDef, DxfBlockDef, DxfInsert } from "./dxf-types";
 
+/** 2D-20: dynamic-block parameter values ride on the INSERT as XDATA.
+ * One group 1000 per parameter, `DYN:` + a JSON `{id, v}` object — the
+ * value is number|string|boolean, exactly the dynValues type. XDATA app
+ * is OPENBIMSTUDIO (registered in the APPID table by appIdTable when any
+ * INSERT carries values). Sorted keys, so the output is deterministic. */
+const DYN_XDATA_APP = "OPENBIMSTUDIO";
+function dynXData(e: DxfInsert): string {
+  const vals = e.dynValues;
+  if (!vals) return "";
+  const keys = Object.keys(vals).sort();
+  if (!keys.length) return "";
+  let s = pair(1001, DYN_XDATA_APP);
+  for (const k of keys) s += pair(1000, `DYN:${JSON.stringify({ id: k, v: vals[k] })}`);
+  return s;
+}
+
 /** INSERT with its ATTRIB records and SEQEND (DXF requires them to directly follow the INSERT). */
 function writeInsert(e: DxfInsert): string {
   const attrs = e.attributes ?? [];
@@ -25,6 +41,8 @@ function writeInsert(e: DxfInsert): string {
   if ((e.columns ?? 1) > 1 || (e.rows ?? 1) > 1) {
     s += pair(70, e.columns ?? 1) + pair(71, e.rows ?? 1) + pair(44, e.columnSpacing ?? 0) + pair(45, e.rowSpacing ?? 0);
   }
+  // 2D-20: XDATA goes after the standard groups, before any ATTRIB records.
+  s += dynXData(e);
   if (attrs.length) {
     for (const a of attrs) {
       let t = pair(0, "ATTRIB");
@@ -61,6 +79,17 @@ function writeBlockDef(b: DxfBlockDef, styleName: (t: Extract<DxfEntity, { type:
   for (const e of b.entities) s += writeEntity(e, styleName, hatches);
   s += pair(0, "ENDBLK") + pair(5, nextHandle()) + pair(100, "AcDbEntity") + pair(8, "0") + pair(100, "AcDbBlockEnd");
   return s;
+}
+
+/** 2D-20: APPID registration for the OPENBIMSTUDIO XDATA application.
+ * DXF readers that honour XDATA look the application up here; without the
+ * table a strict reader may drop the values. Only written when the file
+ * actually carries dynValues, so dynValues-free saves are byte-identical
+ * to before. */
+function appIdTable(): string {
+  let s = pair(0, "TABLE") + pair(2, "APPID") + pair(5, nextHandle()) + pair(100, "AcDbSymbolTable") + pair(70, 1);
+  s += pair(0, "APPID") + pair(5, nextHandle()) + pair(100, "AcDbSymbolTableRecord") + pair(100, "AcDbRegAppTableRecord") + pair(2, DYN_XDATA_APP) + pair(70, 0);
+  return s + pair(0, "ENDTAB");
 }
 
 function blockRecordTable(
@@ -956,6 +985,12 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
   const layerTableOut = layerTable(layers);
   s += layerTableOut.text;
   s += styles.table;
+  // 2D-20: register the XDATA application only when the file actually
+  // carries dynamic-block values (model, layouts, or block bodies).
+  const hasDynValues = [...doc.entities, ...(doc.layouts ?? []).flatMap((l) => l.entities), ...userBlocks.flatMap((b) => b.entities)].some(
+    (e) => e.type === "INSERT" && e.dynValues && Object.keys(e.dynValues).length > 0,
+  );
+  if (hasDynValues) s += appIdTable();
   // The style names a DIMENSION's group 3 can reference; only written when
   // the file actually carries dimensions, so dimension-free saves are
   // byte-identical to before.

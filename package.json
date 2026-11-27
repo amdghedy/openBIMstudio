@@ -335,6 +335,7 @@
     "test:cad-space-add-a9": "node tests/cad-space-add-a9.test.cjs",
     "test:cad-block-edit-a9": "node tests/cad-block-edit-a9.test.cjs",
     "test:cad-dynblock-a9": "node tests/cad-dynblock-a9.test.cjs",
+    "test:cad-dynvalues-xdata": "node tests/cad-dynvalues-xdata.test.cjs",
     "test:cad-layout-plot-a20": "node tests/cad-layout-plot-a20.test.cjs",
     "test:dead-code-a14": "node tests/dead-code-a14.test.cjs",
     "test:autocad-parity": "node tests/autocad-parity.test.cjs",

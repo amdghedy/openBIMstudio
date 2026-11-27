@@ -166,6 +166,31 @@ function dxfTransparency(v: number): number {
   return Math.max(0, Math.min(90, Math.round(pct)));
 }
 
+/**
+ * 2D-20: dynamic-block parameter values persisted as XDATA on the INSERT
+ * (writer: dxf-writer.ts `dynXData`, app OPENBIMSTUDIO, one group 1000
+ * `DYN:{id, v}` per parameter). Only XDATA under our own application is
+ * read, and only well-formed `DYN:` strings with a finite number, string
+ * or boolean value — foreign XDATA and malformed strings are ignored, so
+ * a hostile or third-party file cannot inject parameter values.
+ */
+export const DYN_XDATA_APP = "OPENBIMSTUDIO";
+export function parseDynXData(d: Data): Record<string, number | string | boolean> | undefined {
+  if (!d.all(1001).includes(DYN_XDATA_APP)) return undefined;
+  const out: Record<string, number | string | boolean> = {};
+  for (const s of d.all(1000)) {
+    if (!s.startsWith("DYN:")) continue;
+    try {
+      const o = JSON.parse(s.slice(4)) as { id?: unknown; v?: unknown };
+      if (!o || typeof o !== "object" || typeof o.id !== "string" || !o.id) continue;
+      const v = o.v;
+      if (typeof v === "number" && Number.isFinite(v)) out[o.id] = v;
+      else if (typeof v === "string" || typeof v === "boolean") out[o.id] = v;
+    } catch { /* malformed XDATA string — ignore that value */ }
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 function headerUnits(pairs: Pair[]): DxfUnits | undefined {
   for (let i = 0; i < pairs.length - 1; i++) {
     if (pairs[i].code === 9 && pairs[i].value.trim().toUpperCase() === "$INSUNITS") {
@@ -1211,12 +1236,14 @@ function expandRecs(
           let sy = d.n(42, 1);
           if (isMirroredOcs(d.n(210), d.n(220), d.n(230, 1))) { pos = { ...pos, x: -pos.x }; rotation = 180 - rotation; sy = -sy; }
           const cols = Math.max(1, Math.min(500, Math.round(d.n(70, 1)))), rws = Math.max(1, Math.min(500, Math.round(d.n(71, 1))));
+          const dynValues = parseDynXData(d);
           push({
             ...c, type: "INSERT", name, position: pos,
             scale: { x: d.n(41, 1), y: sy, z: d.n(43, 1) },
             ...(rotation ? { rotation } : {}),
             ...(cols > 1 || rws > 1 ? { columns: cols, rows: rws, columnSpacing: d.n(44), rowSpacing: d.n(45) } : {}),
             ...(attributes.length ? { attributes } : {}),
+            ...(dynValues ? { dynValues } : {}),
           } as DxfEntity);
           break;
         }

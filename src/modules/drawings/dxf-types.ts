@@ -344,8 +344,13 @@ export type DxfInsert = DxfEntityBase & {
   /**
    * Dynamic-block parameter values on this reference (A9): per-instance
    * overrides of the definition's default parameter values, by parameter
-   * id. Absent = the definition's defaults. Not written to DXF/DWG yet
-   * (follow-up: persist in XDATA) — in-session only.
+   * id. Absent = the definition's defaults. Persisted in DXF as XDATA
+   * (2D-20, app OPENBIMSTUDIO, one `DYN:{id, v}` string per value) and
+   * read back by the TS reader, so QSAVE/DXF round-trips. The DWG leg
+   * still loses them: the acadrust converter expands INSERTs into their
+   * block-body geometry on read-back (probed 2026-11-27, no INSERT and
+   * no block table survive), so there is no reference left to carry the
+   * values — Rust-side, out of reach.
    */
   dynValues?: Record<string, number | string | boolean>;
 };
