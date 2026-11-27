@@ -571,6 +571,6 @@ export function setupVgDialog(): void {
       openVgDialog();
     }
   });
-  (window as Any).__obsOpenVgDialog = openVgDialog;
+  (window as Any).__OBS_CTX__.features.openVgDialog = openVgDialog;
   console.log("[view-templates] VG dialog ready — Ctrl+Shift+V");
 }

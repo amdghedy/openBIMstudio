@@ -207,7 +207,7 @@ export async function setupCriticalGapsUI(): Promise<void> {
 
   // -- LOD / Perf / Collab (kept) ------------------------------------
   const lodBtn = makeButton("obs-adv-lod", "[L] LOD", "Toggle LOD culling", () => {
-    const l = (window as Any).__obsLodManager;
+    const l = (ctx.features as Any).lodManager;
     if (!l) { flash(lodBtn, "[!]"); return; }
     const on = !!l.setEnabled?.(!l.isEnabled?.());
     lodBtn.textContent = on ? "[L] LOD: ON" : "[L] LOD: OFF";
