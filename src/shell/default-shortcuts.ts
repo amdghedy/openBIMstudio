@@ -332,17 +332,17 @@ export function registerDefaultShortcuts(): void {
   /* ── v0.66 view-crop shortcuts ─────────────────────────────────────── */
   shortcuts.register({
     id: "view.selection-box", label: "Selection Box (3D)", keys: "ctrl+shift+b", category: "view",
-    handler: () => { (window as any).__obsSelectionBox?.show?.({ padding: 0.5 }); },
+    handler: () => { (ctx.features as any).selectionBox?.show?.({ padding: 0.5 }); },
   });
   shortcuts.register({
     id: "view.crop-to-selection", label: "Crop to Selection (2D)", keys: "ctrl+shift+r", category: "view",
-    handler: () => { (window as any).__obsSelectionBox?.cropTo?.({ padding: 1.0 }); },
+    handler: () => { (ctx.features as any).selectionBox?.cropTo?.({ padding: 1.0 }); },
   });
   // NOTE: Ctrl+Shift+Z is reserved for Redo (see "redo-ctrl-shift-z" above).
   // Zoom-to-selection uses Ctrl+Shift+F so it never steals Redo.
   shortcuts.register({
     id: "view.zoom-selection", label: "Zoom to Selection", keys: "ctrl+shift+f", category: "view",
-    handler: () => { (window as any).__obsSelectionBox?.zoom?.(); },
+    handler: () => { (ctx.features as any).selectionBox?.zoom?.(); },
   });
   shortcuts.register({
     id: "view.section-box-toggle", label: "Section Box (toggle)", keys: "ctrl+b", category: "view",
@@ -354,11 +354,11 @@ export function registerDefaultShortcuts(): void {
   });
   shortcuts.register({
     id: "view.isolate", label: "Isolate Selection", keys: "ctrl+i", category: "view",
-    handler: () => { (window as any).__obsSelectionBox?.isolate?.(); },
+    handler: () => { (ctx.features as any).selectionBox?.isolate?.(); },
   });
   shortcuts.register({
     id: "view.reset-isolation", label: "Reset Isolation", keys: "ctrl+shift+i", category: "view",
-    handler: () => { (window as any).__obsSelectionBox?.resetIsolation?.(); },
+    handler: () => { (ctx.features as any).selectionBox?.resetIsolation?.(); },
   });
   shortcuts.register({
     id: "view.tools-manager", label: "View Tools Manager", keys: "ctrl+shift+v", category: "view",

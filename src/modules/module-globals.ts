@@ -1,9 +1,9 @@
 /**
- * Module globals — exposes the feature modules on `window.__obs*` for the ribbon,
- * console and other modules to consume without a hard import.
- *
- * Each global is wrapped in a lazy-load try/catch so a failure in one module
- * does not break ribbon actions elsewhere.
+ * Module feature APIs — registers the feature modules on ctx.features for the
+ * ribbon and other modules to consume without a hard import. (History: every
+ * one of these used to be a window-global stash; the last of them moved to
+ * ctx.features on 2026-11-27. Unreachable features — point cloud, ramp — are
+ * typed command-palette commands instead.)
  */
 
 import * as THREE from "three";
@@ -101,7 +101,6 @@ import {
   getSelectionWorldBox, getSelectionViewBbox, computeElementsBbox,
 } from "../features/selection-box";
 
-const w = window as any;
 
 function toast(msg: string, kind: "info" | "warn" | "success" = "info") {
   // The legacy notify window-globals never had a producer (and this called
@@ -409,7 +408,7 @@ void servicesReady("commandPalette").then((palette) => {
 };
 
 // ── Selection Box — auto-fit section box / crop region to selection ──────
-w.__obsSelectionBox = {
+(ctx.features as any).selectionBox = {
   show: (opts?: any) => showSelectionBox(opts ?? { padding: 0.5 }),
   cropTo: (opts?: any) => cropToSelection(opts ?? { padding: 1.0 }),
   zoom: () => zoomToSelection(),
@@ -428,4 +427,4 @@ w.__obsSelectionBox = {
   },
 };
 
-console.log("[obs] v40 module globals registered: selection-box");
+console.log("[obs] module feature APIs registered on ctx.features (+ palette commands: point cloud, ramp)");

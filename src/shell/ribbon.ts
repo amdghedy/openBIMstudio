@@ -2391,19 +2391,19 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Selection"),
       b("section-box", "Sel. Box", safe(() => {
-        (window as any).__obsSelectionBox?.show?.({ padding: 0.5 });
+        (ctx.features as any).selectionBox?.show?.({ padding: 0.5 });
       }, "Selection box"), { kbd: "^⇧B", title: "Wrap a 3D section box tightly around the selected element(s) — Ctrl+Shift+B" }),
       b("crop", "Crop to Sel", safe(() => {
-        (window as any).__obsSelectionBox?.cropTo?.({ padding: 1.0 });
+        (ctx.features as any).selectionBox?.cropTo?.({ padding: 1.0 });
       }, "Crop to selection"), { kbd: "^⇧R", title: "Auto-fit the 2D crop region of the active plan view to the selected element(s) — Ctrl+Shift+R" }),
       b("fit", "Zoom Sel", safe(() => {
-        (window as any).__obsSelectionBox?.zoom?.();
+        (ctx.features as any).selectionBox?.zoom?.();
       }, "Zoom to selection"), { kbd: "^⇧Z", title: "Fit camera frustum to selected element(s) — Ctrl+Shift+Z" }),
       b("isolate", "Isolate", safe(() => {
-        (window as any).__obsSelectionBox?.isolate?.();
+        (ctx.features as any).selectionBox?.isolate?.();
       }, "Isolate"), { kbd: "^I", title: "Hide everything except the selected element(s) — Ctrl+I" }),
       b("isolate", "Reset Iso", safe(() => {
-        (window as any).__obsSelectionBox?.resetIsolation?.();
+        (ctx.features as any).selectionBox?.resetIsolation?.();
       }, "Reset isolation"), { kbd: "^⇧I", title: "Restore all hidden elements — Ctrl+Shift+I" }),
       b("view", "Dependent", safe(() => {
         (ctx.features as any).dependentViews?.create?.("primary-view-1", { name: "Dependent View 1" });
