@@ -10949,16 +10949,30 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     if (gripDrag) {
       const after = ents[gripDrag.i];
       if (gripDrag.moved && after && after !== gripDrag.orig) {
-        const ext = withAssociativeDims([gripDrag.orig], [after]);
-        for (let i = 0; i < ext.before.length; i++) replaceEntity(ext.before[i], ext.after[i]);
-        pushUndoAct({ type: "modify", before: ext.before, after: ext.after });
-        markDirty();
-        redoStack.length = 0;
-        const nb = M.entityBBox(after);
-        if (nb) bounds = bounds ? M.unionBBox(bounds, nb) : nb;
-        rebuildIndex();
-        showProps();
-        logCmd("Grip edit: object updated (Ctrl+Z to undo).");
+        // 2D-33: re-check the lock at release. The start gate (gripAt →
+        // pickable) only proves the layer was unlocked when the drag
+        // began; the layer can be locked — or the entity hidden — while
+        // the drag is in flight (gripDrag holds the index independently
+        // of the selection, so pruneLockedFromSel does not stop it).
+        // Aborting restores the pre-drag geometry and writes nothing to
+        // the locked layer, instead of committing the edit.
+        if (!pickable(after)) {
+          ents[gripDrag.i] = gripDrag.orig;
+          logCmd(
+            `Grip edit aborted — the object${isLayerLocked(after.layer) ? `'s layer "${after.layer}" was locked` : " was hidden"} during the drag.`,
+          );
+        } else {
+          const ext = withAssociativeDims([gripDrag.orig], [after]);
+          for (let i = 0; i < ext.before.length; i++) replaceEntity(ext.before[i], ext.after[i]);
+          pushUndoAct({ type: "modify", before: ext.before, after: ext.after });
+          markDirty();
+          redoStack.length = 0;
+          const nb = M.entityBBox(after);
+          if (nb) bounds = bounds ? M.unionBBox(bounds, nb) : nb;
+          rebuildIndex();
+          showProps();
+          logCmd("Grip edit: object updated (Ctrl+Z to undo).");
+        }
       } else {
         ents[gripDrag.i] = gripDrag.orig; // click without drag — nothing changed
       }
@@ -10975,16 +10989,23 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         if (dg.scope === "instance" && dynDrag.origIns) {
           const after = ents[dg.i] as DxfInsert | undefined;
           if (after && after !== dynDrag.origIns) {
-            const ext = withAssociativeDims([dynDrag.origIns], [after]);
-            for (let i = 0; i < ext.before.length; i++) replaceEntity(ext.before[i], ext.after[i]);
-            pushUndoAct({ type: "modify", before: ext.before, after: ext.after });
-            markDirty();
-            redoStack.length = 0;
-            rebuildIndex();
-            showProps();
-            const set = dynParamStore.get(after.name);
-            const cur = set ? resolvedDynValues(set, after.dynValues)[dg.param.id] : undefined;
-            logCmd(`Dynamic block "${after.name}": ${dg.param.name} = ${String(cur ?? "")} (Ctrl+Z to undo).`);
+            // 2D-33, same guard as the grip-drag release: the instance's
+            // layer can be locked while the parameter drag is in flight.
+            if (!pickable(after)) {
+              ents[dg.i] = dynDrag.origIns;
+              logCmd(`Dynamic block "${after.name}": drag aborted — the instance's layer "${after.layer}" was locked during the drag.`);
+            } else {
+              const ext = withAssociativeDims([dynDrag.origIns], [after]);
+              for (let i = 0; i < ext.before.length; i++) replaceEntity(ext.before[i], ext.after[i]);
+              pushUndoAct({ type: "modify", before: ext.before, after: ext.after });
+              markDirty();
+              redoStack.length = 0;
+              rebuildIndex();
+              showProps();
+              const set = dynParamStore.get(after.name);
+              const cur = set ? resolvedDynValues(set, after.dynValues)[dg.param.id] : undefined;
+              logCmd(`Dynamic block "${after.name}": ${dg.param.name} = ${String(cur ?? "")} (Ctrl+Z to undo).`);
+            }
           }
         } else if (dg.scope === "session" && blockEdit) {
           saveDynParamSet(blockEdit.session.name);
