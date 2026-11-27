@@ -70,7 +70,7 @@ function cancelActiveOperation(): boolean {
   const W = w();
 
   // 1) drafting overlay (left-mouse tool)
-  const d = W.__obsDrafting2D;
+  const d = (ctx.features as any).drafting2D;
   if (d && typeof d.getTool === "function" && d.getTool()) {
     d.setTool(null);
     canceled = true;

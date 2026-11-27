@@ -87,13 +87,13 @@ export async function setupCriticalGapsUI(): Promise<void> {
 
   // -- Original advanced tools ---------------------------------------
   const draftBtn = makeButton("obs-adv-draft", "[D] 2D Draft", "Toggle 2D drafting overlay", () => {
-    const d = (window as Any).__obsDrafting2D;
+    const d = (ctx.features as Any).drafting2D;
     if (!d) { flash(draftBtn, "[!] Draft"); return; }
     const active = !!d.getTool?.();
     d.setTool(active ? null : "line");
   });
   const refreshDraft = (): void => {
-    const d = (window as Any).__obsDrafting2D;
+    const d = (ctx.features as Any).drafting2D;
     const active = !!d?.getTool?.();
     draftBtn.textContent = active ? "[D] Draft: ON" : "[D] 2D Draft";
     draftBtn.dataset.active = active ? "1" : "0";

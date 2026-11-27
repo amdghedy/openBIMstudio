@@ -460,7 +460,7 @@ function onKey(e: KeyboardEvent): void {
 /** Push simplified entities into drafting-2d for sheet export compatibility. */
 function syncDrafting(): void {
   try {
-    const d = (window as Any).__obsDrafting2D;
+    const d = (ctx.features as Any).drafting2D;
     if (d?.loadEntities) {
       d.loadEntities(cadEngine.toDraftEntities());
     }
@@ -481,7 +481,7 @@ function setTool(tool: CadTool, label: string): void {
   }
   // Also mirror simple tools onto drafting-2d for dual-path
   try {
-    const d = (window as Any).__obsDrafting2D;
+    const d = (ctx.features as Any).drafting2D;
     if (d?.setTool) {
       const map: Record<string, string | null> = {
         line: "line",

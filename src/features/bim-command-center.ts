@@ -269,7 +269,7 @@ function buildBody(host: HTMLElement): void {
         toast("Work plane: Front (XZ)", "success");
       }, !!(ctx.features as Any).refPlanes),
       btn("2D Draft", "Toggle overlay", () => {
-        const d = (window as Any).__obsDrafting2D;
+        const d = (ctx.features as Any).drafting2D;
         if (!d) {
           toast("Drafting not ready", "warn");
           return;
