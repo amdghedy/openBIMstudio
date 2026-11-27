@@ -1321,23 +1321,23 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Connections"),
       b("conn", "Moment", safe(() => {
-        (window as any).__obsStructuralConnection?.build?.({ type: "moment-flange-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
+        (ctx.features as any).structuralConnection?.build?.({ type: "moment-flange-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
         toast("Moment flange-plate connection placed", "success");
       }, "Moment connection"), { title: "Moment flange-plate connection" }),
       b("conn", "Shear", safe(() => {
-        (window as any).__obsStructuralConnection?.build?.({ type: "shear-end-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
+        (ctx.features as any).structuralConnection?.build?.({ type: "shear-end-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
         toast("Shear end-plate connection placed", "success");
       }, "Shear connection"), { title: "Shear end-plate connection" }),
       b("conn", "Base Plate", safe(() => {
-        (window as any).__obsStructuralConnection?.build?.({ type: "base-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
+        (ctx.features as any).structuralConnection?.build?.({ type: "base-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
         toast("Base-plate connection placed", "success");
       }, "Base plate"), { title: "Column base-plate connection" }),
       b("conn", "Cap Plate", safe(() => {
-        (window as any).__obsStructuralConnection?.build?.({ type: "cap-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
+        (ctx.features as any).structuralConnection?.build?.({ type: "cap-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
         toast("Cap-plate connection placed", "success");
       }, "Cap plate"), { title: "Column cap-plate connection" }),
       b("conn", "Splice", safe(() => {
-        (window as any).__obsStructuralConnection?.build?.({ type: "splice-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
+        (ctx.features as any).structuralConnection?.build?.({ type: "splice-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
         toast("Splice-plate connection placed", "success");
       }, "Splice"), { title: "Column-to-column splice-plate connection" }),
       sep(),

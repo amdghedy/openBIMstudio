@@ -196,7 +196,7 @@ void servicesReady("commandPalette").then((palette) => {
 };
 
 // ── Structural Connection ─────────────────────────────────────────────────
-w.__obsStructuralConnection = {
+(ctx.features as any).structuralConnection = {
   build: (p: Partial<ConnectionParams>) => {
     const r = buildStructuralConnection(p);
     addObject(r.object, `Connection ${p.type} (${r.plateCount} plates, ${r.boltCount} bolts)`);
@@ -428,4 +428,4 @@ w.__obsSelectionBox = {
   },
 };
 
-console.log("[obs] v40 module globals registered: site-components, structural-connections, scope-box, worksets, scope-box-viz, crop-region, section-box, selection-box");
+console.log("[obs] v40 module globals registered: site-components, scope-box, worksets, scope-box-viz, crop-region, section-box, selection-box");
