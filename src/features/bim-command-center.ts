@@ -335,10 +335,10 @@ function buildBody(host: HTMLElement): void {
         toast(on ? "GRID on" : "GRID off", "info");
       }, true),
       btn("Drawings DXF", "Ctrl+Shift+G", () => {
-        (window as Any).__obsDrawingsPanel?.toggle?.();
+        (ctx.features as Any).drawingsPanel?.toggle?.();
       }, true),
       btn("Export DXF", "Drawing - file", () => {
-        (window as Any).__obsDrawings?.exportCadAsDxf?.();
+        (ctx.features as Any).drawings?.exportCadAsDxf?.();
       }, true),
     ]),
   );

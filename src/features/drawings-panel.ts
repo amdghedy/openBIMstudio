@@ -11,7 +11,7 @@ let panel: HTMLDivElement | null = null;
 let styleOk = false;
 
 function drawings(): Any {
-  return (window as Any).__obsDrawings ?? (ctx.features as Any)?.drawings ?? {};
+  return (ctx.features as Any)?.drawings ?? {};
 }
 
 function toast(kind: string, msg: string): void {

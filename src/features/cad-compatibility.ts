@@ -698,16 +698,16 @@ function buildPanel(): void {
           }
         });
       } else if (a === "export-dxf") {
-        (window as Any).__obsDrawings?.exportCadAsDxf?.("cad-export.dxf");
+        (ctx.features as Any).drawings?.exportCadAsDxf?.("cad-export.dxf");
       } else if (a === "import-dxf") {
-        (window as Any).__obsDrawingsPanel?.open?.();
+        (ctx.features as Any).drawingsPanel?.open?.();
         // also trigger file pick via drawings panel path
         const input = document.createElement("input");
         input.type = "file";
         input.accept = ".dxf,.dwg";
         input.onchange = async () => {
           const f = input.files?.[0];
-          if (f) await (window as Any).__obsDrawings?.importDrawingFile?.(f);
+          if (f) await (ctx.features as Any).drawings?.importDrawingFile?.(f);
           render();
           syncDrafting();
         };
