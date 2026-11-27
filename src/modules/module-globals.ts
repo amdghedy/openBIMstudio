@@ -187,7 +187,7 @@ void servicesReady("commandPalette").then((palette) => {
 });
 
 // ── Truss ─────────────────────────────────────────────────────────────────
-w.__obsTruss = {
+(ctx.features as any).truss = {
   build: (p: Partial<TrussParams>) => {
     const r = buildTruss(p);
     addObject(r.object, `Truss ${p.type ?? "pratt"} (${r.members.length} members, ${r.totalSteelLength.toFixed(1)} m total)`);
@@ -428,4 +428,4 @@ w.__obsSelectionBox = {
   },
 };
 
-console.log("[obs] v40 module globals registered: site-components, trusses, structural-connections, scope-box, worksets, scope-box-viz, crop-region, section-box, selection-box");
+console.log("[obs] v40 module globals registered: site-components, structural-connections, scope-box, worksets, scope-box-viz, crop-region, section-box, selection-box");

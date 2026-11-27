@@ -1343,19 +1343,19 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Truss Builder"),
       b("truss", "Pratt", safe(() => {
-        (window as any).__obsTruss?.build?.({ type: "pratt", span: 12, depth: 2, panelCount: 6 });
+        (ctx.features as any).truss?.build?.({ type: "pratt", span: 12, depth: 2, panelCount: 6 });
         toast("Pratt truss built (12 m span, 6 panels)", "success");
       }, "Pratt"), { title: "Build a Pratt truss" }),
       b("truss", "Howe", safe(() => {
-        (window as any).__obsTruss?.build?.({ type: "howe", span: 12, depth: 2, panelCount: 6 });
+        (ctx.features as any).truss?.build?.({ type: "howe", span: 12, depth: 2, panelCount: 6 });
         toast("Howe truss built", "success");
       }, "Howe"), { title: "Build a Howe truss" }),
       b("truss", "Warren", safe(() => {
-        (window as any).__obsTruss?.build?.({ type: "warren", span: 12, depth: 2, panelCount: 6 });
+        (ctx.features as any).truss?.build?.({ type: "warren", span: 12, depth: 2, panelCount: 6 });
         toast("Warren truss built", "success");
       }, "Warren"), { title: "Build a Warren truss" }),
       b("truss", "Fink", safe(() => {
-        (window as any).__obsTruss?.build?.({ type: "fink", span: 12, depth: 2, panelCount: 6 });
+        (ctx.features as any).truss?.build?.({ type: "fink", span: 12, depth: 2, panelCount: 6 });
         toast("Fink truss built", "success");
       }, "Fink"), { title: "Build a Fink truss" }),
       sep(),
