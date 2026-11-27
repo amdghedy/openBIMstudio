@@ -2273,34 +2273,34 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Worksets"),
       b("workset", "Init", safe(() => {
-        (window as any).__obsWorksets?.init?.();
+        (ctx.features as any).worksets?.init?.();
       }, "Init worksets"), { title: "Initialise default worksets" }),
       b("workset", "New", safe(async () => {
         const { promptLine } = await import("../features/form-modal");
         const name = await promptLine(
           "Create Workset",
           "Workset name",
-          `Workset ${((window as any).__obsWorksets?.list?.() ?? []).length + 1}`,
+          `Workset ${((ctx.features as any).worksets?.list?.() ?? []).length + 1}`,
           "e.g. Walls, Furniture, MEP",
         );
         if (!name) return;
-        (window as any).__obsWorksets?.create?.(name);
+        (ctx.features as any).worksets?.create?.(name);
       }, "New workset"), { title: "Create a new workset" }),
       b("workset", "List", safe(() => {
-        const list = (window as any).__obsWorksets?.list?.() ?? [];
-        const summary = (window as any).__obsWorksets?.summary?.();
+        const list = (ctx.features as any).worksets?.list?.() ?? [];
+        const summary = (ctx.features as any).worksets?.summary?.();
         toast(`${summary.total} worksets, ${summary.totalElements} elements, ${summary.ownedByUser} borrowed by you`, "info", 4000);
         console.table(list.map((w: any) => ({ id: w.id, name: w.name, owner: w.owner, elements: w.elementIds.size })));
       }, "List worksets"), { title: "List all worksets with element counts" }),
       b("workset", "Borrow", safe(() => {
         const ids = (ctx.features as any).authoring?.getSelectedIds?.() ?? [];
         if (!ids.length) { toast("Select an element first", "warn"); return; }
-        (window as any).__obsWorksets?.borrow?.(ids[0]);
+        (ctx.features as any).worksets?.borrow?.(ids[0]);
       }, "Borrow"), { title: "Borrow selected element for editing" }),
       b("workset", "Release", safe(() => {
         const ids = (ctx.features as any).authoring?.getSelectedIds?.() ?? [];
         if (!ids.length) { toast("Select an element first", "warn"); return; }
-        (window as any).__obsWorksets?.release?.(ids[0]);
+        (ctx.features as any).worksets?.release?.(ids[0]);
         toast(`Released element ${ids[0]}`, "success");
       }, "Release"), { title: "Release borrowed element back to pool" }),
     ],

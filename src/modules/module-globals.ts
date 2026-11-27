@@ -335,7 +335,7 @@ void servicesReady("commandPalette").then((palette) => {
 };
 
 // ── Worksets ───────────────────────────────────────────────────────────────
-w.__obsWorksets = {
+(ctx.features as any).worksets = {
   init: () => { initWorksets(); toast("Worksets initialised (default worksets created)", "success"); },
   list: listWorksets,
   create: (name: string) => {
@@ -428,4 +428,4 @@ w.__obsSelectionBox = {
   },
 };
 
-console.log("[obs] v40 module globals registered: scope-box, worksets, scope-box-viz, crop-region, section-box, selection-box");
+console.log("[obs] v40 module globals registered: scope-box, scope-box-viz, crop-region, section-box, selection-box");
