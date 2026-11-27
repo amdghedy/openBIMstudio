@@ -6,7 +6,9 @@ fs.writeFileSync(path.join(out, "package.json"), '{"type":"commonjs"}');
 try { fs.symlinkSync(path.join(__dirname, "..", "node_modules"), path.join(out, "node_modules"), "junction"); } catch { /* linked */ }
 const FILES = "src/modules/gis/gis-core.ts src/modules/gis/crs.ts src/modules/gis/gis-bundle.ts src/core/safeLoad.ts";
 const flag = process.env.TSC_IGNORE_CONFIG ? " --ignoreConfig" : "";
-execSync(`npx tsc ${FILES} --outDir ${out} --module commonjs --target es2020 --moduleResolution node --esModuleInterop --skipLibCheck${flag}`, { stdio: "pipe", cwd: path.join(__dirname, "..") });
+const cmd = (strict) => `npx tsc ${FILES} --outDir ${out} --module commonjs --target es2020 --moduleResolution node --esModuleInterop --skipLibCheck${strict ? " --strict" : ""}${flag}`;
+// gis-core only narrows its safeLoad result under --strict (same as tests/gis-core.test.cjs); fall back so a local isolated tsc does not block the run.
+try { execSync(cmd(true), { stdio: "pipe", cwd: path.join(__dirname, "..") }); } catch { execSync(cmd(false), { stdio: "pipe", cwd: path.join(__dirname, "..") }); }
 const find = (n) => { const w = (d) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) { const r = w(p); if (r) return r; } else if (f.name === n) return p; } }; return w(out); };
 const C = require(find("crs.js")), G = require(find("gis-core.js")), B = require(find("gis-bundle.js"));
 let pass = 0, fail = 0;
