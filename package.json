@@ -222,6 +222,7 @@
     "i18n:gen": "node scripts/gen-catalogs.mjs",
     "i18n:audit": "node scripts/i18n-audit.mjs",
     "test:twin-export": "node tests/twin-export-geometry.test.cjs",
+    "test:worker-audit-x3": "node tests/worker-audit-x3.test.cjs",
     "test:pick-arbiter": "node tests/pick-arbiter.test.cjs",
     "test:nav-math": "node tests/nav-math.test.cjs",
     "test:north": "node tests/north.test.cjs",
