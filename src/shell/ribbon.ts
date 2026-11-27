@@ -2227,22 +2227,22 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Site"),
       b("parking", "Parking", safe(() => {
-        (window as any).__obsSiteComponent.build({ type: "parking", position: { x: 5, z: 5 }, elevation: 0.3 });
+        (ctx.features as any).siteComponent.build({ type: "parking", position: { x: 5, z: 5 }, elevation: 0.3 });
       }, "Parking"), { title: "Place parking component" }),
       b("tree", "Planting", safe(() => {
-        (window as any).__obsSiteComponent.build({ type: "tree", position: { x: 8, z: 4 }, elevation: 0.3 });
+        (ctx.features as any).siteComponent.build({ type: "tree", position: { x: 8, z: 4 }, elevation: 0.3 });
       }, "Tree"), { title: "Place a tree" }),
       b("tree", "Shrub", safe(() => {
-        (window as any).__obsSiteComponent.build({ type: "shrub", position: { x: 7, z: 4 }, elevation: 0.3 });
+        (ctx.features as any).siteComponent.build({ type: "shrub", position: { x: 7, z: 4 }, elevation: 0.3 });
       }, "Shrub"), { title: "Place a shrub" }),
       b("bench", "Bench", safe(() => {
-        (window as any).__obsSiteComponent.build({ type: "bench", position: { x: 4, z: 7 }, elevation: 0.3, rotation: Math.PI / 2 });
+        (ctx.features as any).siteComponent.build({ type: "bench", position: { x: 4, z: 7 }, elevation: 0.3, rotation: Math.PI / 2 });
       }, "Bench"), { title: "Place a bench" }),
       b("lightpole", "Light Pole", safe(() => {
-        (window as any).__obsSiteComponent.build({ type: "lightpole", position: { x: 1, z: 1 }, elevation: 0.3 });
+        (ctx.features as any).siteComponent.build({ type: "lightpole", position: { x: 1, z: 1 }, elevation: 0.3 });
       }, "Light pole"), { title: "Place a light pole" }),
       b("fire", "Fire Hydrant", safe(() => {
-        (window as any).__obsSiteComponent.build({ type: "firehydrant", position: { x: 0, z: 5 }, elevation: 0.3 });
+        (ctx.features as any).siteComponent.build({ type: "firehydrant", position: { x: 0, z: 5 }, elevation: 0.3 });
       }, "Fire hydrant"), { title: "Place a fire hydrant" }),
       sep(),
       groupLabel("Massing"),

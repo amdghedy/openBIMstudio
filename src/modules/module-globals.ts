@@ -158,7 +158,7 @@ function filePicker(accept: string): Promise<File | null> {
 };
 
 // ── Site Components ──────────────────────────────────────────────────────
-w.__obsSiteComponent = {
+(ctx.features as any).siteComponent = {
   build: (p: SiteComponentParams) => {
     const r = buildSiteComponent(p);
     addObject(r.object, `Site ${p.type}`);
@@ -428,4 +428,4 @@ w.__obsSelectionBox = {
   },
 };
 
-console.log("[obs] v40 module globals registered: site-components, scope-box, worksets, scope-box-viz, crop-region, section-box, selection-box");
+console.log("[obs] v40 module globals registered: scope-box, worksets, scope-box-viz, crop-region, section-box, selection-box");
