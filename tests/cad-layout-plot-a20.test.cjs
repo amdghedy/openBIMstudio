@@ -208,6 +208,60 @@ const layers = [{ name: "0", color: 7 }];
     assert.ok(Math.abs(cut[0].x - 10) < 1e-9 && Math.abs(cut[1].x - 20) < 1e-9, `cut: ${JSON.stringify(cut)}`);
   });
 
+  /* ── 2D-25: Model vector plot over a synthetic full-page viewport ── */
+  const modelSetup = { name: "__model__", paper: "A3", orient: "landscape", scale: "fit", area: "extents" };
+  const modelArea = { minX: 10, minY: 10, maxX: 110, maxY: 60 }; // 100 x 50 model units
+  const modelLayout = P.modelVectorLayout(modelArea, "fit", modelSetup);
+
+  await t("2D-25: modelVectorLayout builds a full-page viewport over the Model area, fit", async () => {
+    assert.strictEqual(modelLayout.name, "Model");
+    assert.strictEqual(modelLayout.viewports.length, 1);
+    const vp = modelLayout.viewports[0];
+    assert.ok(Math.abs(vp.center.x - 210) < 1e-9 && Math.abs(vp.center.y - 148.5) < 1e-9, `centre: ${JSON.stringify(vp.center)}`);
+    assert.ok(Math.abs(vp.width - 420) < 1e-9 && Math.abs(vp.height - 297) < 1e-9, `size: ${vp.width}x${vp.height}`);
+    assert.ok(Math.abs(vp.viewCenter.x - 60) < 1e-9 && Math.abs(vp.viewCenter.y - 35) < 1e-9, `viewCenter: ${JSON.stringify(vp.viewCenter)}`);
+    assert.ok(Math.abs(vp.scale - 4.2) < 1e-9, `fit scale: ${vp.scale}`);
+    assert.strictEqual(vp.hideBorder, true, "the synthetic viewport must not draw a border");
+    assert.strictEqual(modelLayout.pageSetup, "__model__");
+  });
+
+  await t("2D-25: Model fit plot maps the area across the full page with no border", async () => {
+    const g = P.collectCadLayoutGeometry({ layout: modelLayout, model: [line(10, 10, 110, 10), line(10, 10, 10, 60)], setups: { __model__: modelSetup }, layers });
+    assert.ok(Math.abs(g.pageW - 420 * PT) < 0.01, `pageW ${g.pageW}`);
+    assert.ok(Math.abs(g.pageH - 297 * PT) < 0.01, `pageH ${g.pageH}`);
+    // Exactly the two model LINEs — the 4 border segments are absent.
+    assert.strictEqual(g.segments.length, 2, `segments: ${JSON.stringify(g.segments)}`);
+    const h = g.segments.find((s) => Math.abs(s.y1 - 43.5) < 1e-9);
+    assert.ok(h && Math.abs(h.x1) < 1e-9 && Math.abs(h.x2 - 420) < 1e-9, `horizontal LINE: ${JSON.stringify(h)}`);
+    const v = g.segments.find((s) => Math.abs(s.x1) < 1e-9 && Math.abs(s.x2) < 1e-9 && Math.abs(s.y1 - 43.5) < 1e-9);
+    assert.ok(v && Math.abs(v.y2 - 253.5) < 1e-9, `vertical LINE: ${JSON.stringify(v)}`);
+    assert.ok(!g.segments.some((s) => s.y1 < 1 || s.y1 > 296 || s.y2 < 1 || s.y2 > 296), "a border segment touches the page edge");
+  });
+
+  await t("2D-25: Model numeric scale (1:50) centres the area at that scale", async () => {
+    const setup = { ...modelSetup, scale: 0.02 };
+    const layout = P.modelVectorLayout(modelArea, 0.02, setup);
+    const g = P.collectCadLayoutGeometry({ layout, model: [line(10, 10, 110, 10)], setups: { __model__: setup }, layers });
+    assert.strictEqual(g.segments.length, 1, `segments: ${JSON.stringify(g.segments)}`);
+    const s = g.segments[0];
+    assert.ok(Math.abs(s.x1 - 209) < 1e-9 && Math.abs(s.x2 - 211) < 1e-9 && Math.abs(s.y1 - 148) < 1e-9, `1:50 LINE: ${JSON.stringify(s)}`);
+  });
+
+  await t("2D-25: Model portrait setup resolves through the named-setup path", async () => {
+    const setup = { name: "__model__", paper: "A4", orient: "portrait", scale: "fit", area: "extents" };
+    const layout = P.modelVectorLayout(modelArea, "fit", setup);
+    const g = P.collectCadLayoutGeometry({ layout, model: [], setups: { __model__: setup }, layers });
+    assert.ok(Math.abs(g.pageW - 210 * PT) < 0.01, `pageW ${g.pageW}`);
+    assert.ok(Math.abs(g.pageH - 297 * PT) < 0.01, `pageH ${g.pageH}`);
+  });
+
+  await t("2D-25: the PLOT dialog offers Vector PDF for Model through the layout pipeline", async () => {
+    const cv = fs.readFileSync(path.join(root, "src", "features", "cad-viewer.ts"), "utf8");
+    assert.ok(!/Model vector plot is a follow-up/.test(cv), "the follow-up refusal must be gone");
+    assert.ok(/modelVectorLayout\(box, o\.scale, setup\)/.test(cv), "Model Vector PDF must build the synthetic layout");
+    assert.ok(!/Model plots via the raster button/.test(cv), "the button title must not send Model to raster");
+  });
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

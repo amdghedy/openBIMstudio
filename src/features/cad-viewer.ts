@@ -78,7 +78,7 @@ import {
 } from "../modules/cad-viewer/cad-snap-override";
 import { resolvedOf, bindDocumentBlocks, setActiveBlocks, touchBlocks, explodeInsert, findBlock, blocksOf, resolveInsert } from "../modules/drawings/block-refs";
 import { setCurrentCadDoc } from "../modules/cad-viewer/cad-current-doc";
-import { downloadCadLayoutPdf } from "../modules/export/cad-layout-plot";
+import { downloadCadLayoutPdf, modelVectorLayout } from "../modules/export/cad-layout-plot";
 import * as BE from "../modules/drawings/block-edit";
 import { XrefStore, composeXrefs, compareXref, type ComposedXref } from "../modules/drawings/xref-engine";
 import * as X from "../modules/cad-viewer/modify-math";
@@ -16623,7 +16623,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       </div>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
         <button data-p="cancel" style="padding:6px 12px">Cancel</button>
-        <button data-p="vector" title="Vector PDF of the chosen layout, at its own viewport scales (Model plots via the raster button)" style="padding:6px 12px;background:#065f46;color:white;border:none;border-radius:4px;font-weight:600">Vector PDF</button>
+        <button data-p="vector" title="Vector PDF of the chosen layout at its own viewport scales, or of Model at the dialog's scale and area" style="padding:6px 12px;background:#065f46;color:white;border:none;border-radius:4px;font-weight:600">Vector PDF</button>
         <button data-p="go" style="background:#0284c7;color:white;border:none;padding:6px 16px;border-radius:4px;font-weight:600">Plot / Print PDF</button>
       </div>
     `);
@@ -16706,12 +16706,38 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // A20: vector PDF of the chosen layout, through the CAD layout
     // plotter (the same pipeline as the batch plotter). The layout's
     // viewports carry their own scales, so the dialog's plot scale and
-    // area do not apply — only its paper and page setup do. Model has
-    // no sheet to plot; it stays on the raster path (follow-up).
+    // area do not apply — only its paper and page setup do. 2D-25:
+    // Model plots the same way, over a synthetic full-page viewport
+    // (modelVectorLayout) at the dialog's scale and area — the area box
+    // is the same one the raster path plots (doPlot).
     gP("vector").onclick = () => {
       const o = readChoices();
+      const base = (name || "drawing").replace(/\.(dxf|dwg)$/i, "");
       if (o.layout < 0) {
-        logCmd("PLOT: Vector PDF plots a layout — choose a layout (Model vector plot is a follow-up; use Plot / Print PDF for Model).");
+        if (o.area === "window" && !plotWindow) {
+          logCmd("PLOT: pick a window first (Plot Area = Window, then Pick window…).");
+          return;
+        }
+        const box: M.BBox | null =
+          o.area === "window" ? plotWindow
+          : o.area === "extents" ? (bounds ?? modelBounds)
+          : layoutI < 0 ? visibleBox(view) : (bounds ?? modelBounds);
+        if (!box) { logCmd("PLOT: nothing to plot — the model is empty."); return; }
+        const setup: DxfPageSetup = {
+          name: "__model__",
+          paper: o.paper,
+          orient: o.land ? "landscape" : "portrait",
+          scale: o.scale,
+          area: o.area as PlotArea,
+        };
+        const modelLayout = modelVectorLayout(box, o.scale, setup);
+        lastPlotChoices = { layout: o.layout, setupName: o.setupName, paper: o.paper, land: o.land, scale: o.scale, area: o.area };
+        closeOverlay();
+        void downloadCadLayoutPdf(
+          { layout: modelLayout, model: modelEnts, blocks: doc!.blocks, setups: { ...(doc!.pageSetups ?? {}), [setup.name]: setup }, layers: doc!.layers },
+          `${base}-Model.pdf`,
+        );
+        logCmd(`PLOT: vector PDF of Model (${o.paper} ${setup.orient}) downloading — ${o.area} area at ${Vp8.plotScaleLabel(o.scale)} scale.`);
         return;
       }
       const layout = layouts[o.layout];
@@ -16724,7 +16750,6 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           : layout;
       lastPlotChoices = { layout: o.layout, setupName: o.setupName, paper: o.paper, land: o.land, scale: o.scale, area: o.area };
       closeOverlay();
-      const base = (name || "drawing").replace(/\.(dxf|dwg)$/i, "");
       void downloadCadLayoutPdf(
         { layout: plotLayout, model: modelEnts, blocks: doc!.blocks, setups: doc!.pageSetups, layers: doc!.layers },
         `${base}-${layout.name}.pdf`,

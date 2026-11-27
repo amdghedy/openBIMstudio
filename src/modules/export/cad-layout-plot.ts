@@ -44,6 +44,7 @@ import {
   setupPaperMm,
   viewportScaleOf,
   clipViewportRect,
+  createViewport,
 } from "../cad-viewer/cad-viewport-a8";
 import { resolveInsert } from "../drawings/block-refs";
 import { tessellatePolyline } from "../drawings/dxf-geometry";
@@ -334,19 +335,23 @@ export function collectCadLayoutGeometry(input: CadLayoutPlotInput): CadLayoutPl
       x: vp.center.x + (p.x - vp.viewCenter.x) * scale,
       y: vp.center.y + (p.y - vp.viewCenter.y) * scale,
     });
-    for (const e of input.model) collectEntity(c, e, toSheet, rect, 0);
-    // Viewport border, as the canvas draws it.
-    const border = { r: 0, g: 0, b: 0 };
-    const bw = 0.35;
-    const corners: Pt[] = [
-      { x: rect.minX, y: rect.minY },
-      { x: rect.maxX, y: rect.minY },
-      { x: rect.maxX, y: rect.maxY },
-      { x: rect.minX, y: rect.maxY },
-    ];
-    for (let i = 0; i < 4; i++) {
-      const a = corners[i], b = corners[(i + 1) % 4];
-      c.segs.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, color: border, width: bw });
+  for (const e of input.model) collectEntity(c, e, toSheet, rect, 0);
+    // Viewport border, as the canvas draws it — except on a synthetic
+    // Model viewport (2D-25), which is a pipeline artifact, not a sheet
+    // viewport: a Model plot carries no border.
+    if (!vp.hideBorder) {
+      const border = { r: 0, g: 0, b: 0 };
+      const bw = 0.35;
+      const corners: Pt[] = [
+        { x: rect.minX, y: rect.minY },
+        { x: rect.maxX, y: rect.minY },
+        { x: rect.maxX, y: rect.maxY },
+        { x: rect.minX, y: rect.maxY },
+      ];
+      for (let i = 0; i < 4; i++) {
+        const a = corners[i], b = corners[(i + 1) % 4];
+        c.segs.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, color: border, width: bw });
+      }
     }
   }
 
@@ -399,6 +404,34 @@ export function drawCadLayoutOnPage(
       color: rgb(t.color.r, t.color.g, t.color.b),
     });
   }
+}
+
+/**
+ * 2D-25: a synthetic layout that plots Model space through the same
+ * layout pipeline — one full-page viewport over the chosen Model area
+ * (`area`, in model units), at the dialog's plot scale ("fit" or sheet
+ * per model unit), on the dialog's paper/orientation (`setup`). No
+ * paper-space entities, and no viewport border: the viewport is a
+ * pipeline artifact, not a sheet viewport. The caller passes `setup`
+ * through as a named setup (under setup.name) so the paper/orientation
+ * resolve through the usual layout-setup path.
+ */
+export function modelVectorLayout(
+  area: Rect,
+  scale: number | "fit",
+  setup: DxfPageSetup,
+): DxfLayout {
+  const { w, h } = setupPaperMm(setup);
+  const vp = createViewport({ minX: 0, minY: 0, maxX: w, maxY: h }, area, { scale });
+  return {
+    name: "Model",
+    entities: [],
+    viewports: [{ ...vp, hideBorder: true }],
+    pageSetup: setup.name,
+    paper: setup.paper,
+    plotScale: setup.scale,
+    plotArea: setup.area,
+  };
 }
 
 /** One layout as its own vector PDF file (the single-layout PLOT path). */
