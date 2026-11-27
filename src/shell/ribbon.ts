@@ -1543,10 +1543,10 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Fabrication"),
       b("duct", "Duct Parts", safe(() => {
-        (window as any).__obsFabricationPart?.build?.({ type: "duct-straight", primarySize: 0.4, length: 1.5 });
+        (ctx.features as any).fabricationPart?.build?.({ type: "duct-straight", primarySize: 0.4, length: 1.5 });
       }, "Duct parts"), { title: "Place SMACNA fabrication duct parts" }),
       b("pipe", "Pipe Parts", safe(() => {
-        (window as any).__obsFabricationPart?.build?.({ type: "pipe-straight", primarySize: 0.05, length: 2.0 });
+        (ctx.features as any).fabricationPart?.build?.({ type: "pipe-straight", primarySize: 0.05, length: 2.0 });
       }, "Pipe parts"), { title: "Place ASTM fabrication pipe parts" }),
       b("pipe", "Fittings", safe(async () => {
         const opts: Array<[string, string]> = [
@@ -1563,7 +1563,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
           opts.map(([value, label]) => ({ value, label })),
         );
         if (!choice) return;
-        (window as any).__obsFabricationPart?.build?.({ type: choice, primarySize: 0.1 });
+        (ctx.features as any).fabricationPart?.build?.({ type: choice, primarySize: 0.1 });
       }, "Fittings"), { title: "Pick a fabrication fitting by type" }),
       sep(),
       groupLabel("Load from Library"),

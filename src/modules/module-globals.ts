@@ -205,7 +205,7 @@ w.__obsStructuralConnection = {
 };
 
 // ── Fabrication Parts ─────────────────────────────────────────────────────
-w.__obsFabricationPart = {
+(ctx.features as any).fabricationPart = {
   build: (p: Partial<FabPartParams>) => {
     const r = buildFabricationPart(p);
     addObject(r.object, `Fab ${p.type} [${r.astmCode}] ${r.weightKg.toFixed(2)} kg`);
@@ -428,4 +428,4 @@ w.__obsSelectionBox = {
   },
 };
 
-console.log("[obs] v40 module globals registered: site-components, trusses, structural-connections, fabrication-parts, scope-box, worksets, scope-box-viz, crop-region, section-box, selection-box");
+console.log("[obs] v40 module globals registered: site-components, trusses, structural-connections, scope-box, worksets, scope-box-viz, crop-region, section-box, selection-box");
