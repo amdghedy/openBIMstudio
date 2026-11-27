@@ -4896,6 +4896,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     /** Rotate / scale zero reference (angle / distance of the first significant move). */
     refAngle: number | null;
     refDist: number | null;
+    /** 2D-12: user-picked Reference point (AutoCAD R) — overrides the auto-captured zero reference. */
+    refPt: M.Pt | null;
+    /**
+     * 2D-12: Reference pick flow — "off" drags live; "awaitRef" waits for
+     * the reference-point click (the drag is suspended, not committed);
+     * "awaitNew" previews against refPt and commits on the next click.
+     */
+    refStage: "off" | "awaitRef" | "awaitNew";
   }
   let gripDrag: GripDrag | null = null;
   let gripHover: { i: number; gi: number } | null = null;
@@ -5158,8 +5166,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     gripDrag.mode = mode;
     gripDrag.refAngle = null;
     gripDrag.refDist = null;
+    // 2D-12: a mode switch drops the Reference pick as well as the auto-captured one.
+    gripDrag.refPt = null;
+    gripDrag.refStage = "off";
     gripDrag.moved = false;
-    showAcadPrompt(`Grip mode: ${Sel11.GRIP_MODE_LABELS[mode]} — drag to ${mode === "stretch" ? "stretch the grip" : mode === "move" ? "move the object" : mode === "rotate" ? "rotate about the grip" : mode === "scale" ? "scale about the grip" : "mirror across the grip"} (Enter cycles, right-click for the menu).`);
+    showAcadPrompt(`Grip mode: ${Sel11.GRIP_MODE_LABELS[mode]} — drag to ${mode === "stretch" ? "stretch the grip" : mode === "move" ? "move the object" : mode === "rotate" ? "rotate about the grip" : mode === "scale" ? "scale about the grip" : "mirror across the grip"} (Enter cycles, right-click for the menu${mode === "move" || mode === "rotate" || mode === "scale" ? ", R = Reference" : ""}).`);
     draw();
   }
 
@@ -5167,6 +5178,90 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   function cycleGripMode(): void {
     if (!gripDrag) return;
     setGripMode(Sel11.nextGripMode(gripDrag.mode));
+  }
+
+  /**
+   * 2D-12 — arm the Reference option for the in-progress grip drag
+   * (AutoCAD R during a grip edit). Only Move / Rotate / Scale take a
+   * reference: Stretch has no zero reference to replace and Mirror has
+   * no reference length or angle. The live preview restarts from the
+   * pre-drag object and the drag suspends until the reference point
+   * (then the new point) is clicked — releasing the pointer while the
+   * reference point is awaited neither commits nor cancels the drag.
+   */
+  function armGripReference(): void {
+    if (!gripDrag) return;
+    if (gripDrag.mode !== "move" && gripDrag.mode !== "rotate" && gripDrag.mode !== "scale") {
+      logCmd(`Reference is available for grip Move, Rotate and Scale — not ${Sel11.GRIP_MODE_LABELS[gripDrag.mode]}.`);
+      return;
+    }
+    closeGripMenu();
+    ents[gripDrag.i] = gripDrag.orig;
+    gripDrag.refPt = null;
+    gripDrag.refStage = "awaitRef";
+    gripDrag.refAngle = null;
+    gripDrag.refDist = null;
+    gripDrag.moved = false;
+    showAcadPrompt(`Grip ${Sel11.GRIP_MODE_LABELS[gripDrag.mode]} — Reference: specify reference point (Esc cancels).`);
+    draw();
+  }
+
+  /** 2D-12: prompt once the reference point is picked (per mode). */
+  function gripReferencePrompt(): string {
+    if (!gripDrag || gripDrag.mode === "stretch" || gripDrag.mode === "mirror") return "";
+    const ref = gripDrag.refAngle !== null && gripDrag.refDist !== null
+      ? gripDrag.mode === "rotate"
+        ? `reference angle ${fmt(gripDrag.refAngle)}°`
+        : `reference length ${fmt(gripDrag.refDist)}`
+      : "reference point set";
+    const next = gripDrag.mode === "move" ? "specify new point" : gripDrag.mode === "rotate" ? "specify new angle" : "specify new length";
+    return `Grip ${Sel11.GRIP_MODE_LABELS[gripDrag.mode]} — Reference: ${ref} — ${next} (click, or drag and release; Esc cancels).`;
+  }
+
+  /**
+   * 2D-12: handle a canvas click while a Reference pick is pending.
+   * Returns true when the click was consumed. Awaiting the reference
+   * point: a pick on the grip itself is refused (a zero-length
+   * reference is unusable) and the flow stays in "awaitRef". Awaiting
+   * the new point: the transform is applied against the reference and
+   * the pointer release commits it through the normal grip-drag path.
+   */
+  function onGripReferenceClick(p: M.Pt): boolean {
+    if (!gripDrag || gripDrag.refStage === "off") return false;
+    if (gripDrag.refStage === "awaitRef") {
+      const ref = Sel11.gripRefFromPoint(gripDrag.baseW, p, 4 / view.scale);
+      if (!ref) {
+        logCmd("Reference point is on the grip — pick a point farther away.");
+        return true;
+      }
+      gripDrag.refPt = { x: p.x, y: p.y };
+      gripDrag.refStage = "awaitNew";
+      gripDrag.refAngle = ref.angleDeg;
+      gripDrag.refDist = ref.dist;
+      showAcadPrompt(gripReferencePrompt());
+      draw();
+      return true;
+    }
+    const e = ents[gripDrag.i];
+    if (!e) return true;
+    const res = Sel11.applyGripMode(
+      gripDrag.orig,
+      gripDrag.mode,
+      gripDrag.baseW,
+      gripDrag.refAngle === null ? null : { angleDeg: gripDrag.refAngle, dist: gripDrag.refDist ?? 0 },
+      p,
+      gripDrag.gi,
+      4 / view.scale,
+      gripDrag.refPt,
+    );
+    if (!res) {
+      logCmd(`Reference: this ${gripDrag.orig.type} cannot be edited in ${Sel11.GRIP_MODE_LABELS[gripDrag.mode]} mode — Esc cancels.`);
+      return true;
+    }
+    ents[gripDrag.i] = res.entity;
+    gripDrag.moved = true;
+    draw();
+    return true;
   }
 
   /**
@@ -5222,6 +5317,19 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     };
     addLabel("GRIP MODE — " + (gripDrag ? Sel11.GRIP_MODE_LABELS[gripDrag.mode].toUpperCase() : ""));
     for (const mode of Sel11.GRIP_MODES) addItem(mode);
+    // 2D-12: Reference option (AutoCAD R) — move / rotate / scale only.
+    addLabel("REFERENCE");
+    const refItem = document.createElement("button");
+    refItem.type = "button";
+    refItem.setAttribute("data-grip-ref", "1");
+    const refOk = !!gripDrag && (gripDrag.mode === "move" || gripDrag.mode === "rotate" || gripDrag.mode === "scale");
+    refItem.disabled = !refOk;
+    refItem.textContent = "Reference… (R)";
+    refItem.style.cssText = "display:flex;align-items:center;width:100%;gap:18px;padding:7px 11px;border:0;border-radius:0;background:transparent;text-align:start;color:inherit;font:inherit;cursor:" + (refOk ? "pointer" : "default") + ";opacity:" + (refOk ? "1" : ".55");
+    refItem.onmouseenter = () => { if (refOk) refItem.style.background = "#263447"; };
+    refItem.onmouseleave = () => { refItem.style.background = "transparent"; };
+    refItem.onclick = () => { closeGripMenu(); armGripReference(); };
+    menu.appendChild(refItem);
     document.body.appendChild(menu);
     gripMenuEl = menu;
     const rect = menu.getBoundingClientRect();
@@ -10247,6 +10355,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
     if (ev.button !== 0) return;
 
+    // 2D-12: a Reference pick consumes the click (reference point, then
+    // new point) instead of starting a band or a new grip drag.
+    if (gripDrag && gripDrag.refStage !== "off") {
+      const snapPoint = snapped(wp);
+      const p = snapPoint ? { x: snapPoint.x, y: snapPoint.y } : wp;
+      if (onGripReferenceClick(p)) return;
+    }
+
     // A11 LASSO: press-drag a freehand loop; release selects (window /
     // crossing by drag direction). The loop reuses `pts`, so the live
     // in-progress polyline preview draws it for free.
@@ -10298,7 +10414,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             i: g.i, gi: g.gi, orig: ents[g.i], startW: { x: w0.x, y: w0.y }, moved: false,
             mode: "stretch",
             baseW: gp ? { x: gp.x, y: gp.y } : { x: w0.x, y: w0.y },
-            refAngle: null, refDist: null,
+            refAngle: null, refDist: null, refPt: null, refStage: "off",
           };
           gripHover = null;
           capture(ev.pointerId);
@@ -11353,7 +11469,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // Grip drag: live update of the dragged object (committed with undo on release).
     if (gripDrag) {
       const e = ents[gripDrag.i];
-      if (e) {
+      // 2D-12: while the reference point is awaited there is nothing to
+      // preview — the entity stays at its pre-drag geometry.
+      if (e && gripDrag.refStage !== "awaitRef") {
         let to: M.Pt = { x: cur.x, y: cur.y };
         // A11: Shift axis-lock applies to the point-driven modes (stretch /
         // move), like the old grip drag; rotate / scale / mirror read the
@@ -11369,6 +11487,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           to,
           gripDrag.gi,
           4 / view.scale,
+          gripDrag.refPt,
         );
         if (res) {
           ents[gripDrag.i] = res.entity;
@@ -11473,6 +11592,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
   const endDrag = (ev: PointerEvent) => {
     ptrs.delete(ev.pointerId);
     if (ptrs.size < 2) pinch = 0;
+    // 2D-12: releasing the pointer while a Reference pick is still
+    // pending suspends the drag instead of committing or cancelling it
+    // — the grip stays hot for the reference-point / new-point click.
+    // Once the new-point click has applied the transform (moved), the
+    // release commits through the normal path below.
+    if (gripDrag && gripDrag.refStage !== "off" && !gripDrag.moved) {
+      cv.style.cursor = "crosshair";
+      draw();
+      return;
+    }
     // Grip drag release: commit as a single modify undo action (drawing workspace grip edit).
     if (gripDrag) {
       const after = ents[gripDrag.i];
@@ -12655,6 +12784,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // FILLET / CHAMFER in-tool options while the tool is picking (A6):
     // R = radius, D = distances, T / TRIM / NOTRIM = trim mode.
     if (handleFilletChamferOption(trimmed)) {
+      draw();
+      return;
+    }
+    // 2D-12: R / REFERENCE during a grip drag arms the Reference option
+    // (move / rotate / scale against a user-picked reference point).
+    if (gripDrag && /^(r|reference)$/i.test(trimmed)) {
+      armGripReference();
       draw();
       return;
     }

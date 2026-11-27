@@ -203,6 +203,53 @@ try {
     assert.ok(r !== null && Math.abs(r.dist - 5) < 1e-9);
   });
 
+  // ── 2D-12: grip Reference option (AutoCAD R) ──
+  t("2D-12 grip scale with a user reference point: factor is new length over reference length", () => {
+    const e = L(0, 0, 10, 0);
+    // Reference point (5,0): reference length 5 about the grip (0,0).
+    // New point (20,0): factor 20/5 = 4 -> end (40,0).
+    const r = S.applyGripMode(e, "scale", { x: 0, y: 0 }, null, { x: 20, y: 0 }, 0, 1, { x: 5, y: 0 });
+    assert.ok(r.ref !== null && Math.abs(r.ref.dist - 5) < 1e-9, "ref dist should be the picked reference length");
+    nearPt(r.entity.start, { x: 0, y: 0 });
+    nearPt(r.entity.end, { x: 40, y: 0 });
+  });
+  t("2D-12 grip rotate with a user reference point: angle is measured from the reference direction", () => {
+    const e = L(0, 0, 10, 0);
+    // Reference point (0,10): reference angle 90 deg. New point (10,0):
+    // rotation 0 - 90 = -90 deg -> end (0,-10).
+    const r = S.applyGripMode(e, "rotate", { x: 0, y: 0 }, null, { x: 10, y: 0 }, 0, 1, { x: 0, y: 10 });
+    assert.ok(r.ref !== null && Math.abs(r.ref.angleDeg - 90) < 1e-9, "ref angle should be the picked reference direction");
+    nearPt(r.entity.start, { x: 0, y: 0 });
+    nearPt(r.entity.end, { x: 0, y: -10 });
+  });
+  t("2D-12 grip move with a user reference point: displacement is new point minus reference point", () => {
+    const e = L(0, 0, 10, 0);
+    // Reference point (10,5), new point (30,5): the line moves by (20,0).
+    const r = S.applyGripMode(e, "move", { x: 0, y: 0 }, null, { x: 30, y: 5 }, 0, 1, { x: 10, y: 5 });
+    nearPt(r.entity.start, { x: 20, y: 0 });
+    nearPt(r.entity.end, { x: 30, y: 0 });
+  });
+  t("2D-12 gripRefFromPoint: angle + distance of the picked point; null on the grip", () => {
+    const r = S.gripRefFromPoint({ x: 0, y: 0 }, { x: 3, y: 4 }, 1);
+    assert.ok(r !== null && Math.abs(r.dist - 5) < 1e-9);
+    near(S.gripRefFromPoint({ x: 0, y: 0 }, { x: 3, y: 4 }, 1).angleDeg, 53.13010235415598, 1e-9);
+    assert.equal(S.gripRefFromPoint({ x: 0, y: 0 }, { x: 0.5, y: 0 }, 1), null);
+  });
+  t("2D-12 reference point on the grip falls back to the auto-captured zero reference", () => {
+    const e = L(0, 0, 10, 0);
+    // refPt on the grip is unusable: the first move captures the reference instead.
+    const r1 = S.applyGripMode(e, "scale", { x: 0, y: 0 }, null, { x: 10, y: 0 }, 0, 1, { x: 0, y: 0 });
+    assert.ok(r1.ref !== null && Math.abs(r1.ref.dist - 10) < 1e-9);
+    nearPt(r1.entity.end, { x: 10, y: 0 });
+  });
+  t("2D-12 stretch and mirror ignore the reference point (existing behaviour)", () => {
+    const e = L(0, 0, 10, 0);
+    const s = S.applyGripMode(e, "stretch", { x: 0, y: 0 }, null, { x: 0, y: 10 }, 0, 1, { x: 5, y: 0 });
+    nearPt(s.entity.start, { x: 0, y: 10 });
+    const m = S.applyGripMode(e, "mirror", { x: 0, y: 0 }, null, { x: 0, y: 10 }, 0, 1, { x: 5, y: 0 });
+    nearPt(m.entity.end, { x: -10, y: 0 });
+  });
+
   // ── viewer wiring (source markers — the viewer is DOM-heavy) ──
   const viewerSrc = fs.readFileSync(path.join(root, "src/features/cad-viewer.ts"), "utf8");
   t("viewer: FENCE / LASSO commands registered", () => {
@@ -225,6 +272,22 @@ try {
     assert.ok(/function cycleGripMode/.test(viewerSrc), "cycleGripMode missing");
     assert.ok(/function showGripModeMenu/.test(viewerSrc), "showGripModeMenu missing");
     assert.ok(/applyGripMode/.test(viewerSrc), "applyGripMode not used in the viewer");
+  });
+  t("viewer (2D-12): R arms the Reference option during a grip drag; the menu offers it", () => {
+    assert.ok(viewerSrc.includes("function armGripReference(): void {"), "armGripReference missing");
+    assert.ok(viewerSrc.includes("function onGripReferenceClick("), "onGripReferenceClick missing");
+    assert.ok(viewerSrc.includes("^(r|reference)$"), "R/REFERENCE interception missing in executeDrawingCommand");
+    assert.ok(viewerSrc.includes("data-grip-ref"), "grip menu has no Reference item");
+    // The picked reference point reaches the pure dispatcher, and the
+    // release suspends (does not commit or clear) while it is awaited.
+    assert.ok(viewerSrc.includes("gripDrag.refPt,"), "viewer never passes the picked reference point to applyGripMode");
+    assert.ok(viewerSrc.includes('refStage === "awaitRef"'), "release does not suspend while the reference point is awaited");
+    // Switching mode restarts the preview and drops the reference.
+    const setMode = viewerSrc.slice(viewerSrc.indexOf("function setGripMode("));
+    assert.ok(setMode.includes("gripDrag.refPt = null;"), "setGripMode does not drop the reference point");
+    assert.ok(setMode.includes('gripDrag.refStage = "off";'), "setGripMode does not leave the reference flow");
+    // The mode prompt advertises the option where it applies.
+    assert.ok(viewerSrc.includes("R = Reference"), "grip mode prompt does not advertise Reference");
   });
   t("viewer: Fence / Lasso ribbon buttons exist", () => {
     assert.ok(/tb\("fence"/.test(viewerSrc), "fence ribbon button missing");
