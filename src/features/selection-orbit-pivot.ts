@@ -488,7 +488,7 @@ export function setupSelectionOrbitPivot(): void {
   // Initial sync
   window.setTimeout(() => void syncPivotFromSelection(), 800);
 
-  (window as Any).__obsSelPivot = {
+  (ctx.features as Any).selPivot = {
     sync: syncPivotFromSelection,
     cog: computeSelectionCOG,
     zoomIn: () => zoomTowardSelection(1.2),

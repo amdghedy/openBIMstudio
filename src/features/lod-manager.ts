@@ -38,9 +38,9 @@ function restoreAll(): void {
   }
 
   group.traverse((obj: Any) => {
-    if (obj?.userData?.__obsLodHidden) {
+    if (obj?.userData?.__lodHidden) {
       obj.visible = true;
-      delete obj.userData.__obsLodHidden;
+      delete obj.userData.__lodHidden;
     }
   });
 }
@@ -116,11 +116,11 @@ function applyLod(): void {
     if (hide) {
       if (obj.visible) {
         obj.visible = false;
-        obj.userData.__obsLodHidden = true;
+        obj.userData.__lodHidden = true;
       }
-    } else if (obj.userData?.__obsLodHidden) {
+    } else if (obj.userData?.__lodHidden) {
       obj.visible = true;
-      delete obj.userData.__obsLodHidden;
+      delete obj.userData.__lodHidden;
     }
   });
 }
@@ -150,7 +150,7 @@ export function setupLodManager(): void {
 
   timer = window.setInterval(applyLod, 250);
 
-  (window as Any).__obsLodManager = {
+  (ctx.features as Any).lodManager = {
     setEnabled: setLodEnabled,
     isEnabled: isLodEnabled,
     refresh: applyLod,

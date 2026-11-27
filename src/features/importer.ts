@@ -271,13 +271,13 @@ function getImporter(): any {
   // and the multi-thread worker URL becomes "undefined" → SyntaxError '<'
   try {
     const proto = (WEBIFC as any).IfcAPI?.prototype;
-    if (proto && typeof proto.Init === "function" && !(proto.Init as any).__obsForcedST) {
+    if (proto && typeof proto.Init === "function" && !(proto.Init as any).__stForced) {
       const origInit = proto.Init;
       proto.Init = function (handler?: any, _forceST?: boolean) {
         // Always force single-thread
         return origInit.call(this, handler, true);
       };
-      (proto.Init as any).__obsForcedST = true;
+      (proto.Init as any).__stForced = true;
       console.log("[importer] web-ifc Init patched → forceSingleThread=true");
     }
   } catch (e) {
@@ -292,14 +292,14 @@ function getImporter(): any {
   // 0.0.78 JS chunk can never trigger the crash.
   try {
     const proto = (WEBIFC as any).IfcAPI?.prototype;
-    if (proto && !(proto as any).__obsStreamMeshesPatched) {
+    if (proto && !(proto as any).__streamMeshesPatched) {
       const prevInit = proto.Init;
       if (typeof prevInit === "function") {
         proto.Init = function (this: any, ...args: any[]) {
           const ret = prevInit.apply(this, args);
           try {
             const wm = this.wasmModule;
-            if (wm && !(wm as any).__obsStreamMeshesPatched) {
+            if (wm && !(wm as any).__streamMeshesPatched) {
               const clamp: Record<string, number> = {
                 StreamMeshes: 3,
                 StreamAllMeshes: 2,
@@ -310,14 +310,14 @@ function getImporter(): any {
                 const o = wm[n].bind(wm);
                 wm[n] = (...a: any[]) => o(...a.slice(0, arity));
               }
-              (wm as any).__obsStreamMeshesPatched = true;
+              (wm as any).__streamMeshesPatched = true;
               console.log("[importer] web-ifc wasmModule Stream* arity clamped");
             }
           } catch { /* */ }
           return ret;
         };
       }
-      (proto as any).__obsStreamMeshesPatched = true;
+      (proto as any).__streamMeshesPatched = true;
     }
   } catch (e) {
     console.warn("[importer] could not patch StreamMeshes ABI", e);
@@ -560,8 +560,8 @@ function ensurePinLoop(): void {
 
   try {
     const renderer: any = (ctx.world as any)?.renderer?.three;
-    if (renderer && !renderer.__obsPinPatched) {
-      renderer.__obsPinPatched = true;
+    if (renderer && !renderer.__pinPatched) {
+      renderer.__pinPatched = true;
       const orig = renderer.render.bind(renderer);
       renderer.render = function (...args: any[]) {
         enforcePins();
@@ -572,8 +572,8 @@ function ensurePinLoop(): void {
 
   try {
     const core: any = ctx.fragments?.core;
-    if (core && typeof core.update === "function" && !core.__obsPinPatched) {
-      core.__obsPinPatched = true;
+    if (core && typeof core.update === "function" && !core.__pinPatched) {
+      core.__pinPatched = true;
       const orig = core.update.bind(core);
       core.update = function (...args: any[]) {
         const r = orig(...args);
@@ -1200,7 +1200,7 @@ async function processQueue() {
 
 /**
  * Import phase record for the reproducible benchmark harness
- * (bench/bench-browser.mjs — read via __obsPerf.importPhases). Keeps the
+ * (bench/bench-browser.mjs — read via the perf feature api importPhases). Keeps the
  * last 50 import results with per-phase timings — conversion (web-ifc →
  * FRAG, worker) and scene load (fragments core). Read-only diagnostics;
  * exposed through ctx.features.importer (no new window globals).

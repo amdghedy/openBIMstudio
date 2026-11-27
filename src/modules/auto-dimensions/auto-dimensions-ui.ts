@@ -3,6 +3,7 @@
  */
 
 import { autoDimensionsEngine } from "./auto-dimensions-engine";
+import { notify as coreNotify } from "../../core/notify";
 import { defaultAutoDimOptions } from "./types";
 import { confirmDialog } from "../../features/form-modal";
 
@@ -90,15 +91,10 @@ function injectCss(): void {
   document.head.appendChild(s);
 }
 
-function notify(kind: string, message: string): void {
-  try {
-    const n = (window as Any).__obsNotify ?? (window as Any).notify;
-    if (typeof n === "function") {
-      n(kind, message, { timeout: 3000 });
-      return;
-    }
-  } catch { /* */ }
-  console.log(`[auto-dims] ${kind}: ${message}`);
+function notify(kind: "info" | "success" | "warn" | "error", message: string): void {
+  // The legacy notify window-globals never had a producer; the old lookup
+  // always fell through to console.log. Use the central bus directly.
+  coreNotify(kind, message, { timeout: 3000 });
 }
 
 function renderPanel(): void {
@@ -295,9 +291,12 @@ export function setupAutoDimensionsUI(): void {
     }
   });
 
-  (window as Any).__obsOpenAutoDims = openAutoDimsPanel;
-  (window as Any).__obsAutoDimPlan = () =>
-    autoDimensionsEngine.autoDimensionPlan({ axis: "both" });
+  const autoDimsApi = {
+    open: openAutoDimsPanel,
+    plan: () => autoDimensionsEngine.autoDimensionPlan({ axis: "both" }),
+  };
+  (window as Any).__OBS_CTX__.features.openAutoDims = autoDimsApi.open;
+  (window as Any).__OBS_CTX__.features.autoDimPlan = autoDimsApi.plan;
 
   autoDimensionsEngine.onChange(() => {
     if (panel?.classList.contains("is-open")) renderPanel();

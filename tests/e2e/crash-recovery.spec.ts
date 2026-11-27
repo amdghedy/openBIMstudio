@@ -29,7 +29,7 @@ async function enterPlatform(page: Page): Promise<void> {
 }
 
 test('renderer crash with unsaved changes shows the recovery banner on reload', async ({ page, browser }) => {
-  test.setTimeout(300000); // two cold boots + SwiftShader on a weak VM are slow
+  test.setTimeout(600000); // two cold boots + SwiftShader on a weak VM are slow
   const t0 = Date.now();
   const stamp = (m: string) => console.log(`[crash-recovery ${((Date.now() - t0) / 1000).toFixed(1)}s] ${m}`);
   const errors: string[] = [];

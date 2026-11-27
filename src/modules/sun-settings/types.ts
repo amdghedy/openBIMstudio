@@ -87,9 +87,11 @@ function applySun() {
 }
 
 let installed = false;
+let sunApi: any = null;
 export function setupSunSettings() {
-  if (installed) return; installed = true;
-  (window as any).__obsSun = { get: getSunSettings, set: setSunSettings, compute: computeSunPosition };
+  if (installed) return sunApi; installed = true;
+  sunApi = { get: getSunSettings, set: setSunSettings, compute: computeSunPosition };
   setTimeout(applySun, 2000);
-  console.log("[sun-settings] ready. Configure via __obsSun.set({ date, time, latitude, ... }).");
+  console.log("[sun-settings] ready. Configure via the sun feature api.");
+  return sunApi;
 }

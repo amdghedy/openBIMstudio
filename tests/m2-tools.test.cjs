@@ -101,14 +101,14 @@ ctx.features = { authoring: api };
     assert.ok(out.ok);
     for (const k of ["stairs", "railing", "ramp", "curtain-wall", "roof", "ceiling"]) {
       assert.ok(SCHEMAS[k] && SCHEMAS[k].fields.length >= 5, k + " schema");
-      assert.ok(typeof window.__obsMeshBuilders[k] === "function", k + " builder");
+      assert.ok(typeof ctx.features.meshBuilders[k] === "function", k + " builder");
       const keys = SCHEMAS[k].fields.map((f) => f.target + ":" + f.key);
       assert.ok(new Set(keys).size === keys.length, "duplicate field keys in " + k);
     }
     assert.ok(SCHEMAS.stairs.fields.some((f) => f.key === "stairShape" && f.options.length === 5));
-    const q = window.__obsM2Quantities({ type: "curtain-wall", params: { height: 3.6, thickness: 0.1, elevation: 0, start: [0, 0], end: [6, 0] } });
+    const q = ctx.features.m2Quantities({ type: "curtain-wall", params: { height: 3.6, thickness: 0.1, elevation: 0, start: [0, 0], end: [6, 0] } });
     near(q.area, 21.6);
-    assert.strictEqual(window.__obsM2Quantities({ type: "wall", params: {} }), null);
+    assert.strictEqual(ctx.features.m2Quantities({ type: "wall", params: {} }), null);
   });
   await t("mesh builder: one mesh per part (frame + glazing), tagged with the element id, glass transparent; bad params give null instead of throwing", () => {
     const g = reg.buildM2Mesh({ id: "c1", type: "curtain-wall", params: { height: 3.6, thickness: 0.1, elevation: 0, start: [0, 0], end: [6, 0] } });

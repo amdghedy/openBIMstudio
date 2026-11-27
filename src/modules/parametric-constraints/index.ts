@@ -21,9 +21,10 @@ import {
 } from "./types";
 
 let installed = false;
+let constraintsApi: any = null;
 export function setupParametricConstraints() {
-  if (installed) return; installed = true;
-  (window as any).__obsConstraints = {
+  if (installed) return constraintsApi; installed = true;
+  constraintsApi = {
     lock: (e1: string, e2: string, v: number) => lockDimension(e1, e2, v),
     equality: (ids: string[], label: string) => addEquality(ids, label),
     align: (e1: string, e2: string) => addAlignment(e1, e2),
@@ -37,4 +38,5 @@ export function setupParametricConstraints() {
     lockedValue: (e1: string, e2: string) => getLockedValue(e1, e2),
   };
   console.log("[parametric-constraints] ready. Lock dims, equality, alignment, parallel, perpendicular.");
+  return constraintsApi;
 }

@@ -592,7 +592,7 @@ function setPlanSelectedElement(el: any | null, mode: "replace" | "add" | "toggl
  * Revit "Select Previous" for the plan: restore the plan selection in
  * place before the last change (swap, so a second press toggles back).
  * Returns false when there is nothing to restore. Exposed as
- * `__obsPlanSelectPrevious` so the global Ctrl+Left command delegates here
+ * ctx.features.planSelectPrevious so the global Ctrl+Left command delegates here
  * while the plan is open.
  */
 function selectPlanPrevious(): boolean {
@@ -1500,7 +1500,7 @@ function recordDims(label: string, before: string): void {
 function markPlanDimsDirty(): void { try { import("../modules/projects/projects").then((m: any) => m.markDirty?.()); } catch { /* */ } }
 
 /** Persist plan dimensions in the project document. */
-(window as any).__obsPlanDims = {
+(ctx.features as any).planDims = {
   serialize: () => JSON.parse(JSON.stringify(planDims)),
   load: (arr: unknown) => {
     planDims.length = 0;
@@ -1511,8 +1511,8 @@ function markPlanDimsDirty(): void { try { import("../modules/projects/projects"
 };
 
 try {
-  const pend = (window as any).__obsPendingPlanDims;
-  if (Array.isArray(pend)) { planDims.push(...(pend as PlanDimension[])); (window as any).__obsPendingPlanDims = undefined; }
+  const pend = (ctx.features as any).pendingPlanDims;
+  if (Array.isArray(pend)) { planDims.push(...(pend as PlanDimension[])); (ctx.features as any).pendingPlanDims = undefined; }
 } catch { /* */ }
 
 function resolvedDimPoints(d: PlanDimension): { p1: { x: number; z: number }; p2: { x: number; z: number } } {
@@ -1648,7 +1648,7 @@ function recordAnno(label: string, before: string): void {
   try { planHistory.push({ label, apply: () => restoreAnno(after), revert: () => restoreAnno(before) }); } catch { /* */ }
   try { import("../modules/projects/projects").then((m: any) => m.markDirty?.()); } catch { /* */ }
 }
-(window as any).__obsPlanAnno = {
+(ctx.features as any).planAnno = {
   serialize: () => JSON.parse(annoSnapshot()),
   load: (o: any) => {
     planTags.length = 0; planNotes.length = 0;
@@ -1658,8 +1658,8 @@ function recordAnno(label: string, before: string): void {
   },
 };
 try {
-  const pend = (window as any).__obsPendingPlanAnno;
-  if (pend) { planTags.push(...(pend.tags ?? [])); planNotes.push(...(pend.notes ?? [])); (window as any).__obsPendingPlanAnno = undefined; }
+  const pend = (ctx.features as any).pendingPlanAnno;
+  if (pend) { planTags.push(...(pend.tags ?? [])); planNotes.push(...(pend.notes ?? [])); (ctx.features as any).pendingPlanAnno = undefined; }
 } catch { /* */ }
 
 // ── Filled / masking regions (BIM: Annotate > Detail > Region) ──
@@ -1690,7 +1690,7 @@ function recordRegions(label: string, before: string): void {
   try { planHistory.push({ label, apply: () => restoreRegions(after), revert: () => restoreRegions(before) }); } catch { /* */ }
   markPlanDimsDirty();
 }
-(window as any).__obsPlanRegions = {
+(ctx.features as any).planRegions = {
   serialize: () => serializeRegions(),
   load: (arr: unknown) => {
     loadRegions(Array.isArray(arr) ? arr : []);
@@ -1699,8 +1699,8 @@ function recordRegions(label: string, before: string): void {
   },
 };
 try {
-  const pr = (window as any).__obsPendingPlanRegions;
-  if (Array.isArray(pr)) { loadRegions(pr); (window as any).__obsPendingPlanRegions = undefined; }
+  const pr = (ctx.features as any).pendingPlanRegions;
+  if (Array.isArray(pr)) { loadRegions(pr); (ctx.features as any).pendingPlanRegions = undefined; }
 } catch { /* */ }
 
 /** Close the current region polygon: create the region, keep the tool active (BIM repeat). */
@@ -2186,11 +2186,11 @@ async function linkCadVector(file: File): Promise<boolean> {
 
 async function linkCadUnderlay() {
   try {
-    const pending = (window as any).__obsPendingCadFile as File | undefined;
-    if (pending && await linkCadVector(pending)) { (window as any).__obsPendingCadFile = null; return; }
+    const pending = (ctx.features as any).pendingCadFile as File | undefined;
+    if (pending && await linkCadVector(pending)) { (ctx.features as any).pendingCadFile = null; return; }
     if (pending) {
       try {
-        (window as any).__obsPendingCadFile = null;
+        (ctx.features as any).pendingCadFile = null;
         await loadCadFileAsUnderlay(pending);
         return;
       } catch (err) {
@@ -2218,7 +2218,7 @@ async function linkCadUnderlay() {
 }
 
 try {
-  (window as any).__obsAutoLinkCad = async (file: File) => {
+  (ctx.features as any).autoLinkCad = async (file: File) => {
     if (await linkCadVector(file)) return;
     await loadCadFileAsUnderlay(file);
   };
@@ -2921,7 +2921,7 @@ function renderPlan(plan: PlanView) {
   // Limit: no level filtering — the rooms store's levelId does not match
   // the plan's level list, so every room / area on the project is shown.
   if (planDisplayModel) {
-    const store: any = (window as any).__obsRooms ?? (ctx.features as any).rooms;
+    const store: any = (ctx.features as any).rooms ?? (ctx.features as any).rooms;
     const rooms = store?.listRooms?.() ?? [];
     const areas = store?.listAreas?.() ?? [];
     const drawBoundary = (pts: Array<{ x: number; z: number }>, label: string, kind: string, color: string) => {
@@ -4820,7 +4820,7 @@ canvasWrap.addEventListener("mousedown", (e) => {
       // Room / Area tags hit-test the rooms store (rooms and areas are not
       // authored elements); Space has no model and places nothing.
       if (mode === "room" || mode === "area") {
-        const store: any = (window as any).__obsRooms ?? (ctx.features as any).rooms;
+        const store: any = (ctx.features as any).rooms ?? (ctx.features as any).rooms;
         const list = mode === "room" ? store?.listRooms?.() ?? [] : store?.listAreas?.() ?? [];
         const hit = mode === "room" ? roomAtPoint(list, w.x, w.z) : areaAtPoint(list, w.x, w.z);
         if (hit) {
@@ -5035,7 +5035,7 @@ window.addEventListener("mouseup", () => {
  * window handle (same pattern as ribbon.ts) with a dynamic-import fallback.
  */
 function openTypePropertiesForPlan(): void {
-  const exp: any = (window as any).__obsBIMExperience;
+  const exp: any = (ctx.features as any).bimExperience;
   if (typeof exp?.execute === "function") { exp.execute("modify.typeProperties"); return; }
   void import("./bim-experience").then((m: any) => {
     m.executeBimCommand?.("modify.typeProperties");
@@ -6243,10 +6243,10 @@ try {
   registerEscapeScope({ id: "plan-view", priority: 900, cancel: () => isPlanViewVisible() && cancelAllPlan() });
 
   // Flag for 3D handlers to defer when plan is open
-  (window as any).__obsPlanVisible = () => isPlanViewVisible();
+  (ctx.features as any).planVisible = () => isPlanViewVisible();
   // Global Select Previous (Ctrl+Left) delegates to the plan's own
   // previous-selection store while the plan is open.
-  (window as any).__obsPlanSelectPrevious = () => isPlanViewVisible() && selectPlanPrevious();
+  (ctx.features as any).planSelectPrevious = () => isPlanViewVisible() && selectPlanPrevious();
 
   window.addEventListener("keydown", (e) => {
     if (!isPlanViewVisible()) return;
@@ -6594,6 +6594,8 @@ try {
     toggle: togglePlanView,
     isVisible: isPlanViewVisible,
     regenerate: () => void regenerate(),
+    /** Map client mouse position to world XZ on the plan (null when the plan CTM is unavailable). */
+    clientToWorld,
     /** G12 (a): current dock mode ("modal" | "docked-right" | "docked-bottom"). */
     dockMode: () => planDockMode,
     isDocked: () => planDockMode !== "modal",

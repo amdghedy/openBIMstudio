@@ -86,7 +86,7 @@ export function setActiveWorkPlane(id: string): boolean {
   plane.active = true;
   activeId = id;
   if (Math.abs(plane.normal[1]) > 0.999999) {
-    try { (window as any).__obsSnapping?.setWorkPlaneY?.(plane.origin[1]); } catch { /* */ }
+    try { (window as any).__OBS_CTX__?.features?.snappingEngine?.setWorkPlaneY?.(plane.origin[1]); } catch { /* */ }
   }
   try { window.dispatchEvent(new CustomEvent("obs:work-plane-changed", { detail: { id, plane } })); } catch { /* non-browser test */ }
   return true;
@@ -114,7 +114,7 @@ export function removeWorkPlane(id: string): void {
     const plane = planes.get(activeId);
     if (plane) plane.active = false;
     activeId = null;
-    try { (window as any).__obsSnapping?.setWorkPlaneY?.(0); } catch { /* */ }
+    try { (window as any).__OBS_CTX__?.features?.snappingEngine?.setWorkPlaneY?.(0); } catch { /* */ }
   }
   planes.delete(id);
   try { window.dispatchEvent(new CustomEvent("obs:work-plane-changed", { detail: { id: activeId, plane: getActiveWorkPlane() } })); } catch { /* */ }
@@ -209,7 +209,7 @@ export function restoreWorkPlanes(snapshot: WorkPlaneSnapshot): void {
   }
   if (snapshot.activeId) setActiveWorkPlane(snapshot.activeId);
   else {
-    try { (window as any).__obsSnapping?.setWorkPlaneY?.(0); } catch { /* */ }
+    try { (window as any).__OBS_CTX__?.features?.snappingEngine?.setWorkPlaneY?.(0); } catch { /* */ }
   }
 }
 

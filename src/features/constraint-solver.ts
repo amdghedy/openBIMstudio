@@ -159,11 +159,8 @@ export function solveHostedConstraints(focusIds?: string[]): number {
 export function setupConstraintSolver(): void {
   const f = getFeatures();
   f.constraintSolver = { solve: solveHostedConstraints, solveAll: solveHostedConstraints };
-  // NOTE: no new cross-feature globals here — the ui-honesty budget forbids
-  // growth. The pre-existing window alias now runs the FULL pipeline (stored
-  // constraints + openings), and ribbon/command callers can reach solveAll
-  // via ctx.features.constraintSolver.
-  (window as Any).__obsSolveHostedConstraints = solveHostedConstraints;
+  // Ribbon/command callers reach the full pipeline (stored constraints +
+  // openings) via ctx.features.constraintSolver.solveAll.
   setupAutoSolve(f);
   console.log(
     "[constraint-solver] ready — stored constraints solved via L-M bridge, openings re-clamped (button-driven + auto-solve after move commits)",

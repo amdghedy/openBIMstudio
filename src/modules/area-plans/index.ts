@@ -15,9 +15,10 @@ export interface AreaPlanService {
 }
 
 let installed = false;
+let cached: AreaPlanService | null = null;
 
 export function setupAreaPlans(): AreaPlanService {
-  if (installed) return (window as any).__obsAreaPlans as AreaPlanService;
+  if (installed) return cached as AreaPlanService;
   installed = true;
 
   const svc: AreaPlanService = {
@@ -27,7 +28,7 @@ export function setupAreaPlans(): AreaPlanService {
     listSchemeOptions,
   };
 
-  try { (window as any).__obsAreaPlans = svc; } catch { /* */ }
+  cached = svc;
   console.log("[area-plans] ready. Color fill by department/occupancy/area type.");
 
   return svc;

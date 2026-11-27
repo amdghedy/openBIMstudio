@@ -171,7 +171,7 @@ export function runModifyAction(id: ModifyActionId): void {
     case "select-similar": {
       // The registry defines this command for authored (NATIVE) elements:
       // "Select authored elements similar to the selected source element."
-      // It used to call window.__obsSelection.selectSimilar — a method
+      // It used to call the selection engine selectSimilar — a method
       // that object never had (it only exposes the SelectionEngine class),
       // so it always warned and did nothing; and the fragment engine it
       // named has no "native" model anyway. Route it to the authoring

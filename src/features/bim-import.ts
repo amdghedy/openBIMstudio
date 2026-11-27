@@ -208,9 +208,8 @@ function showToast(id: string, kind: string, message: string, timeout?: number):
 /**
  * Register the "Import BIM/Navisworks File" command.
  */
-export function setupBIMImport(): void {
-  // Expose global for console + command palette
-  (window as any).__obsBIMImport = {
+export function setupBIMImport() {
+  const api = {
     pickAndConvert: pickAndConvertBIMFile,
     convertFile: convertAndLoadFile,
     setServer: setConvertServer,
@@ -237,5 +236,6 @@ export function setupBIMImport(): void {
     }
   } catch { /* */ }
 
-  console.log("[bim-import] ready. Use command palette → 'Import BIM / Navisworks File' or __obsBIMImport.pickAndConvert().");
+  console.log("[bim-import] ready. Use command palette → 'Import BIM / Navisworks File'.");
+  return api;
 }

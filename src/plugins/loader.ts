@@ -204,11 +204,16 @@ async function verifyEntryIntegrity(url: string, pin: string): Promise<boolean> 
   }
 }
 
+/** Registry of plugins that called the registration bridge. */
+const pluginRegistry = new Map<string, { manifest: PluginManifest; factory: PluginFactory }>();
+
+/** Read-only access for UI (plugin list dialogs). */
+export function getPluginRegistry(): ReadonlyMap<string, { manifest: PluginManifest; factory: PluginFactory }> {
+  return pluginRegistry;
+}
+
 /** Install the `window.__obsRegisterPlugin` bridge for a specific plugin id. */
 function installRegistrationBridge(pluginId: string): void {
-  if (!window.__obsPluginRegistry) {
-    window.__obsPluginRegistry = new Map();
-  }
   window.__obsRegisterPlugin = (manifest: PluginManifest, factory: PluginFactory) => {
     // Defensively re-validate the manifest the plugin declares.
     const err = validateManifest(manifest);
@@ -224,7 +229,7 @@ function installRegistrationBridge(pluginId: string): void {
       );
       return;
     }
-    window.__obsPluginRegistry!.set(pluginId, { manifest, factory });
+    pluginRegistry.set(pluginId, { manifest, factory });
   };
 }
 
@@ -278,7 +283,7 @@ async function loadAndActivatePlugin(id: string): Promise<boolean> {
     }
 
     // Plugin should have called __obsRegisterPlugin synchronously
-    const registered = window.__obsPluginRegistry?.get(id);
+    const registered = pluginRegistry.get(id);
     if (!registered) {
       console.warn(
         `[plugins:${id}] loaded script but did not call ` +

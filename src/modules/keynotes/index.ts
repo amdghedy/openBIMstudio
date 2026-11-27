@@ -17,10 +17,11 @@ import {
 } from "./types";
 
 let installed = false;
+let keynotesApi: any = null;
 export function setupKeynotes() {
-  if (installed) return;
+  if (installed) return keynotesApi;
   installed = true;
-  (window as any).__obsKeynotes = {
+  keynotesApi = {
     loadFile: (text: string) => loadKeynoteFile(text),
     get: (code: string) => getKeynote(code),
     list: () => listKeynotes(),
@@ -31,6 +32,7 @@ export function setupKeynotes() {
     legend: () => generateLegend(),
     legendCSV: () => legendToCSV(),
   };
-  console.log("[keynotes] ready. Load a keynote file via __obsKeynotes.loadFile(text).");
+  console.log("[keynotes] ready. Load a keynote file via the keynotes feature api.");
+  return keynotesApi;
 }
 export function isReady() { return installed; }

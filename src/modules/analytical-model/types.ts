@@ -59,8 +59,10 @@ export function exportAnalyticalModel(): { nodes: AnalyticalNode[]; members: Ana
 }
 
 let installed = false;
+let analyticalApi: any = null;
 export function setupAnalyticalModel() {
-  if (installed) return; installed = true;
-  (window as any).__obsAnalytical = { addNode, addMember, addLoad, getNodes, getMembers, getLoads, export: exportAnalyticalModel };
-  console.log("[analytical-model] ready. Build FEM models via __obsAnalytical.");
+  if (installed) return analyticalApi; installed = true;
+  analyticalApi = { addNode, addMember, addLoad, getNodes, getMembers, getLoads, export: exportAnalyticalModel };
+  console.log("[analytical-model] ready. Build FEM models via the analytical feature api.");
+  return analyticalApi;
 }

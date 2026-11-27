@@ -185,7 +185,9 @@ const ANY_RE = /: any|as any|<any>/g;
 let obsCount = 0;
 let anyCount = 0;
 for (const f of files) {
-  if (/form-modal\.ts$|core\/notify\.ts$/.test(f)) continue;
+  // Same exclusions as the ui-honesty ratchet: dialog owners, and the
+  // generated i18n dictionaries whose matches are translated strings.
+  if (/form-modal\.ts$|core\/notify\.ts$|core\/i18n-catalogs\//.test(f)) continue;
   const text = readFileSync(f, "utf8");
   obsCount += (text.match(OBS_RE) || []).length;
   anyCount += (text.match(ANY_RE) || []).length;
@@ -204,7 +206,7 @@ console.log(`src files: ${files.length} (.ts/.tsx), static edges: ${edgeCount}`)
 console.log("--- file sizes (lines, excluding .gen.ts) ---");
 for (const [lines, f] of sizes.slice(0, 15)) console.log(`  ${String(lines).padStart(6)}  ${f}`);
 console.log(`  files >1000 lines: ${sizes.filter(([n]) => n > 1000).length}, >3000 lines: ${sizes.filter(([n]) => n > 3000).length}`);
-console.log("--- __obs globals (ui-honesty measure; ratchet baseline 727) ---");
+console.log("--- __obs globals (ui-honesty measure; ratchet baseline in tests/ui-honesty.test.cjs) ---");
 console.log(`  __obs[A-Za-z0-9]+ occurrences: ${obsCount}`);
 console.log(`  explicit 'any' occurrences (grep measure): ${anyCount}`);
 console.log("--- import cycles (static graph, SCC size > 1) ---");

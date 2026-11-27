@@ -4,7 +4,7 @@
  * Exposes the four new engineering engines on window.__obs* for the
  * console, ribbon, automation and AI tools:
  *
- *   __obsConstraints — numeric geometric constraint solver (walls/sketches)
+ *   constraints feature api — numeric geometric constraint solver (walls/sketches)
  *   __obsStructural  — 2D frame FEM + steel/RC code checks
  *   __obsMepPressure — duct/pipe pressure-loss + worst-path hydraulics
  *   __obsAdaptive    — adaptive components: families, sweeps, patterns
@@ -86,11 +86,11 @@ function commitWalls(): void {
 
 export function setupEngineeringEngines(): void {
   // ── 1. Constraint solver ────────────────────────────────────────────────
-  // NOTE: parametric-constraints registers `__obsConstraints` first
+  // NOTE: parametric-constraints registers ctx.features.constraints first
   // (lock/equality/align manager). v67 must MERGE the numeric solver into
   // that object — overwriting it broke the ribbon Lock Dim / Equality
   // buttons, which call `.lock()` / `.equality()` at runtime.
-  const existingConstraints = (w.__obsConstraints ?? {}) as Any;
+  const existingConstraints = ((ctx.features as Any).constraints ?? {}) as Any;
   const constraintsApi = {
     ...existingConstraints,
     /** Solve an ad-hoc point/constraint system (returns solved points). */
@@ -123,7 +123,7 @@ export function setupEngineeringEngines(): void {
       return { changed: out.changed, result: out.result };
     },
   };
-  w.__obsConstraints = constraintsApi;
+  (ctx.features as Any).constraints = constraintsApi;
   features().constraintSolverV67 = constraintsApi;
 
   // ── 2. Structural engine ────────────────────────────────────────────────
@@ -172,6 +172,6 @@ export function setupEngineeringEngines(): void {
   features().adaptiveComponents = integratedAdaptiveApi;
 
   console.log(
-    "[obs] v67 engines registered: __obsConstraints (numeric solver), __obsStructural (FEM + code checks), __obsMepPressure (hydraulics), __obsAdaptive (adaptive components)",
+    "[obs] v67 engines registered: constraints (numeric solver), __obsStructural (FEM + code checks), __obsMepPressure (hydraulics), __obsAdaptive (adaptive components)",
   );
 }

@@ -141,6 +141,5 @@ export function buildRailing(input: Partial<RailingParams> = {}): RailingResult 
 
 export function setupRailings(): void {
   (ctx.features as any).railings = { buildRailing };
-  (window as any).__obsRailings = { buildRailing };
   console.log("[railings] generator ready");
 }

@@ -145,7 +145,7 @@ export function registerClosedGapUiItems(): void {
     label: "Rooms & Areas",
     group: "panels",
     available: true,
-    isVisible: () => !!(window as any).__obsRooms,
+    isVisible: () => !!(ctx.features as any).rooms,
     toggle: () => {
       window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "rooms" } }));
     },
@@ -156,7 +156,7 @@ export function registerClosedGapUiItems(): void {
     label: "Phasing",
     group: "panels",
     available: true,
-    isVisible: () => !!(window as any).__obsPhases,
+    isVisible: () => !!(ctx.features as any).phases,
     toggle: () => {
       window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "phases" } }));
     },
@@ -167,7 +167,7 @@ export function registerClosedGapUiItems(): void {
     label: "Design Options",
     group: "panels",
     available: true,
-    isVisible: () => !!(window as any).__obsDesignOptions,
+    isVisible: () => !!(ctx.features as any).designOptions,
     toggle: () => {
       window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "design-options" } }));
     },
@@ -178,9 +178,9 @@ export function registerClosedGapUiItems(): void {
     label: "Reference Planes",
     group: "panels",
     available: true,
-    isVisible: () => !!(window as any).__obsRefPlanes,
+    isVisible: () => !!(ctx.features as any).refPlanes,
     toggle: () => {
-      const rp = (window as any).__obsRefPlanes;
+      const rp = (ctx.features as any).refPlanes;
       rp?.showOverlay?.(true);
       window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "ref-planes" } }));
     },
@@ -192,7 +192,7 @@ export function registerClosedGapUiItems(): void {
     label: "Model Groups",
     group: "panels",
     available: true,
-    isVisible: () => !!(window as any).__obsGroups,
+    isVisible: () => !!(ctx.features as any).groups,
     toggle: () => {
       window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "groups" } }));
     },
@@ -203,7 +203,7 @@ export function registerClosedGapUiItems(): void {
     label: "Copy / Monitor",
     group: "panels",
     available: true,
-    isVisible: () => !!(window as any).__obsCopyMonitor,
+    isVisible: () => !!(ctx.features as any).copyMonitor,
     toggle: () => {
       window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "copy-monitor" } }));
     },

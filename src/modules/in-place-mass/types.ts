@@ -60,8 +60,10 @@ function computePolygonArea(poly: Array<[number, number]>): number {
 }
 
 let installed = false;
+let massApi: any = null;
 export function setupInPlaceMass() {
-  if (installed) return; installed = true;
-  (window as any).__obsMass = { create: createMass, list: listMasses, remove: removeMass, getFloors: getMassFloors };
-  console.log("[in-place-mass] ready. Create conceptual masses via __obsMass.create(polygon, height).");
+  if (installed) return massApi; installed = true;
+  massApi = { create: createMass, list: listMasses, remove: removeMass, getFloors: getMassFloors };
+  console.log("[in-place-mass] ready. Create conceptual masses via the mass feature api.");
+  return massApi;
 }

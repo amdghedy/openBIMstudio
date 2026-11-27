@@ -87,13 +87,13 @@ export async function setupCriticalGapsUI(): Promise<void> {
 
   // -- Original advanced tools ---------------------------------------
   const draftBtn = makeButton("obs-adv-draft", "[D] 2D Draft", "Toggle 2D drafting overlay", () => {
-    const d = (window as Any).__obsDrafting2D;
+    const d = (ctx.features as Any).drafting2D;
     if (!d) { flash(draftBtn, "[!] Draft"); return; }
     const active = !!d.getTool?.();
     d.setTool(active ? null : "line");
   });
   const refreshDraft = (): void => {
-    const d = (window as Any).__obsDrafting2D;
+    const d = (ctx.features as Any).drafting2D;
     const active = !!d?.getTool?.();
     draftBtn.textContent = active ? "[D] Draft: ON" : "[D] 2D Draft";
     draftBtn.dataset.active = active ? "1" : "0";
@@ -109,7 +109,7 @@ export async function setupCriticalGapsUI(): Promise<void> {
   });
 
   const solveBtn = makeButton("obs-adv-solve", "[S] Solve", "Hosted constraint solver", () => {
-    const fn = (window as Any).__obsSolveHostedConstraints;
+    const fn = (ctx.features as Any).constraintSolver?.solveAll;
     if (typeof fn !== "function") { flash(solveBtn, "[!]"); return; }
     try {
       const n = Number(fn() ?? 0);
@@ -143,7 +143,7 @@ export async function setupCriticalGapsUI(): Promise<void> {
     flash(cwBtn, "[OK]");
   });
   const roomBtn = makeButton("obs-adv-room", "[R] Room", "Create sample room", () => {
-    const r = (window as Any).__obsRooms?.createRoom?.({
+    const r = (ctx.features as Any).rooms?.createRoom?.({
       name: "Room",
       boundary: [{ x: 0, z: 0 }, { x: 4, z: 0 }, { x: 4, z: 3 }, { x: 0, z: 3 }],
     });
@@ -152,7 +152,7 @@ export async function setupCriticalGapsUI(): Promise<void> {
 
   // -- Modify --------------------------------------------------------
   const alignBtn = makeButton("obs-adv-align", "[A] Align", "Align selection on X", () => {
-    const n = (window as Any).__obsAlign?.alignSelection?.("x", "min") ?? 0;
+    const n = (ctx.features as Any).align?.alignSelection?.("x", "min") ?? 0;
     flash(alignBtn, n ? `[OK] ${n}` : "[--]");
   });
   const matchBtn = makeButton("obs-adv-match", "Match", "Match properties (pick source)", () => {
@@ -170,7 +170,7 @@ export async function setupCriticalGapsUI(): Promise<void> {
       ids = sel?.getSelectedIds?.() ?? [];
     } catch { /* */ }
     if (!ids.length) { flash(groupBtn, "sel?"); return; }
-    const g = (window as Any).__obsGroups?.createFromSelection?.("Group", ids, true);
+    const g = (ctx.features as Any).groups?.createFromSelection?.("Group", ids, true);
     flash(groupBtn, g ? "[OK]" : "[!]");
   });
 
@@ -207,7 +207,7 @@ export async function setupCriticalGapsUI(): Promise<void> {
 
   // -- LOD / Perf / Collab (kept) ------------------------------------
   const lodBtn = makeButton("obs-adv-lod", "[L] LOD", "Toggle LOD culling", () => {
-    const l = (window as Any).__obsLodManager;
+    const l = (ctx.features as Any).lodManager;
     if (!l) { flash(lodBtn, "[!]"); return; }
     const on = !!l.setEnabled?.(!l.isEnabled?.());
     lodBtn.textContent = on ? "[L] LOD: ON" : "[L] LOD: OFF";

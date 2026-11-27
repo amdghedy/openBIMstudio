@@ -58,7 +58,7 @@ function openTypePropertiesFor(id: string): void {
     const auth: any = (ctx.features as any).authoring;
     auth?.setSelectedAuthored?.([id], "replace");
   } catch { /* selection is best-effort; the command toasts if empty */ }
-  const exp: any = (window as any).__obsBIMExperience;
+  const exp: any = (ctx.features as any).bimExperience;
   if (typeof exp?.execute === "function") {
     exp.execute("modify.typeProperties");
     return;

@@ -34,11 +34,13 @@ export function addLevelMarker(m: LevelMarker): void { levelMarkers.push(m); }
 export function getLevelMarkers(): LevelMarker[] { return levelMarkers; }
 
 let installed = false;
+let gridBubblesApi: any = null;
 export function setupGridBubbles() {
-  if (installed) return; installed = true;
-  (window as any).__obsGridBubbles = {
+  if (installed) return gridBubblesApi; installed = true;
+  gridBubblesApi = {
     addGrid: addGridBubble, getGrids: getGridBubbles, toggleGrid: toggleGridBubble,
     addLevel: addLevelMarker, getLevels: getLevelMarkers,
   };
   console.log("[grid-bubbles] ready.");
+  return gridBubblesApi;
 }

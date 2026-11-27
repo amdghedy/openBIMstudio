@@ -1289,19 +1289,13 @@ export function setupBimExperience() {
     refresh,
     activateTool,
     getState: () => ({ ...state }),
+    commands,
     toggleContextualBar,
     toggleOptionsBar,
     toggleViewBar,
     isContextualBarVisible,
     isOptionsBarVisible,
     isViewBarVisible,
-  };
-  (window as any).__obsBIMExperience = {
-    execute,
-    refresh,
-    getState: () => ({ ...state }),
-    commands,
-    activateTool,
   };
   refresh();
   console.log("[BIM Experience] v48 interaction layer online — command grammar + contextual UX + options bar + view control bar");

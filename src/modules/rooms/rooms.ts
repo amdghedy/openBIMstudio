@@ -279,7 +279,6 @@ export const roomsStore = new RoomsStore();
 export function setupRooms(): typeof roomsStore {
   roomsStore.boot();
   (ctx.features as any).rooms = roomsStore;
-  (window as any).__obsRooms = roomsStore;
   console.log("[rooms] ready -", roomsStore.listRooms().length, "rooms,", roomsStore.listAreas().length, "areas");
   return roomsStore;
 }

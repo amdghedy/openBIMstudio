@@ -38,7 +38,7 @@
  *   - While no CAD tool is active, SC falls through to the command
  *     line, where it runs SCALE — the registry never fires inside the
  *     drawing editor at all, because it yields bare letters while the
- *     CAD editor owns the keyboard (`__obsCadOwnsKeys`, shortcuts.ts).
+ *     CAD editor owns the keyboard (features.cadOwnsKeys, shortcuts.ts).
  * `resolveOverrideKeys` pins that precedence here.
  */
 
