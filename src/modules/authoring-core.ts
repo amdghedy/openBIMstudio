@@ -2,18 +2,18 @@
  * Authoring core — parametric graph, registry, solids, snapping, relationships.
  *
  * Implements the Design spec authorized modules (1, 2, 2B, 2C, 2D, 2E)
- * as pure engines and exposes them on window.__obs* for the console,
+ * as pure engines and registers them on ctx.features for the app,
  * ribbon, automation and AI tools:
  *
- *   __obsParametric — dependency graph + parameter engine (Modules 1.1–1.3, 1.6)
- *   __obsRegistry   — object hierarchy + identity (Module 2.1–2.2)
- *   __obsSolids     — solid kernel: forms, booleans, voids, validation (2.7–2.9, 2.12)
- *   __obsSnapping   — magnetic snapping + modeling state machine + wall-column + alignment (2B.1–2B.4)
- *   __obsRelationships — persistent relationship registry (2B.5–2B.6)
- *   __obsMepConnectors — MEP connector intelligence (2B.7)
- *   __obsModify     — unified Modify command engine (2C)
- *   __obsProperties — property schemas + editing lifecycle + dimensions (2D)
- *   __obsHosting    — host parameterization + opening regeneration (1.5)
+ *   parametricEngine — dependency graph + parameter engine (Modules 1.1–1.3, 1.6)
+ *   bimRegistry   — object hierarchy + identity (Module 2.1–2.2)
+ *   solidKernel     — solid kernel: forms, booleans, voids, validation (2.7–2.9, 2.12)
+ *   snappingEngine   — magnetic snapping + modeling state machine + wall-column + alignment (2B.1–2B.4)
+ *   relationshipRegistry — persistent relationship registry (2B.5–2B.6)
+ *   mepConnectors — MEP connector intelligence (2B.7)
+ *   modifyEngine     — unified Modify command engine (2C)
+ *   propertyEngine — property schemas + editing lifecycle + dimensions (2D)
+ *   hostingEngine    — host parameterization + opening regeneration (1.5)
  *
  * Pure engines: no DOM beyond global registration, so a failure here
  * cannot break boot (the boot wrapper catches).
@@ -94,7 +94,7 @@ export function setupAuthoringCore(): void {
     parse: parseParameterValue,
     format: formatParameterValue,
   };
-  w.__obsParametric = parametricApi;
+
   features().parametricEngine = parametricApi;
 
   // ── 2. Object hierarchy ─────────────────────────────────────────────────
@@ -104,7 +104,7 @@ export function setupAuthoringCore(): void {
     BimRegistry,
     newUniqueId,
   };
-  w.__obsRegistry = registryApi;
+
   features().bimRegistry = registryApi;
 
   // ── 3. Solid kernel ─────────────────────────────────────────────────────
@@ -140,7 +140,7 @@ export function setupAuthoringCore(): void {
     MIN_REMOVED_VOLUME_M3,
     subtractThreeMesh,
   };
-  w.__obsSolids = solidsApi;
+
   features().solidKernel = solidsApi;
 
   // ── 4. Snapping + modeling state machine ────────────────────────────────
@@ -156,7 +156,7 @@ export function setupAuthoringCore(): void {
     computeAlignmentResidual,
     detectAlignmentConflict,
   };
-  w.__obsSnapping = snappingApi;
+
   features().snappingEngine = snappingApi;
 
   // ── 5. Relationships ────────────────────────────────────────────────────
@@ -166,7 +166,7 @@ export function setupAuthoringCore(): void {
     RelationshipRegistry,
     defaultPolicyFor,
   };
-  w.__obsRelationships = relationshipsApi;
+
   features().relationshipRegistry = relationshipsApi;
 
   // ── 6. MEP connectors ───────────────────────────────────────────────────
@@ -180,7 +180,7 @@ export function setupAuthoringCore(): void {
     validateMepNetworkTopology,
     disconnectMepConnectors,
   };
-  w.__obsMepConnectors = mepConnectorsApi;
+  features().mepConnectors = mepConnectorsApi;
   const existingMep = (w.__obsMep ?? {}) as Any;
   w.__obsMep = { ...existingMep, connectors: mepConnectorsApi };
 
@@ -193,15 +193,15 @@ export function setupAuthoringCore(): void {
     MoveTool, RotateTool, MirrorTool,
     rotateAboutAxis,
   };
-  w.__obsModify = modifyApi;
+
   features().modifyEngine = modifyApi;
 
   // ── 7b. Group 1 selection + reference engines (v71 spec §2–§3) ─────────
   const selectionApi = { SelectionEngine };
-  w.__obsSelection = selectionApi;
+
   features().selectionEngine = selectionApi;
   const referencesApi = { ReferenceService, REFERENCE_ELIGIBILITY };
-  w.__obsReferences = referencesApi;
+
   features().referenceService = referencesApi;
 
   // ── 8. Property panel engine ────────────────────────────────────────────
@@ -219,7 +219,7 @@ export function setupAuthoringCore(): void {
     CommitDimensionEdit,
     IsDimensionDriving,
   };
-  w.__obsProperties = propertiesApi;
+
   features().propertyEngine = propertiesApi;
 
   // ── 9. Hosting ──────────────────────────────────────────────────────────
@@ -230,12 +230,12 @@ export function setupAuthoringCore(): void {
     findOverlappingOpenings,
     evaluateHostedOpeningsAfterHostChange,
   };
-  w.__obsHosting = hostingApi;
+
   features().hostingEngine = hostingApi;
 
   console.log(
-    "[obs] v68 engines registered: __obsParametric, __obsRegistry, __obsSolids, " +
-    "__obsSnapping, __obsRelationships, __obsMepConnectors, __obsModify, " +
-    "__obsProperties, __obsHosting",
+    "[obs] v68 engines registered on ctx.features: parametricEngine, bimRegistry, solidKernel, " +
+    "snappingEngine, relationshipRegistry, mepConnectors, modifyEngine, " +
+    "propertyEngine, hostingEngine",
   );
 }

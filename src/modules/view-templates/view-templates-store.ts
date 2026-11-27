@@ -1,6 +1,5 @@
 /**
  * View Templates store – persistent in-memory + localStorage.
- * Exposes window.__obsViewTemplates for console / other modules.
  */
 
 import {
@@ -522,8 +521,3 @@ class ViewTemplatesStore {
 }
 
 export const viewTemplatesStore = new ViewTemplatesStore();
-
-/** Global for console / other modules. */
-export function exposeViewTemplatesGlobal(): void {
-  (window as any).__obsViewTemplates = viewTemplatesStore;
-}

@@ -4105,7 +4105,7 @@ function deleteElements(ids: string[]) {
 function snapRegistry(): any | null {
   try {
     const w = window as any;
-    return w.__obsRelationships?.registry ?? null;
+    return ((ctx.features as any).relationshipRegistry?.registry) ?? null;
   } catch { return null; }
 }
 

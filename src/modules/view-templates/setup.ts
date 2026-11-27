@@ -2,7 +2,7 @@
  * View Templates module entry – call setupViewTemplates() from critical-gaps-boot.
  */
 
-import { viewTemplatesStore, exposeViewTemplatesGlobal } from "./view-templates-store";
+import { viewTemplatesStore } from "./view-templates-store";
 import { setupVgDialog, openVgDialog } from "./vg-dialog";
 import { ready } from "../../core/services";
 
@@ -112,7 +112,6 @@ function patchCommandCenter(): void {
 }
 
 export function setupViewTemplates(): void {
-  exposeViewTemplatesGlobal();
   setupVgDialog();
   registerPaletteCommands();
   patchCommandCenter();
