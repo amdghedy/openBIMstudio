@@ -107,6 +107,12 @@ export interface BoosterChoice {
 
 export interface BoosterSpecResult { spec: ProductSpec; provenance: Array<{ param: string; valueM: number; source: string }> }
 
+/** True when `param` was read from the data sheet and the value now in the spec is still that value (not typed or edited since). */
+export function sheetValueUnchanged(prov: BoosterSpecResult["provenance"], param: string, valueM: number): boolean {
+  const p = prov.find((x) => x.param === param);
+  return !!p && Math.abs(p.valueM - valueM) < 1e-9;
+}
+
 /** Make a ProductSpec for the booster template from one chosen variant. Throws if the variant or rows are missing. */
 export function boosterSpecFromSheet(sheet: BoosterSheet, choice: BoosterChoice): BoosterSpecResult {
   if (!sheet.ok) throw new Error(sheet.reason ?? "Sheet not read");
