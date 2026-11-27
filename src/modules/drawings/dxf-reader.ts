@@ -472,6 +472,9 @@ export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocume
 
   // 2. Sort records into header / layers / blocks / model space.
   const layers: DxfLayer[] = [];
+  // 2D-6: LAYER handle (group 5) → name, so a viewport's per-viewport
+  // freeze (group 331 handles) resolves back to layer names.
+  const layerNameByHandle = new Map<string, string>();
   const blocks = new Map<string, Block>();
   const xrefDecls: DxfXrefDecl[] = [];
   const modelRecs: Rec[] = [];
@@ -563,8 +566,11 @@ export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocume
         const d = new Data(r.pairs);
         const rawColor = d.n(62, 7);
         const transparency = d.has(440) ? dxfTransparency(d.n(440)) : 0;
+        const layerName = d.s(2) ?? "0";
+        const layerHandle = d.s(5)?.trim().toUpperCase();
+        if (layerHandle && !layerNameByHandle.has(layerHandle)) layerNameByHandle.set(layerHandle, layerName);
         layers.push({
-          name: d.s(2) ?? "0",
+          name: layerName,
           color: Math.abs(rawColor) || 7,
           ...(d.has(420) ? { rgb: d.n(420) & 0xffffff } : {}),
           lineType: d.s(6),
@@ -708,12 +714,20 @@ export function parseDxf(text: string, options: ParseDxfOptions = {}): DxfDocume
           // bit 16384 is the viewport zoom lock, and group 340 is the
           // rectangular clip boundary.
           const clip = clipFor(r);
+          // 2D-6: per-viewport freeze — group 331, one soft-pointer handle
+          // per frozen layer. Handles that do not resolve to a known layer
+          // are dropped, never invented.
+          const frozenLayers = vd.all(331)
+            .map((h) => layerNameByHandle.get(h.trim().toUpperCase()))
+            .filter((n): n is string => n !== undefined)
+            .filter((n, i, arr) => arr.indexOf(n) === i);
           vps.push({
             center: vd.pt(10, 20, 30), width: vd.n(40), height: vd.n(41),
             viewCenter: vd.pt(12, 22, 0), viewHeight: vd.n(45), twist: vd.n(51) || undefined,
             scale: vd.n(41) / vd.n(45),
             ...((vd.n(90, 0) & 16384) !== 0 ? { locked: true } : {}),
             ...(clip ? { clip } : {}),
+            ...(frozenLayers.length ? { frozenLayers } : {}),
           });
         }
         return false;

@@ -92,8 +92,9 @@ function writePoint(codes: [number, number, number], p: DxfPoint): string {
 let handleSeq = 0x100;
 const nextHandle = (): string => (handleSeq++).toString(16).toUpperCase();
 
-function layerTable(layers: DxfLayer[]): string {
+function layerTable(layers: DxfLayer[]): { text: string; handles: Map<string, string> } {
   let s = "";
+  const handles = new Map<string, string>();
   s += pair(0, "TABLE");
   s += pair(2, "LAYER");
   s += pair(5, "2");
@@ -101,7 +102,11 @@ function layerTable(layers: DxfLayer[]): string {
   s += pair(70, layers.length);
   for (const layer of layers) {
     s += pair(0, "LAYER");
-    s += pair(5, nextHandle());
+    const handle = nextHandle();
+    // 2D-6: a viewport's per-viewport freeze (group 331) names layers by
+    // handle, so the handle of every layer is recorded here.
+    if (!handles.has(layer.name)) handles.set(layer.name, handle);
+    s += pair(5, handle);
     s += pair(100, "AcDbSymbolTableRecord");
     s += pair(100, "AcDbLayerTableRecord");
     s += pair(2, layer.name);
@@ -115,7 +120,7 @@ function layerTable(layers: DxfLayer[]): string {
     if (layer.plot === false) s += pair(290, 0);
   }
   s += pair(0, "ENDTAB");
-  return s;
+  return { text: s, handles };
 }
 
 function linetypeTable(defs: Record<string, number[]>): string {
@@ -306,8 +311,8 @@ function inPaperSpace(rec: string): string {
   return rec.replace(/^(0\n[^\n]+\n5\n[0-9A-F]+\n100\nAcDbEntity\n)/, "$167\n1\n");
 }
 
-/** VIEWPORT entity; returns the written text plus its handle (null in the legacy form, which has none). A8: a locked viewport carries group 90 bit 16384; a clipped viewport carries group 340 pointing at its clip-boundary entity. */
-function writeViewport(vp: DxfViewport, id: number, clipHandle?: string | null): { text: string; handle: string | null } {
+/** VIEWPORT entity; returns the written text plus its handle (null in the legacy form, which has none). A8: a locked viewport carries group 90 bit 16384; a clipped viewport carries group 340 pointing at its clip-boundary entity. 2D-6: a per-viewport freeze carries group 331 per frozen layer (soft-pointer handle to the LAYER object); names with no layer handle are dropped. */
+function writeViewport(vp: DxfViewport, id: number, clipHandle?: string | null, layerHandles?: Map<string, string>): { text: string; handle: string | null } {
   let handle: string | null = null;
   let s = pair(0, "VIEWPORT");
   if (legacyPrologue) {
@@ -335,6 +340,13 @@ function writeViewport(vp: DxfViewport, id: number, clipHandle?: string | null):
   if (clipHandle) s += pair(340, clipHandle);
   // A8: viewport zoom lock — DXF reference, VIEWPORT group 90 bit 16384.
   if (vp.locked) s += pair(90, 16384);
+  // 2D-6: per-viewport freeze — DXF reference, VIEWPORT group 331, one
+  // soft-pointer handle per frozen layer. Stale names (no layer handle)
+  // are dropped rather than written as dangling pointers.
+  for (const name of vp.frozenLayers ?? []) {
+    const h = layerHandles?.get(name);
+    if (h) s += pair(331, h);
+  }
   return { text: s, handle };
 }
 
@@ -891,7 +903,8 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
   s += pair(0, "SECTION");
   s += pair(2, "TABLES");
   s += linetypeTable(defs);
-  s += layerTable(layers);
+  const layerTableOut = layerTable(layers);
+  s += layerTableOut.text;
   s += styles.table;
   // The style names a DIMENSION's group 3 can reference; only written when
   // the file actually carries dimensions, so dimension-free saves are
@@ -927,7 +940,7 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
         // A8: the clip boundary is written before the viewport that points at it.
         const clip = vp.clip ? writeClipBoundary(vp.clip) : null;
         if (clip) s += clip.text;
-        s += writeViewport(vp, k + 2, clip?.handle).text;
+        s += writeViewport(vp, k + 2, clip?.handle, layerTableOut.handles).text;
       });
       s += pair(0, "ENDBLK") + pair(5, nextHandle()) + pair(100, "AcDbEntity") + pair(67, 1) + pair(8, "0") + pair(100, "AcDbBlockEnd");
     });
@@ -964,7 +977,7 @@ export function writeDxf(doc: DxfDocument, opts: WriteDxfOptions = {}): string {
       // A8: the clip boundary is written before the viewport that points at it.
       const clip = vp.clip ? writeClipBoundary(vp.clip) : null;
       if (clip) s += clip.text;
-      const w = writeViewport(vp, i + 2, clip?.handle);
+      const w = writeViewport(vp, i + 2, clip?.handle, layerTableOut.handles);
       s += w.text;
       if (w.handle) firstLayoutViewportHandles.push(w.handle);
     });

@@ -161,5 +161,77 @@ t("writer + reader round-trip: an empty layout survives (no entities, no viewpor
   assert.deepStrictEqual(back.layouts.map((l) => l.name), ["Sheet-A", "Sheet-B"]);
 });
 
+// ── Per-viewport freeze (2D-6) ──
+t("setViewportFrozenLayers trims, de-duplicates and clears; locked refuses", () => {
+  const v = V.setViewportFrozenLayers(vp(), [" WALLS ", "WALLS", "", "DOORS"]);
+  assert.deepStrictEqual(v.frozenLayers, ["WALLS", "DOORS"]);
+  assert.deepStrictEqual(V.setViewportFrozenLayers(v, []).frozenLayers, undefined);
+  assert.deepStrictEqual(V.setViewportFrozenLayers(v, ["   "]).frozenLayers, undefined);
+  const locked = V.setViewportFrozenLayers(vp({ locked: true }), ["WALLS"]);
+  assert.strictEqual(locked.frozenLayers, undefined);
+  assert.strictEqual(V.isLayerFrozenInViewport(v, "WALLS"), true);
+  assert.strictEqual(V.isLayerFrozenInViewport(v, "DOORS"), true);
+  assert.strictEqual(V.isLayerFrozenInViewport(v, "0"), false);
+  assert.strictEqual(V.isLayerFrozenInViewport(vp(), "WALLS"), false);
+});
+
+t("writer + reader round-trip: per-viewport freeze survives QSAVE (group 331)", () => {
+  const doc = {
+    units: "mm",
+    layers: [{ name: "0", color: 7 }, { name: "WALLS", color: 7 }, { name: "DOORS", color: 7 }],
+    entities: [
+      { type: "LINE", layer: "WALLS", start: P(0, 0), end: P(100, 0) },
+      { type: "LINE", layer: "DOORS", start: P(0, 10), end: P(100, 10) },
+    ],
+    layouts: [
+      {
+        name: "Sheet-A", entities: [],
+        viewports: [
+          vp({ frozenLayers: ["WALLS"] }),
+          vp({ center: P(400, 210), frozenLayers: ["DOORS", "WALLS"] }),
+          vp({ center: P(600, 210) }),
+        ],
+      },
+    ],
+  };
+  const text = W.writeDxf(doc);
+  // The freeze is carried as VIEWPORT group 331 handles, not as layer state.
+  assert.ok(text.includes("331\n"), "no group 331 in the written DXF");
+  const back = R.parseDxf(text);
+  const vps = back.layouts[0].viewports;
+  assert.strictEqual(vps.length, 3);
+  assert.deepStrictEqual(vps[0].frozenLayers, ["WALLS"]);
+  assert.deepStrictEqual(vps[1].frozenLayers, ["DOORS", "WALLS"]);
+  assert.strictEqual(vps[2].frozenLayers, undefined);
+  // The freeze is per-viewport: neither layer is globally frozen by it.
+  assert.strictEqual(back.layers.find((l) => l.name === "WALLS").frozen, false);
+  assert.strictEqual(back.layers.find((l) => l.name === "DOORS").frozen, false);
+});
+
+t("writer drops frozen names with no layer (no dangling group 331)", () => {
+  const doc = {
+    units: "mm",
+    layers: [{ name: "0", color: 7 }, { name: "WALLS", color: 7 }],
+    entities: [],
+    layouts: [
+      { name: "Sheet-A", entities: [], viewports: [vp({ frozenLayers: ["WALLS", "NOPE"] })] },
+    ],
+  };
+  const back = R.parseDxf(W.writeDxf(doc));
+  assert.deepStrictEqual(back.layouts[0].viewports[0].frozenLayers, ["WALLS"]);
+});
+
+t("viewer: viewport paints skip their frozen layers only (2D-6 wiring)", () => {
+  const viewer = fs.readFileSync(path.join(root, "src/features/cad-viewer.ts"), "utf8");
+  assert.ok(viewer.includes("extraHidden?: ReadonlySet<string>"), "paintEntities takes no extra-hidden set");
+  assert.ok(viewer.includes("(extraHidden && extraHidden.has(e.layer))"), "paintEntities does not skip extra-hidden layers");
+  assert.ok(viewer.includes("const vpFrozen = vp.frozenLayers?.length ? new Set(vp.frozenLayers) : undefined;"), "viewport paint does not build the frozen set");
+  assert.ok(viewer.includes("vpFrozen,\n        );"), "viewport paint does not pass the frozen set");
+  // The VPORT dialog exposes the freeze per viewport and validates names.
+  assert.ok(viewer.includes('data-r="vp-frozen-${i}"'), "VPORT dialog has no frozen-layers input");
+  assert.ok(viewer.includes("Vp8.setViewportFrozenLayers(next,"), "VPORT dialog does not apply the freeze");
+  assert.ok(viewer.includes("frozen layers ignored — no such layer"), "VPORT dialog does not warn on unknown layers");
+});
+
 console.log(`=== Result: ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

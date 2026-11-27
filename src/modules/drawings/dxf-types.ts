@@ -339,6 +339,15 @@ export interface DxfViewport {
    * non-rectangular clip is a follow-up).
    */
   clip?: { minX: number; minY: number; maxX: number; maxY: number };
+  /**
+   * Layer names frozen in this viewport only (AutoCAD VPLAYER /
+   * per-viewport freeze, 2D-6). Entities on these layers are hidden
+   * through this viewport but stay visible in every other viewport and in
+   * model space. DXF: VIEWPORT group 331, one per frozen layer (a
+   * soft-pointer handle to the LAYER object); the writer emits only names
+   * that resolve to a layer handle, the reader keeps only names it knows.
+   */
+  frozenLayers?: string[];
 }
 
 /** Plot area choices for a page setup / layout (DXF AcDbPlotSettings group 74). */

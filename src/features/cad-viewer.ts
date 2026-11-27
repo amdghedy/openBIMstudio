@@ -3021,10 +3021,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     ix: M.SpatialIndex | null,
     cull: M.BBox,
     skipSel: boolean,
+    // 2D-6: extra layers hidden for this paint only (a viewport's frozen
+    // layers). The global `hidden` set is untouched — the freeze applies
+    // through one viewport, never to model space or other viewports.
+    extraHidden?: ReadonlySet<string>,
   ): void {
     const paintAt = (i: number): void => {
       const e = list[i];
-      if (!e || !shown(e) || (skipSel && sel.has(i))) return;
+      if (!e || !shown(e) || (extraHidden && extraHidden.has(e.layer)) || (skipSel && sel.has(i))) return;
       // The viewport query has already culled ordinary geometry. Construction
       // lines are deliberately included by queryIndexBox and clipped per view.
       if (ix && e.type !== "RAY" && e.type !== "XLINE") {
@@ -3392,6 +3396,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           h: ctr.y * 2,
         };
         const rad = Math.hypot(vp.width, vp.height) / 2 / sc;
+        // 2D-6: layers frozen in this viewport are hidden through it only.
+        const vpFrozen = vp.frozenLayers?.length ? new Set(vp.frozenLayers) : undefined;
         paintEntities(
           c,
           vv,
@@ -3404,6 +3410,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             maxY: vp.viewCenter.y + rad,
           },
           false,
+          vpFrozen,
         );
         c.restore();
         c.save();
@@ -15416,13 +15423,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           <input data-r="vp-clip-maxx-${i}" value="${num(c?.maxX)}" placeholder="maxX" style="width:64px">
           <input data-r="vp-clip-maxy-${i}" value="${num(c?.maxY)}" placeholder="maxY" style="width:64px">
         </span></td>
+        <td style="padding:4px 8px"><input data-r="vp-frozen-${i}" value="${escapeHtml((vp.frozenLayers ?? []).join(", "))}" placeholder="layer names, comma-separated" style="width:180px" title="Layers hidden through this viewport only (VPLAYER / per-viewport freeze)"></td>
       </tr>`;
     }).join("");
     const panel = openOverlay(`
       <b style="font-size:15px;color:#38bdf8">Viewports — "${escapeHtml(L.name)}" (VPORT)</b>
-      <div style="font-size:12px;color:#9aa4b2;margin-top:4px">Scale is sheet units per model unit; clip is a rectangle in sheet coordinates (empty = no clip).</div>
+      <div style="font-size:12px;color:#9aa4b2;margin-top:4px">Scale is sheet units per model unit; clip is a rectangle in sheet coordinates (empty = no clip). Frozen layers are hidden through that viewport only — everywhere else they stay visible.</div>
       <table style="margin-top:12px;font-size:12px;border-collapse:collapse">
-        <tr style="color:#9aa4b2"><th style="padding:4px 8px;text-align:start">Viewport</th><th style="padding:4px 8px;text-align:start">Scale</th><th style="padding:4px 8px">Locked</th><th style="padding:4px 8px;text-align:start">Clip (sheet rect)</th></tr>
+        <tr style="color:#9aa4b2"><th style="padding:4px 8px;text-align:start">Viewport</th><th style="padding:4px 8px;text-align:start">Scale</th><th style="padding:4px 8px">Locked</th><th style="padding:4px 8px;text-align:start">Clip (sheet rect)</th><th style="padding:4px 8px;text-align:start">Frozen layers</th></tr>
         ${rows}
       </table>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
@@ -15446,6 +15454,16 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         } else {
           logCmd(`VPORT: viewport #${i + 1} clip ignored — enter all four numbers with max > min, or leave all four empty.`);
         }
+        // 2D-6: per-viewport freeze — comma-separated layer names. Only
+        // names that exist in the layer table are kept; unknown names are
+        // ignored with a warning, never invented as layers. Applied before
+        // the lock below, because a locked viewport refuses edits (same
+        // rule as scale and clip above).
+        const frozenRaw = (panel.querySelector<HTMLInputElement>(`[data-r=vp-frozen-${i}]`)!).value.split(",");
+        const known = new Set(doc!.layers.map((l) => l.name));
+        const unknown = frozenRaw.map((n) => n.trim()).filter((n) => n !== "" && !known.has(n));
+        if (unknown.length) logCmd(`VPORT: viewport #${i + 1} frozen layers ignored — no such layer: ${unknown.join(", ")}.`);
+        next = Vp8.setViewportFrozenLayers(next, frozenRaw.filter((n) => known.has(n.trim())));
         next.locked = (panel.querySelector<HTMLInputElement>(`[data-r=vp-lock-${i}]`)!).checked;
         return next;
       });
