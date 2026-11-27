@@ -2315,21 +2315,21 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       groupLabel("Section"),
       b("section", "Section Cut", () => (window as any).__obsOpenSectionModal?.(), { title: "Open the interactive section cut window" }),
       b("section-box", "Section Box", safe(() => {
-        (window as any).__obsSectionBox?.toggle?.();
+        (ctx.features as any).sectionBox?.toggle?.();
         refreshRibbon();
       }, "Section box"), {
         kbd: "^B",
-        active: !!(window as any).__obsSectionBox?.isActive?.(),
+        active: !!(ctx.features as any).sectionBox?.isActive?.(),
         title: "Toggle the 3D section box — drag cyan face handles to crop live — Ctrl+B",
       }),
       b("section-box", "Reset Box", safe(() => {
-        (window as any).__obsSectionBox?.reset?.();
+        (ctx.features as any).sectionBox?.reset?.();
       }, "Reset box"), { title: "Reset section box to model bounds" }),
       b("crop-expand", "Grow +", safe(() => {
-        (window as any).__obsSectionBox?.grow?.(0.5);
+        (ctx.features as any).sectionBox?.grow?.(0.5);
       }, "Grow"), { title: "Grow section box by 0.5 m on all sides" }),
       b("crop-shrink", "Shrink −", safe(() => {
-        (window as any).__obsSectionBox?.shrink?.(0.5);
+        (ctx.features as any).sectionBox?.shrink?.(0.5);
       }, "Shrink"), { title: "Shrink section box by 0.5 m on all sides" }),
       sep(),
       groupLabel("Crop"),

@@ -346,7 +346,7 @@ export function registerDefaultShortcuts(): void {
   });
   shortcuts.register({
     id: "view.section-box-toggle", label: "Section Box (toggle)", keys: "ctrl+b", category: "view",
-    handler: () => { (window as any).__obsSectionBox?.toggle?.(); },
+    handler: () => { (ctx.features as any).sectionBox?.toggle?.(); },
   });
   shortcuts.register({
     id: "view.scope-box-viz-toggle", label: "Scope Box Visualizer (toggle)", keys: "ctrl+shift+s", category: "view",

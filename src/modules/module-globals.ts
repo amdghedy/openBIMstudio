@@ -384,7 +384,7 @@ w.__obsCropRegion = {
 };
 
 // ── Section Box (interactive 6-face handles) ─────────────────────────────
-w.__obsSectionBox = {
+(ctx.features as any).sectionBox = {
   toggle: () => {
     const on = toggleSectionBox();
     toast(on ? "Section Box ON — drag the cyan arrows on each face to stretch / shrink" : "Section Box OFF", "success");
@@ -428,4 +428,4 @@ w.__obsSelectionBox = {
   },
 };
 
-console.log("[obs] v40 module globals registered: crop-region, section-box, selection-box");
+console.log("[obs] v40 module globals registered: crop-region, selection-box");
