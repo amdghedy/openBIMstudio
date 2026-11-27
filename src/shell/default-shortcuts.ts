@@ -139,7 +139,7 @@ export function registerDefaultShortcuts(): void {
     // drawing editor owns Esc while its shell is visible (standard drafting cancel behavior in 2D view)
     when: () => {
       try {
-        if ((window as any).__obsCadOwnsEsc?.()) return false;
+        if ((window as any).__OBS_CTX__?.features?.cadOwnsEsc?.()) return false;
       } catch { /* */ }
       return !isWalkModeEnabled();
     },
@@ -149,7 +149,7 @@ export function registerDefaultShortcuts(): void {
         if ((ctx.features as any).planVisible?.()) return;
       } catch { /* */ }
       try {
-        if ((window as any).__obsCadOwnsEsc?.()) return;
+        if ((window as any).__OBS_CTX__?.features?.cadOwnsEsc?.()) return;
       } catch { /* */ }
       // BIM-style Esc:
       // 1) Cancel active authoring tool (wall, duct, move…) → Select

@@ -2297,8 +2297,7 @@ function createMeshBase(el: AuthoredElement): THREE.Object3D | null {
     const __layerStr = (el.properties as any)?.layers as string | undefined;
     if (__layerStr) {
       try {
-        const __w = window as any;
-        const __builder = __w.__obsMeshBuilders?.["wall"];
+        const __builder = (ctx.features as any).meshBuilders?.["wall"];
         if (typeof __builder === "function") {
           const __mesh = __builder(el);
           if (__mesh) {
@@ -2516,8 +2515,7 @@ function createMeshBase(el: AuthoredElement): THREE.Object3D | null {
   if (!mesh) {
     try {
       const __featureBuilders = (ctx.features as any)?.meshBuilders;
-      const __legacyBuilders = (window as any).__obsMeshBuilders;
-      const __builder = __featureBuilders?.[el.type] ?? __legacyBuilders?.[el.type];
+      const __builder = __featureBuilders?.[el.type];
       if (typeof __builder === "function") {
         const __custom = __builder(el);
         if (__custom) {

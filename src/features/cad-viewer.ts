@@ -746,10 +746,10 @@ export function openCadViewer(file?: File): void {
   ensureShell();
   shell!.style.display = "flex";
   try {
-    (window as any).__obsCadOwnsEsc = () => !!shell && shell.style.display !== "none";
+    (window as any).__OBS_CTX__.features.cadOwnsEsc = () => !!shell && shell.style.display !== "none";
     // Keyboard ownership: while a drawing tab is active the BIM global shortcut
     // registry yields the drawing-editor shortcuts to this viewer (see shortcuts.ts).
-    (window as any).__obsCadOwnsKeys = () => !!active && !!shell && shell.style.display !== "none";
+    (window as any).__OBS_CTX__.features.cadOwnsKeys = () => !!active && !!shell && shell.style.display !== "none";
   } catch {
     /* */
   }
@@ -18522,9 +18522,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       root.style.display = "flex";
       screenTypeActive = true;
       try {
-        (window as any).__obsCadOwnsEsc = () =>
+        (window as any).__OBS_CTX__.features.cadOwnsEsc = () =>
           !!shell && shell.style.display !== "none" && root.style.display !== "none";
-        (window as any).__obsCadOwnsKeys = () =>
+        (window as any).__OBS_CTX__.features.cadOwnsKeys = () =>
           screenTypeActive && !!shell && shell.style.display !== "none" && root.style.display !== "none";
       } catch {
         /* */
@@ -18570,11 +18570,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       }
       try {
         const still = !!shell && shell.style.display !== "none";
-        if ((window as any).__obsCadOwnsEsc && !still) {
-          delete (window as any).__obsCadOwnsEsc;
+        if ((window as any).__OBS_CTX__?.features?.cadOwnsEsc && !still) {
+          delete (window as any).__OBS_CTX__.features.cadOwnsEsc;
         }
-        if ((window as any).__obsCadOwnsKeys && !still) {
-          delete (window as any).__obsCadOwnsKeys;
+        if ((window as any).__OBS_CTX__?.features?.cadOwnsKeys && !still) {
+          delete (window as any).__OBS_CTX__.features.cadOwnsKeys;
         }
       } catch {
         /* */
