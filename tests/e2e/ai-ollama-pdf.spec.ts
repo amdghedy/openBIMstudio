@@ -56,5 +56,20 @@ test('PDF attachment reaches a real local model and a reply renders', async ({ p
   await expect.poll(() => sent.length, { timeout: 30_000 }).toBeGreaterThan(0);
   expect(JSON.stringify(sent.at(-1)?.messages ?? '')).toContain('ZX-42');
   expect(sent.at(-1)?.options?.num_ctx).toBeGreaterThanOrEqual(8192);
-  await expect(page.getByText(/ZX-42/).last()).toBeVisible({ timeout: 180_000 });
+  // The assistant bubble is the message right after the user's own bubble (the one carrying the PDF note), so this
+  // selects only what the model said, not the attached PDF chip or the user's own question.
+  const userWrap = page.locator('div[style*="align-items: flex-end"]', { hasText: 'ci-test.pdf' }).last();
+  await expect(userWrap).toBeVisible();
+  const reply = userWrap.locator('xpath=following-sibling::div[1]/div[1]');
+  await expect(reply).toBeVisible({ timeout: 180_000 });
+  // Wait until the streamed reply is finished: the Stop control is gone.
+  await expect(page.getByRole('button', { name: /^Stop$/ })).toHaveCount(0, { timeout: 180_000 });
+  const text = ((await reply.innerText()) ?? '').replace(/\s+/g, ' ').trim();
+  // Shown as a build annotation (readable through the public API) and kept as a screenshot in the report.
+  console.log('::notice title=assistant-reply::' + text.slice(0, 400).replace(/[\r\n%]/g, ' '));
+  await page.screenshot({ path: test.info().outputPath('assistant-reply.png') });
+  await test.info().attach('assistant-reply', { body: text, contentType: 'text/plain' });
+  expect(text.length).toBeGreaterThan(0);
+  expect(text).not.toMatch(/^⚠/);
+  expect(text).toMatch(/ZX-42/);
 });
