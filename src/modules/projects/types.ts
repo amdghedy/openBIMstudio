@@ -269,7 +269,7 @@ export interface SheetDef {
   id: string;
   number: string;       // e.g. "A-101"
   name: string;
-  size: "A0" | "A1" | "A2" | "A3" | "A4" | "ANSI-D" | "ANSI-E" | "Arch-D" | "Arch-E";
+  size: import("../../core/paper-sizes").PaperId;
   orientation: "portrait" | "landscape";
   titleblockId?: string;
   viewports: SheetViewport[];
