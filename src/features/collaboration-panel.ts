@@ -252,7 +252,11 @@ export function setupCollaborationPanel(): void {
       shareUpdateBanner.style.display = session && session.role === "edit" && getPendingUpdateAt() ? "" : "none";
     }
     if (shareListEl) {
-      const shares: ShareInfo[] = await listShares();
+      // Only query the collab server while someone is looking at the
+      // panel: its default API base is the dev server, so on a deployed
+      // site this call fails for every visitor — and with the panel
+      // hidden the list is invisible anyway.
+      const shares: ShareInfo[] = panel && panel.style.display !== "none" ? await listShares() : [];
       shareListEl.innerHTML = "";
       if (!shares.length) {
         shareListEl.innerHTML = `<div style="color:#6b7280;font-size:11px;padding:4px">No active share links on this server.</div>`;

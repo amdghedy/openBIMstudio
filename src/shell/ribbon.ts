@@ -7,6 +7,7 @@
  * Every button action is async-aware: the strip re-renders after the action
  * resolves, so badges, counters, and active states stay in sync. */
 import { getNorthState, onNorthChanged } from "../modules/north/north";
+import { APP_VERSION } from "../version";
 import * as THREE from "three";
 import { confirmDialog } from "../features/form-modal";
 import { ctx } from "../core/context";
@@ -3757,7 +3758,7 @@ function renderTabs() {
   brand.append(document.createTextNode("Open BIM Studio"));
   const version = document.createElement("span");
   version.className = "obs-ribbon__version";
-  version.textContent = "v54";
+  version.textContent = `v${APP_VERSION}`;
   brand.appendChild(version);
   tabsRow.appendChild(brand);
   mountAccountButton(tabsRow);

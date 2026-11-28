@@ -475,7 +475,9 @@ function buildMenu(menu: HTMLElement): void {
         if (await googleConfigured()) {
           openGoogleOAuth();
         } else {
-          window.open("/api/auth/google/start", "_blank", "noopener");
+          // Google isn't configured on this deployment: /api/auth/google/start
+          // only opens a blank popup that never reaches Google. Go straight
+          // to the email dialog — it shows the owner setup hint itself.
           void openAuthDialog(false);
         }
       })();

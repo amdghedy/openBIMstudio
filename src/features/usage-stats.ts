@@ -15,7 +15,10 @@ function getEnv(key: string): string | undefined {
   } catch { return undefined; }
 }
 const COUNTER_API = getEnv('VITE_COUNTER_API') ?? '';
-const GEO_API = getEnv('VITE_GEO_API') ?? 'https://ipapi.co/json/';
+// Local-first: no geo-IP lookup unless the deployment explicitly opts in
+// with VITE_GEO_API. The previous default (https://ipapi.co/json/) sent
+// every visitor's IP to a third party on every load.
+const GEO_API = getEnv('VITE_GEO_API') ?? '';
 
 export interface LocalUsage {
   clicks: number;
@@ -131,6 +134,7 @@ async function fetchGlobal(): Promise<void> {
 }
 
 async function detectCountry(): Promise<void> {
+  if (!GEO_API) return; // geo lookup is opt-in (local-first)
   if (Date.now() - cache.countryDetectedAt < COUNTRY_CACHE_MS && cache.countryCode) return;
   try {
     const r = await fetch(GEO_API);

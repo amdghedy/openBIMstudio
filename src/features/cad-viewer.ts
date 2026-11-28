@@ -1171,6 +1171,11 @@ function ensureShell(): void {
   pagesEl = shell.querySelector<HTMLDivElement>("[data-r=pages]")!;
   ribbonStrip = shell.querySelector<HTMLDivElement>("[data-r=ribbonstrip]")!;
   ribbonTabsRow = shell.querySelector<HTMLDivElement>("[data-r=ribbontabs]")!;
+  // The CAD shell is fullscreen (position:fixed;inset:0;z-index:10050) and
+  // covers the app ribbon — including the account button, whose hit area
+  // landed under the CAD tab strip. Mount a copy here so Sign in stays
+  // reachable from the drawing editor.
+  void import("./cloud-account").then((m) => m.mountAccountButton(ribbonTabsRow!)).catch(() => { /* account UI unavailable */ });
   applyCadQatPreferences();
   const qat = shell.querySelector<HTMLDivElement>(".cad-qat");
   qat?.addEventListener("contextmenu", (event) => {
