@@ -50,7 +50,7 @@ import { setCadHotkeyOwner } from "../core/cad-hotkey-ownership";
 import { resolveDblClick } from "../shell/ribbon-collapse";
 import { sanitizeSessionUi, sessionUiSignature, hiddenEntityIndexes, sanitizeHiddenEntities, type SessionUi, type SessionHiddenEntities } from "../modules/cad-viewer/session-state";
 import * as M from "../modules/cad-viewer/viewer-math";
-import { rewriteImperialInput } from "../modules/cad-viewer/imperial";
+import { rewriteImperialInput, directNumberFromInput } from "../modules/cad-viewer/imperial";
 import { auditNcsLayers } from "../modules/cad-viewer/ncs-layers";
 import {
   cellAt,
@@ -12950,8 +12950,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
 
     // Direct numeric entry: tool radius/length, or pending ROTATE/SCALE/OFFSET
-    if (/^[-+]?\d*\.?\d+(e[-+]?\d+)?$/i.test(trimmed)) {
-      const num = parseFloat(trimmed);
+    if (directNumberFromInput(imp.text) !== null) {
+      const num = directNumberFromInput(imp.text) as number;
       if (applyDirectDistance(num)) {
         draw();
         return;
