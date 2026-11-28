@@ -20,6 +20,7 @@
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { setTempDimsEnabled } from "./temp-dimensions";
+import { units } from "../core/units";
 
 // legacy module-local state (formerly on window)
 // eslint-disable-next-line no-unused-vars
@@ -120,7 +121,13 @@ function ensureHost(): HTMLDivElement {
   return host;
 }
 
+/** Imperial display units: the edit box shows (and accepts) feet-inches / feet / inches, not metres. */
+function imperialDisplay(): boolean {
+  try { const u = units.getConfig().length; return u === "ft-in" || u === "ft" || u === "in"; } catch { return false; }
+}
+
 function fmt(v: number): string {
+  if (imperialDisplay()) { try { return units.formatLength(v); } catch { /* fall through */ } }
   return Math.abs(v) >= 1 ? `${v.toFixed(3)} m` : `${Math.round(v * 1000)} mm`;
 }
 
@@ -135,6 +142,11 @@ function parseDimInput(raw: string, kind: TempDimKind): number | null {
   if (kind === "angle") {
     const v = Number.parseFloat(t);
     return Number.isFinite(v) ? v : null;
+  }
+  // US input: 5'-6 1/2", 5' 6", 6", 2ft, 30in — and a bare number means the display unit when that is imperial.
+  if (/['"″’]|\d\s*(ft|in)$/.test(t) || (imperialDisplay() && /^-?\d+(?:\.\d+)?$/.test(t))) {
+    const r = units.parseLengthInput(t);
+    return r != null && Number.isFinite(r) ? r : null;
   }
   const m = t.match(/^(-?\d+(?:\.\d+)?)\s*(mm|cm|m)?$/);
   if (!m) return null;
