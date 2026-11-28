@@ -85,8 +85,8 @@ t("REAL repository counts are pinned (gate sees every registration)", () => {
   // fallback-chain tables). 619 catalog entries incl. 3 pattern entries
   // for the data-driven templates (clash.scenario.*, level.activate.*,
   // schedule.saved.*). 0 unresolved dynamic sites.
-  assert.match(r.stdout, /616 registered commands \(477 literal \+ 139 dynamic\)/);
-  assert.match(r.stdout, /619 catalog entries \(3 pattern\)/);
+  assert.match(r.stdout, /617 registered commands \(478 literal \+ 139 dynamic\)/);
+  assert.match(r.stdout, /620 catalog entries \(3 pattern\)/);
   assert.match(r.stdout, /0 unresolved dynamic site\(s\)/);
 });
 console.log(`=== tool catalog gate: ${n} passed ===`);
