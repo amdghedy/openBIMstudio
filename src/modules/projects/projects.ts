@@ -260,6 +260,12 @@ export async function saveProject(silent = false) {
       (current as any).userFamilies = fam.familyStore.serializeUserFamilies();
     } catch { /* families optional */ }
 
+    // The project's map coordinate system (IFC georeference) travels with the project.
+    try {
+      const gr = (await import("../export/ifc-georef")).getGeoref();
+      if (gr) (current as any).georef = gr; else delete (current as any).georef;
+    } catch { /* georef optional */ }
+
     try {
       const annot = await import("../views/annotation-store");
       current.annotations = annot.serializeAll();
@@ -780,6 +786,12 @@ export async function openProject(id: string) {
         }
       }
     } catch { /* families optional */ }
+
+    // Each project owns its coordinate system: an older document without one clears the previous project's.
+    try {
+      const rg = (await import("../export/ifc-georef")).restoreGeoref((doc as any).georef);
+      if (rg.reason) load.issues.push(`Dropped the saved coordinate system: ${rg.reason}`);
+    } catch { /* georef optional */ }
 
     // Missing families on instances are reported, never silently
     // dropped: the elements stay in the document with their familyId

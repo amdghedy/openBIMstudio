@@ -4,7 +4,8 @@
 //   1. Forgot password: /api/auth/forgot issues a single-use SHA-256-stored
 //      token (rate-limited), /api/auth/reset consumes it, updates the hash and
 //      signs the user in; the worker emails the link when RESEND_API_KEY is
-//      set and otherwise returns resetUrl for the UI to show inline.
+//      set and otherwise returns the one-time code for the UI to open the
+//      reset form directly (X-3: never in a URL).
 //   2. Google popup flow: ?popup=1 → state=popup → the callback returns a
 //      self-closing page that postMessages the opener; the client listens for
 //      obs-oauth messages and falls back to the full-page redirect when the
@@ -71,11 +72,12 @@ t("auth.ts: google start carries state=popup; callback page postMessages + close
   assert.ok(/obs-oauth/.test(cb), "popup message must use the obs-oauth type");
 });
 
-t("index.ts: forgot is orchestrated (mail when key set, resetUrl otherwise)", () => {
+t("index.ts: forgot is orchestrated (mail when key set, resetToken otherwise)", () => {
   const fn = src(worker, 'url.pathname === "/api/auth/forgot"', 'url.pathname.startsWith("/api/auth/")');
   assert.ok(fn.includes("sendResetEmail(env, email, resetUrl)"), "worker must try to email the link");
-  assert.ok(fn.includes("resetUrl: mailed ? undefined : resetUrl"), "no-mail deployments must return resetUrl");
-  assert.ok(fn.includes("hasAccount && body.token"), "resetUrl must only be returned for real accounts");
+  assert.ok(fn.includes("resetToken: mailed ? undefined : body.token"), "no-mail deployments must return the one-time code, never a URL");
+  assert.ok(!fn.includes("resetUrl: mailed"), "no-mail deployments must not return a reset URL");
+  assert.ok(fn.includes("hasAccount && body.token"), "resetToken must only be returned for real accounts");
 });
 
 t("index.ts: callback branches popup vs top-level /?signedin=1", () => {
@@ -87,11 +89,13 @@ t("index.ts: callback branches popup vs top-level /?signedin=1", () => {
 });
 
 // ── 3. client: forgot dialog, reset dialog, URL landings ──
-t("cloud-account: forgot dialog requests /api/auth/forgot and shows link or mail message", () => {
+t("cloud-account: forgot dialog requests /api/auth/forgot and opens the reset form or mail message", () => {
   assert.ok(acct.includes('async function openForgotDialog'), "openForgotDialog missing");
   const fn = src(acct, "async function openForgotDialog", "// ── URL landings");
   assert.ok(fn.includes('"/api/auth/forgot"'), "forgot dialog must call the endpoint");
-  assert.ok(fn.includes("res.resetUrl"), "inline one-time link path missing");
+  assert.ok(fn.includes("res.resetToken"), "no-mail path must use the one-time code");
+  assert.ok(fn.includes("openResetDialog(res.resetToken)"), "no-mail path must open the reset form directly");
+  assert.ok(!fn.includes("res.resetUrl"), "the reset token must never be rendered as a link");
   assert.ok(fn.includes("Enter a valid email address"), "email pre-validation missing");
   assert.ok(fn.includes("← Back to sign in"), "back navigation missing");
 });

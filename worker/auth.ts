@@ -349,10 +349,11 @@ export class AuthVault {
   /**
    * Creates a single-use reset token for a password account. The DO returns
    * the raw token to the worker only; the worker decides whether to email it
-   * (RESEND_API_KEY configured) or hand back a one-time link for deployments
-   * without mail delivery. Responses are uniform for unknown emails so the
-   * endpoint cannot enumerate accounts (the dev-link absence is the only hint,
-   * acceptable for a single-owner deployment and rate-limited per minute).
+   * (RESEND_API_KEY configured) or hand back a one-time code for deployments
+   * without mail delivery — X-3: the code is never put in a URL. Responses
+   * are uniform for unknown emails so the endpoint cannot enumerate accounts
+   * (the dev-code absence is the only hint, acceptable for a single-owner
+   * deployment and rate-limited per minute).
    */
   private async forgotPassword(request: Request): Promise<Response> {
     const body = await request.json().catch(() => null) as { email?: string } | null;

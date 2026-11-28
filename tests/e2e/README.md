@@ -13,4 +13,12 @@ npx playwright test tests/e2e/smoke.spec.ts
 - `edit-undo-save.spec.ts` - new project, IFC import, move via the real Move path, Ctrl+Z, Ctrl+S, reload: boot auto-reopens the project and the state is identical. Uses the palette, the drop-import path and the authoring service, like the other specs.
 - `import-timeout.spec.ts` - the browser IFC import timeout: a 17.9 MB real-world file with a 3 s total bound must fail with `timedOut`, then a small file must still import (queue recovery). Chromium only in CI (timing-sensitive, large-file); the mechanism is engine-agnostic JS timers.
 
-CI runs the smoke, orbit/RTL, native IFC, document-chain and save-flow specs in Chromium, Firefox and WebKit through `.github/workflows/unit-tests.yml`. The browser gate is blocking; traces, screenshots and reports are retained on every run.
+CI runs the specs in Chromium through `.github/workflows/unit-tests.yml`: the
+blocking `browser-smoke` job (smoke, orbit/RTL, native IFC, document-chain,
+save-flow, CAD editor and family specs) and the `browser-recovery` job
+(`crash-recovery`, `recovery`, `recovery-checkpoints`,
+`recovery-manual-open` — genuine renderer crashes + journal replay, #101;
+Chromium only, since `Page.crash` is CDP). Firefox/WebKit run advisory in
+`.github/workflows/cross-browser.yml` (nightly + manual). CAD-only specs also
+run on CAD paths in `.github/workflows/cad-e2e.yml`. The browser gate is
+blocking; traces, screenshots and reports are retained on every run.

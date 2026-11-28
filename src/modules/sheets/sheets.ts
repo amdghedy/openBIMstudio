@@ -5,22 +5,13 @@
  * Designed to compete with BIM sheets / Bentley drawing production.
  */
 import type { SheetDef, SheetViewport, TitleblockDef } from "../projects/types";
+import { paperSizeMm, normalizePaperId } from "../../core/paper-sizes";
+import { region } from "../../core/region";
 export type { SheetDef, SheetViewport, TitleblockDef };
 
 const uid = () =>
   (crypto as any).randomUUID?.() ?? `sh-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-const SHEET_SIZES_MM: Record<SheetDef["size"], { w: number; h: number }> = {
-  A0: { w: 1189, h: 841 },
-  A1: { w: 841, h: 594 },
-  A2: { w: 594, h: 420 },
-  A3: { w: 420, h: 297 },
-  A4: { w: 297, h: 210 },
-  "ANSI-D": { w: 864, h: 559 },
-  "ANSI-E": { w: 1118, h: 864 },
-  "Arch-D": { w: 914, h: 610 },
-  "Arch-E": { w: 1219, h: 914 },
-};
 
 let sheets: SheetDef[] = [];
 let titleblocks: TitleblockDef[] = [];
@@ -100,7 +91,7 @@ export function createSheet(opts?: Partial<Pick<SheetDef, "number" | "name" | "s
     id: uid(),
     number: opts?.number ?? `A-${String(n).padStart(3, "0")}`,
     name: opts?.name ?? `Sheet ${n}`,
-    size: opts?.size ?? "A1",
+    size: opts?.size ?? defaultSheetSize(),
     orientation: opts?.orientation ?? "landscape",
     viewports: [],
     annotations: [],
@@ -275,9 +266,24 @@ export function ensureDefaultTitleblock(): TitleblockDef {
 }
 
 export function getSheetSizeMm(size: SheetDef["size"], orientation: SheetDef["orientation"]) {
-  const base = SHEET_SIZES_MM[size] ?? SHEET_SIZES_MM.A1;
-  if (orientation === "portrait") return { w: Math.min(base.w, base.h), h: Math.max(base.w, base.h) };
-  return { w: Math.max(base.w, base.h), h: Math.min(base.w, base.h) };
+  return paperSizeMm(size, orientation, "A1");
+}
+
+/** New sheets follow the region profile's paper (US → Arch D, UK/EU → A1, …); A1 when the profile has none. */
+export function defaultSheetSize(): SheetDef["size"] {
+  try { return normalizePaperId(region.getResolved().paper, "A1"); } catch { return "A1"; }
+}
+
+/** Change a sheet's paper size and/or orientation (undo-friendly: returns the previous values). */
+export function setSheetPaper(id: string, size: SheetDef["size"], orientation?: SheetDef["orientation"]): { size: SheetDef["size"]; orientation: SheetDef["orientation"] } | null {
+  const sh = sheets.find((x) => x.id === id);
+  if (!sh) return null;
+  const prev = { size: sh.size, orientation: sh.orientation };
+  sh.size = normalizePaperId(size, sh.size);
+  if (orientation) sh.orientation = orientation;
+  sh.updatedAt = Date.now();
+  notify();
+  return prev;
 }
 
 // Sheet SVG composition & SVG export live in `./sheet-composer` (WYSIWYG:

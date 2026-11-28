@@ -39,7 +39,19 @@ const KEY_LOADS = "loads:v2";
 const KEY_UNIQUES = "uniques:v2";
 const KEY_SALT = "salt:v2";
 
-/** Minimal structural types — keeps the worker dependency-free. */
+/** X-3 rate limits for the counter. Without one, a single client could
+ *  POST in a loop and inflate `loads` without bound (and, by rotating
+ *  the spoofable x-obs-visitor-ip header, `visits`/`uniques` too).
+ *  Per-visitor: one counted POST per 10 s per visitor hash. Global:
+ *  600 POSTs/min across the DO — far above this deployment's real
+ *  traffic, low enough to bound a flood. */
+const RATE_LIMIT_PER_VISITOR_MS = 10 * 1000;
+const RATE_LIMIT_GLOBAL_PER_MIN = 600;
+
+/** True when the value parses as an IP literal (v4 dotted quad or v6). */
+function isIpLiteral(v: string): boolean {
+  return /^(?:\d{1,3}\.){3}\d{1,3}$/.test(v) || (v.includes(":") && /^[0-9a-fA-F:]+$/.test(v));
+}
 interface VisitStorage {
   get<T>(key: string): Promise<T | undefined>;
   put<T>(key: string, value: T): Promise<void>;
@@ -73,17 +85,29 @@ interface Env extends LinkedInEnv {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   /** Transactional email for password resets (Worker secret — optional). When
-   *  absent, the forgot-password flow returns the one-time link to the UI. */
+   *  absent, the forgot-password flow returns the one-time code to the UI. */
   RESEND_API_KEY?: string;
   RESEND_FROM?: string;
 }
 
-/** CORS-open so any deployment of the studio (Cloudflare, Vercel, Netlify, …)
- *  can read and feed this one global counter from the browser. */
-const NO_STORE = {
+/**
+ * X-3: the `*` CORS grant belongs ONLY to the public visit counter —
+ * any deployment origin (Cloudflare, Vercel, Netlify, …) reads and
+ * feeds this one global counter from the browser. Auth / project /
+ * user routes are same-origin cookie sessions (the UI fetches them
+ * with credentials: "same-origin") and must never carry an ACAO
+ * grant: a cross-origin caller gets nothing credentialed from them,
+ * and the grant would mislabel a credentialed API as public.
+ */
+const PUBLIC_JSON = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
   "access-control-allow-origin": "*",
+} as const;
+/** Same-origin JSON: no ACAO header — same-origin fetches need none. */
+const PRIVATE_JSON = {
+  "content-type": "application/json; charset=utf-8",
+  "cache-control": "no-store",
 } as const;
 
 const CORS_PREFLIGHT = {
@@ -92,8 +116,14 @@ const CORS_PREFLIGHT = {
   "access-control-allow-max-age": "86400",
 } as const;
 
+/** Same-origin JSON response (auth errors, vault errors). No CORS grant. */
 function json(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), { status, headers: NO_STORE });
+  return new Response(JSON.stringify(data), { status, headers: PRIVATE_JSON });
+}
+
+/** Public-counter JSON response (visits errors): the one place `*` is served. */
+function jsonPublic(data: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify(data), { status, headers: { ...PUBLIC_JSON, ...extraHeaders } });
 }
 
 /** Salted SHA-256 hex digest of the visitor's IP + User-Agent. */
@@ -120,15 +150,27 @@ export class VisitCounter {
     for (const [key, value] of markers) {
       if (typeof value !== "number" || now - value > SESSION_WINDOW_MS) await this.storage.delete(key);
     }
+    // X-3: rate-limit markers are short-lived — drop them once stale so
+    // the limiter's keys cannot grow without bound.
+    const rl = await this.storage.list({ prefix: "rl:" });
+    for (const [key, value] of rl) {
+      if (typeof value !== "number" || now - value > RATE_LIMIT_PER_VISITOR_MS) await this.storage.delete(key);
+    }
+    const minute = Math.floor(now / 60_000);
+    const global = await this.storage.list({ prefix: "rlg:" });
+    for (const [key] of global) {
+      const m = Number(key.slice("rlg:".length));
+      if (!Number.isFinite(m) || m < minute) await this.storage.delete(key);
+    }
     await this.storage.setAlarm(now + SWEEP_INTERVAL_MS);
   }
 
   async fetch(request: Request): Promise<Response> {
     if (request.method !== "GET" && request.method !== "POST") {
-      return json({ error: "method not allowed" }, 405);
+      return jsonPublic({ error: "method not allowed" }, 405);
     }
     try {
-      if (request.method === "GET") return json(await this.stats());
+      if (request.method === "GET") return jsonPublic(await this.stats());
 
       const [salt, stats] = await Promise.all([this.salt(), this.stats()]);
       const now = Date.now();
@@ -136,8 +178,29 @@ export class VisitCounter {
       // Vercel proxy visitors arrive with the real client IP forwarded in
       // x-obs-visitor-ip (Cloudflare replaces cf-connecting-ip with the
       // proxy's egress IP, which is identical for every Vercel visitor).
-      const ip = request.headers.get("x-obs-visitor-ip") ?? request.headers.get("cf-connecting-ip") ?? "";
+      // X-3: the forwarded header is trusted only as an IP literal — any
+      // direct caller can send it, so a non-IP value falls back to
+      // cf-connecting-ip (garbage can no longer mint a fresh visitor
+      // identity). A well-formed IP still can — the global rate limit
+      // below bounds that flood.
+      const forwardedIp = (request.headers.get("x-obs-visitor-ip") ?? "").trim();
+      const ip = forwardedIp && isIpLiteral(forwardedIp)
+        ? forwardedIp
+        : (request.headers.get("cf-connecting-ip") ?? "");
       const hash = await visitorHash(salt, ip, request.headers.get("user-agent") ?? "");
+      // X-3: rate-limit before counting anything. A 429 here costs no
+      // writes and counts nothing.
+      const rateKey = `rl:${hash}`;
+      const lastPost = await this.storage.get<number>(rateKey);
+      if (typeof lastPost === "number" && now - lastPost < RATE_LIMIT_PER_VISITOR_MS) {
+        return jsonPublic({ error: "Too many visit counts — try again shortly." }, 429, { "retry-after": "10" });
+      }
+      const minute = Math.floor(now / 60_000);
+      const globalKey = `rlg:${minute}`;
+      const globalCount = (await this.storage.get<number>(globalKey)) ?? 0;
+      if (globalCount >= RATE_LIMIT_GLOBAL_PER_MIN) {
+        return jsonPublic({ error: "Visit counter is busy — try again shortly." }, 429, { "retry-after": "60" });
+      }
       const markerKey = `r:${hash}`;
       const lastSeen = await this.storage.get<number>(markerKey);
       const isNewVisit = typeof lastSeen !== "number" || now - lastSeen > SESSION_WINDOW_MS;
@@ -150,6 +213,9 @@ export class VisitCounter {
       const writes: Promise<void>[] = [
         this.storage.put(markerKey, now),
         this.storage.put(KEY_LOADS, stats.loads),
+        // X-3: record the counted POST for both limiters.
+        this.storage.put(rateKey, now),
+        this.storage.put(globalKey, globalCount + 1),
       ];
       if (isNewVisit) writes.push(this.storage.put(KEY_VISITS, stats.visits));
       if (isNewVisitor) writes.push(this.storage.put(KEY_UNIQUES, stats.uniques), this.storage.put(`u:${hash}`, 1));
@@ -157,10 +223,10 @@ export class VisitCounter {
 
       // One hour after the first hit, start (or keep) the session sweeper.
       if (!(await this.storage.getAlarm())) await this.storage.setAlarm(now + SWEEP_INTERVAL_MS);
-      return json(stats);
+      return jsonPublic(stats);
     } catch (cause) {
       console.warn("[visits] count failed:", cause);
-      return json({ visits: null, loads: null, uniques: null }, 503);
+      return jsonPublic({ visits: null, loads: null, uniques: null }, 503);
     }
   }
 
@@ -216,7 +282,7 @@ export default {
         return stub.fetch(request);
       } catch (cause) {
         console.warn("[visits] counter unavailable:", cause);
-        return json({ visits: null, loads: null, uniques: null }, 503);
+        return jsonPublic({ visits: null, loads: null, uniques: null }, 503);
       }
     }
     // ── Cloud accounts + per-user project storage (same-origin, cookie sessions).
@@ -279,8 +345,10 @@ export default {
     }
     if (url.pathname === "/api/auth/forgot" && request.method === "POST") {
       // Orchestrated here (not the raw DO forward) so the worker can email the
-      // reset link when RESEND_API_KEY exists, or return the one-time link to
-      // the UI when the deployment has no mail delivery.
+      // reset link when RESEND_API_KEY exists, or return the one-time code to
+      // the UI when the deployment has no mail delivery — X-3: the code is
+      // never put in a URL (no ?reset= link, nothing in history, referers
+      // or server logs); the UI opens the reset form directly with it.
       try {
         const raw = await request.text();
         const stub = env.AUTH.get(env.AUTH.idFromName("global"));
@@ -295,7 +363,10 @@ export default {
           const email = (((JSON.parse(raw || "{}") as { email?: string }).email ?? "")).trim().toLowerCase();
           const resetUrl = `${url.origin}/?reset=${encodeURIComponent(body.token)}`;
           const mailed = await sendResetEmail(env, email, resetUrl);
-          return json({ ok: true, mailSent: mailed, resetUrl: mailed ? undefined : resetUrl });
+          // The emailed link still carries ?reset= — email links cannot
+          // avoid it — and the landing strips it from the address bar on
+          // arrival (handleAuthUrlParams). The no-mail code never does.
+          return json({ ok: true, mailSent: mailed, resetToken: mailed ? undefined : body.token });
         }
         return json({ ok: true, mailSent: false });
       } catch (cause) {
@@ -304,7 +375,10 @@ export default {
       }
     }
     if (url.pathname.startsWith("/api/auth/") || url.pathname.startsWith("/api/projects") || url.pathname.startsWith("/api/user/")) {
-      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_PREFLIGHT });
+      // X-3: same-origin cookie sessions never preflight, so this answers
+      // 204 with NO CORS headers — a cross-origin preflight fails closed
+      // instead of receiving an `*` grant.
+      if (request.method === "OPTIONS") return new Response(null, { status: 204 });
       try {
         const stub = env.AUTH.get(env.AUTH.idFromName("global"));
         // Forward the original request (cookies intact) with the real pathname.

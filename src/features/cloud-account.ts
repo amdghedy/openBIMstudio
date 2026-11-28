@@ -15,8 +15,10 @@
  * users are signed in automatically for 30 days; the dialog also remembers
  * the last used emails (localStorage) as one-click "Continue as" chips.
  * Forgot password: POST /api/auth/forgot creates a single-use token; the
- * worker emails the link (RESEND_API_KEY) or shows it inline, and
- * /?reset=<token> opens the "choose a new password" dialog.
+ * worker emails the link (RESEND_API_KEY) or returns the one-time code,
+ * which opens the reset form directly without ever entering a URL;
+ * /?reset=<token> (email links only) opens the "choose a new password"
+ * dialog and is stripped from the address bar on arrival.
  *
  * UI:
  *   - An account button in the ribbon tab row (next to the brand) and in the
@@ -721,7 +723,7 @@ async function openAuthDialog(registerMode: boolean): Promise<void> {
 
 /** Step 1 of the reset: ask for the email and request a one-time reset link. */
 async function openForgotDialog(presetEmail = ""): Promise<void> {
-  const { body } = dialogShell("Reset your password");
+  const { body, close } = dialogShell("Reset your password");
   const info = document.createElement("div");
   info.className = "obs-acct-note";
   info.textContent =
@@ -750,22 +752,21 @@ async function openForgotDialog(presetEmail = ""): Promise<void> {
         out.textContent = "Enter a valid email address — for example you@example.com";
         return;
       }
-      const res = await api<{ ok: true; mailSent?: boolean; resetUrl?: string }>("/api/auth/forgot", {
+      const res = await api<{ ok: true; mailSent?: boolean; resetToken?: string }>("/api/auth/forgot", {
         method: "POST",
         body: JSON.stringify({ email }),
       });
       out.classList.add("obs-acct-ok");
       if (res.mailSent) {
         out.textContent = `Reset link sent to ${email} — check your inbox (and spam). It works once and expires in 30 minutes.`;
-      } else if (res.resetUrl) {
-        // No mail provider on this deployment: hand over the one-time link directly.
-        const label = document.createElement("div");
-        label.textContent =
-          "Email delivery isn't configured on this deployment, so your one-time reset link is right here:";
-        const link = document.createElement("a");
-        link.href = res.resetUrl;
-        link.textContent = "Open the password reset page →";
-        out.append(label, link);
+      } else if (res.resetToken) {
+        // No mail provider on this deployment: open the reset form
+        // directly with the one-time code held in memory — X-3: it never
+        // enters a URL (no ?reset= link, nothing in history, referers or
+        // server logs). The code works once and expires in 30 minutes.
+        close();
+        void openResetDialog(res.resetToken);
+        return;
       } else {
         // Uniform wording — never confirms whether the address exists. Points
         // Google-only accounts at the Google button instead.

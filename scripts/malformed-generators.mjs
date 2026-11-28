@@ -149,7 +149,8 @@ export const IFC_BASE = [
 
 const IFC_KINDS = ["bitflip", "truncate", "unterminated-string", "broken-enum",
   "unbalanced-paren", "huge-integer", "deep-nesting", "semicolon-in-parens",
-  "non-ascii-outside-string", "missing-tail"];
+  "non-ascii-outside-string", "missing-tail", "malformed-header",
+  "dangling-reference", "extreme-count"];
 
 /** Kinds the structural pre-flight must reject (the rest may be inert). */
 export const IFC_MUST_REJECT = new Set(["unterminated-string", "broken-enum",
@@ -204,6 +205,26 @@ function mutateIfc(base, kind, rand) {
     case "missing-tail": {
       return Buffer.from(text.replace("END-ISO-10303-21;\n", ""), "latin1");
     }
+    case "malformed-header": {
+      // FILE_SCHEMA line removed: structure is intact, so the pre-flight
+      // accepts — the header validator (parseStepHeader / assertValidStepFileHeader)
+      // is what must reject it (X-4).
+      return Buffer.from(text.replace("FILE_SCHEMA(('IFC4'));\n", ""), "latin1");
+    }
+    case "dangling-reference": {
+      // The wall's placement points at #999999, which no record defines:
+      // structurally fine, semantically broken. The pre-flight does not
+      // validate references (that is the parser's job) — it must still
+      // terminate fast and never throw.
+      return Buffer.from(text.replace("#5,'Wall A',$,$,#28,", "#5,'Wall A',$,$,#999999,"), "latin1");
+    }
+    case "extreme-count": {
+      // One relationship lists the same wall 5000 times: no count cap in
+      // the pre-flight (only the 1M-record cap), so it must be accepted —
+      // but fast, with no allocation blow-up.
+      const refs = Array.from({ length: 5000 }, () => "#29").join(",");
+      return Buffer.from(text.replace(",(#29),#22);", `,(${refs}),#22);`), "latin1");
+    }
     default: throw new Error(`unknown IFC kind ${kind}`);
   }
 }
@@ -231,7 +252,8 @@ const BCF_MARKUP_OK = [
 
 const BCF_KINDS = ["valid-bcf", "malformed-xml-unclosed", "malformed-xml-entity",
   "malformed-xml-no-topic", "truncated-zip", "traversal-entry", "zip-bomb-ratio",
-  "missing-markup", "not-a-zip", "empty-zip"];
+  "missing-markup", "not-a-zip", "empty-zip", "dangling-viewpoint",
+  "malformed-version", "bad-guid"];
 
 function bcfCase(kind) {
   switch (kind) {
@@ -265,6 +287,29 @@ function bcfCase(kind) {
       eocd.writeUInt32LE(0x06054b50, 0);
       return eocd;
     }
+    case "dangling-viewpoint": {
+      // The markup references viewpoint.bcfv, but the archive holds no such
+      // entry: the import must fall back to the default camera, never crash
+      // or invent a viewpoint (X-4).
+      return storeZip([{ name: "bcf/topic-1/markup.bcf",
+        data: Buffer.from(BCF_MARKUP_OK.replace("</Topic>",
+          '</Topic><Viewpoints><Viewpoint Guid="11111111-2222-3333-4444-555555555555">viewpoint.bcfv</Viewpoint></Viewpoints>'), "utf8") }]);
+    }
+    case "malformed-version": {
+      // version.bcf is advisory — the archive validator never reads it — so
+      // garbage in it must not block an otherwise valid topic (leniency
+      // documented, X-4).
+      return storeZip([
+        { name: "bcf/topic-1/markup.bcf", data: Buffer.from(BCF_MARKUP_OK, "utf8") },
+        { name: "version.bcf", data: Buffer.from("this is not a version file {{{", "utf8") },
+      ]);
+    }
+    case "bad-guid": {
+      // Topic Guid is neither a UUID nor an IFC GlobalId: the parser returns
+      // it verbatim, the import's schema gate must reject the topic (X-4).
+      return storeZip([{ name: "bcf/topic-1/markup.bcf",
+        data: Buffer.from(BCF_MARKUP_OK.replace("0XScRe4drE$QuCcyMkXutA", "not-a-guid"), "utf8") }]);
+    }
     default: throw new Error(`unknown BCF kind ${kind}`);
   }
 }
@@ -296,7 +341,7 @@ export function dxfBase() {
 
 const DXF_KINDS = ["valid-dxf", "truncated", "bad-group-code", "huge-count",
   "unbalanced-section", "non-numeric-coordinate", "self-insert", "cycle-insert",
-  "missing-eof", "empty"];
+  "missing-eof", "empty", "malformed-header", "dangling-insert", "binary-garbage"];
 
 function dxfCase(kind) {
   const base = dxfBase();
@@ -330,6 +375,21 @@ function dxfCase(kind) {
         D("0", "INSERT", "8", "A", "2", "A", "10", "0", "20", "0", "30", "0")), "utf8");
     case "missing-eof": return Buffer.from(base.replace("0\nEOF\n", ""), "utf8");
     case "empty": return Buffer.alloc(0);
+    case "malformed-header":
+      // $ACADVER is advisory to the reader (it never gates on the version),
+      // so a garbage value must not lose the drawing — the LINE parses (X-4).
+      return Buffer.from(D(dxfSec("HEADER", D("9", "$ACADVER", "1", "NOTAVERSION")),
+        dxfSec("ENTITIES", D("0", "LINE", "8", "A", "10", "0", "20", "0", "30", "0", "11", "5", "21", "0", "31", "0")), "0", "EOF") + "\n", "utf8");
+    case "dangling-insert":
+      // INSERT of a block the file never defines: skipped and counted, never
+      // expanded or crashed (X-4).
+      return Buffer.from(line(D("0", "INSERT", "8", "A", "2", "NOPE", "10", "0", "20", "0", "30", "0")), "utf8");
+    case "binary-garbage": {
+      // Fixed pattern (deterministic): every byte value in rotation. The
+      // reader sees it as latin1 text — it must terminate with an empty
+      // document or a typed Error, never a hang (X-4).
+      return Buffer.from(Array.from({ length: 2000 }, (_, i) => (i * 37 + 11) % 256));
+    }
     default: throw new Error(`unknown DXF kind ${kind}`);
   }
 }

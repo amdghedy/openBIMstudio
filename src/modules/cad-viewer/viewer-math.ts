@@ -1590,7 +1590,14 @@ export const compareTolerance = (b: BBox): number => Math.max(Math.max(b.maxX - 
 
 /* ───────────────────────── plotting ───────────────────────── */
 
-export const PAPER_MM: Record<string, [number, number]> = { A4: [210, 297], A3: [297, 420], A2: [420, 594], A1: [594, 841], A0: [841, 1189], Letter: [215.9, 279.4], Tabloid: [279.4, 431.8] };
+export const PAPER_MM: Record<string, [number, number]> = {
+  A4: [210, 297], A3: [297, 420], A2: [420, 594], A1: [594, 841], A0: [841, 1189], Letter: [215.9, 279.4], Tabloid: [279.4, 431.8],
+  // US sizes (short × long, mm) — literal because this module is loaded standalone by tests; tests/paper-sizes.test.cjs
+  // pins every value to src/core/paper-sizes.ts.
+  "ANSI-C": [431.8, 558.8], "ANSI-D": [558.8, 863.6], "ANSI-E": [863.6, 1117.6],
+  "Arch-A": [228.6, 304.8], "Arch-B": [304.8, 457.2], "Arch-C": [457.2, 609.6], "Arch-D": [609.6, 914.4], "Arch-E": [914.4, 1219.2], "Arch-E1": [762, 1066.8],
+  Legal: [215.9, 355.6],
+};
 
 export function paperMm(name: string, landscape: boolean): { w: number; h: number } {
   const [s, l] = PAPER_MM[name] ?? PAPER_MM.A4;

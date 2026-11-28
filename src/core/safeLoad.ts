@@ -668,13 +668,13 @@ export const StepFileHeaderSchema = z.object({
  *
  * Guid policy: empty is accepted (legacy files without a Guid fall back
  * to the topic folder name in `importBCF`); a non-empty Guid must be an
- * RFC 4122 UUID (`BCF_GUID_RE`). Dates must be finite epoch millis —
+ * RFC 4122 UUID or an IFC GlobalId (`BCF_GUID_RE`). Dates must be finite epoch millis —
  * `parseBcfMarkup` already coerces unparseable dates to 0, so a
  * non-finite date here means the parser itself misbehaved.
  */
 const bcfGuidSchema = z.string().max(64).refine(
   (s) => s === "" || BCF_GUID_RE.test(s),
-  "must be empty or an RFC 4122 UUID",
+  "must be empty, an RFC 4122 UUID or an IFC GlobalId",
 );
 
 export const BcfParsedTopicSchema = z.object({
