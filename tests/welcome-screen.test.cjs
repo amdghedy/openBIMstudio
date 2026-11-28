@@ -244,8 +244,13 @@ t("css: responsive + reduced-motion respected", () => {
 });
 
 // ── 6. Version ───────────────────────────────────────────────────────────
-t("version badge bumped to v54", () => {
-  assert.ok(home.includes("v54"), "header version badge should read v54");
+// 2026-11-28: the hardcoded "v54" badge was a live-site remark (badge said v54
+// while the app was 0.74.0). Home screen + status bar now render APP_VERSION
+// from src/version.ts, so no literal version string lives in the markup.
+t("version badge renders APP_VERSION (no hardcoded v-string)", () => {
+  assert.ok(home.includes("v${APP_VERSION}"), "header version badge should interpolate APP_VERSION");
+  assert.ok(home.includes('from "../version"'), "home screen imports APP_VERSION");
+  assert.ok(!home.includes(">v54<"), "hardcoded v54 badge must be gone");
   assert.ok(!home.includes("v53"), "stale v53 badge must be gone");
 });
 
