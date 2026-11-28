@@ -1,6 +1,6 @@
 // src/services/bimRoundTrip.ts
 import axios from 'axios';
-import { IfcAPI } from 'web-ifc';
+import type { IfcAPI } from 'web-ifc';
 
 /**
  * Minimal stub for a BIM ↔ OpenBIMStudio round‑trip.

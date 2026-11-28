@@ -1,4 +1,5 @@
 import { getProjection } from "../features/camera-tools";
+import { APP_VERSION } from "../version";
 import { ctx } from "../core/context";
 import { togglePlanView, isPlanViewVisible } from "../features/plan-view-panel";
 import { isSheets2dPanelVisible } from "../features/sheets-2d-panel";
@@ -235,7 +236,7 @@ function update() {
         saveHtml
       : `<span style="opacity:.55">No project</span>`) +
     `<span style="opacity:.4">·</span>` +
-    `<span style="opacity:.55">Open BIM Studio v54</span>` +
+    `<span style="opacity:.55">Open BIM Studio v${APP_VERSION}</span>` +
     `<span style="opacity:.4">·</span>` +
     `<a href="https://github.com/amdghedy/openBIMstudio" target="_blank" rel="noopener noreferrer" ` +
       `style="color:#93c5fd;text-decoration:none;opacity:.9" title="Source on GitHub — star the project">GitHub ⭐</a>`;

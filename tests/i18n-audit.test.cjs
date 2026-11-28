@@ -28,8 +28,12 @@ ok(/hi \(849 untranslated entries\)/.test(out), "Hindi's 849 untranslated catalo
 // Item 15: the report carries coverage % per language, the dead-key
 // report, and the CSS-fragment-key count (not just the gates).
 ok(/coverage/.test(out), "report has a coverage column");
-ok(/^ar\s+translated\s+rtl→rtl\s+86\s+4\s+3431\s+73\s+yes\s+97\.9%/m.test(out), "ar coverage is 97.9%");
-ok(/^hi\s+translated\s+ltr→ltr\s+15\s+4\s+3431\s+849\s+yes\s+75\.3%/m.test(out), "hi coverage is 75.3%");
+// 2026-11-28: +34 home/workspace UI strings translated into all 9 gen locales
+// (live-site remark: Arabic was partial) grew the union 3431→3465; each locale
+// gained exactly one untranslated marker (the brand "Open BIM Studio" now stays
+// Latin instead of being translated as the verb "open").
+ok(/^ar\s+translated\s+rtl→rtl\s+86\s+4\s+3465\s+74\s+yes\s+97\.9%/m.test(out), "ar coverage is 97.9%");
+ok(/^hi\s+translated\s+ltr→ltr\s+15\s+4\s+3465\s+849\s+yes\s+75\.5%/m.test(out), "hi coverage is 75.5%");
 ok(/css-fragment keys: 0 in all catalogues/.test(out), "CSS-fragment keys reported (0)");
 ok(/dead-key report \(JSON namespaces with no call site in src\/ — kept, key migration pending\): app \(17 keys\), clash \(32 keys\), authoring \(9 keys\), camera \(4 keys\), cost \(6 keys\), options \(6 keys\)/.test(out), "dead-key report names the six dead namespaces");
 

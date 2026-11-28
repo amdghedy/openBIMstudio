@@ -1854,3 +1854,28 @@ bim-panel-section > * { min-width: 0; max-width: 100%; }
   line-height: 1.45;
 }
 .obs-fcard__howto strong { color: var(--pg, #38bdf8); }
+
+/* ═══ Live-site remarks 7+8 (2026-11-28): ribbon reachability on smaller screens ═══
+   At 1280px the single-row tab strip (brand + ~20 tabs, scrollWidth ~2280px)
+   clipped Output / Clash Detective / Edit / X Dim behind a hidden-scrollbar
+   overflow. Between 681-1500px wrap the tabs to extra rows so every tab is
+   reachable without scrolling; compact the brand to its mark. On phones
+   (<=680px) wrapping would take half the screen, so keep one row but show a
+   thin scrollbar as the affordance the hidden one lacked. */
+@media (max-width: 1500px) {
+  .obs-ribbon__brand { font-size: 0; gap: 0; padding-inline-end: var(--sp-2); margin-inline-end: var(--sp-2); }
+  .obs-ribbon__brand::before { width: 14px; height: 14px; flex: none; }
+  .obs-ribbon__tab { padding: 0 8px; font-size: 11.5px; }
+}
+@media (max-width: 1500px) and (min-width: 681px) {
+  .obs-ribbon__tabs { flex-wrap: wrap; height: auto; overflow-x: visible; }
+  .obs-ribbon__tab { height: var(--h-tabs); }
+}
+@media (max-width: 680px) {
+  .obs-ribbon__tabs { scrollbar-width: thin; }
+  .obs-ribbon__tabs::-webkit-scrollbar { display: block; height: 4px; }
+  .obs-ribbon__tabs::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+  /* The view cube overlaps the Modify/options bar at 390px (decorative only,
+     pointer-events none) — hide it on phones. */
+  #obs-viewcube { display: none !important; }
+}

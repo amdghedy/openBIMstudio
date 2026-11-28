@@ -16,7 +16,7 @@
  *                               "BindingError: StreamMeshes called with 4 arguments, expected 3".
  *
  * Versioned WASM lives in its own cache (v4): the BUILD cache rotates on
- * every build (its name hashes the file list + the build time), so before
+ * every build (its name hashes the file list + file sizes), so before
  * v4 an unchanged web-ifc pin still forced a full 23 MB WASM re-download on
  * every redeploy. The versioned folder's URL already encodes the pin, so
  * its bytes are immutable for a given version — it is cached under

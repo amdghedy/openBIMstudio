@@ -229,7 +229,9 @@ t("importer: IFCZIP size guard precedes the full read; convert path guards + pre
   assert.ok(exp.indexOf('guardSize("ifc"') < exp.indexOf("file.arrayBuffer()"));
   const conv = sliceFn(src, "export async function convertIfcToFragBytes", "\nexport function loadIfcFiles");
   assert.ok(conv.indexOf('assertFileAllowed("ifc"') < conv.indexOf("file.arrayBuffer()"));
-  assert.ok(conv.indexOf("preflightStep(bytes)") < conv.indexOf("getImporter().process"));
+  // 2026-11-28: getImporter() went async (web-ifc lazy-loaded, live-site first-load
+  // remark), so the call is now `(await getImporter()).process(settings)`.
+  assert.ok(conv.indexOf("preflightStep(bytes)") < conv.indexOf("getImporter()).process"));
   const frag = sliceFn(src, "export async function loadFragFiles", "\nexport async function convertIfcToFragBytes");
   assert.ok(frag.indexOf('assertFileAllowed("frag"') < frag.indexOf("file.arrayBuffer()"));
   const task = sliceFn(src, 't.status = "reading"', "t.schema = detectSchema");

@@ -184,10 +184,25 @@ export function makeDockable(panel: HTMLElement, opts: DockOptions): DockHandle 
       layoutOwned = false;
     }
     const hostRect = host.getBoundingClientRect();
+    // Phone-width VIEWPORTS (live-site remark: at 390px a 300px+ panel covers
+    // the canvas and the app is unusable). Panels become sheets: full width,
+    // capped height, canvas stays visible and tappable below. Desktop
+    // geometry (state.x/y/width/height) is left untouched so the panel
+    // returns to its place on wide screens. Keyed off the viewport, NOT the
+    // host: dock hosts (e.g. the ~360px right strip) are narrow on desktop
+    // too, and forcing their panels into sheet geometry made them overlap
+    // (CI: orbit-rtl LIVE IFC LINK).
+    const narrow = (window.innerWidth || hostRect.width) <= 680;
     panel.style.position = "absolute";
     panel.style.boxSizing = "border-box";
 
-    if (state.dock === "left") {
+    if (narrow) {
+      panel.style.left = `${margin}px`;
+      panel.style.right = "auto";
+      panel.style.top = `${margin}px`;
+      panel.style.width = `${Math.max(minW, hostRect.width - margin * 2)}px`;
+      panel.style.height = `${Math.min(state.height, Math.round(hostRect.height * 0.55))}px`;
+    } else if (state.dock === "left") {
       panel.style.left = `${margin}px`;
       panel.style.right = "auto";
       panel.style.top = `${margin}px`;
@@ -215,6 +230,13 @@ export function makeDockable(panel: HTMLElement, opts: DockOptions): DockHandle 
       panel.style.width = `${state.width}px`;
       panel.style.height = `${state.height}px`;
     }
+  }
+
+  // Re-clamp panels when the host changes size (window resize, phone
+  // rotation): without this the narrow-host sheet geometry computed above
+  // goes stale until the next panel state change.
+  if (typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(() => { if (panel.isConnected && panel.style.display !== "none") applyLayout(); }).observe(host);
   }
 
   // ── Resize handles ──
