@@ -97,7 +97,7 @@ export async function collectIfcMeshes(onProgress?: (done: number, total: number
     try {
       const cats = await model.getItemsOfCategories([/.+/]);
       for (const [c, list] of Object.entries(cats ?? {})) for (const id of (list as number[]) ?? []) catBy.set(id, c);
-    } catch { /* layer falls back to A-MODEL */ }
+    } catch { /* layer falls back to A-MODL */ }
     const BATCH = 12;
     for (let i = 0; i < ids.length && !capped; i += BATCH) {
       const slice = ids.slice(i, i + BATCH);
