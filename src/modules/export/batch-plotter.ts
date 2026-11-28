@@ -11,6 +11,7 @@
 import { PDFDocument, PDFPage, PDFFont, rgb, degrees } from "pdf-lib";
 import type { SheetDef, SheetViewport } from "../projects/types";
 import { getSheet, getSheetSizeMm, listSheets } from "../sheets/sheets";
+import { normalizePaperId } from "../../core/paper-sizes";
 import { getView } from "../views/store";
 import { generatePlanScene } from "../views/generators/plan";
 import { generateSectionScene } from "../views/generators/section";
@@ -458,7 +459,7 @@ export async function generateBatchPlotPdf(options: BatchPlotOptions = {}): Prom
   const cadCoverEntries: SheetDef[] = cadLayouts.map((input) => {
     const label = cadLayoutPaperLabel(input.layout, input.setups);
     const paper = label.split(" ")[0];
-    const size = (["A0", "A1", "A2", "A3", "A4"].includes(paper) ? paper : "A3") as SheetDef["size"];
+    const size = normalizePaperId(paper, "A3");
     return {
       id: `cad:${input.layout.name}`,
       number: input.layout.name,

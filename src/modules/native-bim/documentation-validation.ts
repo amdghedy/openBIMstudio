@@ -40,8 +40,9 @@ export interface SheetQaSnapshot {
   views: readonly SheetQaView[];
   sheetSizesMm: Readonly<Record<string, { w: number; h: number }>>;
 }
+import { PAPER_SIZES } from "../../core/paper-sizes";
 const EPS = 0.01;
-const validSizes = new Set(["A0","A1","A2","A3","A4","ANSI-D","ANSI-E","Arch-D","Arch-E"]);
+const validSizes = new Set<string>(PAPER_SIZES.map((p) => p.id));
 
 export function validateDocumentationSet(snapshot: SheetQaSnapshot): SheetQaDiagnostic[] {
   const out: SheetQaDiagnostic[] = [];

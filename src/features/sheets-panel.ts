@@ -17,7 +17,9 @@ import {
   insertSheet,
   onSheetsChange,
   getSheetSizeMm,
+  setSheetPaper,
 } from "../modules/sheets/sheets";
+import { PAPER_SIZES } from "../core/paper-sizes";
 import { exportSheetSvg } from "../modules/sheets/sheet-composer";
 import { exportAllSheetsToPdf, downloadSingleSheetPdf } from "../modules/export/sheet-pdf";
 import { getCurrentCadDoc } from "../modules/cad-viewer/cad-current-doc";
@@ -97,6 +99,21 @@ function render() {
       ${active ? renderActive(active) : ""}
     </div>
   `;
+
+  const paperChanged = () => {
+    const cur = activeId ? getSheet(activeId) : undefined;
+    if (!cur) return;
+    const sz = panel!.querySelector<HTMLSelectElement>("[data-sheet-size]");
+    const or = panel!.querySelector<HTMLSelectElement>("[data-sheet-orient]");
+    if (!sz || !or) return;
+    const before = cloneSheet(cur);
+    setSheetPaper(cur.id, sz.value as SheetDef["size"], or.value as SheetDef["orientation"]);
+    const after = getSheet(cur.id);
+    if (after) pushSheetChange("Change sheet paper", before, after);
+    render();
+  };
+  panel.querySelector("[data-sheet-size]")?.addEventListener("change", paperChanged);
+  panel.querySelector("[data-sheet-orient]")?.addEventListener("change", paperChanged);
 
   panel.querySelectorAll("[data-act]").forEach((el) => {
     const act = (el as HTMLElement).dataset.act!;
@@ -241,6 +258,15 @@ function renderActive(s: SheetDef) {
       </div>
       <div class="obs-sheets__detail-name">${esc(s.name)}</div>
       <div class="obs-sheets__detail-meta">${s.size} · ${s.orientation} · ${s.viewports.length} viewports</div>
+      <div class="obs-sheets__paper" style="display:flex;gap:6px;margin:6px 0">
+        <select data-sheet-size aria-label="Sheet paper size" style="flex:1;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:4px;padding:3px">
+          ${(["iso", "ansi", "arch"] as const).map((fam) => `<optgroup label="${fam === "iso" ? "ISO (A series)" : fam === "ansi" ? "US — ANSI" : "US — Architectural"}">${PAPER_SIZES.filter((p) => p.family === fam).map((p) => `<option value="${p.id}"${p.id === s.size ? " selected" : ""}>${esc(p.label)}</option>`).join("")}</optgroup>`).join("")}
+        </select>
+        <select data-sheet-orient aria-label="Sheet orientation" style="background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:4px;padding:3px">
+          <option value="landscape"${s.orientation === "landscape" ? " selected" : ""}>Landscape</option>
+          <option value="portrait"${s.orientation === "portrait" ? " selected" : ""}>Portrait</option>
+        </select>
+      </div>
       <button type="button" data-act="add-vp" class="obs-sheets__add-vp">+ Place plan viewport</button>
       <ul class="obs-sheets__vps">
         ${s.viewports.map((v) => `

@@ -18,7 +18,7 @@
 import { i18n, type Locale } from "./i18n";
 import type { UnitSystem } from "./units";
 
-export type PaperSize = "A0" | "A1" | "A2" | "A3" | "A4" | "ANSI-D" | "ARCH-E1";
+export type PaperSize = import("./paper-sizes").PaperId | "ARCH-E1";
 
 export interface RegionProfile {
   id: string;
@@ -62,7 +62,7 @@ export const REGION_PROFILES: readonly RegionProfile[] = [
   {
     id: "us", name: "United States", nativeName: "United States",
     locale: "en", unitSystem: "imperial-ft", currency: "USD",
-    standardsPacks: ["fire-egress-us", "accessibility-us"], paper: "ANSI-D", dateFormat: "mdy",
+    standardsPacks: ["fire-egress-us", "accessibility-us"], paper: "Arch-D", dateFormat: "mdy",
   },
   {
     id: "gb", name: "United Kingdom", nativeName: "United Kingdom",

@@ -171,6 +171,7 @@
     "test:gis": "node tests/gis-core.test.cjs",
     "test:gis-crs": "node tests/gis-crs.test.cjs",
     "test:ifc-georef": "node tests/ifc-georef.test.cjs",
+    "test:paper-sizes": "node tests/paper-sizes.test.cjs",
     "test:solids": "node tests/solids.test.cjs",
     "test:solid-kernel-weld": "node tests/solid-kernel-weld.test.cjs",
     "test:validation-gate": "node tests/validation-gate.test.cjs",
