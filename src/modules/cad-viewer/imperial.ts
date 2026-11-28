@@ -64,3 +64,12 @@ export function rewriteImperialInput(line: string, units: string | undefined): I
   if (error) return { text: line, changed: false, error };
   return { text: out, changed: out !== line };
 }
+
+/**
+ * Direct numeric entry at a prompt (tool radius/length, pending ROTATE/SCALE/OFFSET): the number typed, or null when the
+ * line is not a plain number. Pass the REWRITTEN text (after rewriteImperialInput) so 5'6" counts as 1676.4 in an mm drawing.
+ */
+export function directNumberFromInput(rewrittenText: string): number | null {
+  const s = rewrittenText.trim();
+  return /^[-+]?\d*\.?\d+(e[-+]?\d+)?$/i.test(s) ? parseFloat(s) : null;
+}
