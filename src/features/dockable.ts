@@ -184,12 +184,15 @@ export function makeDockable(panel: HTMLElement, opts: DockOptions): DockHandle 
       layoutOwned = false;
     }
     const hostRect = host.getBoundingClientRect();
-    // Phone-width hosts (live-site remark: at 390px a 300px+ panel covers the
-    // canvas and the app is unusable). Panels become sheets: full width,
+    // Phone-width VIEWPORTS (live-site remark: at 390px a 300px+ panel covers
+    // the canvas and the app is unusable). Panels become sheets: full width,
     // capped height, canvas stays visible and tappable below. Desktop
     // geometry (state.x/y/width/height) is left untouched so the panel
-    // returns to its place on wide screens.
-    const narrow = hostRect.width <= 680;
+    // returns to its place on wide screens. Keyed off the viewport, NOT the
+    // host: dock hosts (e.g. the ~360px right strip) are narrow on desktop
+    // too, and forcing their panels into sheet geometry made them overlap
+    // (CI: orbit-rtl LIVE IFC LINK).
+    const narrow = (window.innerWidth || hostRect.width) <= 680;
     panel.style.position = "absolute";
     panel.style.boxSizing = "border-box";
 
