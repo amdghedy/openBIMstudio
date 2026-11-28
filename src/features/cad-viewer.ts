@@ -51,6 +51,7 @@ import { resolveDblClick } from "../shell/ribbon-collapse";
 import { sanitizeSessionUi, sessionUiSignature, hiddenEntityIndexes, sanitizeHiddenEntities, type SessionUi, type SessionHiddenEntities } from "../modules/cad-viewer/session-state";
 import * as M from "../modules/cad-viewer/viewer-math";
 import { rewriteImperialInput } from "../modules/cad-viewer/imperial";
+import { auditNcsLayers } from "../modules/cad-viewer/ncs-layers";
 import {
   cellAt,
   cellTextPoint,
@@ -320,6 +321,7 @@ const CAD_COMMANDS: CadCommandDef[] = [
   { name: "ZOOM", aliases: ["Z"], description: "Zoom view: [All/Extents/Window/Previous]" },
   { name: "PAN", aliases: ["P"], description: "Move the view without changing magnification" },
   { name: "LAYER", aliases: ["LA", "LAYERS"], description: "Open Layer Properties Manager" },
+  { name: "NCSCHECK", aliases: ["NCS"], description: "Check layer names against the US National CAD Standard format (report only)" },
   { name: "LINETYPE", aliases: ["LT", "LTYPE"], description: "Open the Linetype Manager (load linetypes, set current)" },
   { name: "LTSCALE", aliases: ["LTS"], description: "Set the global linetype scale, e.g. LTSCALE 2" },
   { name: "CANNOSCALE", aliases: ["ANNOSCALE"], description: "Set the annotation scale, e.g. CANNOSCALE 1:50 — text, leaders and dimension arrowheads render at this scale" },
@@ -13213,6 +13215,14 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     }
     if (cmd === "LA" || cmd === "LAYER" || cmd === "LAYERS") {
       openLayerPropertiesManager();
+      return;
+    }
+    if (cmd === "NCSCHECK" || cmd === "NCS") {
+      if (!doc) { logCmd("NCSCHECK: no drawing is open."); return; }
+      const a = auditNcsLayers(doc.layers.map((l) => l.name));
+      logCmd(`NCSCHECK: ${a.conforming} of ${a.total - a.exempt} layers match the NCS format (${a.exempt} system layer(s) skipped). Format and discipline letter only — group codes are not checked against the published list.`);
+      for (const o of a.offenders.slice(0, 20)) logCmd(`  ${o.layer} — ${o.issues[0]}`);
+      if (a.offenders.length > 20) logCmd(`  …and ${a.offenders.length - 20} more.`);
       return;
     }
     if (cmd === "PR" || cmd === "PROPERTIES" || cmd === "CH") {
