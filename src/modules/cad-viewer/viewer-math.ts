@@ -779,21 +779,48 @@ export function entityMetrics(e: DxfEntity): EntityMetrics {
 
 /* ───────────────────────── units ───────────────────────── */
 
+const gcdInt = (a: number, b: number): number => (b ? gcdInt(b, a % b) : a);
+
+/** Architectural length from inches: 12'-6 1/2". Fractions are rounded to 1/denom and reduced; zero is 0". */
+export function formatFeetInches(inches: number, denom = 16): string {
+  if (!Number.isFinite(inches)) return "n/a";
+  const d = [1, 2, 4, 8, 16, 32, 64, 128, 256].includes(denom) ? denom : 16;
+  const neg = inches < 0;
+  const units = Math.round(Math.abs(inches) * d);
+  if (units === 0) return '0"';
+  const whole = Math.floor(units / d);
+  let num = units % d, den = d;
+  if (num) { const g = gcdInt(num, den); num /= g; den /= g; }
+  const feet = Math.floor(whole / 12), inch = whole % 12;
+  const frac = num ? `${num}/${den}` : "";
+  let body: string;
+  if (feet > 0) body = `${feet}'-${inch}${frac ? " " + frac : ""}"`;
+  else if (inch > 0) body = `${inch}${frac ? " " + frac : ""}"`;
+  else body = `${frac}"`;
+  return (neg ? "-" : "") + body;
+}
+
 const UNIT_M: Record<DxfUnits, number> = { unitless: 1, mm: 0.001, cm: 0.01, m: 1, in: 0.0254, ft: 0.3048 };
-export type DisplayUnit = "drawing" | "mm" | "cm" | "m" | "in" | "ft";
+export type DisplayUnit = "drawing" | "mm" | "cm" | "m" | "in" | "ft" | "ft-in";
 
 /** Convert a length in drawing units to the display unit (areas: pass the squared factor via `power`). */
 export function convertLength(v: number, from: DxfUnits | undefined, to: DisplayUnit, power = 1): number {
   const src = from ?? "unitless";
   if (to === "drawing" || src === "unitless") return v;
-  return v * Math.pow(UNIT_M[src] / UNIT_M[to], power);
+  const target = to === "ft-in" ? (power === 1 ? "in" : "ft") : to;
+  return v * Math.pow(UNIT_M[src] / UNIT_M[target], power);
 }
 export function unitLabel(from: DxfUnits | undefined, to: DisplayUnit): string {
-  const u = to === "drawing" ? (from ?? "unitless") : to;
+  const u = to === "drawing" ? (from ?? "unitless") : to === "ft-in" ? (from && from !== "unitless" ? "in" : "unitless") : to;
   return u === "unitless" ? "units" : u;
 }
 export function formatQty(v: number, from: DxfUnits | undefined, to: DisplayUnit, power = 1, digits = 3): string {
   const n = convertLength(v, from, to, power);
+  if (to === "ft-in") {
+    if (power === 1 && from && from !== "unitless") return formatFeetInches(n);
+    // areas: plain decimal ft²; a unitless drawing has no real unit to convert, so it stays "units"
+    return formatQty(v, from, from && from !== "unitless" ? "ft" : "drawing", power, digits);
+  }
   const d = Math.abs(n) >= 1000 ? 1 : Math.abs(n) >= 10 ? 2 : digits;
   return `${n.toFixed(d)} ${unitLabel(from, to)}${power === 2 ? "²" : ""}`;
 }

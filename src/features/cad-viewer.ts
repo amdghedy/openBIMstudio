@@ -50,6 +50,7 @@ import { setCadHotkeyOwner } from "../core/cad-hotkey-ownership";
 import { resolveDblClick } from "../shell/ribbon-collapse";
 import { sanitizeSessionUi, sessionUiSignature, hiddenEntityIndexes, sanitizeHiddenEntities, type SessionUi, type SessionHiddenEntities } from "../modules/cad-viewer/session-state";
 import * as M from "../modules/cad-viewer/viewer-math";
+import { rewriteImperialInput } from "../modules/cad-viewer/imperial";
 import {
   cellAt,
   cellTextPoint,
@@ -9064,7 +9065,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const bgOpts = Object.keys(BG)
       .map((k) => `<option value="${k}" ${k === "drafting" ? "selected" : ""}>${k}</option>`)
       .join("");
-    const unitOpts = ["drawing", "mm", "cm", "m", "in", "ft"].map((u) => `<option>${u}</option>`).join("");
+    const unitOpts = ["drawing", "mm", "cm", "m", "in", "ft", "ft-in"].map((u) => `<option>${u}</option>`).join("");
     const polarAngleOpts = [5, 10, 15, 22.5, 30, 45, 90]
       .map((angle) => `<option value="${angle}" ${angle === polarAngle ? "selected" : ""}>${angle}°</option>`)
       .join("");
@@ -12926,7 +12927,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
 
     logCmd(`Command: ${trimmed}`, true);
 
-    const parts = trimmed.split(/\s+/);
+    // US input: 12'6", 5'-6 1/2", 10" → numbers in the drawing's units (text commands are left alone).
+    const imp = rewriteImperialInput(trimmed, doc?.units);
+    if (imp.error) { logCmd(imp.error, true); return; }
+    if (imp.changed) logCmd(`Interpreted as: ${imp.text}`, true);
+    const parts = imp.text.split(/\s+/);
     const cmd = resolveCadToken(parts[0], CAD_COMMANDS);
     const arg = parts.slice(1).join(" ");
 
