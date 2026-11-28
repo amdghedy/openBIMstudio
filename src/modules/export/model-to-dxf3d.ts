@@ -21,13 +21,21 @@ export interface Dxf3dResult { dxf: string; faces: number; byLayer: Record<strin
 
 const LAYER_FOR_TYPE: Record<string, string> = {
   wall: "A-WALL", slab: "A-FLOR", floor: "A-FLOR", roof: "A-ROOF", door: "A-DOOR", window: "A-GLAZ", stair: "A-STRS", ceiling: "A-CLNG",
-  column: "S-COLS", beam: "S-BEAM", footing: "S-FNDN", foundation: "S-FNDN", duct: "M-DUCT", pipe: "P-PIPE", cabletray: "E-CABLE-TRAY", conduit: "E-CONDUIT",
+  column: "S-COLS", beam: "S-BEAM", footing: "S-FNDN", foundation: "S-FNDN", duct: "M-DUCT", pipe: "P-PIPE", cabletray: "E-POWR-TRAY", conduit: "E-POWR-CNDT",
 };
+/**
+ * Unknown names become NCS-shaped: A-<MAJOR 4>[-<MINOR 4>] from the first 8 letters/digits
+ * (e.g. "weird type" → A-WEIR-DTYP, "foobar" → A-FOOB-ARXX; short minors are padded with X). Lossy for long names, but always a valid <discipline>-<4>-<4> layer.
+ */
+function ncsFallback(raw: string): string {
+  const a = raw.toUpperCase().replace(/[^A-Z0-9]+/g, "").slice(0, 8);
+  if (!a) return "A-MODL";
+  return a.length > 4 ? `A-${a.slice(0, 4)}-${a.slice(4).padEnd(4, "X")}` : `A-${a}`.padEnd(6, "X");
+}
 export function layerForElementType(type: string | undefined): string {
   const t = (type ?? "").toLowerCase();
   if (LAYER_FOR_TYPE[t]) return LAYER_FOR_TYPE[t];
-  const clean = t.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").toUpperCase().slice(0, 24);
-  return clean ? "A-" + clean : "A-MODEL";
+  return ncsFallback(t);
 }
 
 const fmt = (v: number) => (Math.abs(v) < 1e-9 ? "0" : String(Math.round(v * 1e5) / 1e5));
@@ -120,6 +128,5 @@ export function layerForIfcCategory(category: string | undefined): string {
     [/^BUILDINGELEMENTPROXY|^PROXY/, "A-PROXY"],
   ];
   for (const [re, layer] of rules) if (re.test(c)) return layer;
-  const clean = c.replace(/[^A-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24);
-  return clean ? "A-" + clean : "A-MODEL";
+  return ncsFallback(c);
 }

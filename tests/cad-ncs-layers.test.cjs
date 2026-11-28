@@ -46,9 +46,12 @@ t("our export maps: common building types are NCS-shaped", () => {
   for (const c of ["IFCWALL", "IFCSLAB", "IFCROOF", "IFCCOLUMN", "IFCBEAM", "IFCDOOR", "IFCWINDOW", "IFCCURTAINWALL", "IFCSPACE", "IFCDUCTSEGMENT"])
     assert.ok(N.checkNcsLayerName(X.layerForIfcCategory(c)).ok, c + " → " + X.layerForIfcCategory(c));
 });
-t("KNOWN GAP pinned: cable tray/conduit and unknown-type fallbacks are not NCS-shaped (flagged by the audit)", () => {
-  assert.ok(!N.checkNcsLayerName(X.layerForElementType("cabletray")).ok);
-  assert.ok(!N.checkNcsLayerName(X.layerForElementType("weird type!")).ok);
+t("cable tray, conduit and unknown-type fallbacks are NCS-shaped and still distinguishable", () => {
+  for (const ty of ["cabletray", "conduit", "weird type!", "x", "", undefined, "a-very-long-element-type-name"])
+    assert.ok(N.checkNcsLayerName(X.layerForElementType(ty)).ok, String(ty) + " → " + X.layerForElementType(ty));
+  for (const c of ["IFCFOOBAR", "IFCX", "", undefined]) assert.ok(N.checkNcsLayerName(X.layerForIfcCategory(c)).ok, String(c));
+  assert.notEqual(X.layerForElementType("weird type"), X.layerForElementType("weird thing"));
+  assert.equal(X.layerForElementType("weird type!"), "A-WEIR-DTYP");
 });
 console.log(`cad-ncs-layers: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -28,8 +28,8 @@ try {
   ok(bad.faces === 0 && bad.skippedDegenerate === 3, "collinear, NaN and out-of-range triangles skipped");
   const nonIdx = M.meshesToDxf3d([{ layer: "L", positions: [0,0,0, 1,0,0, 0,1,0] }]);
   ok(nonIdx.faces === 1, "non-indexed triangle");
-  ok(M.layerForElementType("Wall") === "A-WALL" && M.layerForElementType("column") === "S-COLS" && M.layerForElementType("weird type!") === "A-WEIRD-TYPE" && M.layerForElementType(undefined) === "A-MODEL", "layer by element type");
+  ok(M.layerForElementType("Wall") === "A-WALL" && M.layerForElementType("column") === "S-COLS" && M.layerForElementType("weird type!") === "A-WEIR-DTYP" && M.layerForElementType(undefined) === "A-MODL", "layer by element type");
   ok(M.meshesToDxf3d([{ layer: "a/b:c", positions: pos, index: idx }], { layerPrefix: "P-" }).byLayer["P-a_b_c"] === 12, "layer name sanitised + prefix");
-  ok(M.layerForIfcCategory("IFCWALLSTANDARDCASE") === "A-WALL" && M.layerForIfcCategory("IFCCOLUMN") === "S-COLS" && M.layerForIfcCategory("IFCDUCTSEGMENT") === "M-DUCT" && M.layerForIfcCategory("IFCFOOBAR") === "A-FOOBAR" && M.layerForIfcCategory(undefined) === "A-MODEL", "IFC entity to layer");
+  ok(M.layerForIfcCategory("IFCWALLSTANDARDCASE") === "A-WALL" && M.layerForIfcCategory("IFCCOLUMN") === "S-COLS" && M.layerForIfcCategory("IFCDUCTSEGMENT") === "M-DUCT" && M.layerForIfcCategory("IFCFOOBAR") === "A-FOOB-ARXX" && M.layerForIfcCategory(undefined) === "A-MODL", "IFC entity to layer");
   console.log(`model-to-dxf3d: ${n} assertions passed`);
 } finally { fs.rmSync(out, { recursive: true, force: true }); }
