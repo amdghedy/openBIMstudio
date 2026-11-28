@@ -1,5 +1,6 @@
 /** Open BIM Studio Project Center — enterprise-style local project launcher. */
 import { confirmDialog } from "../features/form-modal";
+import { APP_VERSION } from "../version";
 import * as store from "../modules/projects/store";
 import { createProject, openProject, deleteProjectById, getCurrentProject, onProjectChanged } from "../modules/projects/projects";
 import type { ProjectTemplate } from "../modules/projects/types";
@@ -760,7 +761,7 @@ function buildStatic() {
       <div class="obs-center-header-meta">
         <span class="obs-center-badge">LOCAL-FIRST</span>
         <span class="obs-center-badge obs-center-badge--muted">IFC · BCF · IDS</span>
-        <span class="obs-center-version">v54</span>
+        <span class="obs-center-version">v${APP_VERSION}</span>
       </div>
     </header>
 

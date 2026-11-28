@@ -188,7 +188,7 @@ function pwaPrecache() {
       // precache — they are the same-build fallback the importer uses when
       // the versioned folder is unavailable.
       const list = files.filter((f) => f !== "/sw.js" && !f.endsWith(".map") && !f.endsWith(".html") && !/^\/web-ifc\/\d+\.\d+\.\d+\//.test(f));
-      const hash = createHash("sha1").update(list.join("|")).update(String(Date.now())).digest("hex").slice(0, 10);
+      const hash = createHash("sha1").update(list.map((f) => `${f}:${statSync(join(outDir, f.slice(1))).size}`).join("|")).digest("hex").slice(0, 10);
       const src = readFileSync(swPath, "utf8")
         .replace("__OBS_BUILD__", hash)
         .replaceAll("__OBS_WEB_IFC_VERSION__", webIfcVersion())

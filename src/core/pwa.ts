@@ -126,6 +126,11 @@ export function setupPwa(): void {
       window.addEventListener("focus", checkForUpdate);
     }).catch((e) => console.warn("[pwa] service worker not registered", e));
   };
-  if (document.readyState === "complete") register();
-  else window.addEventListener("load", register);
+  // Defer registration a few seconds past load: the worker's install kicks
+  // off a background precache of every built asset (~80 MB), which otherwise
+  // competes with the cold boot for bandwidth (live-site remark: slow first
+  // load). Offline support still kicks in on the same visit, just later.
+  const scheduleRegister = () => setTimeout(register, 3000);
+  if (document.readyState === "complete") scheduleRegister();
+  else window.addEventListener("load", scheduleRegister);
 }

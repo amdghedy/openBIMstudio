@@ -18,7 +18,6 @@ import { getCachedFrag, setCachedFrag, hashFileKey } from "./rvt-trust-gates";
  */
 import * as THREE from "three";
 import * as FRAGS from "@thatopen/fragments";
-import * as WEBIFC from "web-ifc";
 import { ctx } from "../core/context";
 import {
   computeSceneBounds, fitAll,
@@ -264,8 +263,11 @@ let cancelAllRequested = false;
 let importTimedOut = false;
 let rejectActive: ((reason?: any) => void) | null = null;
 
-function getImporter(): any {
+async function getImporter(): Promise<any> {
   const path = wasmPath();
+  // Lazy: web-ifc is ~3.5 MB of JS and only needed when a file is actually
+  // imported — never on boot (live-site remark: slow first load).
+  const WEBIFC = await import("web-ifc");
 
   // Force single-thread: under Vite/ESM document.currentScript is undefined
   // and the multi-thread worker URL becomes "undefined" → SyntaxError '<'
@@ -1372,7 +1374,7 @@ async function runTask(t: ImportTask) {
       }
 
       const convertT0 = performance.now();
-      const processPromise = getImporter().process(settings);
+      const processPromise = (await getImporter()).process(settings);
       processPromise.catch(() => { /* handled via race */ });
       importTimeout.start();
       const rawResult: any = await Promise.race([processPromise, cancelPromise]);
@@ -1786,7 +1788,7 @@ export async function convertIfcToFragBytes(
   }
 
   try {
-    const processPromise = getImporter().process(settings);
+    const processPromise = (await getImporter()).process(settings);
     processPromise.catch(() => { /* raced */ });
     importTimeout.start();
     const rawResult: any = await Promise.race([processPromise, cancelPromise]);
