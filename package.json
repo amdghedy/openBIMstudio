@@ -92,6 +92,7 @@
     "test:cad-constraint-store": "node tests/cad-constraint-store.test.cjs",
     "test:cad-index-append": "node tests/cad-index-append.test.cjs",
     "test:cad-block-refs": "node tests/cad-block-refs.test.cjs",
+    "test:cad-imperial": "node tests/cad-imperial.test.cjs",
     "test:cad-block-edit": "node tests/cad-block-edit.test.cjs",
     "test:cad-engine-native-blocks": "node tests/cad-engine-native-blocks.test.cjs",
     "test:cad-xref-engine": "node tests/cad-xref-engine.test.cjs",
