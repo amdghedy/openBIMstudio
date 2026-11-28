@@ -142,7 +142,12 @@ function render(): void {
   if (!panel || !panel.isConnected) {
     panel = document.createElement("div");
     panel.id = "obs-live-ifc-link";
-    panel.style.cssText = "position:fixed;left:16px;bottom:16px;z-index:9000;width:280px;background:#12161f;color:#e6e9f0;border:1px solid #2b3445;border-radius:8px;padding:10px 12px;font:12px system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.4)";
+    // z 99999: tool windows (tool-windows.ts) start at z 9400 and increment on every open /
+    // pointerdown, so an auto-opened window (e.g. Models after an IFC import) covers this
+    // panel at 9000 - burying the Stop / Keep-mine guard controls mid-session (CI:
+    // orbit-rtl LIVE IFC LINK). A live link warns about overwriting outside changes, so its
+    // controls must stay reachable above any tool window.
+    panel.style.cssText = "position:fixed;left:16px;bottom:16px;z-index:99999;width:280px;background:#12161f;color:#e6e9f0;border:1px solid #2b3445;border-radius:8px;padding:10px 12px;font:12px system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.4)";
     document.body.appendChild(panel);
   }
   const l = link;
