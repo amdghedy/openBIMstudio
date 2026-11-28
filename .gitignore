@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 
 # Build output
@@ -88,3 +88,6 @@ test-results/
 
 # Generated OCR runtime (scripts/sync-ocr-assets.mjs)
 public/ocr/
+
+# tsc output must never be committed next to sources: the bundler resolves .js before .ts and would ship a stale copy (see #310).
+src/**/*.js
