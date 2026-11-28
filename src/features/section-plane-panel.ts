@@ -12,6 +12,7 @@ import {
   alignPlaneToAxis, dominantAxis, nudgePlane, planeOffset, reversePlane, setPlaneOffset, type Axis,
 } from "./section-plane-math";
 import { makeDockable, type DockHandle } from "./dockable";
+import { fmtLength } from "../core/units";
 
 type Any = any;
 
@@ -364,7 +365,7 @@ function renderPlaneList(): void {
       ";background:" +
       (active ? "rgba(239,68,68,.12)" : "#12141c") +
       ";color:#e2e8f0;cursor:pointer;font:12px system-ui";
-    row.textContent = `Plane ${i + 1} · ${ax ? ax.toUpperCase() : "oblique"} · ${off.toFixed(3)} m`;
+    row.textContent = `Plane ${i + 1} · ${ax ? ax.toUpperCase() : "oblique"} · ${fmtLength(off)}`;
     row.onclick = () => {
       currentItem = item;
       refresh(true);

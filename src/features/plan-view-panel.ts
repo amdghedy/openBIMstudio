@@ -352,7 +352,7 @@ function renderPlanViewProperties() {
   row("Underlay", select([["None","None"],["Below","Below"]], planUnderlay, v=>{ planUnderlay=v as "None" | "Below"; void refreshUnderlayAndRender(); }));
 
   section("View Range");
-  row("Cut Plane", num(cutHeight,0.05,v=>{ if(Number.isFinite(v)){cutHeight=v; cutSlider.value=String(v); cutLabel.textContent=`Cut: ${v.toFixed(2)} m`; void regenerate(); }}));
+  row("Cut Plane", num(cutHeight,0.05,v=>{ if(Number.isFinite(v)){cutHeight=v; cutSlider.value=String(v); cutLabel.textContent=`Cut: ${fmtLength(v)}`; void regenerate(); }}));
   row("Bottom", num(planViewRangeBottom,0.05,v=>{ planViewRangeBottom=Math.max(-20,v); void regenerate(); }));
   row("Top", num(planViewRangeTop,0.05,v=>{ planViewRangeTop=Math.max(0.05,v); void regenerate(); }));
   row("View Depth", num(planViewRangeDepth,0.1,v=>{ planViewRangeDepth=Math.max(0.1,v); void regenerate(); }));
@@ -2153,6 +2153,7 @@ import { registerEscapeScope } from "../core/escape-all";
 import { createSelectionCycle, authoredElementsAt, planHitsToCandidates, formatCycleStatus } from "../modules/selection/selection-cycle";
 import { createPlanCommandLine, planHelpRows, type PlanCommandLine } from "./plan-command-line";
 import { resolveCommand, parsePointEntry } from "../modules/plan/plan-commands";
+import { fmtLength } from "../core/units";
 
 
 async function loadCadFileAsUnderlay(file: File) {
@@ -2396,7 +2397,7 @@ function footerStatus(msg: string) {
 levelSelect.onchange = () => void regenerate();
 cutSlider.oninput = () => {
   cutHeight = Number(cutSlider.value);
-  cutLabel.textContent = `Cut: ${cutHeight.toFixed(2)} m`;
+  cutLabel.textContent = `Cut: ${fmtLength(cutHeight)}`;
 };
 cutSlider.onchange = () => void regenerate();
 
@@ -3673,7 +3674,7 @@ function renderPlan(plan: PlanView) {
   tt.setAttribute("fill", "#333");
   tt.setAttribute("font-family", "system-ui, sans-serif");
   tt.setAttribute("text-anchor", "end");
-  tt.textContent = `Plan: ${plan.level.name}  ·  Cut +${plan.cutElevation.toFixed(2)} m`;
+  tt.textContent = `Plan: ${plan.level.name}  ·  Cut +${fmtLength(plan.cutElevation)}`;
   g.appendChild(tt);
 
   // -- Footer --

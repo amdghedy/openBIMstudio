@@ -5,7 +5,7 @@
  *   Click          — pick next point (snaps to model when available)
  *   Double-click   — same as click (legacy)
  *   Enter          — finish current creation (OBC length measurer)
- *   U              — cycle units (mm → cm → m)
+ *   U              — cycle units (mm → cm → m → ft-in)
  *   1 / 2 / 3 / 4  — mode: Distance / XYZ / Angle / Chain
  *   Esc            — cancel pending points; escape-all also exits the tool
  */
@@ -13,11 +13,12 @@ import * as THREE from "three";
 import * as OBC from "@thatopen/components";
 import * as FRAGS from "@thatopen/fragments";
 import { ctx } from "../core/context";
+import { units as unitSvc } from "../core/units";
 import { isDrawingActive } from "./drawing";
 import { setSectionOn } from "./section";
 
 export type MeasureMode = "distance" | "xyz" | "angle" | "chain";
-export type MeasureUnit = "mm" | "cm" | "m";
+export type MeasureUnit = "mm" | "cm" | "m" | "ft-in";
 
 let measureCheckboxEl: any = null;
 export function setMeasureCheckboxRef(el: any) {
@@ -82,6 +83,7 @@ function updateMeasureLabels() {
 
 function formatLength(metres: number): string {
   const v = Math.abs(metres);
+  if (units === "ft-in") return unitSvc.formatLength(v, { unit: "ft-in" });
   if (units === "mm") return `${(v * 1000).toFixed(1)} mm`;
   if (units === "cm") return `${(v * 100).toFixed(2)} cm`;
   return `${v.toFixed(3)} m`;
@@ -104,7 +106,7 @@ export function getMeasureMode(): MeasureMode {
 export function setMeasureUnits(u: MeasureUnit) {
   units = u;
   try {
-    (ctx.lengthMeasurer as any).units = u === "mm" ? "mm" : "m";
+    (ctx.lengthMeasurer as any).units = u === "mm" ? "mm" : "m"; // engine label unit; ours replaces it
   } catch {
     /* */
   }
@@ -112,7 +114,7 @@ export function setMeasureUnits(u: MeasureUnit) {
 }
 
 export function cycleMeasureUnits() {
-  setMeasureUnits(units === "mm" ? "cm" : units === "cm" ? "m" : "mm");
+  setMeasureUnits(units === "mm" ? "cm" : units === "cm" ? "m" : units === "m" ? "ft-in" : "mm");
 }
 
 export function setMeasureEnabled(on: boolean) {
@@ -459,6 +461,9 @@ export function setupMeasure() {
   lm.visible = true;
   try {
     lm.units = "mm";
+    // A project set to an imperial unit system measures in feet-inches from the start.
+    const l = unitSvc.getConfig().length;
+    if (l === "ft-in" || l === "ft" || l === "in") units = "ft-in";
   } catch {
     /* */
   }
