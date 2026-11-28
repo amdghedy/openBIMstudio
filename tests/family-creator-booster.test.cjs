@@ -345,6 +345,15 @@ if (process.env.BOOSTER_PAGES) {
     }
   });
 }
+t("sheet provenance: sheet values stay 'from sheet' until changed", () => {
+  const { spec, provenance } = K.boosterSpecFromSheet(sheet, { variantId: "half-3~460", depthRow: "J" });
+  for (const [name, val] of [["Width", spec.widthM], ["Depth", spec.depthM], ["Height", spec.heightM], ["Pumps", spec.params.Pumps], ["FrameLength", spec.params.FrameLength]]) {
+    if (val === undefined) continue;
+    assert.ok(K.sheetValueUnchanged(provenance, name, val), name + " is as read from the sheet");
+    assert.ok(!K.sheetValueUnchanged(provenance, name, val + 0.01), name + " changed by the user");
+  }
+  assert.ok(!K.sheetValueUnchanged(provenance, "NotASheetParam", 1), "a parameter not read from the sheet");
+});
 if (process.env.BOOSTER_DUMP) {
   const { spec } = K.boosterSpecFromSheet(sheet, { variantId: "half-3~460", depthRow: "J" });
   const f = P.runCreator({ name: spec.name, spec }, deps).family; const parts = L.resolveParts(B.templateFor(spec), deps.buildInEngine(f, f.types[0]).params);
