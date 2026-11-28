@@ -1017,9 +1017,9 @@ function renderSettings(): void {
       "<b style=\"color:var(--accent,#38bdf8)\">Local Ollama</b><br>" +
       "1. Run <code style=\"font-size:10px\">ollama serve</code> on this PC<br>" +
       "2. Pull models: <code style=\"font-size:10px\">ollama pull qwen2.5-coder</code><br>" +
-      "3. If you open the app from workers.dev, start Ollama with CORS:<br>" +
-      "&nbsp;&nbsp;<code style=\"font-size:10px\">OLLAMA_ORIGINS=* ollama serve</code><br>" +
-      "4. Click <b>Test connection</b> — your installed models will appear.";
+      "3. If you open the app from a website (not localhost), let Ollama accept only this site:<br>" +
+      "&nbsp;&nbsp;<code style=\"font-size:10px\">OLLAMA_ORIGINS=" + (typeof location !== "undefined" && /^https?:/.test(location.origin) ? location.origin : "https://your-site") + " ollama serve</code><br>" +
+      "4. Click <b>Test connection</b>. Chrome may ask once to allow this site to reach your local network; choose Allow. Your installed models will appear.";
     settingsPane.appendChild(tip);
   }
 

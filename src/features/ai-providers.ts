@@ -391,17 +391,20 @@ function networkErrorHint(err: unknown, cfg: ProviderConfig): string {
   if (/failed to fetch/i.test(msg)) {
     if (cfg.kind === "ollama") {
       let remote = false;
+      let siteOrigin = "https://your-site";
       try {
         const host = typeof location !== "undefined" ? location.hostname : "";
         remote = !!host && host !== "localhost" && host !== "127.0.0.1";
+        if (remote && /^https?:/.test(location.origin)) siteOrigin = location.origin;
       } catch { /* */ }
       if (remote) {
         return (
           `Cannot reach Ollama at ${cfg.endpoint} from this site.\n\n` +
-          `Start Ollama with CORS open so the browser can call it:\n` +
-          `  Windows (PowerShell):  $env:OLLAMA_ORIGINS="*"; ollama serve\n` +
-          `  Windows (cmd):         set OLLAMA_ORIGINS=* && ollama serve\n` +
-          `  macOS / Linux:         OLLAMA_ORIGINS=* ollama serve\n\n` +
+          `Start Ollama so it accepts requests from this site only (${siteOrigin}):\n` +
+          `  Windows (PowerShell):  $env:OLLAMA_ORIGINS="${siteOrigin}"; ollama serve\n` +
+          `  Windows (cmd):         set OLLAMA_ORIGINS=${siteOrigin} && ollama serve\n` +
+          `  macOS / Linux:         OLLAMA_ORIGINS=${siteOrigin} ollama serve\n\n` +
+          `If Chrome asks to allow this site to reach your local network, choose Allow.\n` +
           `Or run the app locally (npm run dev) — the Vite proxy needs no CORS setup.`
         );
       }
