@@ -71,6 +71,16 @@ t("CAD layout paper table keeps its names and gains the US sizes", () => {
   assert.equal(V.paperNameForMm(609.6, 914.4), "Arch-D");
   assert.deepEqual(V.paperMm("Arch-D", true), { w: 914.4, h: 609.6 });
 });
+t("the literal copies in standalone-loaded modules match the registry", () => {
+  const dv = fs.readFileSync(path.join(root, "src/modules/native-bim/documentation-validation.ts"), "utf8");
+  const ids = [...(/const validSizes = new Set\(\[([^\]]*)\]/.exec(dv)[1].matchAll(/"([^"]+)"/g))].map((m) => m[1]).sort();
+  assert.deepEqual(ids, P.PAPER_SIZES.map((p) => p.id).sort(), "documentation-validation sizes");
+  for (const p of P.PAPER_SIZES) {
+    const key = p.id in V.PAPER_MM ? p.id : (p.aliases || []).find((a) => a in V.PAPER_MM);
+    assert.ok(key, "CAD paper table has " + p.id);
+    near(V.PAPER_MM[key][0], p.h, p.id + " short"); near(V.PAPER_MM[key][1], p.w, p.id + " long");
+  }
+});
 t("documentation validation accepts every registry size", () => {
   const D = require(find("documentation-validation.js"));
   for (const p of P.PAPER_SIZES) {

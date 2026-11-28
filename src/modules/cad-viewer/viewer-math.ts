@@ -2,7 +2,6 @@
  * Pure geometry for the CAD Editor: view transform, picking, snapping, measuring, units, text search.
  * No DOM, no rendering; everything works on the flattened DxfEntity vocabulary the DXF/DWG readers produce.
  */
-import { PAPER_SIZES } from "../../core/paper-sizes";
 import { findFont } from "../drawings/cad-styles";
 import { resolvedOf } from "../drawings/block-refs";
 import type { DxfEntity, DxfInsert, DxfLayout, DxfPoint, DxfUnits, DxfViewport } from "../drawings/dxf-types";
@@ -1593,8 +1592,11 @@ export const compareTolerance = (b: BBox): number => Math.max(Math.max(b.maxX - 
 
 export const PAPER_MM: Record<string, [number, number]> = {
   A4: [210, 297], A3: [297, 420], A2: [420, 594], A1: [594, 841], A0: [841, 1189], Letter: [215.9, 279.4], Tabloid: [279.4, 431.8],
-  // US sizes from the shared registry (ANSI C/D/E, Arch A–E1, Legal) so layouts, sheets and plots agree.
-  ...Object.fromEntries(PAPER_SIZES.filter((p) => !["iso"].includes(p.family) && !(p.id in { "ANSI-A": 1, "ANSI-B": 1 })).map((p) => [p.id, [Math.round(p.h * 10) / 10, Math.round(p.w * 10) / 10] as [number, number]])),
+  // US sizes (short × long, mm) — literal because this module is loaded standalone by tests; tests/paper-sizes.test.cjs
+  // pins every value to src/core/paper-sizes.ts.
+  "ANSI-C": [431.8, 558.8], "ANSI-D": [558.8, 863.6], "ANSI-E": [863.6, 1117.6],
+  "Arch-A": [228.6, 304.8], "Arch-B": [304.8, 457.2], "Arch-C": [457.2, 609.6], "Arch-D": [609.6, 914.4], "Arch-E": [914.4, 1219.2], "Arch-E1": [762, 1066.8],
+  Legal: [215.9, 355.6],
 };
 
 export function paperMm(name: string, landscape: boolean): { w: number; h: number } {
