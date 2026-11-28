@@ -390,10 +390,12 @@ const t = (label, fn) => { n += 1; fn(); console.log(`  ok ${n} — ${label}`); 
     assert.match(main, /step\("project-recovery"/);
   });
 
-  t("ratchet: pre-existing __obs plan globals in projects.ts unchanged (no new ones)", () => {
-    // 2 live reads + 1 pending fallback each for planDims/planAnno/planRegions.
+  t("ratchet: no __obs plan globals remain in projects.ts (Phase 1 migration; keep it at zero)", () => {
+    // The 9 pre-existing reads (2 live + 1 pending fallback each for
+    // planDims/planAnno/planRegions) moved to ctx.features in the Phase 1
+    // window-global migration. Zero is the ratchet now: no new ones.
     const hits = (projects.match(/__obs[A-Za-z]*/g) ?? []).length;
-    assert.equal(hits, 9, `expected the 9 pre-existing __obs plan reads, found ${hits}`);
+    assert.equal(hits, 0, `expected 0 __obs plan reads after the ctx.features migration, found ${hits}`);
   });
 
   console.log(`\nPASS project persistence & recovery — ${n} checks against real production implementations`);

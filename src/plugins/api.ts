@@ -12,6 +12,7 @@ import type {
   PluginSDK, SemVer,
 } from "./types";
 import { tryUse } from "../core/services";
+import { notify as coreNotify } from "../core/notify";
 import { APP_VERSION } from "../version";
 
 /** Current Plugin SDK version. Bump on breaking API changes. */
@@ -316,17 +317,18 @@ export function buildPluginSDK(pluginId: string): PluginSDK {
     },
 
     notify: {
+      // Plugin SDK calls its option `duration`; the central bus calls it `timeout`.
       info: (msg, opts) => require_(pluginId, "ui.notification", () => {
-        (window as any).__obsNotify?.("info", msg, opts);
+        coreNotify("info", msg, { timeout: opts?.duration });
       }),
       success: (msg, opts) => require_(pluginId, "ui.notification", () => {
-        (window as any).__obsNotify?.("success", msg, opts);
+        coreNotify("success", msg, { timeout: opts?.duration });
       }),
       warn: (msg, opts) => require_(pluginId, "ui.notification", () => {
-        (window as any).__obsNotify?.("warn", msg, opts);
+        coreNotify("warn", msg, { timeout: opts?.duration });
       }),
       error: (msg, opts) => require_(pluginId, "ui.notification", () => {
-        (window as any).__obsNotify?.("error", msg, opts);
+        coreNotify("error", msg, { timeout: opts?.duration });
       }),
     },
 

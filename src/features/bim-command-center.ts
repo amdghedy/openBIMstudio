@@ -155,13 +155,13 @@ function buildBody(host: HTMLElement): void {
   const status = document.createElement("div");
   status.className = "rcc-status";
   const ready: string[] = [];
-  if (has("__obsStairs")) ready.push("Stairs");
-  if (has("__obsRailings")) ready.push("Railings");
+  if (!!(ctx.features as Any).stairs) ready.push("Stairs");
+  if (!!(ctx.features as Any).railings) ready.push("Railings");
   if ((ctx.features as Any).curtainWall) ready.push("Curtain");
-  if (has("__obsRooms")) ready.push("Rooms");
-  if (has("__obsPhases")) ready.push("Phases");
+  if (!!(ctx.features as Any).rooms) ready.push("Rooms");
+  if (!!(ctx.features as Any).phases) ready.push("Phases");
   if ((ctx.features as any).visibility) ready.push("Visibility");
-  if (has("__obsAlign")) ready.push("Align");
+  if (!!(ctx.features as Any).align) ready.push("Align");
   status.textContent = ready.length
     ? `Ready: ${ready.join(" - ")}`
     : "Modules still loading... open again in a moment.";
@@ -172,16 +172,16 @@ function buildBody(host: HTMLElement): void {
     section("Architecture", [
       btn("Straight Stair", "Parametric run", async () => {
         await (ctx.features as any).bimCompatibility?.placeStair?.("straight");
-      }, has("__obsStairs") || !!(ctx.features as any).bimCompatibility),
+      }, !!(ctx.features as Any).stairs || !!(ctx.features as any).bimCompatibility),
       btn("L-Stair", "Landing turn", async () => {
         await (ctx.features as any).bimCompatibility?.placeStair?.("l-shape");
-      }, has("__obsStairs") || !!(ctx.features as any).bimCompatibility),
+      }, !!(ctx.features as Any).stairs || !!(ctx.features as any).bimCompatibility),
       btn("U-Stair", "Switchback", async () => {
         await (ctx.features as any).bimCompatibility?.placeStair?.("u-shape");
-      }, has("__obsStairs") || !!(ctx.features as any).bimCompatibility),
+      }, !!(ctx.features as Any).stairs || !!(ctx.features as any).bimCompatibility),
       btn("Railing", "Path + balusters", async () => {
         await (ctx.features as any).bimCompatibility?.placeRailing?.();
-      }, has("__obsRailings") || !!(ctx.features as any).bimCompatibility),
+      }, !!(ctx.features as Any).railings || !!(ctx.features as any).bimCompatibility),
       btn("Curtain Wall", "Mullions + panels", async () => {
         await (ctx.features as any).bimCompatibility?.placeCurtainWall?.();
       }, !!(ctx.features as any).curtainWall || !!(ctx.features as any).bimCompatibility),
@@ -189,7 +189,7 @@ function buildBody(host: HTMLElement): void {
         (window as Any).__obsParamFamilyPanel?.toggle?.();
       }, true),
       btn("Create Room", "Sample boundary", () => {
-        const r = (window as Any).__obsRooms?.createRoom?.({
+        const r = (ctx.features as Any).rooms?.createRoom?.({
           name: "Room",
           boundary: [
             { x: 0, z: 0 },
@@ -199,7 +199,7 @@ function buildBody(host: HTMLElement): void {
           ],
         });
         toast(r ? `Room ${r.number} - ${r.area.toFixed(1)} m-` : "Rooms not ready", r ? "success" : "warn");
-      }, has("__obsRooms")),
+      }, !!(ctx.features as Any).rooms),
     ]),
   );
 
@@ -207,17 +207,17 @@ function buildBody(host: HTMLElement): void {
   host.appendChild(
     section("Modify", [
       btn("Align X", "Min edge - X", () => {
-        const n = (window as Any).__obsAlign?.alignSelection?.("x", "min") ?? 0;
+        const n = (ctx.features as Any).align?.alignSelection?.("x", "min") ?? 0;
         toast(n ? `Aligned ${n}` : "Select elements first", n ? "success" : "info");
-      }, has("__obsAlign")),
+      }, !!(ctx.features as Any).align),
       btn("Align Z", "Min edge - Z", () => {
-        const n = (window as Any).__obsAlign?.alignSelection?.("z", "min") ?? 0;
+        const n = (ctx.features as Any).align?.alignSelection?.("z", "min") ?? 0;
         toast(n ? `Aligned ${n}` : "Select elements first", n ? "success" : "info");
-      }, has("__obsAlign")),
+      }, !!(ctx.features as Any).align),
       btn("Distribute X", "Even spacing", () => {
-        const n = (window as Any).__obsAlign?.distributeSelection?.("x") ?? 0;
+        const n = (ctx.features as Any).align?.distributeSelection?.("x") ?? 0;
         toast(n ? `Distributed ${n}` : "Need 3+ selected", n ? "success" : "info");
-      }, has("__obsAlign")),
+      }, !!(ctx.features as Any).align),
       btn("Match Props", "Pick source", () => {
         (ctx.features as any).bimCompatibility?.matchPropertiesPickSource?.();
       }, !!(ctx.features as any).bimCompatibility),
@@ -233,10 +233,10 @@ function buildBody(host: HTMLElement): void {
         }
         void promptLine("Create group", "Group name:", "Group").then((name) => {
           if (name == null) return;
-          const g = (window as Any).__obsGroups?.createFromSelection?.(name, ids, true);
+          const g = (ctx.features as Any).groups?.createFromSelection?.(name, ids, true);
           toast(g ? `Group "${name}" created` : "Groups not ready", g ? "success" : "warn");
         });
-      }, has("__obsGroups")),
+      }, !!(ctx.features as Any).groups),
       btn("Create Similar", "Same type tool", () => {
         (ctx.features as any).bimCompatibility?.createSimilar?.();
       }, true),
@@ -261,15 +261,15 @@ function buildBody(host: HTMLElement): void {
         toast("Visibility reset", "success");
       }, !!(ctx.features as any).visibility),
       btn("Work Plane XY", "Floor plane", () => {
-        (window as Any).__obsRefPlanes?.setActiveWorkPlane?.("rp-xy");
+        (ctx.features as Any).refPlanes?.setActiveWorkPlane?.("rp-xy");
         toast("Work plane: Floor (XY)", "success");
-      }, has("__obsRefPlanes")),
+      }, !!(ctx.features as Any).refPlanes),
       btn("Work Plane XZ", "Front plane", () => {
-        (window as Any).__obsRefPlanes?.setActiveWorkPlane?.("rp-xz");
+        (ctx.features as Any).refPlanes?.setActiveWorkPlane?.("rp-xz");
         toast("Work plane: Front (XZ)", "success");
-      }, has("__obsRefPlanes")),
+      }, !!(ctx.features as Any).refPlanes),
       btn("2D Draft", "Toggle overlay", () => {
-        const d = (window as Any).__obsDrafting2D;
+        const d = (ctx.features as Any).drafting2D;
         if (!d) {
           toast("Drafting not ready", "warn");
           return;
@@ -290,16 +290,16 @@ function buildBody(host: HTMLElement): void {
   host.appendChild(
     section("Drawing / Drafting", [
       btn("Drawing Panel", "Ctrl+Shift+D", () => {
-        const c = (window as Any).__obsCad;
+        const c = (ctx.features as Any).cad;
         if (c?.toggle) c.toggle();
         else toast("Drawing loading...", "info");
       }, true),
       btn("Line", "L", () => {
-        (window as Any).__obsCad?.open?.();
+        (ctx.features as Any).cad?.open?.();
         window.dispatchEvent(new KeyboardEvent("keydown", { key: "l", bubbles: true }));
       }, true),
       btn("Polyline", "PL - Enter ends", () => {
-        const c = (window as Any).__obsCad;
+        const c = (ctx.features as Any).cad;
         c?.open?.();
         // set tool via engine
         try {
@@ -309,36 +309,36 @@ function buildBody(host: HTMLElement): void {
         } catch { /* */ }
       }, true),
       btn("Circle", "CC", () => {
-        const c = (window as Any).__obsCad;
+        const c = (ctx.features as Any).cad;
         c?.open?.();
         c?.engine?.setTool?.("circle");
         toast("CIRCLE", "info");
       }, true),
       btn("Ortho", "F8", () => {
-        const on = (window as Any).__obsCad?.engine?.toggleOrtho?.();
+        const on = (ctx.features as Any).cad?.engine?.toggleOrtho?.();
         toast(on ? "ORTHO on" : "ORTHO off", "info");
       }, true),
       btn("3D Ortho", "VO", () => {
-        (window as Any).__obsSelPivot?.toggleOrtho?.();
+        (ctx.features as Any).selPivot?.toggleOrtho?.();
       }, true),
       btn("Zoom Sel", "ZO", () => {
-        void (window as Any).__obsSelPivot?.zoomToSelection?.();
+        void (ctx.features as Any).selPivot?.zoomToSelection?.();
       }, true),
       btn("Zoom +", "+", () => {
-        (window as Any).__obsSelPivot?.zoomIn?.();
+        (ctx.features as Any).selPivot?.zoomIn?.();
       }, true),
       btn("Zoom -", "-", () => {
-        (window as Any).__obsSelPivot?.zoomOut?.();
+        (ctx.features as Any).selPivot?.zoomOut?.();
       }, true),
       btn("Grid", "F7", () => {
-        const on = (window as Any).__obsCad?.engine?.toggleGrid?.();
+        const on = (ctx.features as Any).cad?.engine?.toggleGrid?.();
         toast(on ? "GRID on" : "GRID off", "info");
       }, true),
       btn("Drawings DXF", "Ctrl+Shift+G", () => {
-        (window as Any).__obsDrawingsPanel?.toggle?.();
+        (ctx.features as Any).drawingsPanel?.toggle?.();
       }, true),
       btn("Export DXF", "Drawing - file", () => {
-        (window as Any).__obsDrawings?.exportCadAsDxf?.();
+        (ctx.features as Any).drawings?.exportCadAsDxf?.();
       }, true),
     ]),
   );
@@ -348,21 +348,21 @@ function buildBody(host: HTMLElement): void {
     section("Project panels", [
       btn("Rooms & Areas", "Open panel", () => {
         window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "rooms" } }));
-      }, has("__obsRooms")),
+      }, !!(ctx.features as Any).rooms),
       btn("Phasing", "Open panel", () => {
         window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "phases" } }));
-      }, has("__obsPhases")),
+      }, !!(ctx.features as Any).phases),
       btn("Design Options", "Open panel", () => {
         window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "design-options" } }));
-      }, has("__obsDesignOptions")),
+      }, !!(ctx.features as Any).designOptions),
       btn("Model Groups", "Open panel", () => {
         window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "groups" } }));
-      }, has("__obsGroups")),
+      }, !!(ctx.features as Any).groups),
       btn("Copy / Monitor", "Open panel", () => {
         window.dispatchEvent(new CustomEvent("obs-open-panel", { detail: { id: "copy-monitor" } }));
-      }, has("__obsCopyMonitor")),
+      }, !!(ctx.features as Any).copyMonitor),
       btn("Solve Hosts", "Openings + offsets", () => {
-        const fn = (window as Any).__obsSolveHostedConstraints;
+        const fn = (ctx.features as Any).constraintSolver?.solveAll;
         if (typeof fn !== "function") {
           toast("Solver not ready", "warn");
           return;

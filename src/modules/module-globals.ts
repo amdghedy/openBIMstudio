@@ -1,12 +1,14 @@
 /**
- * Module globals — exposes the feature modules on `window.__obs*` for the ribbon,
- * console and other modules to consume without a hard import.
- *
- * Each global is wrapped in a lazy-load try/catch so a failure in one module
- * does not break ribbon actions elsewhere.
+ * Module feature APIs — registers the feature modules on ctx.features for the
+ * ribbon and other modules to consume without a hard import. (History: every
+ * one of these used to be a window-global stash; the last of them moved to
+ * ctx.features on 2026-11-27. Unreachable features — point cloud, ramp — are
+ * typed command-palette commands instead.)
  */
 
 import * as THREE from "three";
+import { notify as coreNotify } from "../core/notify";
+import { ready as servicesReady } from "../core/services";
 import { ctx } from "../core/context";
 
 import {
@@ -26,7 +28,7 @@ import {
   type SiteComponentParams, type SiteComponentType,
 } from "../modules/site-components/site-components";
 import {
-  buildRamp, type RampParams, type RampResult,
+  buildRamp,
 } from "../modules/ramps/ramps";
 import {
   buildTruss, type TrussParams, type TrussResult, type TrussType,
@@ -74,7 +76,7 @@ import {
   type LoadCase, type LoadCombination,
 } from "../modules/structural-loads-ui/structural-loads-ui";
 import { runStudy, type StudyConfig, type StudyResult } from "../modules/generative-design/generative-design";
-import { loadPointCloud, clipPointCloudByPolygon, type PointCloudLoadOptions } from "../modules/point-cloud/point-cloud";
+import { loadPointCloud, type PointCloudLoadOptions } from "../modules/point-cloud/point-cloud";
 import { loadPdfUnderlay, type PdfUnderlayParams } from "../modules/pdf-underlay/pdf-underlay";
 import {
   initWorksets, createWorkset, listWorksets, getWorkset, renameWorkset,
@@ -99,13 +101,11 @@ import {
   getSelectionWorldBox, getSelectionViewBbox, computeElementsBbox,
 } from "../features/selection-box";
 
-const w = window as any;
 
 function toast(msg: string, kind: "info" | "warn" | "success" = "info") {
-  try {
-    w.__obsNotify?.(msg, kind);
-    if (!w.__obsNotify) console.log(`[obs] ${msg}`);
-  } catch { /* */ }
+  // The legacy notify window-globals never had a producer (and this called
+  // them with the arguments swapped anyway), so toasts went to console.log only.
+  coreNotify(kind, msg);
 }
 
 function addObject(obj: THREE.Object3D, kind: string) {
@@ -129,7 +129,7 @@ function filePicker(accept: string): Promise<File | null> {
 }
 
 // ── Toposurface ──────────────────────────────────────────────────────────
-w.__obsToposurface = {
+(ctx.features as any).toposurface = {
   build: (p: ToposurfaceParams) => {
     const r = buildToposurface(p);
     addObject(r.object, `Toposurface (${r.triangleCount} tris, ${r.area.toFixed(1)} m²)`);
@@ -139,7 +139,7 @@ w.__obsToposurface = {
 };
 
 // ── Building Pad ─────────────────────────────────────────────────────────
-w.__obsBuildingPad = {
+(ctx.features as any).buildingPad = {
   build: (p: BuildingPadParams) => {
     const r = buildBuildingPad(p);
     addObject(r.object, `Building Pad (${r.floorArea.toFixed(1)} m², cut ${r.cutVolume.toFixed(1)} m³, fill ${r.fillVolume.toFixed(1)} m³)`);
@@ -148,7 +148,7 @@ w.__obsBuildingPad = {
 };
 
 // ── Property Line ────────────────────────────────────────────────────────
-w.__obsPropertyLine = {
+(ctx.features as any).propertyLine = {
   build: (p: PropertyLineParams) => {
     const r = buildPropertyLine(p);
     addObject(r.object, `Property Line (${r.perimeter.toFixed(1)} m, area ${r.area.toFixed(1)} m², closure error ${r.closureError.toFixed(3)} m)`);
@@ -157,7 +157,7 @@ w.__obsPropertyLine = {
 };
 
 // ── Site Components ──────────────────────────────────────────────────────
-w.__obsSiteComponent = {
+(ctx.features as any).siteComponent = {
   build: (p: SiteComponentParams) => {
     const r = buildSiteComponent(p);
     addObject(r.object, `Site ${p.type}`);
@@ -167,16 +167,26 @@ w.__obsSiteComponent = {
 };
 
 // ── Ramp ─────────────────────────────────────────────────────────────────
-w.__obsRamp = {
-  build: (p: Partial<RampParams>) => {
-    const r = buildRamp(p);
-    addObject(r.object, `Ramp (${r.slopePercent.toFixed(1)}%, ${r.area.toFixed(1)} m²)`);
-    return r;
-  },
-};
+// Ramp had one window-global stash with no consumer anywhere in the repo
+// — an unreachable feature, same as the point cloud. It is now a typed
+// palette command with the same build flow (default parameters).
+void servicesReady("commandPalette").then((palette) => {
+  try {
+    palette.register({
+      id: "model.ramp",
+      label: "Model: Build Ramp\u2026",
+      category: "Model",
+      hint: "ramp, slope, accessibility",
+      run: () => {
+        const r = buildRamp({});
+        addObject(r.object, `Ramp (${r.slopePercent.toFixed(1)}%, ${r.area.toFixed(1)} m²)`);
+      },
+    });
+  } catch { /* */ }
+});
 
 // ── Truss ─────────────────────────────────────────────────────────────────
-w.__obsTruss = {
+(ctx.features as any).truss = {
   build: (p: Partial<TrussParams>) => {
     const r = buildTruss(p);
     addObject(r.object, `Truss ${p.type ?? "pratt"} (${r.members.length} members, ${r.totalSteelLength.toFixed(1)} m total)`);
@@ -185,7 +195,7 @@ w.__obsTruss = {
 };
 
 // ── Structural Connection ─────────────────────────────────────────────────
-w.__obsStructuralConnection = {
+(ctx.features as any).structuralConnection = {
   build: (p: Partial<ConnectionParams>) => {
     const r = buildStructuralConnection(p);
     addObject(r.object, `Connection ${p.type} (${r.plateCount} plates, ${r.boltCount} bolts)`);
@@ -194,7 +204,7 @@ w.__obsStructuralConnection = {
 };
 
 // ── Fabrication Parts ─────────────────────────────────────────────────────
-w.__obsFabricationPart = {
+(ctx.features as any).fabricationPart = {
   build: (p: Partial<FabPartParams>) => {
     const r = buildFabricationPart(p);
     addObject(r.object, `Fab ${p.type} [${r.astmCode}] ${r.weightKg.toFixed(2)} kg`);
@@ -204,14 +214,14 @@ w.__obsFabricationPart = {
 };
 
 // ── Scope Box ─────────────────────────────────────────────────────────────
-w.__obsScopeBox = {
+(ctx.features as any).scopeBox = {
   create: createScopeBox, list: listScopeBoxes, get: getScopeBox,
   delete: deleteScopeBox, update: updateScopeBox,
   applyToView, removeFromView,
 };
 
 // ── Scope Box Visualizer (3D handles + drag-to-resize) ───────────────────
-w.__obsScopeBoxViz = {
+(ctx.features as any).scopeBoxViz = {
   enable: () => { enableScopeBoxVisualizer(); toast("Scope Box visualizer ON — drag handles to resize", "success"); },
   disable: () => { disableScopeBoxVisualizer(); toast("Scope Box visualizer OFF", "info"); },
   toggle: () => {
@@ -224,14 +234,17 @@ w.__obsScopeBoxViz = {
 };
 
 // ── View Filters ──────────────────────────────────────────────────────────
-w.__obsViewFilters = {
+// View filters, generative design and the PDF underlay used to be
+// window-globals; their only consumers are ribbon buttons, which already
+// read feature APIs off ctx — so these now live on ctx.features.
+(ctx.features as any).viewFilters = {
   create: createViewFilter, list: listViewFilters, get: getViewFilter,
   delete: deleteViewFilter, addFilterToView, removeFilterFromView,
   toggleFilterInView, matchesFilter, resolveOverride,
 };
 
 // ── Matchline ─────────────────────────────────────────────────────────────
-w.__obsMatchline = {
+(ctx.features as any).matchline = {
   build: (p: any) => {
     const r = buildMatchline(p);
     addObject(r.object, `Matchline (${r.length.toFixed(1)} m)`);
@@ -240,18 +253,18 @@ w.__obsMatchline = {
 };
 
 // ── Plan Region ───────────────────────────────────────────────────────────
-w.__obsPlanRegion = {
+(ctx.features as any).planRegion = {
   build: buildPlanRegion, pointIn: pointInRegion, resolveCutPlane,
 };
 
 // ── Dependent Views ───────────────────────────────────────────────────────
-w.__obsDependentViews = {
+(ctx.features as any).dependentViews = {
   create: createDependentView, list: listDependents, get: getDependentView,
   updateCrop: updateCropRegion, delete: deleteDependentView,
 };
 
 // ── Model Checker ─────────────────────────────────────────────────────────
-w.__obsModelChecker = {
+(ctx.features as any).modelChecker = {
   run: (elements: ModelElement[], config?: ModelCheckerConfig) => {
     const report = runModelChecker(elements, config);
     toast(`Model Checker: ${report.summary.errors} errors, ${report.summary.warnings} warnings (${report.durationMs} ms)`, report.summary.errors ? "warn" : "success");
@@ -261,7 +274,7 @@ w.__obsModelChecker = {
 };
 
 // ── Daylighting ───────────────────────────────────────────────────────────
-w.__obsDaylighting = {
+(ctx.features as any).daylighting = {
   run: (p: Partial<DaylightAnalysisParams>) => {
     const r = runDaylightAnalysis(p);
     toast(`Daylighting: avg DF ${r.averageDF.toFixed(2)}% (${classifyDF(r.averageDF)}), sDA ${r.sDA.toFixed(2)}, ASE ${r.ASE.toFixed(2)}`, "success");
@@ -271,14 +284,14 @@ w.__obsDaylighting = {
 };
 
 // ── Structural Loads ───────────────────────────────────────────────────────
-w.__obsStructuralLoads = {
+(ctx.features as any).structuralLoads = {
   createCase: createLoadCase, listCases: listLoadCases, deleteCase: deleteLoadCase,
   createCombination: createLoadCombination, listCombinations: listLoadCombinations,
   resolveCombination, generateDefaultLRFDCombinations, generateDefaultASDCombinations,
 };
 
 // ── Generative Design ─────────────────────────────────────────────────────
-w.__obsGenerativeDesign = {
+(ctx.features as any).generativeDesign = {
   run: (config: StudyConfig) => {
     const r = runStudy(config);
     toast(`Generative study complete: ${r.paretoFront.length} Pareto-optimal solutions, ${r.evaluated} evaluations`, "success");
@@ -287,19 +300,30 @@ w.__obsGenerativeDesign = {
 };
 
 // ── Point Cloud ───────────────────────────────────────────────────────────
-w.__obsPointCloud = {
-  load: async (options?: PointCloudLoadOptions) => {
-    const file = await filePicker(".e57,.las,.laz,.pcd,.ply");
-    if (!file) { toast("No file selected", "warn"); return null; }
-    const r = await loadPointCloud(file, options ?? {});
-    addObject(r.points, `Point cloud (${r.actualPoints.toLocaleString()} pts, ${r.header.format})`);
-    return r;
-  },
-  clip: clipPointCloudByPolygon,
-};
+// Point clouds had one window-global stash with no consumer anywhere in
+// the repo — the feature was unreachable. It now lives where users find
+// tools: a typed palette command (same load flow as the old stash).
+async function loadPointCloudInteractive(options?: PointCloudLoadOptions) {
+  const file = await filePicker(".e57,.las,.laz,.pcd,.ply");
+  if (!file) { toast("No file selected", "warn"); return null; }
+  const r = await loadPointCloud(file, options ?? {});
+  addObject(r.points, `Point cloud (${r.actualPoints.toLocaleString()} pts, ${r.header.format})`);
+  return r;
+}
+void servicesReady("commandPalette").then((palette) => {
+  try {
+    palette.register({
+      id: "insert.pointCloud",
+      label: "Point Cloud: Load\u2026",
+      category: "Insert",
+      hint: "point cloud, e57, las, laz, pcd, ply, scan",
+      run: () => { void loadPointCloudInteractive(); },
+    });
+  } catch { /* */ }
+});
 
 // ── PDF Underlay ──────────────────────────────────────────────────────────
-w.__obsPdfUnderlay = {
+(ctx.features as any).pdfUnderlay = {
   load: async (params?: Partial<PdfUnderlayParams>) => {
     const file = await filePicker(".pdf");
     if (!file) { toast("No file selected", "warn"); return null; }
@@ -310,7 +334,7 @@ w.__obsPdfUnderlay = {
 };
 
 // ── Worksets ───────────────────────────────────────────────────────────────
-w.__obsWorksets = {
+(ctx.features as any).worksets = {
   init: () => { initWorksets(); toast("Worksets initialised (default worksets created)", "success"); },
   list: listWorksets,
   create: (name: string) => {
@@ -334,7 +358,7 @@ w.__obsWorksets = {
 };
 
 // ── Crop Region (2D plan/section/elevation crop with handles) ─────────────
-w.__obsCropRegion = {
+(ctx.features as any).cropRegion = {
   get: getCropRegion,
   set: (viewId: string, region: any) => {
     setCropRegion(viewId, region);
@@ -359,7 +383,11 @@ w.__obsCropRegion = {
 };
 
 // ── Section Box (interactive 6-face handles) ─────────────────────────────
-w.__obsSectionBox = {
+(ctx.features as any).sectionBox = {
+  // Merge over setupSectionBox's engine api (debugPlanes/getBox/setBox and
+  // friends) - replacing it drops those methods and breaks the section-box
+  // e2e; these toast-ified helpers are the ribbon-facing surface.
+  ...(((ctx.features as any).sectionBox ?? {}) as Record<string, unknown>),
   toggle: () => {
     const on = toggleSectionBox();
     toast(on ? "Section Box ON — drag the cyan arrows on each face to stretch / shrink" : "Section Box OFF", "success");
@@ -384,7 +412,7 @@ w.__obsSectionBox = {
 };
 
 // ── Selection Box — auto-fit section box / crop region to selection ──────
-w.__obsSelectionBox = {
+(ctx.features as any).selectionBox = {
   show: (opts?: any) => showSelectionBox(opts ?? { padding: 0.5 }),
   cropTo: (opts?: any) => cropToSelection(opts ?? { padding: 1.0 }),
   zoom: () => zoomToSelection(),
@@ -403,4 +431,4 @@ w.__obsSelectionBox = {
   },
 };
 
-console.log("[obs] v40 module globals registered: toposurface, building-pad, property-line, site-components, ramps, trusses, structural-connections, fabrication-parts, scope-box, view-filters, matchline, plan-region, dependent-views, model-checker, daylighting, structural-loads-ui, generative-design, point-cloud, pdf-underlay, worksets, scope-box-viz, crop-region, section-box, selection-box");
+console.log("[obs] module feature APIs registered on ctx.features (+ palette commands: point cloud, ramp)");

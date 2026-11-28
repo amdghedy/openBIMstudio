@@ -9,5 +9,5 @@ export * from "./combo-sweep";
 let installed = false;
 export function setupanalyticalModel() {
   if (installed) return; installed = true;
-  console.log("[analytical-model] ready. Build FEM models via __obsAnalytical.");
+  console.log("[analytical-model] ready. Build FEM models via the analytical feature api.");
 }

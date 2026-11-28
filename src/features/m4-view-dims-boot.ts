@@ -72,16 +72,16 @@ function injectCommandCenterButtons(): void {
     body.appendChild(sec);
 
     sec.querySelector("[data-m4-vg]")?.addEventListener("click", () => {
-      (window as Any).__obsOpenVgDialog?.();
+      (window as Any).__OBS_CTX__?.features?.openVgDialog?.();
     });
     sec.querySelector("[data-m4-tmpl]")?.addEventListener("click", () => {
-      (window as Any).__obsOpenVgDialog?.();
+      (window as Any).__OBS_CTX__?.features?.openVgDialog?.();
     });
     sec.querySelector("[data-m4-adim]")?.addEventListener("click", () => {
-      (window as Any).__obsOpenAutoDims?.();
+      (window as Any).__OBS_CTX__?.features?.openAutoDims?.();
     });
     sec.querySelector("[data-m4-adim-run]")?.addEventListener("click", () => {
-      (window as Any).__obsAutoDimPlan?.();
+      (window as Any).__OBS_CTX__?.features?.autoDimPlan?.();
     });
     return true;
   };
@@ -124,12 +124,12 @@ function injectToolbarButtons(): void {
 
     bar.appendChild(
       mk("VG", "Visibility/Graphics (Ctrl+Shift+V)", "data-m4-vg-btn", () =>
-        (window as Any).__obsOpenVgDialog?.()
+        (window as Any).__OBS_CTX__?.features?.openVgDialog?.()
       )
     );
     bar.appendChild(
       mk("Dims", "Auto Dimensions panel (Ctrl+Shift+D)", "data-m4-adim-btn", () =>
-        (window as Any).__obsOpenAutoDims?.()
+        (window as Any).__OBS_CTX__?.features?.openAutoDims?.()
       )
     );
     return true;

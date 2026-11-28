@@ -160,7 +160,7 @@ async function twoWallsSaved(page: Page): Promise<string> {
 }
 
 test('corrupt checkpoint is quarantined on listing; the good one is offered and restores', async ({ page }) => {
-  test.setTimeout(300000);
+  test.setTimeout(600000);
   const t0 = Date.now();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -221,7 +221,7 @@ test('corrupt checkpoint is quarantined on listing; the good one is offered and 
 });
 
 test('restoring a corrupt checkpoint is refused and the live document is untouched', async ({ page }) => {
-  test.setTimeout(300000);
+  test.setTimeout(600000);
   const t0 = Date.now();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));

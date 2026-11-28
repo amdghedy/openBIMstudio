@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
 /**
  * Automatic journal replay — issue #101.
@@ -185,19 +185,41 @@ async function crashRenderer(page: Page): Promise<void> {
   await Promise.race([crashed, page.waitForTimeout(10000)]);
 }
 
+type StorageState = Awaited<ReturnType<BrowserContext['storageState']>>;
+
 /**
- * Reboot after a genuine crash, the way a user relaunches the browser:
- * a NEW page in the SAME browser context, so the same profile (and its
- * IndexedDB) is read back. A fresh context from storageState does NOT
- * carry IndexedDB in this Playwright setup — a reboot there sees an
- * empty journal and an empty project list, which is a test artefact,
- * not a recovery result. (Verified by probe: same-context reboot keeps
- * the journal; storageState reboot does not.)
+ * Capture the exact crash-window state BEFORE the crash: the journal,
+ * the (deleted) primary record and the localStorage crash marker, all
+ * written by the app's real save/dirty paths. The `indexedDB: true`
+ * option (Playwright >= 1.51) is load-bearing — a plain storageState
+ * capture does NOT carry IndexedDB, and a reboot from one sees an
+ * empty journal and an empty project list: a test artefact, not a
+ * recovery result. (Verified by probe: indexedDB:true round-trips the
+ * app's databases into a fresh context.)
  */
-async function rebootAfterCrash(crashedPage: Page): Promise<Page> {
-  const page = await crashedPage.context().newPage();
-  // The outcome key survives across reboots in the same context, so a
-  // previous cycle's outcome would make the poll below return
+async function captureCrashWindowState(page: Page): Promise<StorageState> {
+  return page.context().storageState({ indexedDB: true });
+}
+
+/**
+ * Reboot after a genuine crash from the captured crash-window state,
+ * in a FRESH browser context. A new page in the SAME (crashed) context
+ * would be the faithful "user relaunches the browser" flow, but
+ * headless-shell shares the renderer across same-origin pages of a
+ * context, so the post-crash newPage stalls on the dead shared
+ * renderer — unpredictably (observed in CI: 3.5 min when it works,
+ * past a 600 s test timeout when it doesn't). The fresh context gets
+ * a clean renderer and boots in seconds; the state it recovers from
+ * is the byte-exact pre-crash capture, so the replay, the quarantine
+ * and the banner are all exercised for real. That a genuine crash
+ * leaves the marker/journal behind in the first place is covered by
+ * crash-recovery.spec.ts.
+ */
+async function rebootFromCapturedCrash(browser: Browser, state: StorageState): Promise<Page> {
+  const ctx = await browser.newContext({ storageState: state });
+  const page = await ctx.newPage();
+  // The outcome key survives across reboots via the captured storage,
+  // so a previous cycle's outcome would make the poll below return
   // immediately — before THIS boot's recovery step has run — and the
   // banner would still say "Checking…" (the idempotency scenario's
   // second cycle failed exactly this way). Clear the stale value on
@@ -232,7 +254,7 @@ async function primaryProject(page: Page): Promise<any> {
   return projects[0] ?? null;
 }
 
-test('crash mid-edit: banner appears and the saved edits are back', async ({ page }) => {
+test('crash mid-edit: banner appears and the saved edits are back', async ({ page, browser }) => {
   test.setTimeout(300000);
   const t0 = Date.now();
   const errors: string[] = [];
@@ -256,10 +278,12 @@ test('crash mid-edit: banner appears and the saved edits are back', async ({ pag
   // only when the save completes. The clean save above cleared it, so
   // go dirty again before crashing.
   await makeDirty(page);
+  // Capture the crash-window state BEFORE the crash (see the helper).
+  const crashWindow = await captureCrashWindowState(page);
   await crashRenderer(page);
   stamp(t0, 'renderer crashed');
 
-  const page2 = await rebootAfterCrash(page);
+  const page2 = await rebootFromCapturedCrash(browser, crashWindow);
   stamp(t0, 'fresh boot, canvas visible');
   const banner = page2.locator('#obs-recovery-banner');
   await expect(banner).toBeVisible({ timeout: 60000 });
@@ -282,7 +306,7 @@ test('crash mid-edit: banner appears and the saved edits are back', async ({ pag
   stamp(t0, 'teardown done');
 });
 
-test('crash with a corrupt journal tail: recovers up to the last good entry and says so', async ({ page }) => {
+test('crash with a corrupt journal tail: recovers up to the last good entry and says so', async ({ page, browser }) => {
   test.setTimeout(300000);
   const t0 = Date.now();
   const errors: string[] = [];
@@ -306,10 +330,11 @@ test('crash with a corrupt journal tail: recovers up to the last good entry and 
   await idbDeleteProjectRecord(page, projectId);
   // Go dirty again so the crash leaves its marker (see test 1).
   await makeDirty(page);
+  const crashWindow = await captureCrashWindowState(page);
   await crashRenderer(page);
   stamp(t0, 'renderer crashed');
 
-  const page2 = await rebootAfterCrash(page);
+  const page2 = await rebootFromCapturedCrash(browser, crashWindow);
   const banner = page2.locator('#obs-recovery-banner');
   await expect(banner).toBeVisible({ timeout: 60000 });
   // Text first: toContainText polls until the replay outcome has landed;
@@ -370,7 +395,7 @@ test('clean boot does not replay and shows no banner', async ({ page }) => {
   stamp(t0, 'clean boot left the journal alone');
 });
 
-test('replay is idempotent: two crash-recovery cycles, same state', async ({ page }) => {
+test('replay is idempotent: two crash-recovery cycles, same state', async ({ page, browser }) => {
   test.setTimeout(300000);
   const t0 = Date.now();
   const errors: string[] = [];
@@ -382,8 +407,9 @@ test('replay is idempotent: two crash-recovery cycles, same state', async ({ pag
   await idbDeleteProjectRecord(page, projectId);
   // Go dirty again so the crash leaves its marker (see test 1).
   await makeDirty(page);
+  const crashWindow = await captureCrashWindowState(page);
   await crashRenderer(page);
-  const page2 = await rebootAfterCrash(page);
+  const page2 = await rebootFromCapturedCrash(browser, crashWindow);
   const banner1 = page2.locator('#obs-recovery-banner');
   await expect(banner1).toBeVisible({ timeout: 60000 });
   await expect(banner1).toContainText('Journal replay recovered');
@@ -400,9 +426,10 @@ test('replay is idempotent: two crash-recovery cycles, same state', async ({ pag
   page2.on('pageerror', (e) => errors.push(e.message));
   await placeWall(page2);
   await expect.poll(() => page2.evaluate(() => localStorage.getItem('obs.session.unsaved')), { timeout: 15000 }).not.toBeNull();
+  const crashWindow2 = await captureCrashWindowState(page2);
   await crashRenderer(page2);
   stamp(t0, 'second renderer crash');
-  const page3 = await rebootAfterCrash(page2);
+  const page3 = await rebootFromCapturedCrash(browser, crashWindow2);
   const banner2 = page3.locator('#obs-recovery-banner');
   await expect(banner2).toBeVisible({ timeout: 60000 });
   await expect(banner2).toContainText('Journal replay recovered');
@@ -413,11 +440,12 @@ test('replay is idempotent: two crash-recovery cycles, same state', async ({ pag
   const outcome2 = await recoveryOutcome(page3);
   expect(outcome2?.status).toBe('full');
   expect(errors, errors.join('\n')).toEqual([]);
+  await closeCrashedContext(page2);
   await closeCrashedContext(page);
   stamp(t0, 'teardown done');
 });
 
-test('recovery from the last saved record when the journal is absent still works', async ({ page }) => {
+test('recovery from the last saved record when the journal is absent still works', async ({ page, browser }) => {
   test.setTimeout(300000);
   const t0 = Date.now();
   const errors: string[] = [];
@@ -434,10 +462,11 @@ test('recovery from the last saved record when the journal is absent still works
   expect((await idbGetAll(page, 'projectOps')).filter((o: any) => o.projectId === projectId)).toEqual([]);
   // Make it dirty (no new save) so the crash leaves a marker.
   await makeDirty(page);
+  const crashWindow = await captureCrashWindowState(page);
   await crashRenderer(page);
   stamp(t0, 'renderer crashed');
 
-  const page2 = await rebootAfterCrash(page);
+  const page2 = await rebootFromCapturedCrash(browser, crashWindow);
   const banner = page2.locator('#obs-recovery-banner');
   await expect(banner).toBeVisible({ timeout: 60000 });
   await expect(banner).toContainText('No journal entries to replay');

@@ -268,7 +268,6 @@ export const copyMonitorStore = new CopyMonitorStore();
 export function setupCopyMonitor(): typeof copyMonitorStore {
   copyMonitorStore.boot();
   (ctx.features as any).copyMonitor = copyMonitorStore;
-  (window as any).__obsCopyMonitor = copyMonitorStore;
   console.log("[copy-monitor] ready -", copyMonitorStore.listRules().length, "rules");
   return copyMonitorStore;
 }

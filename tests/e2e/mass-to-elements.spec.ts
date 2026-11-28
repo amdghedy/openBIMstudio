@@ -11,7 +11,7 @@ import { test, expect, type Page } from '@playwright/test';
 //
 // What this spec drives through the REAL UI:
 //   - Massing & Site tab → "In-Place Mass" dialog (width 4, height 3)
-//     → a 4×4×3 conceptual mass, read back through __obsMass
+//     → a 4×4×3 conceptual mass, read back through the mass feature api
 //   - "Mass to Elements" → the conversion report dialog (6 rows) → Close
 // What it asserts on the RENDERED model (not helper return values):
 //   - 6 authored elements via __obsAuthoring.getElements(): 4 walls whose
@@ -130,16 +130,16 @@ const getSceneBoxes = (page: Page): Promise<Record<string, SceneBox> | null> =>
   });
 
 test('a 4×4×3 mass converts to 4 walls + roof + foundation slab in the browser', async ({ page }) => {
-  test.setTimeout(300000); // the __obsMass readiness wait alone takes ~124 s (120 s boot fallback)
+  test.setTimeout(300000); // the mass api readiness wait alone takes ~124 s (120 s boot fallback)
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   await enterAuthoring(page);
   await installToastLog(page);
-  // __obsMass is set by setupInPlaceMass in critical-gaps-boot's runOnce
+  // ctx.features.mass is set by setupInPlaceMass in critical-gaps-boot's runOnce
   // (isReady-gated, 120 s fallback): the dialog silently toasts and
   // returns when it is missing, so wait for the module like adaptive.
   await page.waitForFunction(
-    () => !!(window as any).__obsMass,
+    () => !!(window as any).__OBS_CTX__?.features?.mass,
     undefined,
     { timeout: 150000 },
   );
@@ -157,7 +157,7 @@ test('a 4×4×3 mass converts to 4 walls + roof + foundation slab in the browser
   await page.waitForTimeout(800);
   const mass = await page.waitForFunction(
     () => {
-      const list = (window as any).__obsMass?.list?.() ?? [];
+      const list = (window as any).__OBS_CTX__?.features?.mass?.list?.() ?? [];
       return list[0] ?? null;
     },
     undefined,

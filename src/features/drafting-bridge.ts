@@ -53,7 +53,7 @@ export function screenToWorldXZ(p: ScreenPt): WorldPt | null {
 }
 
 export async function exportDraftingToAnnotations(): Promise<number> {
-  const d: any = (window as any).__obsDrafting2D;
+  const d: any = (ctx.features as any).drafting2D;
   if (!d || !d.getEntities) { toast("No 2D drafting overlay active.", "warn"); return 0; }
   const entities = d.getEntities() || [];
   if (!entities.length) { toast("Drafting overlay is empty.", "warn"); return 0; }
@@ -85,7 +85,7 @@ export async function exportDraftingToAnnotations(): Promise<number> {
 }
 
 export async function attachDraftingToCurrentSheet(): Promise<boolean> {
-  const d: any = (window as any).__obsDrafting2D;
+  const d: any = (ctx.features as any).drafting2D;
   const entities = (d && d.getEntities) ? d.getEntities() : [];
   if (!entities.length) { toast("Nothing to attach - drafting overlay is empty.", "warn"); return false; }
 

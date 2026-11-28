@@ -9,6 +9,7 @@
  */
 
 import { EntityUndoStack } from "../../core/undo-stack";
+import { registerKind } from "../../core/element-store";
 
 export type CadPt = { x: number; y: number };
 
@@ -296,6 +297,80 @@ export class CadEngine {
       ...e,
       points: e.points ? e.points.map((p) => ({ ...p })) : undefined,
     }));
+  }
+
+  /* -- Canonical element store adapter (Phase 1, decision
+        2026-11-26-canonical-element-store.md, step 2) ------------------- */
+
+  /** One entity by id (deep copy, like getAllEntities), or null. */
+  getEntity(id: string): CadEntity | null {
+    const ent = this.entities.find((e) => e.id === id);
+    if (!ent) return null;
+    return { ...ent, points: ent.points ? ent.points.map((p) => ({ ...p })) : undefined };
+  }
+
+  /**
+   * Validated scalar-parameter edit for the canonical store path. Records
+   * exactly one undoable modify entry, like trim/extend/fillet. Geometry
+   * params that need re-derivation (polyline points, line endpoints) are
+   * deliberately not editable here yet.
+   */
+  updateEntityParam(
+    id: string,
+    param: string,
+    value: unknown,
+  ): { ok: boolean; reason?: string } {
+    const ent = this.entities.find((e) => e.id === id);
+    if (!ent) return { ok: false, reason: "unknown_element" };
+    const before = {
+      ...ent,
+      points: ent.points ? ent.points.map((p) => ({ ...p })) : undefined,
+    };
+    switch (param) {
+      case "color": {
+        if (typeof value !== "string" || !value) return { ok: false, reason: "invalid_value" };
+        ent.color = value;
+        break;
+      }
+      case "strokeWidth": {
+        const n = Number(value);
+        if (!Number.isFinite(n) || n <= 0) return { ok: false, reason: "invalid_value" };
+        ent.strokeWidth = n;
+        break;
+      }
+      case "layer": {
+        if (typeof value !== "string" || !this.layers.some((l) => l.id === value))
+          return { ok: false, reason: "invalid_value" };
+        ent.layer = value;
+        break;
+      }
+      case "text": {
+        if (ent.kind !== "text") return { ok: false, reason: "param_not_applicable" };
+        if (typeof value !== "string") return { ok: false, reason: "invalid_value" };
+        ent.text = value;
+        break;
+      }
+      case "r": {
+        if (ent.kind !== "circle" && ent.kind !== "arc")
+          return { ok: false, reason: "param_not_applicable" };
+        const n = Number(value);
+        if (!Number.isFinite(n) || n <= 0) return { ok: false, reason: "invalid_value" };
+        ent.r = n;
+        break;
+      }
+      case "startAngle":
+      case "endAngle": {
+        if (ent.kind !== "arc") return { ok: false, reason: "param_not_applicable" };
+        const n = Number(value);
+        if (!Number.isFinite(n)) return { ok: false, reason: "invalid_value" };
+        ent[param] = n;
+        break;
+      }
+      default:
+        return { ok: false, reason: "unknown_param" };
+    }
+    this.hist.record("Edit " + param, { kind: "modify", id: ent.id, before, after: ent });
+    return { ok: true };
   }
 
   getCount(): number {
@@ -947,3 +1022,13 @@ export class CadEngine {
 // multi-document surfaces) can build isolated engines with their own
 // deterministic command history.
 export const cadEngine = new CadEngine();
+
+// Canonical element store (Phase 1 single source of truth, step 2): the
+// CAD engine is kind adapter #2. Registration is inert on its own — all
+// edits still flow through the engine's validated path and undo stack.
+registerKind({
+  kind: "cad",
+  listIds: () => cadEngine.getAllEntities().map((e) => e.id),
+  owns: (id) => cadEngine.getEntity(id) !== null,
+  applyParamChange: (id, param, value) => cadEngine.updateEntityParam(id, param, value),
+});

@@ -517,7 +517,6 @@ export function setupDrafting2D(): void {
 
   c.features.drafting2D = drafting2D;
 
-  (window as Any).__obsDrafting2D = drafting2D;
 
   console.log(
     "[drafting-2d] ready. Left mouse draws. Middle/wheel/right remain BIM navigation.",

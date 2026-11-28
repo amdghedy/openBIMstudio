@@ -121,6 +121,26 @@ t("shared singleton loads without localStorage and persistBlockLib writes it", (
   if (S.loadBlockLibrary(store).size !== 0) throw new Error("singleton removal was not persisted");
 });
 
+t("redefining a library block (BCLOSE path) replaces its stored definition and round-trips", () => {
+  const store = new FakeStorage();
+  const lib = new B.BlockLibrary();
+  lib.add(B.makeBlock("Chair", sq(), { x: 10, y: 10 }, layers, "A chair"));
+  // BCLOSE rebuilds the library definition from the edited entities with
+  // makeBlock (same shape BLOCK stores) and replaces it in place.
+  const edited = [...sq(), { type: "LINE", layer: "A", start: { x: 0, y: 0 }, end: { x: 1, y: 1 } }];
+  const prev = lib.get("Chair");
+  lib.add(B.makeBlock("Chair", edited, { x: 10, y: 10 }, layers, prev.description), true);
+  if (!S.saveBlockLibrary(lib, store)) throw new Error("save failed");
+  const back = S.loadBlockLibrary(store);
+  if (!back.has("chair")) throw new Error("redefined block lost");
+  eq(back.get("chair").entities.length, 4, "library still holds the stale definition");
+  eq(back.get("chair").base, { x: 10, y: 10 });
+  if (back.get("chair").description !== "A chair") throw new Error("description lost on redefine");
+  // A document-only block is never added by the redefine: the library only
+  // ever gains blocks through an explicit add (BLOCK / import-as-block).
+  if (back.has("imported")) throw new Error("doc-only block leaked into the library");
+});
+
 t("cad-viewer.ts no longer owns block-library persistence; its 5 exports are unchanged", () => {
   const src = fs.readFileSync(path.join(__dirname, "..", "src", "features", "cad-viewer.ts"), "utf8");
   for (const gone of ["obs.cad.blocks", "BLOCK_LIB_KEY", "new BlockLibrary()", "BlockLibrary.fromJSON"]) {

@@ -296,7 +296,6 @@ export const refPlanesStore = new RefPlanesStore();
 export function setupRefPlanes(): typeof refPlanesStore {
   refPlanesStore.boot();
   (ctx.features as any).refPlanes = refPlanesStore;
-  (window as any).__obsRefPlanes = refPlanesStore;
   // Deferred overlay attach once scene exists
   window.setTimeout(() => {
     try { (refPlanesStore as any).refreshOverlay?.(); } catch { /* */ }

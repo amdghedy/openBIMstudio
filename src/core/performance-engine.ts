@@ -209,7 +209,7 @@ export function isBVHInstalled(): boolean {
 /**
  * Full performance setup — call from critical-gaps-boot / main boot path.
  */
-export function setupPerformanceEngine(): void {
+export function setupPerformanceEngine() {
   installBVH();
 
   setTimeout(() => {
@@ -507,7 +507,7 @@ export function setupPerformanceEngine(): void {
     },
   };
 
-  (window as any).__obsPerf = {
+  const perfApi = {
     installBVH,
     accelerateMesh,
     accelerateAllMeshes,
@@ -525,6 +525,7 @@ export function setupPerformanceEngine(): void {
   console.log(
     "[perf] performance engine ready. BVH: " +
       (bvhInstalled ? "installed" : "not available") +
-      ". Batching: OFF (enable via __obsPerf.setBatchingEnabled(true))",
+      ". Batching: OFF (enable via the perf feature api)",
   );
+  return perfApi;
 }

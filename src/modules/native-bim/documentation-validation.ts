@@ -41,7 +41,8 @@ export interface SheetQaSnapshot {
   sheetSizesMm: Readonly<Record<string, { w: number; h: number }>>;
 }
 const EPS = 0.01;
-const validSizes = new Set(["A0","A1","A2","A3","A4","ANSI-D","ANSI-E","Arch-D","Arch-E"]);
+// Kept literal: this module is loaded standalone by tests (no imports). tests/paper-sizes.test.cjs pins this list to src/core/paper-sizes.ts.
+const validSizes = new Set(["A0","A1","A2","A3","A4","ANSI-A","ANSI-B","ANSI-C","ANSI-D","ANSI-E","Arch-A","Arch-B","Arch-C","Arch-D","Arch-E","Arch-E1","Legal"]);
 
 export function validateDocumentationSet(snapshot: SheetQaSnapshot): SheetQaDiagnostic[] {
   const out: SheetQaDiagnostic[] = [];

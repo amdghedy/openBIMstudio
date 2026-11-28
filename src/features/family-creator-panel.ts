@@ -21,7 +21,7 @@ import { fetchSheetFromUrl } from "../modules/families/creator/url-intake";
 import { recognizeImage, tidyOcrText } from "../modules/families/creator/ocr";
 import { drawingHtml, bindDrawing } from "./family-creator-drawing";
 import { createPreview3D, type Preview3D } from "./family-creator-preview";
-import { readBoosterSheets, boosterSpecFromSheet, type BoosterSheet } from "../modules/families/creator/catalogue";
+import { readBoosterSheets, boosterSpecFromSheet, sheetValueUnchanged, type BoosterSheet } from "../modules/families/creator/catalogue";
 import { renderThreeViews } from "../modules/families/creator/preview-svg";
 import type { FamilyDefinition } from "../modules/families/types";
 
@@ -283,7 +283,8 @@ function resultHtml(r: CreatorResult): string {
       if (p.editable === false) return "";
       const sized = p.name === "Width" || p.name === "Depth" || p.name === "Height";
       const edited = !sized && r.spec!.params?.[p.name] !== undefined && !srcs.some((x) => x.label === p.label);
-      const key = sized ? (srcs.some((x) => x.label === p.name) ? "sheet" : (form.wMm && form.dMm && form.hMm) || !(srcs.length || reopened) ? "typed" : "edited")
+      const cur = sized ? (p.name === "Width" ? r.spec!.widthM : p.name === "Depth" ? r.spec!.depthM : r.spec!.heightM) : r.spec!.params?.[p.name];
+      const key = r.spec!.templateId === "booster" && cur !== undefined && sheetValueUnchanged(sheetProv, p.name, cur) ? "sheet" : sized ? (srcs.some((x) => x.label === p.name) ? "sheet" : (form.wMm && form.dMm && form.hMm) || !(srcs.length || reopened) ? "typed" : "edited")
         : srcs.some((x) => x.label === p.label) ? "sheet" : edited ? "edited" : "default";
       return ` <span class="obs-fc-detail" data-tag="${key}">(${esc(t("familyCreator.tag." + key))})</span>`;
     };

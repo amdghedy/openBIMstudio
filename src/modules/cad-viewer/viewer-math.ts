@@ -4,13 +4,31 @@
  */
 import { findFont } from "../drawings/cad-styles";
 import { resolvedOf } from "../drawings/block-refs";
-import type { DxfEntity, DxfLayout, DxfPoint, DxfUnits, DxfViewport } from "../drawings/dxf-types";
+import type { DxfEntity, DxfInsert, DxfLayout, DxfPoint, DxfUnits, DxfViewport } from "../drawings/dxf-types";
 import { bulgeArc, polylineArea, polylineBBox, polylineLength, tessellatePolyline } from "../drawings/dxf-geometry";
 import { pointInPolygon } from "../drawings/hatch-patterns";
 import { tableCorners, tableFrame, tableHeight, tableWidth, translateTable } from "../drawings/cad-table";
 
 export type Pt = { x: number; y: number };
 export interface BBox { minX: number; minY: number; maxX: number; maxY: number }
+
+/* ── INSERT resolution ─────────────────────────────────────────────── */
+/**
+ * 2D-24: how an INSERT's geometry is resolved for bbox / pick / snap.
+ * The plain resolver returns the definition as stored; a dynamic block
+ * whose parameters move geometry (a stretch, a flip, a visibility state)
+ * resolves differently, and the base geometry is stale for it — its bbox
+ * is too small, its snap points sit where the geometry used to be, and
+ * picks near the moved geometry miss. The viewer installs its
+ * dynamic-aware resolver (resolvedDynOf) at open; everything else keeps
+ * the plain default. This mirrors block-refs' setActiveBlocks: a
+ * module-level hook, not an import of viewer state into this pure module.
+ */
+let insertResolver: (ins: DxfInsert) => DxfEntity[] = resolvedOf;
+/** Install the INSERT resolver for entityBBox / distToEntity / keyPoints. Pass nothing to restore the plain resolver. */
+export function setInsertResolver(fn?: (ins: DxfInsert) => DxfEntity[]): void {
+  insertResolver = fn ?? resolvedOf;
+}
 
 /* ───────────────────────── view transform ───────────────────────── */
 
@@ -447,7 +465,7 @@ export function entityBBox(e: DxfEntity): BBox {
     case "INSERT": {
       // Union of the resolved geometry; an unresolvable reference is its insertion point.
       let b: BBox | null = null;
-      for (const c of resolvedOf(e)) {
+      for (const c of insertResolver(e)) {
         const cb = entityBBox(c);
         if (!Number.isFinite(cb.minX + cb.minY + cb.maxX + cb.maxY)) continue;
         b = b ? { minX: Math.min(b.minX, cb.minX), minY: Math.min(b.minY, cb.minY), maxX: Math.max(b.maxX, cb.maxX), maxY: Math.max(b.maxY, cb.maxY) } : cb;
@@ -535,7 +553,7 @@ export function entitySegments(e: DxfEntity): Array<[Pt, Pt]> {
 export function distToEntity(e: DxfEntity, x: number, y: number): number {
   switch (e.type) {
     case "INSERT": {
-      const kids = resolvedOf(e);
+      const kids = insertResolver(e);
       if (!kids.length) return Math.hypot(x - e.position.x, y - e.position.y);
       let d = Infinity;
       for (const c of kids) { const v = distToEntity(c, x, y); if (v < d) d = v; }
@@ -992,7 +1010,7 @@ function keyPoints(e: DxfEntity): Snap[] {
     case "INSERT": {
       // Insertion point first, then the snaps of the geometry inside the reference (as native CAD does).
       const pts: Snap[] = [{ x: e.position.x, y: e.position.y, kind: "insertion" }];
-      for (const c of resolvedOf(e)) pts.push(...keyPoints(c));
+      for (const c of insertResolver(e)) pts.push(...keyPoints(c));
       return pts;
     }
     case "LINE": {
@@ -1572,7 +1590,14 @@ export const compareTolerance = (b: BBox): number => Math.max(Math.max(b.maxX - 
 
 /* ───────────────────────── plotting ───────────────────────── */
 
-export const PAPER_MM: Record<string, [number, number]> = { A4: [210, 297], A3: [297, 420], A2: [420, 594], A1: [594, 841], A0: [841, 1189], Letter: [215.9, 279.4], Tabloid: [279.4, 431.8] };
+export const PAPER_MM: Record<string, [number, number]> = {
+  A4: [210, 297], A3: [297, 420], A2: [420, 594], A1: [594, 841], A0: [841, 1189], Letter: [215.9, 279.4], Tabloid: [279.4, 431.8],
+  // US sizes (short × long, mm) — literal because this module is loaded standalone by tests; tests/paper-sizes.test.cjs
+  // pins every value to src/core/paper-sizes.ts.
+  "ANSI-C": [431.8, 558.8], "ANSI-D": [558.8, 863.6], "ANSI-E": [863.6, 1117.6],
+  "Arch-A": [228.6, 304.8], "Arch-B": [304.8, 457.2], "Arch-C": [457.2, 609.6], "Arch-D": [609.6, 914.4], "Arch-E": [914.4, 1219.2], "Arch-E1": [762, 1066.8],
+  Legal: [215.9, 355.6],
+};
 
 export function paperMm(name: string, landscape: boolean): { w: number; h: number } {
   const [s, l] = PAPER_MM[name] ?? PAPER_MM.A4;

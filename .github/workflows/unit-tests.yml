@@ -183,6 +183,8 @@ jobs:
     # ubuntu-latest resolved to 26.04, which Playwright does not support yet
     # ("Playwright does not support chromium on ubuntu26.04-x64"); pin 24.04.
     runs-on: ubuntu-24.04
+    # 25: main's suite runs ~16.5 min here; the slow #101 recovery specs live
+    # in their own parallel job below (browser-recovery) so this cap stays tight.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
@@ -198,15 +200,60 @@ jobs:
         run: npm run build
       - name: Run browser specs
         # document-chain = the core authoring→documentation→export chain in a
-        # real browser (production bundle); edit-undo-save = state round-trip.
-        # orbit-rtl/native-ifc/smoke stay from the original smoke set.
+        # real browser (production bundle). orbit-rtl/native-ifc/smoke stay
+        # from the original smoke set.
         # rtl-ar = the #141 live-browser RTL proof (item 16): ar at 1280px,
         # named views, undo/redo + chevron mirroring by computed style.
-        run: npx playwright test --project=chromium tests/e2e/smoke.spec.ts tests/e2e/orbit-rtl.spec.ts tests/e2e/rtl-ar.spec.ts tests/e2e/native-ifc-roundtrip.spec.ts tests/e2e/edit-undo-save.spec.ts tests/e2e/document-chain.spec.ts tests/e2e/cad-ribbon.spec.ts tests/e2e/cad-native-blocks.spec.ts tests/e2e/import-timeout.spec.ts tests/e2e/family-store-bridge.spec.ts tests/e2e/rejected-import.spec.ts tests/e2e/options-bar-ribbon.spec.ts tests/e2e/cad-layer-lock.spec.ts tests/e2e/cad-grid-snap.spec.ts tests/e2e/cad-fillet-chamfer.spec.ts tests/e2e/cad-layouts.spec.ts tests/e2e/ribbon-a12.spec.ts tests/e2e/cad-snap-a15.spec.ts tests/e2e/cad-layer-manager-a16.spec.ts tests/e2e/cad-annotation-a10.spec.ts tests/e2e/cad-polyline-a7.spec.ts tests/e2e/cad-selection-a11.spec.ts tests/e2e/cad-selection-a18.spec.ts tests/e2e/cad-viewport-a8.spec.ts tests/e2e/cad-dead-code-a14.spec.ts tests/e2e/family-creator-gate.spec.ts tests/e2e/family-creator-drawing.spec.ts tests/e2e/project-browser-menu-g11.spec.ts tests/e2e/status-bar-aids-2d2.spec.ts tests/e2e/status-bar-selcount-2d32.spec.ts tests/e2e/cad-viewport-freeze-2d6.spec.ts tests/e2e/cad-anno-scale-2d30.spec.ts --reporter=list
+        run: npx playwright test --project=chromium tests/e2e/smoke.spec.ts tests/e2e/orbit-rtl.spec.ts tests/e2e/rtl-ar.spec.ts tests/e2e/native-ifc-roundtrip.spec.ts tests/e2e/document-chain.spec.ts tests/e2e/cad-ribbon.spec.ts tests/e2e/cad-native-blocks.spec.ts tests/e2e/import-timeout.spec.ts tests/e2e/family-store-bridge.spec.ts tests/e2e/rejected-import.spec.ts tests/e2e/options-bar-ribbon.spec.ts tests/e2e/cad-layer-lock.spec.ts tests/e2e/cad-grid-snap.spec.ts tests/e2e/cad-fillet-chamfer.spec.ts tests/e2e/cad-layouts.spec.ts tests/e2e/ribbon-a12.spec.ts tests/e2e/cad-snap-a15.spec.ts tests/e2e/cad-layer-manager-a16.spec.ts tests/e2e/cad-annotation-a10.spec.ts tests/e2e/cad-polyline-a7.spec.ts tests/e2e/cad-selection-a11.spec.ts tests/e2e/cad-selection-a18.spec.ts tests/e2e/cad-viewport-a8.spec.ts tests/e2e/cad-dead-code-a14.spec.ts tests/e2e/family-creator-gate.spec.ts tests/e2e/family-creator-drawing.spec.ts tests/e2e/project-browser-menu-g11.spec.ts tests/e2e/status-bar-aids-2d2.spec.ts tests/e2e/status-bar-selcount-2d32.spec.ts tests/e2e/cad-viewport-freeze-2d6.spec.ts tests/e2e/cad-anno-scale-2d30.spec.ts --reporter=list
+
       - name: Upload report and screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: browser-smoke-results-chromium
+          path: test-results/
+          if-no-files-found: ignore
+
+  browser-recovery:
+    name: Browser recovery specs (blocking, Chromium)
+    needs: quality
+    # The #101 recovery contract and the edit/undo/save state round-trip, in
+    # their own job: a genuine renderer crash (CDP Page.crash) → cold reboot →
+    # journal replay cycle takes ~4 min on SwiftShader runners, far too slow
+    # to share the browser-smoke job's cap. Chromium-only because Page.crash
+    # is a CDP feature.
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    # ubuntu-latest resolved to 26.04, which Playwright does not support yet
+    # ("Playwright does not support chromium on ubuntu26.04-x64"); pin 24.04.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright and supported browsers
+        run: npm i --no-save @playwright/test@1.57.0 && npx playwright install --with-deps chromium
+      - name: Build production app for browser tests
+        run: npm run build
+      - name: Run recovery browser specs
+        # edit-undo-save = state round-trip.
+        # recovery/crash-recovery/recovery-checkpoints/recovery-manual-open =
+        # the #101 recovery contract: real IndexedDB, genuine renderer crashes
+        # (CDP Page.crash), journal replay, quarantine and idempotency.
+        # --workers=1 keeps the genuine-crash tests isolated from each
+        # other on the 2-core SwiftShader runner; they are fast again now
+        # that reboots use a fresh context from the captured crash-window
+        # storageState (see recovery.spec.ts), so serial costs ~10 min.
+        run: npx playwright test --project=chromium --workers=1 tests/e2e/edit-undo-save.spec.ts tests/e2e/recovery.spec.ts tests/e2e/crash-recovery.spec.ts tests/e2e/recovery-checkpoints.spec.ts tests/e2e/recovery-manual-open.spec.ts --reporter=list
+
+      - name: Upload report and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-recovery-results-chromium
           path: test-results/
           if-no-files-found: ignore

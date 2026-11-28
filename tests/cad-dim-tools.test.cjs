@@ -142,6 +142,89 @@ t("command-count copy matches the real registry", () => {
   assert.ok(exact || floor, `home copy must state ${n} or a 200+ floor`);
 });
 
+/* ── 2D-22: DIMENSION entity ↔ live record round-trip ─────────────── */
+/* A dimension authored inside BEDIT is stored in the block as a real
+   DIMENSION entity; dimRecordOfDimension rebuilds its live record (the
+   exact inverse of dimensionEntitiesForSave's field mapping) so the
+   renderer can draw it from its definition points. */
+
+t("2D-22: dimRecordOfDimension inverts the save mapping (linear/aligned)", () => {
+  const DIM = loadTsc("src/modules/cad-viewer/dimension-system.ts");
+  const lin = DIM.dimRecordOfDimension({
+    type: "DIMENSION", layer: "0", dimId: "dim-x", dimType: 0, styleName: "ISO-25",
+    defPoint: { x: 10, y: 50 }, extOrigin1: { x: 0, y: 0 }, extOrigin2: { x: 40, y: 0 },
+    text: "40.00",
+  });
+  assert.ok(lin, "linear must rebuild");
+  assert.equal(lin.mode, "linear");
+  assert.deepEqual(lin.p1, { x: 0, y: 0 });
+  assert.deepEqual(lin.p2, { x: 40, y: 0 });
+  assert.deepEqual(lin.placement, { x: 10, y: 50 });
+  const ali = DIM.dimRecordOfDimension({
+    type: "DIMENSION", layer: "0", dimType: 1,
+    defPoint: { x: 5, y: 5 }, extOrigin1: { x: 0, y: 0 }, extOrigin2: { x: 3, y: 4 },
+  });
+  assert.ok(ali && ali.mode === "aligned", "aligned must rebuild");
+});
+
+t("2D-22: dimRecordOfDimension inverts the save mapping (radial/diameter/ordinate)", () => {
+  const DIM = loadTsc("src/modules/cad-viewer/dimension-system.ts");
+  const rad = DIM.dimRecordOfDimension({
+    type: "DIMENSION", layer: "0", dimType: 4,
+    defPoint: { x: 0, y: 0 }, curvePoint: { x: 10, y: 0 }, text: "R10.00",
+  });
+  assert.ok(rad && rad.mode === "radial", "radial must rebuild");
+  assert.deepEqual(rad.p1, { x: 0, y: 0 });
+  assert.deepEqual(rad.p2, { x: 10, y: 0 });
+  const dia = DIM.dimRecordOfDimension({
+    type: "DIMENSION", layer: "0", dimType: 3,
+    defPoint: { x: 0, y: 0 }, curvePoint: { x: 0, y: 5 },
+  });
+  assert.ok(dia && dia.mode === "diameter", "diameter must rebuild");
+  // Ordinate: the datum axis comes back by the same dominant-delta rule
+  // the DIMORDINATE tool uses (dx >= dy → "x").
+  const ordX = DIM.dimRecordOfDimension({
+    type: "DIMENSION", layer: "0", dimType: 6,
+    defPoint: { x: 20, y: 30 }, leaderEnd: { x: 45, y: 32 },
+  });
+  assert.ok(ordX && ordX.mode === "ordinate" && ordX.axis === "x", "ordinate x must rebuild");
+  const ordY = DIM.dimRecordOfDimension({
+    type: "DIMENSION", layer: "0", dimType: 6,
+    defPoint: { x: 20, y: 30 }, leaderEnd: { x: 22, y: 60 },
+  });
+  assert.ok(ordY && ordY.axis === "y", "ordinate y must rebuild");
+});
+
+t("2D-22: dimRecordOfDimension rejects types with no record and missing points", () => {
+  const DIM = loadTsc("src/modules/cad-viewer/dimension-system.ts");
+  assert.equal(DIM.dimRecordOfDimension({ type: "DIMENSION", layer: "0", dimType: 2, defPoint: { x: 0, y: 0 } }), null, "angular (70=2) has no record");
+  assert.equal(DIM.dimRecordOfDimension({ type: "DIMENSION", layer: "0", dimType: 0, defPoint: { x: 0, y: 0 }, extOrigin1: { x: 0, y: 0 } }), null, "linear without extOrigin2 must fail");
+  assert.equal(DIM.dimRecordOfDimension({ type: "DIMENSION", layer: "0", dimType: 4, defPoint: { x: 0, y: 0 } }), null, "radial without curvePoint must fail");
+});
+
+t("2D-22: a rebuilt record renders back to dimension geometry", () => {
+  const DIM = loadTsc("src/modules/cad-viewer/dimension-system.ts");
+  const rec = DIM.dimRecordOfDimension({
+    type: "DIMENSION", layer: "0", dimId: "dim-x", dimType: 0, styleName: "ISO-25",
+    defPoint: { x: 10, y: 50 }, extOrigin1: { x: 0, y: 0 }, extOrigin2: { x: 40, y: 0 },
+    text: "40.00",
+  });
+  const style = DIM.defaultDimStyles()[0];
+  const built = DIM.buildDimEntities(rec, style, "40.00");
+  assert.ok(built.length >= 3, `expected dimension geometry, got ${built.length} entities`);
+  const textEnt = built.find((e) => e.type === "TEXT");
+  assert.ok(textEnt && textEnt.value === "40.00", "measurement text must survive the round-trip");
+  assert.ok(built.every((e) => e.meta?.dimId === "dim-x"), "built geometry keeps the dimId tag");
+});
+
+t("2D-22: BCLOSE converts session dimensions and drops their records", () => {
+  assert.ok(/dimensionEntitiesForSave\(ents\)/.test(cv), "BCLOSE must build DIMENSION entities from the session list");
+  assert.ok(/ents = ents\.filter\(\(e\) => !\(e\.meta\?\.dimId && ids\.has\(e\.meta\.dimId\)\)\)/.test(cv), "converted geometry must be swapped out of the session list");
+  assert.ok(/dimIdsAtOpen: new Set\(dimRecords\.keys\(\)\)/.test(cv), "session must snapshot the record ids at open");
+  assert.ok(/dropSessionDims\(\)/.test(cv), "session records must be dropped on save and on discard");
+  assert.ok(/case "DIMENSION": \{[\s\S]*?dimRecordOfDimension\(e\)/.test(cv), "drawEntity must render a DIMENSION entity from its definition points");
+});
+
 async function main() {
   console.log(`=== cad-dim-tools: ${pass} passed, ${fail} failed ===`);
   process.exitCode = fail ? 1 : 0;

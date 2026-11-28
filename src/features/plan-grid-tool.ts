@@ -58,14 +58,13 @@ export function setupPlanGridTool() {
      e.preventDefault();
 
      let world: { x: number, z: number } | null = null;
-     const pv = (window as any).__obsPlanView;
      
-     // 1. Try to use the plan view's built-in API if it exists
+     // 1. Try the plan view's typed API when the plan panel is live
+     const pv = (ctx.features as any).planView;
      if (pv && typeof pv.clientToWorld === 'function') {
         world = pv.clientToWorld(evt.clientX, evt.clientY);
-     } else if (pv && typeof pv.screenToWorld === 'function') {
-        world = pv.screenToWorld(evt.clientX, evt.clientY);
-     } else {
+     }
+     if (!world) {
         // 2. Fallback: map SVG coordinates to world (assuming 1:1 scale)
         // The plan generator draws with X right, Z up (which is -Y in SVG).
         const pt = svg.createSVGPoint();

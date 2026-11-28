@@ -289,7 +289,7 @@ export function exportBBS(): void {
 /**
  * Register the "Generate Rebar" command. Called from critical-gaps-boot.
  */
-export function setupRebarViewport(): void {
+export function setupRebarViewport() {
   // Register the commands via the command palette / UI items register.
   try {
     const w = window as any;
@@ -309,8 +309,7 @@ export function setupRebarViewport(): void {
     }
   } catch { /* */ }
 
-  // Also expose as global for console access.
-  (window as any).__obsRebarViewport = {
+  const api = {
     generate: generateRebarForSelection,
     remove: removeRebarForHost,
     clear: clearAllRebar,
@@ -320,4 +319,5 @@ export function setupRebarViewport(): void {
   };
 
   console.log("[rebar-viewport] ready. Select a beam/column → Generate Rebar. Then Export BBS for schedule.");
+  return api;
 }

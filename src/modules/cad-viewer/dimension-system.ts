@@ -218,6 +218,62 @@ export function buildDimEntities(rec: DimRecord, style: DimStyle, text: string):
   return built.map((e) => (style.colorAci !== undefined ? { ...e, color: style.colorAci } : e));
 }
 
+/**
+ * 2D-22: rebuilds the live record a DIMENSION entity stands for — the
+ * exact inverse of dimensionEntitiesForSave's field mapping (cad-viewer.ts).
+ * Linear/aligned read their endpoints from the extension origins and the
+ * dim-line location from the definition point; radial/diameter read the
+ * centre from the definition point and the curve point; ordinate reads the
+ * feature point from the definition point and the leader end, with the
+ * datum axis recovered by the same dominant-delta rule the DIMORDINATE
+ * tool uses (ordinateAxis in cad-annotation.ts: dx >= dy → "x"). Returns
+ * null for a type this model has no record for (angular / arc-length /
+ * centre-mark have no DIMENSION entity) or for a DIMENSION missing its
+ * required definition points.
+ */
+export function dimRecordOfDimension(e: Extract<DxfEntity, { type: "DIMENSION" }>): DimRecord | null {
+  const base = { id: e.dimId ?? "dim-block", styleName: e.styleName ?? "ISO-25", layer: e.layer };
+  switch (e.dimType) {
+    case 0:
+    case 1: {
+      if (!e.extOrigin1 || !e.extOrigin2 || !e.defPoint) return null;
+      return {
+        ...base,
+        mode: e.dimType === 0 ? "linear" : "aligned",
+        p1: { ...e.extOrigin1 },
+        p2: { ...e.extOrigin2 },
+        placement: { ...e.defPoint },
+      };
+    }
+    case 3:
+    case 4: {
+      if (!e.defPoint || !e.curvePoint) return null;
+      return {
+        ...base,
+        mode: e.dimType === 3 ? "diameter" : "radial",
+        p1: { ...e.defPoint },
+        p2: { ...e.curvePoint },
+        placement: { ...e.curvePoint },
+      };
+    }
+    case 6: {
+      if (!e.defPoint || !e.leaderEnd) return null;
+      const dx = Math.abs(e.leaderEnd.x - e.defPoint.x);
+      const dy = Math.abs(e.leaderEnd.y - e.defPoint.y);
+      return {
+        ...base,
+        mode: "ordinate",
+        p1: { ...e.defPoint },
+        p2: { ...e.leaderEnd },
+        placement: { ...e.leaderEnd },
+        axis: dx >= dy ? "x" : "y",
+      };
+    }
+    default:
+      return null;
+  }
+}
+
 /** Collects the entities that belong to one dimension. */
 export function entitiesOfDim(all: DxfEntity[], dimId: string): DxfEntity[] {
   return all.filter((e) => e.meta?.dimId === dimId);

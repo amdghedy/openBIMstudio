@@ -77,8 +77,8 @@ import {
   type CadSnapOverrideKind,
 } from "../modules/cad-viewer/cad-snap-override";
 import { resolvedOf, bindDocumentBlocks, setActiveBlocks, touchBlocks, explodeInsert, findBlock, blocksOf, resolveInsert } from "../modules/drawings/block-refs";
-import { setCurrentCadDoc } from "../modules/cad-viewer/cad-current-doc";
-import { downloadCadLayoutPdf } from "../modules/export/cad-layout-plot";
+import { setCurrentCadDoc, getCurrentCadDoc } from "../modules/cad-viewer/cad-current-doc";
+import { downloadCadLayoutPdf, modelVectorLayout } from "../modules/export/cad-layout-plot";
 import * as BE from "../modules/drawings/block-edit";
 import { XrefStore, composeXrefs, compareXref, type ComposedXref } from "../modules/drawings/xref-engine";
 import * as X from "../modules/cad-viewer/modify-math";
@@ -589,6 +589,8 @@ interface CadEngineApi {
   close(): void;
   activate(): void;
   deactivate(): void;
+  /** Switch this drawing to a paper layout by index (2D-27 sheets-panel click-through). False when the index is not a layout or a BEDIT session is open. */
+  showLayout(index: number): boolean;
   isDirty(): boolean;
   markSaved(): void;
   copySelection(): boolean;
@@ -658,6 +660,14 @@ try {
 let ribbonStrip: HTMLDivElement | null = null;
 let ribbonTabsRow: HTMLDivElement | null = null;
 let ribbonActive: CadEngineApi | null = null;
+/**
+ * 2D-27: a sheets-panel click-through asked for a layout while the
+ * drawing's tab was gone — the registry doc is re-mounted from its
+ * serialised DXF (openCadLayout) and this is the layout to switch to
+ * once that load finishes. Consumed (and cleared) at the end of
+ * load(), only when the loaded file's name matches.
+ */
+let pendingLayout: { name: string; index: number } | null = null;
 const ribbonEngines = new Map<CadEngineApi, HTMLDivElement>();
 
 /** Ribbon minimize (double-click a tab) - the strip hides, the tab row stays, the drawing gets the space. */
@@ -746,10 +756,10 @@ export function openCadViewer(file?: File): void {
   ensureShell();
   shell!.style.display = "flex";
   try {
-    (window as any).__obsCadOwnsEsc = () => !!shell && shell.style.display !== "none";
+    (window as any).__OBS_CTX__.features.cadOwnsEsc = () => !!shell && shell.style.display !== "none";
     // Keyboard ownership: while a drawing tab is active the BIM global shortcut
     // registry yields the drawing-editor shortcuts to this viewer (see shortcuts.ts).
-    (window as any).__obsCadOwnsKeys = () => !!active && !!shell && shell.style.display !== "none";
+    (window as any).__OBS_CTX__.features.cadOwnsKeys = () => !!active && !!shell && shell.style.display !== "none";
   } catch {
     /* */
   }
@@ -762,6 +772,10 @@ export function closeCadViewer(): void {
   hideShell();
   unregisterCadAliasEditorOpener?.();
   unregisterCadAliasEditorOpener = null;
+  // 2D-24: viewer-math's INSERT resolver points at this viewer's
+  // resolvedDynOf — drop it so later bbox / pick / snap calls outside
+  // the viewer fall back to the plain resolver, not a dead closure.
+  M.setInsertResolver();
 }
 
 function byId(id: number): DocTab | null {
@@ -897,6 +911,62 @@ export function runCadAiCommand(text: string): { ok: boolean; error?: string } {
     agents can discover every command name + alias they may run. */
 export function getCadCommandCatalog(): { name: string; aliases: string[]; description: string }[] {
   return CAD_COMMANDS.map((c) => ({ name: c.name, aliases: [...c.aliases], description: c.description }));
+}
+
+/**
+ * Sheets-panel click-through (2D-27): open the Drawing Editor on a
+ * paper layout of the current CAD drawing, by index.
+ *
+ * Two paths. When the drawing's tab is alive (ribbonActive set — the
+ * registry always tracks the active tab), the shell is simply re-shown
+ * and the tab switched to the layout. When the tab is gone — the usual
+ * case, since reaching a BIM-side panel means the drawing tab was
+ * closed — the registry doc is re-mounted: it is serialised through
+ * the DXF writer (the QSAVE path, which round-trips layouts and
+ * viewports) and opened as a new tab, and the requested layout is
+ * applied when that load finishes (pendingLayout). The re-mount keeps
+ * every saved entity/layout/layer/block; undo history and other
+ * non-serialised session state do not survive it.
+ *
+ * Returns ok=false when there is no current drawing, the index is not
+ * a layout, or a BEDIT session is open (the viewer logs the BEDIT
+ * refusal itself).
+ */
+export function openCadLayout(layoutIndex: number): { ok: boolean; error?: string } {
+  const entry = getCurrentCadDoc();
+  if (!entry) return { ok: false, error: "No CAD drawing is open — open a drawing in the Drawing Editor first." };
+  if (layoutIndex < 0 || layoutIndex >= (entry.doc.layouts?.length ?? 0)) {
+    return { ok: false, error: "That layout no longer exists — reopen the Sheets panel." };
+  }
+  if (ribbonActive) {
+    openCadViewer();
+    if (!ribbonActive.showLayout(layoutIndex)) {
+      return { ok: false, error: "That layout could not be shown — a BEDIT session may be open (close it with BCLOSE first)." };
+    }
+    return { ok: true };
+  }
+  // Tab-restore path: re-mount the registry doc from its serialised DXF.
+  let text: string;
+  try {
+    text = writeDxf(entry.doc);
+  } catch (err) {
+    return { ok: false, error: `Could not reopen the drawing: ${err instanceof Error ? err.message : String(err)}` };
+  }
+  const fileName = /\.dxf$/i.test(entry.name) ? entry.name : `${entry.name || "drawing"}.dxf`;
+  // openFile activates a same-title tab instead of loading — then no
+  // load runs to consume the pending request, so switch directly on
+  // that tab's engine.
+  const existing = tabs.find((t) => t.title.toLowerCase() === fileName.toLowerCase());
+  if (existing) {
+    openCadViewer(new File([text], fileName, { type: "text/plain" }));
+    if (!existing.engine.showLayout(layoutIndex)) {
+      return { ok: false, error: "That layout could not be shown — a BEDIT session may be open (close it with BCLOSE first)." };
+    }
+    return { ok: true };
+  }
+  pendingLayout = { name: fileName, index: layoutIndex };
+  openCadViewer(new File([text], fileName, { type: "text/plain" }));
+  return { ok: true };
 }
 
 function openTabMenu(x: number, y: number, tab: DocTab): void {
@@ -2018,6 +2088,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     savedBounds: M.BBox | null;
     savedModelBounds: M.BBox | null;
     savedUndoDepth: number;
+    /** 2D-22: dimension-record ids that existed when the session opened — any record not in this set was authored inside the session, so its geometry lives in the block, not the model. */
+    dimIdsAtOpen: Set<string>;
   } | null = null;
   const xrefManager = new AcadAdv.XrefManager();
   const dynBlocks = new AcadAdv.DynBlockStore();
@@ -2707,6 +2779,12 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     const evaluated = Dyn9.evaluateDynBlock(def.entities, set.params, values);
     return resolveInsert(table, ins, undefined, evaluated);
   }
+  // 2D-24: bbox / pick / snap must see the same evaluated geometry the
+  // canvas draws — viewer-math resolves INSERTs through this hook (its
+  // plain default is resolvedOf, which returns the definition as stored
+  // and is stale for heavily-moved dynamic geometry). Restored in
+  // closeCadViewer.
+  M.setInsertResolver(resolvedDynOf);
 
   /**
    * Effective values with lookup rows applied (A9): what the Properties
@@ -3062,6 +3140,20 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
             }
           }
         }
+        break;
+      }
+      case "DIMENSION": {
+        // 2D-22: a DIMENSION entity inside a block definition draws from
+        // its definition points — the record is rebuilt with the inverse
+        // of the save mapping and rendered by the same geometry builder
+        // the live dimension tools use. Without this a block dimension
+        // would be invisible in every reference (drawEntity has no other
+        // DIMENSION handling: the model only ever draws dimension geometry
+        // as LINE/TEXT via its live records).
+        const rec = DIM.dimRecordOfDimension(e);
+        if (!rec) break;
+        const style = dimStyleList.find((s) => s.name === e.styleName) ?? dimStyleList[0];
+        for (const g of DIM.buildDimEntities(rec, style, e.text ?? "")) drawEntity(c, g, v, flipY);
         break;
       }
     }
@@ -7933,9 +8025,21 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       hooks.onDirty(false);
       scheduleSessionSave();
       hooks.onTitle(name);
+      // 2D-27: a sheets-panel click-through asked for a layout while
+      // the drawing's tab was gone and the doc was re-mounted from the
+      // registry — switch to it now that the load finished. The name
+      // check keeps a stale request from firing on another drawing.
+      if (pendingLayout && pendingLayout.name === name) {
+        const li = pendingLayout.index;
+        pendingLayout = null;
+        if (doc.layouts && li >= 0 && li < doc.layouts.length) activate(li);
+      }
       status(`${r.summary}`);
       setTimeout(() => status(""), 5000);
     } catch (err) {
+      // 2D-27: a failed re-mount drops its pending layout request, so a
+      // later manual open of the same file does not switch layouts.
+      if (pendingLayout && pendingLayout.name === file.name) pendingLayout = null;
       status(`Could not open ${file.name}: ${(err as Error).message}`);
       setTimeout(() => status(""), 7000);
     } finally {
@@ -16597,7 +16701,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       </div>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
         <button data-p="cancel" style="padding:6px 12px">Cancel</button>
-        <button data-p="vector" title="Vector PDF of the chosen layout, at its own viewport scales (Model plots via the raster button)" style="padding:6px 12px;background:#065f46;color:white;border:none;border-radius:4px;font-weight:600">Vector PDF</button>
+        <button data-p="vector" title="Vector PDF of the chosen layout at its own viewport scales, or of Model at the dialog's scale and area" style="padding:6px 12px;background:#065f46;color:white;border:none;border-radius:4px;font-weight:600">Vector PDF</button>
         <button data-p="go" style="background:#0284c7;color:white;border:none;padding:6px 16px;border-radius:4px;font-weight:600">Plot / Print PDF</button>
       </div>
     `);
@@ -16680,12 +16784,38 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // A20: vector PDF of the chosen layout, through the CAD layout
     // plotter (the same pipeline as the batch plotter). The layout's
     // viewports carry their own scales, so the dialog's plot scale and
-    // area do not apply — only its paper and page setup do. Model has
-    // no sheet to plot; it stays on the raster path (follow-up).
+    // area do not apply — only its paper and page setup do. 2D-25:
+    // Model plots the same way, over a synthetic full-page viewport
+    // (modelVectorLayout) at the dialog's scale and area — the area box
+    // is the same one the raster path plots (doPlot).
     gP("vector").onclick = () => {
       const o = readChoices();
+      const base = (name || "drawing").replace(/\.(dxf|dwg)$/i, "");
       if (o.layout < 0) {
-        logCmd("PLOT: Vector PDF plots a layout — choose a layout (Model vector plot is a follow-up; use Plot / Print PDF for Model).");
+        if (o.area === "window" && !plotWindow) {
+          logCmd("PLOT: pick a window first (Plot Area = Window, then Pick window…).");
+          return;
+        }
+        const box: M.BBox | null =
+          o.area === "window" ? plotWindow
+          : o.area === "extents" ? (bounds ?? modelBounds)
+          : layoutI < 0 ? visibleBox(view) : (bounds ?? modelBounds);
+        if (!box) { logCmd("PLOT: nothing to plot — the model is empty."); return; }
+        const setup: DxfPageSetup = {
+          name: "__model__",
+          paper: o.paper,
+          orient: o.land ? "landscape" : "portrait",
+          scale: o.scale,
+          area: o.area as PlotArea,
+        };
+        const modelLayout = modelVectorLayout(box, o.scale, setup);
+        lastPlotChoices = { layout: o.layout, setupName: o.setupName, paper: o.paper, land: o.land, scale: o.scale, area: o.area };
+        closeOverlay();
+        void downloadCadLayoutPdf(
+          { layout: modelLayout, model: modelEnts, blocks: doc!.blocks, setups: { ...(doc!.pageSetups ?? {}), [setup.name]: setup }, layers: doc!.layers },
+          `${base}-Model.pdf`,
+        );
+        logCmd(`PLOT: vector PDF of Model (${o.paper} ${setup.orient}) downloading — ${o.area} area at ${Vp8.plotScaleLabel(o.scale)} scale.`);
         return;
       }
       const layout = layouts[o.layout];
@@ -16698,7 +16828,6 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
           : layout;
       lastPlotChoices = { layout: o.layout, setupName: o.setupName, paper: o.paper, land: o.land, scale: o.scale, area: o.area };
       closeOverlay();
-      const base = (name || "drawing").replace(/\.(dxf|dwg)$/i, "");
       void downloadCadLayoutPdf(
         { layout: plotLayout, model: modelEnts, blocks: doc!.blocks, setups: doc!.pageSetups, layers: doc!.layers },
         `${base}-${layout.name}.pdf`,
@@ -16834,8 +16963,8 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
    * emits nothing: a bare DIMENSION with no block would re-measure
    * differently from what the user sees.
    */
-  function dimensionEntitiesForSave(entities: DxfEntity[]): DxfEntity[] {
-    const out: DxfEntity[] = [];
+  function dimensionEntitiesForSave(entities: DxfEntity[]): Extract<DxfEntity, { type: "DIMENSION" }>[] {
+    const out: Extract<DxfEntity, { type: "DIMENSION" }>[] = [];
     for (const rec of dimRecords.values()) {
       if (rec.mode !== "linear" && rec.mode !== "aligned" && rec.mode !== "radial" && rec.mode !== "diameter" && rec.mode !== "ordinate") continue;
       const geom = entities.filter((e) => e.meta?.dimId === rec.id);
@@ -17734,6 +17863,7 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       savedBounds: bounds,
       savedModelBounds: modelBounds,
       savedUndoDepth: undoStack.length,
+      dimIdsAtOpen: new Set(dimRecords.keys()),
     };
     ents = session.entities;
     layoutI = -1;
@@ -17764,9 +17894,13 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
    * discarding restores the stashed drawing exactly. Either way the
    * session's undo acts are dropped, so the outer drawing's undo history
    * is what it was when the session opened (2D-21: undo/redo work inside
-   * a session, on the session's acts only). Dimensions authored inside a
-   * session become plain geometry in the block — their live records point
-   * at session entities that no longer exist in the drawing (follow-up).
+   * a session, on the session's acts only). 2D-22: dimensions authored
+   * inside a session become real DIMENSION entities in the block
+   * definition (their live records are dropped — the geometry now lives
+   * in the block, so a record pointing at block-space coordinates would
+   * be stale); angular / arc-length / centre-mark dimensions have no
+   * DIMENSION entity in this model, so theirs stay plain geometry, with
+   * the record dropped all the same.
    */
   function closeBlockEdit(discard: boolean): void {
     if (!blockEdit) { logCmd("BCLOSE: no BEDIT session active."); return; }
@@ -17775,7 +17909,31 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
     // A9: session visibility hiding must not leak into the restored drawing.
     for (const e of dynHiddenSession) hiddenEntities.delete(e);
     dynHiddenSession.clear();
+    // 2D-22: any dimension record not present when the session opened was
+    // authored inside it — its geometry lives in the session list, not the
+    // model, so its record must not survive the close: on save the
+    // convertible ones become real DIMENSION entities in the block
+    // definition (built by the same dimensionEntitiesForSave the QSAVE
+    // path uses) and the rest keep their geometry as plain lines/text;
+    // on discard the records go with the geometry. The DIMCONTINUE /
+    // DIMBASELINE chain roots are cleared too when they point at a
+    // session record.
+    const sessionDimIds = [...dimRecords.keys()].filter((id) => !be.dimIdsAtOpen.has(id));
+    const dropSessionDims = (): void => {
+      for (const id of sessionDimIds) { dimRecords.delete(id); dimOverrides.delete(id); }
+      if (lastLinearRecord && sessionDimIds.includes(lastLinearRecord.id)) lastLinearRecord = null;
+      if (lastBaselineRecord && sessionDimIds.includes(lastBaselineRecord.id)) lastBaselineRecord = null;
+    };
     if (!discard) {
+      if (sessionDimIds.length) {
+        const converted = dimensionEntitiesForSave(ents);
+        if (converted.length) {
+          const ids = new Set(converted.map((d) => d.dimId));
+          ents = ents.filter((e) => !(e.meta?.dimId && ids.has(e.meta.dimId)));
+          ents.push(...converted);
+        }
+        dropSessionDims();
+      }
       let def: DxfBlockDef;
       try { def = BlockEdit9.closeBlockEditSession(be.session, ents); }
       catch (e) { blockEdit = be; applyDynVisibilityToSession(); logCmd(`BCLOSE: ${(e as Error).message}`); return; }
@@ -17783,13 +17941,32 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
         const count = BlockEdit9.countBlockInstances(def.name, be.savedModelEnts, ...(doc.layouts ?? []).map((l) => l.entities));
         const blocks = doc.blocks ?? (doc.blocks = {});
         blocks[def.name] = def;
+        // 2D-23: a block that also lives in the shared library is
+        // redefined there too, so the next INSERT from the library — in
+        // this drawing or any other — places the edited definition, not
+        // the stale one. A document-only block (imported, never added to
+        // the library) is left alone: the library is a curated catalog,
+        // and importing a file must not silently stock it with that
+        // file's blocks. The library model never carried attdefs (BLOCK
+        // drops them the same way), so the sync is geometry-identical to
+        // what BLOCK stores; the document copy keeps the attdefs.
+        let libNote = "";
+        if (blockLib.has(def.name)) {
+          const prev = blockLib.get(def.name);
+          blockLib.add(makeBlock(def.name, def.entities, def.base, doc.layers as any, def.description ?? prev?.description), true);
+          libNote = persistBlockLib()
+            ? " Library copy updated."
+            : " Library copy updated in memory, but the browser refused to store it.";
+        }
         touchBlocks(blocks);
         setActiveBlocks(blocks);
         bindDocumentBlocks(doc);
         markDirty();
-        logCmd(`BCLOSE: block "${def.name}" redefined (${def.entities.length} object(s), base ${def.base.x}, ${def.base.y}) — ${count} reference(s) updated.`);
+        logCmd(`BCLOSE: block "${def.name}" redefined (${def.entities.length} object(s), base ${def.base.x}, ${def.base.y}) — ${count} reference(s) updated.${libNote}`);
       }
     } else {
+      // 2D-22: session-authored dimension records go with the discarded geometry.
+      dropSessionDims();
       logCmd(`BEDIT: discarded changes to "${be.session.name}".`);
     }
     ents = be.savedEnts;
@@ -18816,9 +18993,9 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       root.style.display = "flex";
       screenTypeActive = true;
       try {
-        (window as any).__obsCadOwnsEsc = () =>
+        (window as any).__OBS_CTX__.features.cadOwnsEsc = () =>
           !!shell && shell.style.display !== "none" && root.style.display !== "none";
-        (window as any).__obsCadOwnsKeys = () =>
+        (window as any).__OBS_CTX__.features.cadOwnsKeys = () =>
           screenTypeActive && !!shell && shell.style.display !== "none" && root.style.display !== "none";
       } catch {
         /* */
@@ -18853,6 +19030,15 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       // BIM-side panels (batch plotter, sheets panel).
       publishCadDoc();
     },
+    showLayout(index: number): boolean {
+      // 2D-27: sheets-panel click-through. The closure's activate()
+      // already refuses a switch during BEDIT (A9) — confirm the
+      // switch landed instead of trusting the call.
+      if (blockEdit) return false;
+      if (!doc || !doc.layouts || index < 0 || index >= doc.layouts.length) return false;
+      activate(index);
+      return layoutI === index;
+    },
     deactivate() {
       closeSelectionCycle();
       screenTypeActive = false;
@@ -18864,11 +19050,11 @@ function buildEngine(page: HTMLDivElement, hooks: EngineHooks): CadEngineApi {
       }
       try {
         const still = !!shell && shell.style.display !== "none";
-        if ((window as any).__obsCadOwnsEsc && !still) {
-          delete (window as any).__obsCadOwnsEsc;
+        if ((window as any).__OBS_CTX__?.features?.cadOwnsEsc && !still) {
+          delete (window as any).__OBS_CTX__.features.cadOwnsEsc;
         }
-        if ((window as any).__obsCadOwnsKeys && !still) {
-          delete (window as any).__obsCadOwnsKeys;
+        if ((window as any).__OBS_CTX__?.features?.cadOwnsKeys && !still) {
+          delete (window as any).__OBS_CTX__.features.cadOwnsKeys;
         }
       } catch {
         /* */

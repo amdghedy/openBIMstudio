@@ -386,6 +386,15 @@ export interface DxfViewport {
    */
   clip?: { minX: number; minY: number; maxX: number; maxY: number };
   /**
+   * 2D-25: no viewport border is drawn for this viewport. Set only on
+   * the synthetic full-page viewport a Model vector plot builds
+   * (modelVectorLayout): the viewport is a pipeline artifact, not a
+   * sheet viewport, and a Model plot in native CAD carries no border.
+   * In-memory only — the DXF writer/reader carry viewports by group
+   * codes and never see this field.
+   */
+  hideBorder?: boolean;
+  /**
    * Layer names frozen in this viewport only (AutoCAD VPLAYER /
    * per-viewport freeze, 2D-6). Entities on these layers are hidden
    * through this viewport but stay visible in every other viewport and in

@@ -179,7 +179,7 @@ t("super copy: clipboard engine wired into tools, hotkeys, ribbon and commands",
   // CAD editing combos while a drawing tab is active, or its
   // stopImmediatePropagation() kills the CAD hotkeys (Ctrl+Shift+C/V bug).
   assert.ok(
-    shortcutsSrc.includes("__obsCadOwnsKeys") && shortcutsSrc.includes("CAD_EDITOR_COMBOS.has(combo)"),
+    shortcutsSrc.includes("cadOwnsKeys") && shortcutsSrc.includes("CAD_EDITOR_COMBOS.has(combo)"),
     "shortcuts.ts CAD keyboard-ownership yield missing"
   );
   assert.ok(
@@ -187,8 +187,8 @@ t("super copy: clipboard engine wired into tools, hotkeys, ribbon and commands",
     "CAD-owned combo set incomplete"
   );
   assert.ok(
-    viewer.includes("(window as any).__obsCadOwnsKeys = () =>") &&
-      viewer.includes("delete (window as any).__obsCadOwnsKeys;"),
+    viewer.includes("(window as any).__OBS_CTX__.features.cadOwnsKeys = () =>") &&
+      viewer.includes("delete (window as any).__OBS_CTX__.features.cadOwnsKeys;"),
     "cad-viewer.ts keyboard ownership bridge missing"
   );
   // Ribbon Clipboard panel buttons

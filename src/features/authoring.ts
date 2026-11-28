@@ -34,6 +34,7 @@ import { applyResolvedParams } from "../modules/families/placement";
 import * as THREE from "three";
 import { ctx } from "../core/context";
 import { register, type AuthoringService } from "../core/services";
+import { registerKind } from "../core/element-store";
 import { getSelectionPrefs } from "../core/selection-prefs";
 import { selection } from "./selection";
 import { PreviousSelectionStore } from "./selection-semantics";
@@ -1827,8 +1828,8 @@ function buildWallWithOpenings(
   mesh.userData.baseColor = el.color || COLORS.wall;
   // Accelerate this mesh with BVH for fast raycasting (selection, snapping).
   try {
-    if ((window as any).__obsPerf?.accelerateMesh) {
-      (window as any).__obsPerf.accelerateMesh(mesh);
+    if ((ctx.features as any).perf?.accelerateMesh) {
+      (ctx.features as any).perf.accelerateMesh(mesh);
     }
   } catch { /* BVH not available yet — mesh still works, just slower raycast */ }
   attachWallSweeps(mesh, el);
@@ -2296,8 +2297,7 @@ function createMeshBase(el: AuthoredElement): THREE.Object3D | null {
     const __layerStr = (el.properties as any)?.layers as string | undefined;
     if (__layerStr) {
       try {
-        const __w = window as any;
-        const __builder = __w.__obsMeshBuilders?.["wall"];
+        const __builder = (ctx.features as any).meshBuilders?.["wall"];
         if (typeof __builder === "function") {
           const __mesh = __builder(el);
           if (__mesh) {
@@ -2515,8 +2515,7 @@ function createMeshBase(el: AuthoredElement): THREE.Object3D | null {
   if (!mesh) {
     try {
       const __featureBuilders = (ctx.features as any)?.meshBuilders;
-      const __legacyBuilders = (window as any).__obsMeshBuilders;
-      const __builder = __featureBuilders?.[el.type] ?? __legacyBuilders?.[el.type];
+      const __builder = __featureBuilders?.[el.type];
       if (typeof __builder === "function") {
         const __custom = __builder(el);
         if (__custom) {
@@ -4104,7 +4103,7 @@ function deleteElements(ids: string[]) {
 function snapRegistry(): any | null {
   try {
     const w = window as any;
-    return w.__obsRelationships?.registry ?? null;
+    return ((ctx.features as any).relationshipRegistry?.registry) ?? null;
   } catch { return null; }
 }
 
@@ -7087,7 +7086,7 @@ export function rebuildAuthored(): void { rebuild(); markDirty(); }
 
 /** When on, moving an MEP part also moves everything connected to it (default on). */
 let moveConnectedMep = (() => { try { return localStorage.getItem("obs.moveConnectedMep") !== "0"; } catch { return true; } })();
-try { (window as any).__obsMoveConnected = moveConnectedMep; } catch { /* */ }
+try { (ctx.features as any).moveConnected = moveConnectedMep; } catch { /* */ }
 export function isMoveConnectedMep(): boolean { return moveConnectedMep; }
 export function setMoveConnectedMep(on: boolean): void {
   moveConnectedMep = on;
@@ -8107,7 +8106,7 @@ export function setupAuthoring() {
 
   function handleAuthoringCancel(): boolean {
     try {
-      if ((window as any).__obsPlanVisible?.()) return false;
+      if ((ctx.features as any).planVisible?.()) return false;
     } catch { /* */ }
 
     const hasSomething =
@@ -8160,7 +8159,7 @@ export function setupAuthoring() {
     const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
     if (tag === "input" || tag === "textarea" || (e.target as HTMLElement)?.isContentEditable) return;
 
-    try { if ((window as any).__obsPlanVisible?.()) return; } catch { /* */ }
+    try { if ((ctx.features as any).planVisible?.()) return; } catch { /* */ }
 
     // ── Numeric entry during a grip drag: Enter commits precisely ──
     // Digits typed while a grip is dragged land in AccuDraw's typed buffer
@@ -8388,6 +8387,19 @@ export function setupAuthoring() {
   ctx.features.authoring = api;
   register("authoring", api);
   try { (window as any).__obsAuthoring = api; } catch { /* */ }
+  // Canonical element store (Phase 1 single source of truth, step 1):
+  // authoring is the first kind adapter. No behavior change — the adapter
+  // delegates to the existing element state and validated edit path above.
+  registerKind({
+    kind: "authored",
+    listIds: () => elements.map((e) => e.id),
+    owns: (id) => elements.some((e) => e.id === id),
+    applyParamChange: (id, param, value) => applyElementParamChange(id, param, value),
+    // Persistence (decision step 4): same state, same semantics —
+    // getElements returns the live array, setElements replaces it.
+    serialize: () => getElements(),
+    hydrate: (records) => setElements(records as AuthoredElement[]),
+  });
 }
 /* ═══════════════════════════════════════════════════════════════════════
    BIM authoring software-style editable temporary dimensions + dimensional constraints.

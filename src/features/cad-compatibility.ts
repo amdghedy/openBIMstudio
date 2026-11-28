@@ -460,7 +460,7 @@ function onKey(e: KeyboardEvent): void {
 /** Push simplified entities into drafting-2d for sheet export compatibility. */
 function syncDrafting(): void {
   try {
-    const d = (window as Any).__obsDrafting2D;
+    const d = (ctx.features as Any).drafting2D;
     if (d?.loadEntities) {
       d.loadEntities(cadEngine.toDraftEntities());
     }
@@ -481,7 +481,7 @@ function setTool(tool: CadTool, label: string): void {
   }
   // Also mirror simple tools onto drafting-2d for dual-path
   try {
-    const d = (window as Any).__obsDrafting2D;
+    const d = (ctx.features as Any).drafting2D;
     if (d?.setTool) {
       const map: Record<string, string | null> = {
         line: "line",
@@ -698,16 +698,16 @@ function buildPanel(): void {
           }
         });
       } else if (a === "export-dxf") {
-        (window as Any).__obsDrawings?.exportCadAsDxf?.("cad-export.dxf");
+        (ctx.features as Any).drawings?.exportCadAsDxf?.("cad-export.dxf");
       } else if (a === "import-dxf") {
-        (window as Any).__obsDrawingsPanel?.open?.();
+        (ctx.features as Any).drawingsPanel?.open?.();
         // also trigger file pick via drawings panel path
         const input = document.createElement("input");
         input.type = "file";
         input.accept = ".dxf,.dwg";
         input.onchange = async () => {
           const f = input.files?.[0];
-          if (f) await (window as Any).__obsDrawings?.importDrawingFile?.(f);
+          if (f) await (ctx.features as Any).drawings?.importDrawingFile?.(f);
           render();
           syncDrafting();
         };
@@ -912,7 +912,6 @@ export function setupCadCompatibility(): void {
     close: closeCadPanel,
     toggle: toggleCadPanel,
   };
-  (window as Any).__obsCad = (ctx.features as Any).cad;
 
   void (async () => {
     try {

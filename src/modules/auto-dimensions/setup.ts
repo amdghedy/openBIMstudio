@@ -3,6 +3,8 @@
  */
 
 import { autoDimensionsEngine, exposeAutoDimensionsGlobal } from "./auto-dimensions-engine";
+import { notify as coreNotify } from "../../core/notify";
+import { ready } from "../../core/services";
 import { setupAutoDimensionsUI, openAutoDimsPanel } from "./auto-dimensions-ui";
 
 // legacy module-local state (formerly on window)
@@ -13,46 +15,40 @@ type Any = Record<string, any>;
 
 function registerPaletteCommands(): void {
   try {
+    // Same dead-global fix as view-templates: the window palette globals had
+    // no producer, so these commands never registered. Command shape mapped
+    // to the palette contract (title → label, keywords → hint); the legacy
+    // commands-map stash had no reader and is gone.
     const cmds = [
       {
         id: "annotate.autoDimensions",
-        title: "Auto Dimension Plan",
+        label: "Auto Dimension Plan",
         category: "Annotate",
-        keywords: ["dimension", "auto dim", "aligned"],
+        hint: "dimension, auto dim, aligned",
         run: () => {
           const created = autoDimensionsEngine.autoDimensionPlan({ axis: "both" });
-          try {
-            const n = (window as Any).__obsNotify ?? (window as Any).notify;
-            if (typeof n === "function") {
-              n("success", `Created ${created.length} dimension string(s)`, { timeout: 3000 });
-            }
-          } catch { /* */ }
+          coreNotify("success", `Created ${created.length} dimension string(s)`, { timeout: 3000 });
         },
       },
       {
         id: "annotate.autoDimensionsPanel",
-        title: "Auto Dimensions Panel",
+        label: "Auto Dimensions Panel",
         category: "Annotate",
-        keywords: ["dimension panel"],
+        hint: "dimension panel",
         run: () => openAutoDimsPanel(),
       },
       {
         id: "annotate.promoteTempDims",
-        title: "Promote Temporary Dimensions",
+        label: "Promote Temporary Dimensions",
         category: "Annotate",
         run: () => {
           const n = autoDimensionsEngine.promoteTemporary();
-          try {
-            const notify = (window as Any).__obsNotify ?? (window as Any).notify;
-            if (typeof notify === "function") {
-              notify("info", n ? `Promoted ${n}` : "No temporary dimensions", { timeout: 2500 });
-            }
-          } catch { /* */ }
+          coreNotify("info", n ? `Promoted ${n}` : "No temporary dimensions", { timeout: 2500 });
         },
       },
       {
         id: "annotate.clearAutoDims",
-        title: "Clear Auto Dimensions",
+        label: "Clear Auto Dimensions",
         category: "Annotate",
         run: () => {
           for (const d of autoDimensionsEngine.listDimensions()) {
@@ -62,24 +58,14 @@ function registerPaletteCommands(): void {
       },
     ];
 
-    const palette =
-      (window as Any).__obsCommandPalette ??
-      (window as Any).commandPalette;
-    const register = palette?.register ?? palette?.add ?? (window as Any).registerCommand;
-    if (typeof register === "function") {
-      for (const c of cmds) {
-        try {
-          register(c);
-        } catch {
-          try {
-            register(c.id, c);
-          } catch { /* */ }
+    void ready("commandPalette").then((palette) => {
+      const register = palette?.register ?? null;
+      if (typeof register === "function") {
+        for (const c of cmds) {
+          try { register(c); } catch { /* */ }
         }
       }
-    }
-
-    const map = ((window as Any).__obsPaletteCommands ??= {});
-    for (const c of cmds) map[c.id] = c;
+    });
 
     obsAutoDimActions = {
       openPanel: openAutoDimsPanel,

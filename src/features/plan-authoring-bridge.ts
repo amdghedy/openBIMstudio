@@ -30,13 +30,6 @@ export function setupPlanAuthoringBridge() {
     let wx = svgP.x;
     let wz = -svgP.y;
 
-    // Use __obsPlanView for accurate mapping if available
-    const pv = (window as any).__obsPlanView;
-    if (pv && typeof pv.svgToWorld === "function") {
-       const w = pv.svgToWorld(svgP.x, svgP.y);
-       wx = w.x; wz = w.z;
-    }
-
     // 3. Project World to 3D Screen
     const v = new THREE.Vector3(wx, 0, wz);
     v.project(ctx.world.camera.three);

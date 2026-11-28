@@ -14,7 +14,7 @@ import { confirmDialog } from "./form-modal";
 import { promptLine } from "./form-modal";
 import * as THREE from "three";
 import { ctx } from "../core/context";
-import { services } from "../core/services";
+import { services, register as registerService } from "../core/services";
 import { notify } from "../core/notify";
 import {
   fitAll, goHome, gotoDir, takeScreenshot, setProjection, getProjection,
@@ -469,13 +469,13 @@ function bootstrapCommands(): void {
   registerCommand({ id: "tools.walk", label: toggleLabel("Walk mode", isWalkModeEnabled), category: "Tools", run: () => toggleWalkMode() });
   registerCommand({
     id: "tools.moveConnectedMep",
-    label: toggleLabel("Move connected MEP parts together", () => { try { return (window as any).__obsMoveConnected !== false; } catch { return true; } }),
+    label: toggleLabel("Move connected MEP parts together", () => { try { return (ctx.features as any).moveConnected !== false; } catch { return true; } }),
     category: "Tools",
     run: () => {
       void import("./authoring").then((a) => {
         const on = !a.isMoveConnectedMep();
         a.setMoveConnectedMep(on);
-        (window as any).__obsMoveConnected = on;
+        (ctx.features as any).moveConnected = on;
         notify("info", on ? "Moving an MEP part now moves everything connected to it" : "MEP parts move independently");
       });
     },
@@ -503,15 +503,15 @@ function bootstrapCommands(): void {
   registerCommand({ id: "panel.cost", label: toggleLabel("5D Cost panel", isCostPanelVisible), category: "Panels", run: () => toggleCostPanel() });
   registerCommand({ id: "panel.issues", label: toggleLabel("Issues / BCF panel", isIssuesPanelVisible), category: "Panels", run: () => toggleIssuesPanel() });
   registerCommand({ id: "panel.savedViews", label: toggleLabel("Saved views", isSavedViewsPanelVisible), category: "Panels", run: () => toggleSavedViewsPanel() });
-  registerCommand({ id: "familyBrowser.toggle", label: "Toggle Family Browser", category: "Panels", kbd: "Ctrl+Shift+B", run: () => (window as any).__obsFamilyBrowser?.toggle?.() });
-  registerCommand({ id: "familyBrowser.open", label: "Open Family Browser", category: "Panels", run: () => (window as any).__obsFamilyBrowser?.open?.() });
-  registerCommand({ id: "familyBrowser.close", label: "Close Family Browser", category: "Panels", run: () => (window as any).__obsFamilyBrowser?.close?.() });
+  registerCommand({ id: "familyBrowser.toggle", label: "Toggle Family Browser", category: "Panels", kbd: "Ctrl+Shift+B", run: () => (ctx.features as any).familyBrowser?.toggle?.() });
+  registerCommand({ id: "familyBrowser.open", label: "Open Family Browser", category: "Panels", run: () => (ctx.features as any).familyBrowser?.open?.() });
+  registerCommand({ id: "familyBrowser.close", label: "Close Family Browser", category: "Panels", run: () => (ctx.features as any).familyBrowser?.close?.() });
   registerCommand({ id: "panel.standards.toggle", label: "Toggle Standards", category: "Panels", kbd: "Ctrl+Shift+D", run: () => (ctx.features as any).standardsPanel?.toggle?.() });
   registerCommand({ id: "panel.standards.open", label: "Open Standards", category: "Panels", run: () => (ctx.features as any).standardsPanel?.open?.() });
   registerCommand({ id: "panel.cde.toggle", label: "Toggle Common Data Environment", category: "Panels", kbd: "Ctrl+Shift+E", run: () => (ctx.features as any).cdePanel?.toggle?.() });
   registerCommand({ id: "panel.cde.open", label: "Open Common Data Environment", category: "Panels", run: () => (ctx.features as any).cdePanel?.open?.() });
   registerCommand({ id: "panel.modelHealth.toggle", label: "Toggle Model Health", category: "Panels", run: () => (ctx.features as any).modelHealthPanel?.toggle?.() });
-  registerCommand({ id: "clash.review.toggle", label: "Toggle Clash Review window", category: "Clash", kbd: "Ctrl+Shift+C", run: () => (window as any).__obs_toggleClashReview?.() });
+  registerCommand({ id: "clash.review.toggle", label: "Toggle Clash Review window", category: "Clash", kbd: "Ctrl+Shift+C", run: () => (ctx.features as any).clashReview?.toggle?.() });
   registerCommand({ id: "bim.contextualBar.toggle", label: "Toggle Modify Bar (contextual ribbon)", category: "BIM Experience", run: () => (ctx.features as any).bimExperience?.toggleContextualBar?.() });
   registerCommand({ id: "bim.optionsBar.toggle", label: "Toggle Options Bar", category: "BIM Experience", run: () => (ctx.features as any).bimExperience?.toggleOptionsBar?.() });
   registerCommand({ id: "bim.viewBar.toggle", label: "Toggle View Control Bar", category: "BIM Experience", run: () => (ctx.features as any).bimExperience?.toggleViewBar?.() });
@@ -779,7 +779,7 @@ function registerClashCommands(): void {
     label: "Open Clash Review window",
     category: "Clash",
     kbd: "Ctrl+Shift+C",
-    run: () => (window as any).__obs_openClashReview?.(),
+    run: () => (ctx.features as any).clashReview?.open?.(),
   });
   registerCommand({
     id: "clash.next",
@@ -889,4 +889,9 @@ export function setupCommandPalette(): void {
     unregister: unregisterCommand,
     list: listCommands,
   };
+  // Typed registry too: ServiceMap declares commandPalette but nothing
+  // registered it, so services.ready("commandPalette") never resolved and
+  // modules registering commands at boot (view-templates, auto-dimensions)
+  // had no working path to the palette.
+  registerService("commandPalette", ctx.features.commandPalette);
 }

@@ -23,9 +23,15 @@
 
 /* ── GUID helpers ──────────────────────────────────────────────────────── */
 
-/** BCF GuidType: RFC 4122 UUID shape (markup.xsd / visinfo.xsd restriction). */
+/** BCF GuidType: RFC 4122 UUID shape (markup.xsd / visinfo.xsd restriction)
+ *  — or an IFC GlobalId: 22 chars of the compressed-GUID alphabet. BCF
+ *  topics commonly carry the IFC GlobalId of the element they annotate, and
+ *  the project's own BCF fixture does exactly that; the UUID-only shape made
+ *  the import's schema gate reject such topics outright (X-4: the valid
+ *  control fixture failed validateBcfParsedTopic), and made the writer
+ *  silently replace the guid with a fresh UUID on round-trip. */
 export const BCF_GUID_RE =
-  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+  /^(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9A-Za-z_$]{22})$/;
 
 export function isBcfGuid(s: string | null | undefined): boolean {
   return typeof s === "string" && BCF_GUID_RE.test(s);

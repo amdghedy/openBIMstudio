@@ -11,6 +11,7 @@ import * as THREE from "three";
 import { confirmDialog } from "../features/form-modal";
 import { ctx } from "../core/context";
 import { getVisualPreset } from "../features/view-graphics";
+import { getPluginRegistry } from "../plugins/loader";
 import { onNotify, __dispatchToSubscribers, uiAlert } from "../core/notify";
 import { pickFiles, loadIfcFiles, loadFragFiles } from "../features/importer";
 import {
@@ -373,7 +374,7 @@ function b(
  * logic and the Massing & Site copy targeted a global that never existed
  * (__obsInPlaceMass). One implementation, two call sites. */
 async function openInPlaceMassDialog(): Promise<void> {
-  const mc = (window as any).__obsMass;
+  const mc = (ctx.features as any).mass;
   if (!mc) { toast("Mass module not loaded", "warn"); return; }
   const { openFormModal } = await import("../features/form-modal");
   const r = await openFormModal({
@@ -395,7 +396,7 @@ async function openInPlaceMassDialog(): Promise<void> {
 }
 
 async function openMassFloorsDialog(): Promise<void> {
-  const mc = (window as any).__obsMass;
+  const mc = (ctx.features as any).mass;
   if (!mc) { toast("Mass module not loaded", "warn"); return; }
   const masses = mc.list();
   if (!masses.length) { toast("No masses created yet", "info"); return; }
@@ -411,7 +412,7 @@ async function openMassFloorsDialog(): Promise<void> {
 
 /** Convert one conceptual mass into native authored elements (Revit parity Rank 6). */
 async function openMassToElementsDialog(): Promise<void> {
-  const mc = (window as any).__obsMass;
+  const mc = (ctx.features as any).mass;
   if (!mc) { toast("Mass module not loaded", "warn"); return; }
   const masses = mc.list();
   if (!masses.length) { toast("No masses created yet", "info"); return; }
@@ -430,7 +431,7 @@ async function openMassToElementsDialog(): Promise<void> {
     if (!r) return;
     mass = masses.find((m: any) => m.id === String(r.mass)) ?? masses[0];
   }
-  const authoring = (window as any).__obsAuthoring;
+  const authoring = (ctx.features as any).authoring;
   if (typeof authoring?.createElementByType !== "function") { toast("Authoring is not ready", "warn"); return; }
   try {
     const { convertMassToElements } = await import("../modules/parametric/mass-to-elements");
@@ -574,7 +575,7 @@ function modelGroupButton(): HTMLButtonElement {
       const { promptLine } = await import("../features/form-modal");
       const name = await promptLine("Create group", "Group name:", "Group");
       if (name == null) return;
-      const g = (window as any).__obsGroups?.createFromSelection?.(name, ids, true);
+      const g = (ctx.features as any).groups?.createFromSelection?.(name, ids, true);
       if (g) toast(`Group "${name}" created`, "success");
       else toast("Groups module not loaded", "warn");
     }, "Model group"),
@@ -788,7 +789,7 @@ function parametricToolkitButton(): HTMLButtonElement {
  * the same buttons, the same handlers — not copies with drift. */
 function lockDimensionButton(): HTMLButtonElement {
   return b("dim-aligned", "Lock Dim", safe(async () => {
-    const c = (window as any).__obsConstraints;
+    const c = (ctx.features as any).constraints;
     if (!c) { toast("Constraints module not loaded", "warn"); return; }
     const auth = (ctx.features as any).authoring;
     const ids = auth?.getSelectedIds?.() ?? [];
@@ -811,7 +812,7 @@ function lockDimensionButton(): HTMLButtonElement {
 
 function equalityButton(): HTMLButtonElement {
   return b("dim-aligned", "Equality", safe(() => {
-    const c = (window as any).__obsConstraints;
+    const c = (ctx.features as any).constraints;
     if (!c) { toast("Constraints module not loaded", "warn"); return; }
     const auth = (ctx.features as any).authoring;
     const ids = auth?.getSelectedIds?.() ?? [];
@@ -1217,11 +1218,11 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       m2Btn("stairs", "Stair L-Shape", "stairs", "", "L"),
       m2Btn("stairs", "Stair U-Shape", "stairs", "", "U"),
       b("stairs", "Winder", safe(() => {
-        (window as any).__obsStairs?.buildStair?.({ runType: "winder" });
+        (ctx.features as any).stairs?.buildStair?.({ runType: "winder" });
         toast("Winder stair created", "success");
       }, "Winder"), { title: "Build a winder stair" }),
       b("stairs", "Spiral", safe(() => {
-        (window as any).__obsStairs?.buildStair?.({ runType: "spiral" });
+        (ctx.features as any).stairs?.buildStair?.({ runType: "spiral" });
         toast("Spiral stair created", "success");
       }, "Spiral"), { title: "Build a spiral stair" }),
       sep(),
@@ -1321,41 +1322,41 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Connections"),
       b("conn", "Moment", safe(() => {
-        (window as any).__obsStructuralConnection?.build?.({ type: "moment-flange-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
+        (ctx.features as any).structuralConnection?.build?.({ type: "moment-flange-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
         toast("Moment flange-plate connection placed", "success");
       }, "Moment connection"), { title: "Moment flange-plate connection" }),
       b("conn", "Shear", safe(() => {
-        (window as any).__obsStructuralConnection?.build?.({ type: "shear-end-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
+        (ctx.features as any).structuralConnection?.build?.({ type: "shear-end-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
         toast("Shear end-plate connection placed", "success");
       }, "Shear connection"), { title: "Shear end-plate connection" }),
       b("conn", "Base Plate", safe(() => {
-        (window as any).__obsStructuralConnection?.build?.({ type: "base-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
+        (ctx.features as any).structuralConnection?.build?.({ type: "base-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
         toast("Base-plate connection placed", "success");
       }, "Base plate"), { title: "Column base-plate connection" }),
       b("conn", "Cap Plate", safe(() => {
-        (window as any).__obsStructuralConnection?.build?.({ type: "cap-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
+        (ctx.features as any).structuralConnection?.build?.({ type: "cap-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
         toast("Cap-plate connection placed", "success");
       }, "Cap plate"), { title: "Column cap-plate connection" }),
       b("conn", "Splice", safe(() => {
-        (window as any).__obsStructuralConnection?.build?.({ type: "splice-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
+        (ctx.features as any).structuralConnection?.build?.({ type: "splice-plate", columnSize: 0.2, beamSize: 0.2, boltsPerRow: 4 });
         toast("Splice-plate connection placed", "success");
       }, "Splice"), { title: "Column-to-column splice-plate connection" }),
       sep(),
       groupLabel("Truss Builder"),
       b("truss", "Pratt", safe(() => {
-        (window as any).__obsTruss?.build?.({ type: "pratt", span: 12, depth: 2, panelCount: 6 });
+        (ctx.features as any).truss?.build?.({ type: "pratt", span: 12, depth: 2, panelCount: 6 });
         toast("Pratt truss built (12 m span, 6 panels)", "success");
       }, "Pratt"), { title: "Build a Pratt truss" }),
       b("truss", "Howe", safe(() => {
-        (window as any).__obsTruss?.build?.({ type: "howe", span: 12, depth: 2, panelCount: 6 });
+        (ctx.features as any).truss?.build?.({ type: "howe", span: 12, depth: 2, panelCount: 6 });
         toast("Howe truss built", "success");
       }, "Howe"), { title: "Build a Howe truss" }),
       b("truss", "Warren", safe(() => {
-        (window as any).__obsTruss?.build?.({ type: "warren", span: 12, depth: 2, panelCount: 6 });
+        (ctx.features as any).truss?.build?.({ type: "warren", span: 12, depth: 2, panelCount: 6 });
         toast("Warren truss built", "success");
       }, "Warren"), { title: "Build a Warren truss" }),
       b("truss", "Fink", safe(() => {
-        (window as any).__obsTruss?.build?.({ type: "fink", span: 12, depth: 2, panelCount: 6 });
+        (ctx.features as any).truss?.build?.({ type: "fink", span: 12, depth: 2, panelCount: 6 });
         toast("Fink truss built", "success");
       }, "Fink"), { title: "Build a Fink truss" }),
       sep(),
@@ -1364,10 +1365,10 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       // working tools: Generate Rebar, Export BBS, Clash Review.
       groupLabel("Reinforcement"),
       b("rebar", "Generate Rebar", safe(() => {
-        (window as any).__obsRebarViewport?.generate?.();
+        (ctx.features as any).rebarViewport?.generate?.();
       }, "Generate rebar"), { title: "Generate 3D rebar inside the selected beam/column/footing" }),
       b("rebar", "Export BBS", safe(() => {
-        (window as any).__obsRebarViewport?.exportBBS?.();
+        (ctx.features as any).rebarViewport?.exportBBS?.();
       }, "Export BBS"), { title: "Export Bar Bending Schedule as CSV" }),
       b("check", "Clash Review", safe(() => openRebarClashReview(), "Rebar clash review"), {
         title: "Interactive rebar clash, lap-splice and standards review (EC2 / ACI / BS) for the generated rebar",
@@ -1502,7 +1503,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       // Order matches Old OpenBIMStudio Insert tab: Link / Import first
       groupLabel("Link / Import"),
       b("file", "BIM / Navisworks…", safe(() => {
-        (window as any).__obsBIMImport?.pickAndConvert?.();
+        (ctx.features as any).bimImport?.pickAndConvert?.();
       }, "BIM import"), { title: "Import .rvt / .nwd / .nwc / .nwf — converts to IFC locally with your Navisworks (or via APS)" }),
       b("file", "IFC", safe(() => linkIfc(), "Link IFC"), {
         title: "Link IFC models — origin-to-origin federation (same as old OpenBIMStudio)",
@@ -1538,15 +1539,15 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         title: "Site mesh (OBJ / STL / PLY / GLB)",
       }),
       b("pdf", "PDF Underlay", safe(() => {
-        (window as any).__obsPdfUnderlay?.load?.();
+        (ctx.features as any).pdfUnderlay?.load?.();
       }, "PDF underlay"), { title: "Load PDF as plan-view raster underlay (snappable)" }),
       sep(),
       groupLabel("Fabrication"),
       b("duct", "Duct Parts", safe(() => {
-        (window as any).__obsFabricationPart?.build?.({ type: "duct-straight", primarySize: 0.4, length: 1.5 });
+        (ctx.features as any).fabricationPart?.build?.({ type: "duct-straight", primarySize: 0.4, length: 1.5 });
       }, "Duct parts"), { title: "Place SMACNA fabrication duct parts" }),
       b("pipe", "Pipe Parts", safe(() => {
-        (window as any).__obsFabricationPart?.build?.({ type: "pipe-straight", primarySize: 0.05, length: 2.0 });
+        (ctx.features as any).fabricationPart?.build?.({ type: "pipe-straight", primarySize: 0.05, length: 2.0 });
       }, "Pipe parts"), { title: "Place ASTM fabrication pipe parts" }),
       b("pipe", "Fittings", safe(async () => {
         const opts: Array<[string, string]> = [
@@ -1563,7 +1564,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
           opts.map(([value, label]) => ({ value, label })),
         );
         if (!choice) return;
-        (window as any).__obsFabricationPart?.build?.({ type: choice, primarySize: 0.1 });
+        (ctx.features as any).fabricationPart?.build?.({ type: choice, primarySize: 0.1 });
       }, "Fittings"), { title: "Pick a fabrication fitting by type" }),
       sep(),
       groupLabel("Load from Library"),
@@ -1573,7 +1574,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         title: "Element types and materials library",
       }),
       b("component", "Materials", safe(async () => {
-        const m = (window as any).__obsMaterials;
+        const m = (ctx.features as any).materials;
         if (!m) { toast("Materials module not loaded", "warn"); return; }
         const list = m.list();
         const auth = (ctx.features as any).authoring;
@@ -1632,7 +1633,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Analysis"),
       b("system", "Color Fill", safe(async () => {
-        const ap = (window as any).__obsAreaPlans;
+        const ap = (ctx.features as any).areaPlans;
         if (!ap) { toast("Area plans module not loaded", "warn"); return; }
         const schemes = ap.list();
         const { pickFromList } = await import("../features/form-modal");
@@ -1647,7 +1648,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast(`Color fill enabled: ${choice}. Open Plan View to see rooms colored.`, "success");
       }, "Color fill"), { title: "Color fill plan — color rooms by department/occupancy/area type" }),
       b("sun", "Sun Settings", safe(async () => {
-        const sun = (window as any).__obsSun;
+        const sun = (ctx.features as any).sun;
         if (!sun) { toast("Sun settings module not loaded", "warn"); return; }
         const s = sun.get();
         const { openFormModal } = await import("../features/form-modal");
@@ -1670,7 +1671,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast(`Sun set to ${date} ${time} at lat ${lat}°`, "success");
       }, "Sun settings"), { title: "Configure sun position + shadows for solar study" }),
       b("sun", "Shadows", safe(() => {
-        const sun = (window as any).__obsSun;
+        const sun = (ctx.features as any).sun;
         if (!sun) { toast("Sun settings not loaded", "warn"); return; }
         const s = sun.get();
         sun.set({ enabled: !s.enabled });
@@ -1690,7 +1691,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     items: () => [
       groupLabel("Graphics"),
       b("dim-linear", "Line Weights", safe(async () => {
-        const lw = (window as any).__obsLineWeights;
+        const lw = (ctx.features as any).lineWeights;
         if (!lw) { toast("Line weights module not loaded", "warn"); return; }
         const list = lw.list();
         const { showTableDialog } = await import("../features/form-modal");
@@ -1698,7 +1699,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
           list.map((r: any) => [r.elementType, r.widthMm, r.color]), `${list.length} rules`);
       }, "Line weights"), { title: "View line weight assignments per element type" }),
       b("grid", "Grid Bubbles", safe(async () => {
-        const gb = (window as any).__obsGridBubbles;
+        const gb = (ctx.features as any).gridBubbles;
         if (!gb) { toast("Grid bubbles module not loaded", "warn"); return; }
         const grids = gb.getGrids();
         const levels = gb.getLevels();
@@ -1796,7 +1797,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Keynotes"),
       b("text", "Assign Keynote", safe(async () => {
-        const k = (window as any).__obsKeynotes;
+        const k = (ctx.features as any).keynotes;
         if (!k) { toast("Keynotes module not loaded", "warn"); return; }
         const auth = (ctx.features as any).authoring;
         const ids = auth?.getSelectedIds?.() ?? [];
@@ -1832,7 +1833,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast("Detail line — click points to draw", "success");
       }, "Detail line")),
       b("detail-component", "Detail Comp…", safe(async () => {
-        const dc = (window as any).__obsDetailComponents;
+        const dc = (ctx.features as any).detailComponents;
         if (!dc) { toast("Detail components module not loaded", "warn"); return; }
         const list = dc.list();
         const { pickFromList } = await import("../features/form-modal");
@@ -1858,7 +1859,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         pv.startRegion("masking");
       }, "Masking region"), { title: "Draw a masking region to hide geometry (plan view)" }),
       b("model-curve", "Model Curve", safe(() => {
-        const mc = (window as any).__obsModelCurves;
+        const mc = (ctx.features as any).modelCurves;
         if (!mc) { toast("Model curves module not loaded", "warn"); return; }
         const auth = (ctx.features as any).authoring;
         const ids = auth?.getSelectedIds?.() ?? [];
@@ -2022,7 +2023,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
           toast("No loaded model elements to check — load an IFC first", "warn");
           return;
         }
-        const report = (window as any).__obsModelChecker.run(elements);
+        const report = (ctx.features as any).modelChecker.run(elements);
         const rows: ResultRow[] = [
           { label: "Elements checked", value: String(report.totalElements ?? elements.length) },
           { label: "Errors", value: String(report.summary?.errors ?? 0), strong: true },
@@ -2035,7 +2036,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         showResultDialog("Model Checker Report", rows, findings.length ? findings : ["No findings — all shipped rules passed."]);
       }, "Run model checker"), { title: "Run QA rules against loaded elements" }),
       b("inspect", "List Rules", safe(() => {
-        const rules = (window as any).__obsModelChecker.listRules();
+        const rules = (ctx.features as any).modelChecker.listRules();
         toast(`Shipped rules: ${rules.join(", ")}`, "info", 4000);
       }, "List rules"), { title: "List shipped model-checker rule IDs" }),
       sep(),
@@ -2056,7 +2057,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Daylight"),
       b("sun", "Daylight", safe(() => {
-        const r = (window as any).__obsDaylighting.run({
+        const r = (ctx.features as any).daylighting.run({
           room: { width: 6, depth: 4, height: 3 },
           windowArea: 4,
           visibleTransmittance: 0.7,
@@ -2069,11 +2070,11 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
           { label: "Average daylight factor", value: `${r.averageDF?.toFixed?.(2) ?? r.averageDF}%`, strong: true },
           { label: "sDA (spatial daylight autonomy)", value: String(r.sDA), strong: true },
           { label: "ASE (annual sunlight exposure)", value: String(r.ASE) },
-          { label: "Classification", value: String((window as any).__obsDaylighting.classify?.(r.averageDF) ?? "") },
+          { label: "Classification", value: String((ctx.features as any).daylighting.classify?.(r.averageDF) ?? "") },
         ], ["Demo room 6 × 4 × 3 m, 4 m² window, VT 0.7. Parametric room studies arrive with the generative design editor."]);
       }, "Daylight"), { title: "Compute daylight factor + sDA + ASE for the default room" }),
       b("sun", "Solar", safe(() => {
-        const sun = (window as any).__obsSun;
+        const sun = (ctx.features as any).sun;
         if (!sun) { toast("Sun module not loaded", "warn"); return; }
         sun.set({ enabled: true });
         toast("Sun enabled — use Sun panel to set date/time/lat", "info");
@@ -2094,20 +2095,20 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Loads"),
       b("loads", "Load Cases", safe(() => {
-        (window as any).__obsStructuralLoads?.createCase?.({ name: "Dead Load", category: "dead", magnitude: 24, direction: { x: 0, y: -1, z: 0 } });
-        (window as any).__obsStructuralLoads?.createCase?.({ name: "Live Load", category: "live", magnitude: 2.5, direction: { x: 0, y: -1, z: 0 } });
+        (ctx.features as any).structuralLoads?.createCase?.({ name: "Dead Load", category: "dead", magnitude: 24, direction: { x: 0, y: -1, z: 0 } });
+        (ctx.features as any).structuralLoads?.createCase?.({ name: "Live Load", category: "live", magnitude: 2.5, direction: { x: 0, y: -1, z: 0 } });
         toast("Dead + Live load cases created", "success");
       }, "Load cases"), { title: "Create default dead + live load cases" }),
       b("loads", "ASCE Combos", safe(() => {
-        const cases = (window as any).__obsStructuralLoads?.listCases?.() ?? [];
+        const cases = (ctx.features as any).structuralLoads?.listCases?.() ?? [];
         if (cases.length < 2) { toast("Create load cases first", "warn"); return; }
-        const combos = (window as any).__obsStructuralLoads?.generateDefaultLRFDCombinations?.();
+        const combos = (ctx.features as any).structuralLoads?.generateDefaultLRFDCombinations?.();
         toast(`Generated ${combos.length} LRFD combinations (ASCE 7-22)`, "success");
       }, "Generate combos"), { title: "Generate ASCE 7 LRFD combinations" }),
       sep(),
       groupLabel("Generative"),
       b("generative", "Run Study", safe(() => {
-        const result = (window as any).__obsGenerativeDesign.run({
+        const result = (ctx.features as any).generativeDesign.run({
           name: "Window-to-Wall Ratio study",
           variables: [
             { name: "wwr", kind: "continuous", min: 0.1, max: 0.6 },
@@ -2199,10 +2200,10 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
           const y = Math.sin(x * 0.3) * 0.4 + Math.cos(z * 0.4) * 0.3;
           points.push({ x, y, z });
         }
-        (window as any).__obsToposurface.build({ points });
+        (ctx.features as any).toposurface.build({ points });
       }, "Toposurface"), { title: "Create TIN toposurface from sample points" }),
       b("topo", "Building Pad", safe(() => {
-        (window as any).__obsBuildingPad.build({
+        (ctx.features as any).buildingPad.build({
           outline: [
             { x: 2, z: 2 }, { x: 6, z: 2 }, { x: 6, z: 6 }, { x: 2, z: 6 },
           ],
@@ -2214,7 +2215,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Property"),
       b("property", "Property Line", safe(() => {
-        (window as any).__obsPropertyLine.build({
+        (ctx.features as any).propertyLine.build({
           origin: { x: 0, z: 0 },
           segments: [
             { bearing: 90, distance: 30, label: "E 30 m" },
@@ -2227,22 +2228,22 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Site"),
       b("parking", "Parking", safe(() => {
-        (window as any).__obsSiteComponent.build({ type: "parking", position: { x: 5, z: 5 }, elevation: 0.3 });
+        (ctx.features as any).siteComponent.build({ type: "parking", position: { x: 5, z: 5 }, elevation: 0.3 });
       }, "Parking"), { title: "Place parking component" }),
       b("tree", "Planting", safe(() => {
-        (window as any).__obsSiteComponent.build({ type: "tree", position: { x: 8, z: 4 }, elevation: 0.3 });
+        (ctx.features as any).siteComponent.build({ type: "tree", position: { x: 8, z: 4 }, elevation: 0.3 });
       }, "Tree"), { title: "Place a tree" }),
       b("tree", "Shrub", safe(() => {
-        (window as any).__obsSiteComponent.build({ type: "shrub", position: { x: 7, z: 4 }, elevation: 0.3 });
+        (ctx.features as any).siteComponent.build({ type: "shrub", position: { x: 7, z: 4 }, elevation: 0.3 });
       }, "Shrub"), { title: "Place a shrub" }),
       b("bench", "Bench", safe(() => {
-        (window as any).__obsSiteComponent.build({ type: "bench", position: { x: 4, z: 7 }, elevation: 0.3, rotation: Math.PI / 2 });
+        (ctx.features as any).siteComponent.build({ type: "bench", position: { x: 4, z: 7 }, elevation: 0.3, rotation: Math.PI / 2 });
       }, "Bench"), { title: "Place a bench" }),
       b("lightpole", "Light Pole", safe(() => {
-        (window as any).__obsSiteComponent.build({ type: "lightpole", position: { x: 1, z: 1 }, elevation: 0.3 });
+        (ctx.features as any).siteComponent.build({ type: "lightpole", position: { x: 1, z: 1 }, elevation: 0.3 });
       }, "Light pole"), { title: "Place a light pole" }),
       b("fire", "Fire Hydrant", safe(() => {
-        (window as any).__obsSiteComponent.build({ type: "firehydrant", position: { x: 0, z: 5 }, elevation: 0.3 });
+        (ctx.features as any).siteComponent.build({ type: "firehydrant", position: { x: 0, z: 5 }, elevation: 0.3 });
       }, "Fire hydrant"), { title: "Place a fire hydrant" }),
       sep(),
       groupLabel("Massing"),
@@ -2273,34 +2274,34 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Worksets"),
       b("workset", "Init", safe(() => {
-        (window as any).__obsWorksets?.init?.();
+        (ctx.features as any).worksets?.init?.();
       }, "Init worksets"), { title: "Initialise default worksets" }),
       b("workset", "New", safe(async () => {
         const { promptLine } = await import("../features/form-modal");
         const name = await promptLine(
           "Create Workset",
           "Workset name",
-          `Workset ${((window as any).__obsWorksets?.list?.() ?? []).length + 1}`,
+          `Workset ${((ctx.features as any).worksets?.list?.() ?? []).length + 1}`,
           "e.g. Walls, Furniture, MEP",
         );
         if (!name) return;
-        (window as any).__obsWorksets?.create?.(name);
+        (ctx.features as any).worksets?.create?.(name);
       }, "New workset"), { title: "Create a new workset" }),
       b("workset", "List", safe(() => {
-        const list = (window as any).__obsWorksets?.list?.() ?? [];
-        const summary = (window as any).__obsWorksets?.summary?.();
+        const list = (ctx.features as any).worksets?.list?.() ?? [];
+        const summary = (ctx.features as any).worksets?.summary?.();
         toast(`${summary.total} worksets, ${summary.totalElements} elements, ${summary.ownedByUser} borrowed by you`, "info", 4000);
         console.table(list.map((w: any) => ({ id: w.id, name: w.name, owner: w.owner, elements: w.elementIds.size })));
       }, "List worksets"), { title: "List all worksets with element counts" }),
       b("workset", "Borrow", safe(() => {
         const ids = (ctx.features as any).authoring?.getSelectedIds?.() ?? [];
         if (!ids.length) { toast("Select an element first", "warn"); return; }
-        (window as any).__obsWorksets?.borrow?.(ids[0]);
+        (ctx.features as any).worksets?.borrow?.(ids[0]);
       }, "Borrow"), { title: "Borrow selected element for editing" }),
       b("workset", "Release", safe(() => {
         const ids = (ctx.features as any).authoring?.getSelectedIds?.() ?? [];
         if (!ids.length) { toast("Select an element first", "warn"); return; }
-        (window as any).__obsWorksets?.release?.(ids[0]);
+        (ctx.features as any).worksets?.release?.(ids[0]);
         toast(`Released element ${ids[0]}`, "success");
       }, "Release"), { title: "Release borrowed element back to pool" }),
     ],
@@ -2313,44 +2314,44 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
     label: "View",
     items: () => [
       groupLabel("Section"),
-      b("section", "Section Cut", () => (window as any).__obsOpenSectionModal?.(), { title: "Open the interactive section cut window" }),
+      b("section", "Section Cut", () => (ctx.features as any).openSectionModal?.(), { title: "Open the interactive section cut window" }),
       b("section-box", "Section Box", safe(() => {
-        (window as any).__obsSectionBox?.toggle?.();
+        (ctx.features as any).sectionBox?.toggle?.();
         refreshRibbon();
       }, "Section box"), {
         kbd: "^B",
-        active: !!(window as any).__obsSectionBox?.isActive?.(),
+        active: !!(ctx.features as any).sectionBox?.isActive?.(),
         title: "Toggle the 3D section box — drag cyan face handles to crop live — Ctrl+B",
       }),
       b("section-box", "Reset Box", safe(() => {
-        (window as any).__obsSectionBox?.reset?.();
+        (ctx.features as any).sectionBox?.reset?.();
       }, "Reset box"), { title: "Reset section box to model bounds" }),
       b("crop-expand", "Grow +", safe(() => {
-        (window as any).__obsSectionBox?.grow?.(0.5);
+        (ctx.features as any).sectionBox?.grow?.(0.5);
       }, "Grow"), { title: "Grow section box by 0.5 m on all sides" }),
       b("crop-shrink", "Shrink −", safe(() => {
-        (window as any).__obsSectionBox?.shrink?.(0.5);
+        (ctx.features as any).sectionBox?.shrink?.(0.5);
       }, "Shrink"), { title: "Shrink section box by 0.5 m on all sides" }),
       sep(),
       groupLabel("Crop"),
       b("crop", "Scope Box", safe(() => {
-        (window as any).__obsScopeBox?.create?.({ name: `Scope Box ${((window as any).__obsScopeBox?.list?.() ?? []).length + 1}`, min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 4, z: 10 } });
-        (window as any).__obsScopeBoxViz?.enable?.();
+        (ctx.features as any).scopeBox?.create?.({ name: `Scope Box ${((ctx.features as any).scopeBox?.list?.() ?? []).length + 1}`, min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 4, z: 10 } });
+        (ctx.features as any).scopeBoxViz?.enable?.();
         toast("Scope box created (10×4×10 m) — visualizer ON, drag handles to resize", "success");
       }, "Scope box"), { title: "Create a scope box + enable 3D visualizer with drag handles" }),
       b("crop", "Show Boxes", safe(() => {
-        const on = (window as any).__obsScopeBoxViz?.toggle?.();
+        const on = (ctx.features as any).scopeBoxViz?.toggle?.();
         refreshRibbon();
         toast(on ? "Scope Box visualizer ON — drag handles to resize" : "Scope Box visualizer OFF", "success");
       }, "Show boxes"), {
-        active: !!(window as any).__obsScopeBoxViz?.isEnabled?.(),
+        active: !!(ctx.features as any).scopeBoxViz?.isEnabled?.(),
         title: "Toggle 3D visualization of all scope boxes (with corner/face/center handles)",
       }),
       b("crop", "List Boxes", safe(() => {
-        const list = (window as any).__obsScopeBox?.list?.() ?? [];
+        const list = (ctx.features as any).scopeBox?.list?.() ?? [];
         if (!list.length) { toast("No scope boxes — click Scope Box to create one", "warn"); return; }
         // Open the unified View Tools Manager panel (replaces console.log dump).
-        (window as any).__obsOpenViewToolsManager?.();
+        (ctx.features as any).openViewToolsManager?.();
       }, "List boxes"), { title: "Open the View Tools Manager panel with all scope boxes / filters / crop regions" }),
       b("crop", "Plan Region", safe(() => {
         (window as any).__obsPlanRegion?.build?.({
@@ -2366,53 +2367,53 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         // G9: crop follows the active view — the plan marks itself active
         // when it opens; the fallback covers "plan never opened yet".
         // No view id is hardcoded at this call site.
-        const viewId = resolveCropViewId((window as any).__obsCropRegion?.getActive?.());
-        (window as any).__obsCropRegion?.setActive?.(viewId);
-        const on = (window as any).__obsCropRegion?.toggle?.(viewId);
+        const viewId = resolveCropViewId((ctx.features as any).cropRegion?.getActive?.());
+        (ctx.features as any).cropRegion?.setActive?.(viewId);
+        const on = (ctx.features as any).cropRegion?.toggle?.(viewId);
         toast(on ? `Crop region ON for "${viewId}" — drag cyan handles to resize` : `Crop region OFF`, "success");
       }, "Crop toggle"), { title: "Toggle the 2D crop region overlay on the active plan view" }),
       b("crop", "Reset", safe(() => {
-        const viewId = resolveCropViewId((window as any).__obsCropRegion?.getActive?.());
-        (window as any).__obsCropRegion?.reset?.(viewId);
+        const viewId = resolveCropViewId((ctx.features as any).cropRegion?.getActive?.());
+        (ctx.features as any).cropRegion?.reset?.(viewId);
         toast("Crop region reset to 100×100 m default", "info");
       }, "Reset crop"), { title: "Reset crop region to default size" }),
       b("crop", "Size 50m", safe(() => {
-        const viewId = resolveCropViewId((window as any).__obsCropRegion?.getActive?.());
-        (window as any).__obsCropRegion?.set?.(viewId, { minX: -25, minY: -25, maxX: 25, maxY: 25, enabled: true });
-        (window as any).__obsCropRegion?.setActive?.(viewId);
+        const viewId = resolveCropViewId((ctx.features as any).cropRegion?.getActive?.());
+        (ctx.features as any).cropRegion?.set?.(viewId, { minX: -25, minY: -25, maxX: 25, maxY: 25, enabled: true });
+        (ctx.features as any).cropRegion?.setActive?.(viewId);
         toast("Crop region set to 50×50 m around origin", "success");
       }, "Size 50m"), { title: "Set crop region to 50×50 m around origin" }),
       b("crop", "Size 100m", safe(() => {
-        const viewId = resolveCropViewId((window as any).__obsCropRegion?.getActive?.());
-        (window as any).__obsCropRegion?.set?.(viewId, { minX: -50, minY: -50, maxX: 50, maxY: 50, enabled: true });
-        (window as any).__obsCropRegion?.setActive?.(viewId);
+        const viewId = resolveCropViewId((ctx.features as any).cropRegion?.getActive?.());
+        (ctx.features as any).cropRegion?.set?.(viewId, { minX: -50, minY: -50, maxX: 50, maxY: 50, enabled: true });
+        (ctx.features as any).cropRegion?.setActive?.(viewId);
         toast("Crop region set to 100×100 m around origin", "success");
       }, "Size 100m"), { title: "Set crop region to 100×100 m around origin" }),
       sep(),
       groupLabel("Selection"),
       b("section-box", "Sel. Box", safe(() => {
-        (window as any).__obsSelectionBox?.show?.({ padding: 0.5 });
+        (ctx.features as any).selectionBox?.show?.({ padding: 0.5 });
       }, "Selection box"), { kbd: "^⇧B", title: "Wrap a 3D section box tightly around the selected element(s) — Ctrl+Shift+B" }),
       b("crop", "Crop to Sel", safe(() => {
-        (window as any).__obsSelectionBox?.cropTo?.({ padding: 1.0 });
+        (ctx.features as any).selectionBox?.cropTo?.({ padding: 1.0 });
       }, "Crop to selection"), { kbd: "^⇧R", title: "Auto-fit the 2D crop region of the active plan view to the selected element(s) — Ctrl+Shift+R" }),
       b("fit", "Zoom Sel", safe(() => {
-        (window as any).__obsSelectionBox?.zoom?.();
+        (ctx.features as any).selectionBox?.zoom?.();
       }, "Zoom to selection"), { kbd: "^⇧Z", title: "Fit camera frustum to selected element(s) — Ctrl+Shift+Z" }),
       b("isolate", "Isolate", safe(() => {
-        (window as any).__obsSelectionBox?.isolate?.();
+        (ctx.features as any).selectionBox?.isolate?.();
       }, "Isolate"), { kbd: "^I", title: "Hide everything except the selected element(s) — Ctrl+I" }),
       b("isolate", "Reset Iso", safe(() => {
-        (window as any).__obsSelectionBox?.resetIsolation?.();
+        (ctx.features as any).selectionBox?.resetIsolation?.();
       }, "Reset isolation"), { kbd: "^⇧I", title: "Restore all hidden elements — Ctrl+Shift+I" }),
       b("view", "Dependent", safe(() => {
-        (window as any).__obsDependentViews?.create?.("primary-view-1", { name: "Dependent View 1" });
+        (ctx.features as any).dependentViews?.create?.("primary-view-1", { name: "Dependent View 1" });
         toast("Dependent view created from primary", "success");
       }, "Dependent view"), { title: "Create a dependent view sharing primary geometry" }),
       sep(),
       groupLabel("Filters"),
       b("system", "Create Filter", safe(async () => {
-        const vf = (window as any).__obsViewFilters;
+        const vf = (ctx.features as any).viewFilters;
         if (!vf?.create) { toast("View filters not loaded", "warn"); return; }
         const { openFormModal } = await import("../features/form-modal");
         const v = await openFormModal({
@@ -2438,12 +2439,12 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast(`Filter "${String(v.name).trim()}" created — apply it from Visibility/Graphics → Filters`, "success", 4000);
       }, "View filter"), { title: "Create a rule-based view graphics filter" }),
       b("system", "Matchline", safe(() => {
-        (window as any).__obsMatchline?.build?.({ points: [{ x: 0, z: 0 }, { x: 10, z: 0 }, { x: 12, z: 2 }] });
+        (ctx.features as any).matchline?.build?.({ points: [{ x: 0, z: 0 }, { x: 10, z: 0 }, { x: 12, z: 2 }] });
         toast("Matchline created — used when splitting a view across sheets", "success");
       }, "Matchline"), { title: "Draw a matchline for sheet-split views" }),
       sep(),
       groupLabel("Schedules"),
-      b("schedules", "Element Schedule", () => (window as any).__obsOpenSchedules?.(), { title: "View quantity takeoffs and schedules" }),
+      b("schedules", "Element Schedule", () => (ctx.features as any).openSchedules?.(), { title: "View quantity takeoffs and schedules" }),
       sep(),
       // ── Select ──────────────────────────────────────────────────────
       groupLabel("Select"),
@@ -2529,7 +2530,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         toast(on ? "Thin lines ON" : "Thin lines OFF", "info");
         refreshRibbon();
       }, "Thin lines"), {
-        active: !!(window as any).__obsThinLines,
+        active: !!(ctx.features as any).thinLines,
         title: "Thin lines — consistent line weight in model views",
       }),
       b("section", "Hidden", safe(() => {
@@ -2771,12 +2772,12 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("View Tools"),
       b("crop", "View Tools", safe(() => {
-        (window as any).__obsOpenViewToolsManager?.();
+        (ctx.features as any).openViewToolsManager?.();
       }, "View tools manager"), { kbd: "^⇧V", title: "Open the View Tools Manager panel (scope boxes + filters + crop regions) — Ctrl+Shift+V" }),
       sep(),
       groupLabel("Plugins"),
       b("component", "Plugin List", safe(async () => {
-        const loaded = (window as any).__obsPluginRegistry;
+        const loaded = getPluginRegistry();
         if (!loaded || loaded.size === 0) { toast("No plugins are loaded.", "info"); return; }
         const { showTableDialog } = await import("../features/form-modal");
         await showTableDialog("Loaded plugins", ["Id", "Name", "Version"],
@@ -2792,13 +2793,13 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Performance"),
       b("system", "BVH Accelerate", safe(() => {
-        const perf = (window as any).__obsPerf;
+        const perf = (ctx.features as any).perf;
         if (!perf) { toast("Performance engine not loaded", "warn"); return; }
         const n = perf.accelerateAllMeshes();
         toast(`BVH built on ${n} mesh(es) — raycast now O(log n)`, "success");
       }, "BVH accelerate"), { title: "Build BVH on all meshes for fast raycasting" }),
       b("system", "Batching", safe(() => {
-        const perf = (window as any).__obsPerf;
+        const perf = (ctx.features as any).perf;
         if (!perf) { toast("Performance engine not loaded", "warn"); return; }
         const on = !perf.isBatchingEnabled();
         perf.setBatchingEnabled(on);
@@ -2807,7 +2808,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Analysis"),
       b("connection", "Analytical", safe(async () => {
-        const am = (window as any).__obsAnalytical;
+        const am = (ctx.features as any).analytical;
         if (!am) { toast("Analytical model not loaded", "warn"); return; }
         const nodes = am.getNodes();
         const members = am.getMembers();
@@ -2826,7 +2827,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       sep(),
       groupLabel("Marketplace"),
       b("component", "Browse Plugins", safe(async () => {
-        const mp = (window as any).__obsMarketplace;
+        const mp = (ctx.features as any).marketplace;
         if (!mp) { toast("Marketplace not loaded", "warn"); return; }
         const list = mp.list();
         const { showTableDialog } = await import("../features/form-modal");
@@ -2834,7 +2835,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
           list.map((x: any) => [x.name, x.version, x.author, x.description]), "Plugins shipped with this build");
       }, "Browse marketplace"), { title: "Browse plugin marketplace" }),
       b("component", "Install Plugin", safe(async () => {
-        const mp = (window as any).__obsMarketplace;
+        const mp = (ctx.features as any).marketplace;
         if (!mp) { toast("Marketplace not loaded", "warn"); return; }
         const list = mp.list();
         const { pickFromList } = await import("../features/form-modal");
@@ -2852,7 +2853,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
       }, "Install plugin"), { title: "Install a plugin from the marketplace" }),
       sep(),
       groupLabel("Links"),
-      b("folder-recent", "Manage Links", () => (window as any).__obsManageLinks?.(), { title: "Manage external links (IFC, DWG, BIM)" }),
+      b("folder-recent", "Manage Links", () => (ctx.features as any).manageLinks?.(), { title: "Manage external links (IFC, DWG, BIM)" }),
       sep(),
       groupLabel("Project"),
       b("settings", "Info", safe(() => openProjectInfo(), "Project information"), {
@@ -3050,7 +3051,7 @@ const TABS: { id: string; label: string; items: () => HTMLElement[] }[] = [
         active: isToolWindowOpen("crop"),
         title: "Crop margin around the active clash: -10 cm / +10 cm / reset 30 cm / remove",
       }),
-      b("clash", "Categories", () => (window as any).__obsOpenClashCategories?.(), { title: "Category Clash Rules" }),
+      b("clash", "Categories", () => (ctx.features as any).openClashCategories?.(), { title: "Category Clash Rules" }),
       sep(),
       groupLabel("Tests"),
       b("save", "Save", safe(async () => {
@@ -3556,7 +3557,7 @@ function ctxItems(tool: string): HTMLElement[] {
     sep(),
     groupLabel("Properties"),
     b("settings", "Properties", safe(() => { try { (ctx.features as any).propertyPalette?.open?.(); } catch { /* */ } }, "Properties")),
-    b("settings", "Type Properties", safe(() => { (window as any).__obsBIMExperience?.execute?.("modify.typeProperties"); }, "Type properties")),
+    b("settings", "Type Properties", safe(() => { (ctx.features as any).bimExperience?.execute?.("modify.typeProperties"); }, "Type properties")),
     sep(),
     groupLabel("Clipboard"),
     mod("paste", "copy"),
@@ -3604,7 +3605,7 @@ function modifyTabItems(model: ModifyTabModel): HTMLElement[] {
       title: button.reason ?? options.title,
     });
   };
-  const cmd = (id: string) => safe(() => { (window as any).__obsBIMExperience?.execute?.(id); }, id);
+  const cmd = (id: string) => safe(() => { (ctx.features as any).bimExperience?.execute?.(id); }, id);
   /** Pass-through for enabled buttons; disabled buttons get the model's reason as tooltip. */
   const dis = (button: ModifyTabButton, options: BtnOpts = {}): BtnOpts =>
     button.enabled ? options : { ...options, disabled: true, title: button.reason ?? options.title };

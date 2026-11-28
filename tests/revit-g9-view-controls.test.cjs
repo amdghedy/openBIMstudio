@@ -222,7 +222,7 @@ t("plan marks itself the active crop view when it opens", () => {
 t("ribbon Crop View group has no hardcoded view id", () => {
   assert.ok(!ribbonSrc.includes('"plan-view-1"'),
     "ribbon still hardcodes \"plan-view-1\"");
-  assert.ok(ribbonSrc.includes("resolveCropViewId((window as any).__obsCropRegion?.getActive?.())"),
+  assert.ok(ribbonSrc.includes("resolveCropViewId((ctx.features as any).cropRegion?.getActive?.())"),
     "ribbon crop buttons do not resolve the active view id");
   assert.ok(ribbonSrc.includes('import { resolveCropViewId } from "../modules/views/plan-view-controls"'),
     "ribbon does not import the crop-view resolver");

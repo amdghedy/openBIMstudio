@@ -4,6 +4,7 @@
  * Activates every Insert-tab action with stable, production behaviour:
  * Link IFC, Link drawing, Link BIM, Point cloud, Topography, Family, Library.
  */
+import { ctx } from "../core/context";
 import { pickFiles, loadIfcFiles, loadFragFiles } from "./importer";
 import { pickAndImport, importFiles } from "./file-interop";
 
@@ -147,7 +148,7 @@ export function linkCad() {
     if (["svg", "png", "jpg", "jpeg", "webp", "gif"].includes(ext)) {
       // Open plan view — user clicks Link drawing there, or we stash file for plan
       try {
-        (window as any).__obsPendingCadFile = file;
+        (ctx.features as any).pendingCadFile = file;
       } catch { /* */ }
       togglePlanView();
       toast(
@@ -156,7 +157,7 @@ export function linkCad() {
       );
       // Try auto-link into plan if handler exists
       try {
-        const auto = (window as any).__obsAutoLinkCad;
+        const auto = (ctx.features as any).autoLinkCad;
         if (typeof auto === "function") await auto(file);
       } catch (e) {
         console.warn("[link-drawing] auto underlay", e);

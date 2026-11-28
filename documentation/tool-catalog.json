@@ -3947,6 +3947,15 @@
       "verifiedScenarios": []
     },
     {
+      "id": "rg-georef",
+      "name": "Project: set coordinate system (IFC georeference)",
+      "discipline": "Export",
+      "module": "src/modules/bim-gaps/bim-gaps-boot.ts",
+      "status": "unverified",
+      "tests": [],
+      "verifiedScenarios": []
+    },
+    {
       "id": "rg-gis-origin",
       "name": "GIS: set project origin",
       "discipline": "Site",

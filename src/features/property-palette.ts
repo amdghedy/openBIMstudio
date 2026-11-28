@@ -245,7 +245,7 @@ function makeTypeSelectorBlock(elements: AuthoredElement[]): HTMLElement | null 
     "border:1px solid var(--border-default,#2a2e3a);border-radius:4px;" +
     "color:var(--text-primary,#e8eaf0);font:12px system-ui;cursor:pointer;white-space:nowrap";
   editTypeBtn.onclick = () => {
-    const exec = (window as any).__obsBIMExperience?.execute;
+    const exec = (ctx.features as any).bimExperience?.execute;
     if (typeof exec === "function") {
       exec("modify.typeProperties");
     } else {

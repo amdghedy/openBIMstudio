@@ -8,6 +8,7 @@
  * rules live in selection-semantics.ts; this module only gathers the
  * two sides, shows the dialog, and applies the result.
  */
+import { ctx } from "../core/context";
 import { selection, type SelectionSnapshot } from "./selection";
 import {
   getElements,
@@ -175,8 +176,8 @@ export async function selectPreviousCombined(): Promise<boolean> {
   // When the plan view is open it owns the selection, so the plan's own
   // restore is the whole answer (it toasts when there is nothing to restore).
   try {
-    if ((window as any).__obsPlanVisible?.()) {
-      const planRestore = (window as any).__obsPlanSelectPrevious as (() => boolean) | undefined;
+    if ((ctx.features as any).planVisible?.()) {
+      const planRestore = (ctx.features as any).planSelectPrevious as (() => boolean) | undefined;
       if (typeof planRestore === "function") return planRestore();
     }
   } catch {
