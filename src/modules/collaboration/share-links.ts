@@ -221,6 +221,9 @@ export async function createShare(role: ShareRole, ttlMs?: number): Promise<Crea
     throw new Error(`Could not create the share link (${res.status})${detail ? `: ${detail.slice(0, 200)}` : ""}`);
   }
   const created = (await res.json()) as CreatedShare;
+  // This browser now owns a share: the boot-time prefetch (see
+  // shouldPrefetchShares) is worth its one call from now on.
+  try { localStorage.setItem(HAS_SHARES_KEY, "1"); } catch { /* private browsing */ }
   knownShares = knownShares.filter((s) => s.sid !== created.sid);
   knownShares.push({
     sid: created.sid,
@@ -398,6 +401,26 @@ export function leaveShare(): void {
   } catch { /* */ }
 }
 
+const HAS_SHARES_KEY = "obs.share.hasShares";
+
+/**
+ * Whether the boot-time share-list prefetch can possibly pay off. The
+ * collab API defaults to the dev server (http://localhost:4000/api), so
+ * from a deployed origin the call fails for every visitor on every load;
+ * skip it there. And even against a reachable server the list only
+ * matters when THIS browser has created a share before (it drives
+ * auto-publish for the owner after a reload) — a first-time visitor has
+ * nothing to learn, so skip the call for them too.
+ */
+function shouldPrefetchShares(): boolean {
+  try {
+    const base = getCollabApiBase();
+    const localBase = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(base);
+    if (localBase && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") return false;
+    return localStorage.getItem(HAS_SHARES_KEY) === "1";
+  } catch { return false; }
+}
+
 export function setupShareLinks(): void {
   if (installed) return;
   installed = true;
@@ -408,7 +431,7 @@ export function setupShareLinks(): void {
   // Best-effort: learn which rooms already have live shares (drives
   // auto-publish for the owner after a reload). Failures are ignored —
   // creating a share always refreshes this list.
-  void listShares().catch(() => undefined);
+  if (shouldPrefetchShares()) void listShares().catch(() => undefined);
   try {
     (ctx.features as Record<string, unknown>).shareLinks = {
       createShare,

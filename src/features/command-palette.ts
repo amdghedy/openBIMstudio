@@ -109,7 +109,12 @@ export function unregisterCommand(id: string): void {
   commands.delete(id);
 }
 export function listCommands(): PaletteCommand[] {
-  return [...commands.values()];
+  // bim-experience mirrors every BIM command into the palette as
+  // `bim.<id>`; where the palette's own bootstrap already ships the same
+  // action under the bare `<id>` (4D simulation, 5D cost, Tool: Wall,
+  // 6D carbon, …) the pair rendered as a visible duplicate. The bare
+  // registration wins; the mirror stays only for bim-only commands.
+  return [...commands.values()].filter((c) => !(c.id.startsWith("bim.") && commands.has(c.id.slice(4))));
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -191,6 +196,12 @@ function ensureDOM(): void {
 function filterCommands(query: string): Ranked[] {
   const out: Ranked[] = [];
   for (const cmd of commands.values()) {
+    // bim-experience mirrors every BIM command into the palette as
+    // `bim.<id>`; where the palette's own bootstrap already ships the same
+    // action under the bare `<id>` (4D simulation, 5D cost, Tool: Wall,
+    // 6D carbon, …) the pair rendered as a visible duplicate. The bare
+    // registration wins; the mirror stays only for bim-only commands.
+    if (cmd.id.startsWith("bim.") && commands.has(cmd.id.slice(4))) continue;
     if (cmd.when && !cmd.when()) continue;
     const haystack = `${cmd.label} ${cmd.category ?? ""} ${cmd.hint ?? ""}`;
     const score = query ? fuzzyScore(query, haystack) : 1;
@@ -374,9 +385,9 @@ function bootstrapCommands(): void {
   tool("Window", "window", "WN");
   tool("Duct", "duct", "DU");
   tool("Pipe", "pipe", "PP");
-  tool("Cable Tray", "cable-tray");
-  tool("Conduit", "conduit");
-  tool("Equipment", "equipment");
+  tool("Cable Tray", "cable-tray", "CT");
+  tool("Conduit", "conduit", "CD");
+  tool("Equipment", "equipment", "EQ");
   tool("Grid", "grid", "GR");
   tool("Level", "level", "LV");
   tool("Move", "move", "G");
@@ -561,6 +572,10 @@ function registerAuthoringCommands(): void {
   };
 
   for (const [tool, kbd] of Object.entries(toolAliases)) {
+    // The bootstrap already ships these as `tool.<tool>` (wall, slab, …):
+    // registering the alias too rendered both in the palette (remark: two
+    // "Tool: Wall" rows). The bootstrap entry wins.
+    if (commands.has(`tool.${tool}`)) continue;
     registerCommand({
       id: `authoring.tool.${tool}`,
       label: `Tool: ${prettyToolLabel(tool)}`,
